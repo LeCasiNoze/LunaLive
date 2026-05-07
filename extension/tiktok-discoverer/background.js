@@ -205,12 +205,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 try {
                   const results = await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
-                    func: (max) => {
-                      // Multi-strategy video URL extraction
+                    func: (max, seedHandle) => {
+                      // Multi-strategy video URL extraction.
+                      // CRITICAL: only keep videos whose author === seedHandle.
+                      // TikTok now renders "You may like" / recommended videos
+                      // on profile pages, which would otherwise pollute the set.
+                      const seed = String(seedHandle || "").toLowerCase();
                       const set = new Set();
                       const stats = {
                         anchorsTotal: 0,
                         anchorsVideo: 0,
+                        anchorsForeign: 0,
                         userPostItems: 0,
                         loginWall: false,
                         hasUniversalData: false,
@@ -220,14 +225,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                       // Trigger lazy load
                       window.scrollBy(0, 1500);
 
-                      // Strategy 1: anchors with /@user/video/123
-                      const anchors = document.querySelectorAll("a[href]");
+                      // Strategy 1: anchors with /@user/video/123 — filter by seed
+                      // Restrict to the user-post grid when possible to be extra safe.
+                      const grid =
+                        document.querySelector('[data-e2e="user-post-item-list"]') ||
+                        document.querySelector('[data-e2e="user-post-item-desc"]')?.closest("div") ||
+                        document;
+                      const anchors = (grid || document).querySelectorAll("a[href]");
                       stats.anchorsTotal = anchors.length;
                       for (const a of Array.from(anchors)) {
                         const href = a.getAttribute("href") || "";
                         const m = href.match(/\/@([A-Za-z0-9._]{1,30})\/video\/(\d+)/);
                         if (m) {
                           stats.anchorsVideo++;
+                          if (m[1].toLowerCase() !== seed) {
+                            stats.anchorsForeign++;
+                            continue;
+                          }
                           const abs = href.startsWith("http")
                             ? href
                             : `https://www.tiktok.com${href}`;
@@ -239,7 +253,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         '[data-e2e="user-post-item"]'
                       ).length;
 
-                      // Strategy 2: SSR JSON
+                      // Strategy 2: SSR JSON — filter by seed author
                       if (set.size < max) {
                         const script = document.getElementById(
                           "__UNIVERSAL_DATA_FOR_REHYDRATION__"
@@ -258,8 +272,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                               if (Array.isArray(list)) {
                                 for (const v of list) {
                                   const id = v?.id;
-                                  const author = v?.author?.uniqueId;
-                                  if (id && author) {
+                                  const author = (v?.author?.uniqueId || "").toLowerCase();
+                                  if (id && author && author === seed) {
                                     set.add(
                                       `https://www.tiktok.com/@${author}/video/${id}`
                                     );
@@ -273,13 +287,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         }
                       }
 
-                      // Strategy 3: regex on outerHTML
+                      // Strategy 3: regex on outerHTML — filter by seed
                       if (set.size < max) {
                         const html = document.documentElement.outerHTML;
                         const re =
                           /\/@([A-Za-z0-9._]{1,30})\/video\/(\d{15,25})/g;
                         let m;
                         while ((m = re.exec(html)) && set.size < max) {
+                          if (m[1].toLowerCase() !== seed) continue;
                           set.add(`https://www.tiktok.com/@${m[1]}/video/${m[2]}`);
                         }
                       }
@@ -294,7 +309,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                       return { videos: Array.from(set), stats };
                     },
-                    args: [videoPoolSize],
+                    args: [videoPoolSize, cleaned],
                   });
                   const out = results && results[0] && results[0].result;
                   if (out && out.videos && out.videos.length > 0) {

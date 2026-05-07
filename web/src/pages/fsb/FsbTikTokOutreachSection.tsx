@@ -395,6 +395,9 @@ export function FsbTikTokOutreachSection() {
   const [affilOnlyCandidates, setAffilOnlyCandidates] = React.useState(false);
   const [candidatesDisplayLimit, setCandidatesDisplayLimit] = React.useState(50);
   const [importingCandidate, setImportingCandidate] = React.useState<string | null>(null);
+  const [candidateTier, setCandidateTier] = React.useState<
+    "high" | "long" | "low" | "unknown"
+  >("high");
   // Scan settings
   const [scanVideoLimit, setScanVideoLimit] = React.useState(5);
   const [scanCommentsPerVideo, setScanCommentsPerVideo] = React.useState(30);
@@ -1673,6 +1676,61 @@ export function FsbTikTokOutreachSection() {
               ({candidates.length})
             </span>
           </h3>
+          {(() => {
+            const buckets = {
+              high: candidates.filter(
+                (c) => (c.profile.followerCount ?? -1) >= 40000
+              ),
+              long: candidates.filter((c) => {
+                const f = c.profile.followerCount ?? -1;
+                return f >= 5000 && f < 40000;
+              }),
+              low: candidates.filter((c) => {
+                const f = c.profile.followerCount ?? -1;
+                return f >= 0 && f < 5000;
+              }),
+              unknown: candidates.filter(
+                (c) => c.profile.followerCount == null
+              ),
+            };
+            const tabs: Array<{
+              k: "high" | "long" | "low" | "unknown";
+              label: string;
+              color: string;
+            }> = [
+              { k: "high", label: `🔥 Fort potentiel · ≥40K (${buckets.high.length})`, color: "#fbbf24" },
+              { k: "long", label: `🌱 Long terme · 5K–40K (${buckets.long.length})`, color: "#22d3ee" },
+              { k: "low", label: `💤 Faibles · <5K (${buckets.low.length})`, color: "#94a3b8" },
+              { k: "unknown", label: `❓ Non enrichis (${buckets.unknown.length})`, color: "#a5b4fc" },
+            ];
+            return (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", width: "100%", marginTop: 4 }}>
+                {tabs.map((t) => {
+                  const active = candidateTier === t.k;
+                  return (
+                    <button
+                      key={t.k}
+                      type="button"
+                      onClick={() => setCandidateTier(t.k)}
+                      className="fsb-btn"
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        padding: "5px 10px",
+                        borderColor: active ? t.color : undefined,
+                        color: active ? t.color : undefined,
+                        background: active
+                          ? `${t.color}15`
+                          : undefined,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
             <label
               style={{
@@ -1729,7 +1787,17 @@ export function FsbTikTokOutreachSection() {
                 </tr>
               </thead>
               <tbody>
-                {candidates.slice(0, candidatesDisplayLimit).map((c) => (
+                {candidates
+                  .filter((c) => {
+                    const f = c.profile.followerCount;
+                    if (candidateTier === "unknown") return f == null;
+                    if (f == null) return false;
+                    if (candidateTier === "high") return f >= 40000;
+                    if (candidateTier === "long") return f >= 5000 && f < 40000;
+                    return f < 5000;
+                  })
+                  .slice(0, candidatesDisplayLimit)
+                  .map((c) => (
                   <tr
                     key={c.handle}
                     style={
