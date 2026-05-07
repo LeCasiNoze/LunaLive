@@ -2122,6 +2122,62 @@ tiktokOutreachRouter.post(
   })
 );
 
+// ENRICH candidate profiles from pre-scraped data (sent by the browser extension).
+// Upsert in tiktok_candidate_profiles ONLY (does NOT add to DSB).
+const enrichBulkSchema = z.object({
+  profiles: z.array(importBulkProfileSchema).min(1).max(200),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/enrich-bulk",
+  a(async (req, res) => {
+    const parsed = enrichBulkSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_payload" });
+    }
+    let upserted = 0;
+    for (const raw of parsed.data.profiles) {
+      const profile = profileFromExtensionPayload(raw);
+      if (!profile.handle) continue;
+      await pool.query(
+        `INSERT INTO tiktok_candidate_profiles
+           (handle, display_name, bio, bio_email, avatar_url, follower_count, following_count,
+            heart_count, video_count, verified, region, raw, last_enriched_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
+         ON CONFLICT (handle) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           bio = EXCLUDED.bio,
+           bio_email = EXCLUDED.bio_email,
+           avatar_url = EXCLUDED.avatar_url,
+           follower_count = EXCLUDED.follower_count,
+           following_count = EXCLUDED.following_count,
+           heart_count = EXCLUDED.heart_count,
+           video_count = EXCLUDED.video_count,
+           verified = EXCLUDED.verified,
+           region = EXCLUDED.region,
+           raw = EXCLUDED.raw,
+           last_enriched_at = NOW()`,
+        [
+          profile.handle,
+          profile.displayName,
+          profile.bio,
+          profile.email,
+          profile.avatarUrl,
+          profile.followerCount,
+          profile.followingCount,
+          profile.heartCount,
+          profile.videoCount,
+          profile.verified,
+          profile.country,
+          profile.raw,
+        ]
+      );
+      upserted++;
+    }
+    return res.json({ ok: true, upserted, total: parsed.data.profiles.length });
+  })
+);
+
 // IMPORT a candidate handle into the DSB (scrape its profile + insert into tiktok_influencers)
 tiktokOutreachRouter.post(
   "/fsb/tiktok/network/import",

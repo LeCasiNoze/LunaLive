@@ -12,6 +12,7 @@ import {
   getTikTokTemplate,
   addTikTokAffilPattern,
   deleteTikTokAffilPattern,
+  enrichTikTokCandidatesBulk,
   enrichTikTokTopCandidates,
   importSeedNetworkSignals,
   importTikTokBulk,
@@ -448,6 +449,104 @@ export function FsbTikTokOutreachSection() {
       );
     } catch (err: any) {
       window.alert(`Enrich all: ${err?.message || err}`);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+      await reloadCandidates();
+    }
+  };
+
+  // Enrichissement via l'extension (utilise la session connectée du user)
+  // → contourne le blocage Cloudflare côté serveur Render
+  const handleEnrichViaExtension = async () => {
+    if (enriching) return;
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée. Installe-la d'abord.");
+      return;
+    }
+    const unenriched = candidates
+      .filter((c) => c.profile.followerCount == null)
+      .map((c) => c.handle);
+    if (unenriched.length === 0) {
+      window.alert("Tous les candidats sont déjà enrichis.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Enrichir ${unenriched.length} candidat(s) via l'extension ? Une page TikTok sera ouverte ~1s par profil (en arrière-plan). Compte ~${Math.ceil(
+          (unenriched.length * 4) / 60
+        )} min.`
+      )
+    )
+      return;
+
+    setEnriching(true);
+    let totalUpserted = 0;
+    let totalFailed = 0;
+    const BATCH = 25;
+    try {
+      for (let i = 0; i < unenriched.length; i += BATCH) {
+        const chunk = unenriched.slice(i, i + BATCH);
+        setEnrichProgress(
+          `Ext ${Math.floor(i / BATCH) + 1}/${Math.ceil(
+            unenriched.length / BATCH
+          )} · ${totalUpserted} OK…`
+        );
+
+        const requestId = `enr-${Date.now()}-${i}`;
+        const result = await new Promise<{ ok: boolean; profiles: any[]; error?: string }>(
+          (resolve) => {
+            const handler = (event: MessageEvent) => {
+              if (event.source !== window) return;
+              const data: any = event.data;
+              if (!data || data.source !== "lunalive-tiktok-ext") return;
+              if (
+                data.type === "SCRAPE_PROFILES_RESULT" &&
+                data.requestId === requestId
+              ) {
+                window.removeEventListener("message", handler);
+                resolve({
+                  ok: !!data.ok,
+                  profiles: data.profiles || [],
+                  error: data.error,
+                });
+              }
+            };
+            window.addEventListener("message", handler);
+            window.postMessage(
+              {
+                source: "lunalive-tiktok-page",
+                type: "SCRAPE_PROFILES",
+                requestId,
+                payload: { handles: chunk },
+              },
+              window.location.origin
+            );
+            setTimeout(() => {
+              window.removeEventListener("message", handler);
+              resolve({ ok: false, profiles: [], error: "extension_timeout" });
+            }, chunk.length * 15_000 + 60_000);
+          }
+        );
+
+        if (!result.ok || result.profiles.length === 0) {
+          totalFailed += chunk.length;
+          continue;
+        }
+        try {
+          const r = await enrichTikTokCandidatesBulk(result.profiles);
+          totalUpserted += r.upserted;
+          totalFailed += chunk.length - r.upserted;
+        } catch {
+          totalFailed += chunk.length;
+        }
+        await reloadCandidates();
+      }
+      window.alert(
+        `Enrichissement via extension : ${totalUpserted} OK, ${totalFailed} échecs sur ${unenriched.length}`
+      );
+    } catch (err: any) {
+      window.alert(`Enrich via ext: ${err?.message || err}`);
     } finally {
       setEnrichProgress(null);
       setEnriching(false);
@@ -1465,13 +1564,31 @@ export function FsbTikTokOutreachSection() {
             className="fsb-btn"
             onClick={handleEnrichAll}
             disabled={enriching || candidates.length === 0}
-            title="Boucle d'enrichissement par batches de 50 jusqu'à ce qu'il n'y ait plus rien à enrichir"
-            style={{ borderColor: "#fbbf24", color: "#fbbf24" }}
+            title="Boucle serveur (souvent bloquée par Cloudflare) — préfère le bouton extension"
+            style={{ borderColor: "#94a3b8", color: "#94a3b8" }}
           >
-            {enriching && enrichProgress ? (
+            {enriching && enrichProgress?.startsWith("Batch") ? (
               <span style={{ fontSize: 11 }}>{enrichProgress}</span>
             ) : (
-              "🚀 Tout enrichir"
+              "🚀 Tout enrichir (serveur)"
+            )}
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handleEnrichViaExtension}
+            disabled={enriching || candidates.length === 0 || !extensionVersion}
+            title={
+              extensionVersion
+                ? "Enrichit via ton navigateur connecté (fiable, contourne Cloudflare)"
+                : "Extension TikTok non détectée"
+            }
+            style={{ borderColor: "#22d3ee", color: "#22d3ee" }}
+          >
+            {enriching && enrichProgress?.startsWith("Ext") ? (
+              <span style={{ fontSize: 11 }}>{enrichProgress}</span>
+            ) : (
+              "🧩 Enrichir via extension"
             )}
           </button>
         </div>
