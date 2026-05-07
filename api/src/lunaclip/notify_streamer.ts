@@ -1,49 +1,74 @@
 // api/src/lunaclip/notify_streamer.ts
 //
-// Notifie un streamer (email + DM Discord) la première fois que LunaClip
-// crée automatiquement un clip pour lui — afin qu'il puisse soumettre les
-// informations nécessaires pour être identifié / ajouté en collaborateur
-// sur la page Instagram officielle de LunaLive.
+// Notifie un streamer (DM Discord uniquement) à CHAQUE création automatique
+// d'un clip LunaClip — tant qu'il n'a pas lié son compte Instagram dans
+// `streamer_ig_config`.
 //
 // Règles :
-//  - On ignore le compte radio LunaLive (slug "lunalive" / "lunalive-2424").
-//  - On n'envoie rien si le streamer a déjà une config Instagram enregistrée
-//    dans `streamer_ig_config` (= il est déjà au courant / déjà configuré).
-//  - On dédoublonne via la table `clip_streamer_notifications` :
-//    une seule notification par streamer, jamais répétée.
+//  - On ignore le compte radio LunaLive (slugs "lunalive" / "lunalive-2424").
+//  - On envoie le DM tant que `streamer_ig_config.instagram_username` est
+//    absent ou inactif. Une fois le compte IG lié → silence (le streamer
+//    recevra à la place le DM "publication" avec invite collab).
+//  - Pas de dédoublonnage lifetime : 1 DM par clip auto créé.
+//
+// Idempotent / silencieux : ne fait jamais planter la création de clip.
 
-import type { Client } from "discord.js";
-import { isMailReady, sendMail } from "../utils/mailer.js";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+import {
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
+  EmbedBuilder,
+  type Client,
+} from "discord.js";
 
 type Pool = any;
 
+const LOG = "[clip-create-notify]";
 const LUNALIVE_RADIO_SLUGS = new Set(["lunalive", "lunalive-2424"]);
 
-const DISCORD_INVITE_URL  = "https://discord.gg/VSbCZQ4gyT";
-const INSTAGRAM_URL       = "https://www.instagram.com/lunalive_tv";
-const PLATFORM_NAME       = "LunaLive";
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const COLLAB_REQUEST_CHANNEL_ID = "1467142337460437255";
+const DISCORD_INVITE_URL = "https://discord.gg/VSbCZQ4gyT";
+const SEPARATOR = "─────────────────────────";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirnameLocal = path.dirname(__filename);
+const LOGO_PATH = path.resolve(__dirnameLocal, "../../assets/logo.png");
+
+let _logoBuffer: Buffer | null = null;
+function getLogoBuffer(): Buffer | null {
+  if (_logoBuffer) return _logoBuffer;
+  try { _logoBuffer = fs.readFileSync(LOGO_PATH); return _logoBuffer; }
+  catch (e: any) { console.warn(`${LOG} logo introuvable: ${e?.message}`); return null; }
+}
 
 type StreamerInfo = {
   slug: string;
   displayName: string;
-  userId: number | null;
-  email: string | null;
-  emailVerified: boolean;
   discordUserId: string | null;
+  hasIgConfig: boolean;
+};
+
+type ClipInfo = {
+  title: string;
+  thumbUrl: string | null;
 };
 
 async function loadStreamerInfo(pool: Pool, streamerId: number): Promise<StreamerInfo | null> {
   const r = await pool.query(
     `SELECT
-       s.slug                  AS slug,
-       s.display_name          AS display_name,
-       s.user_id               AS user_id,
-       u.email                 AS email,
-       u.email_verified        AS email_verified,
-       dl.discord_user_id      AS discord_user_id
+       s.slug                                              AS slug,
+       s.display_name                                      AS display_name,
+       dl.discord_user_id                                  AS discord_user_id,
+       (sic.instagram_username IS NOT NULL AND sic.active) AS has_ig_config
      FROM streamers s
-     LEFT JOIN users u           ON u.id  = s.user_id
      LEFT JOIN discord_links dl  ON dl.user_id = s.user_id
+     LEFT JOIN streamer_ig_config sic
+       ON LOWER(sic.streamer_slug) = LOWER(s.slug)
      WHERE s.id = $1
      LIMIT 1`,
     [streamerId]
@@ -53,141 +78,97 @@ async function loadStreamerInfo(pool: Pool, streamerId: number): Promise<Streame
   return {
     slug:          String(row.slug || "").toLowerCase(),
     displayName:   String(row.display_name || row.slug || ""),
-    userId:        row.user_id ? Number(row.user_id) : null,
-    email:         row.email ? String(row.email) : null,
-    emailVerified: !!row.email_verified,
     discordUserId: row.discord_user_id ? String(row.discord_user_id) : null,
+    hasIgConfig:   !!row.has_ig_config,
   };
 }
 
-async function hasIgConfig(pool: Pool, slug: string): Promise<boolean> {
+async function loadClipInfo(pool: Pool, clipId: number): Promise<ClipInfo | null> {
   const r = await pool.query(
-    `SELECT 1 FROM streamer_ig_config WHERE LOWER(streamer_slug) = $1 LIMIT 1`,
-    [slug]
+    `SELECT title, thumb_url FROM clip_inbox WHERE clip_id = $1 LIMIT 1`,
+    [clipId]
   );
-  return !!r.rows?.[0];
+  const row = r.rows?.[0];
+  if (!row) return null;
+  return {
+    title:    String(row.title || "Clip sans titre"),
+    thumbUrl: row.thumb_url ? String(row.thumb_url) : null,
+  };
 }
 
-async function alreadyNotified(pool: Pool, streamerId: number): Promise<boolean> {
-  const r = await pool.query(
-    `SELECT 1 FROM clip_streamer_notifications WHERE streamer_id = $1 LIMIT 1`,
-    [streamerId]
-  );
-  return !!r.rows?.[0];
-}
-
-async function recordNotification(
-  pool: Pool,
-  streamerId: number,
-  clipId: number,
-  emailSent: boolean,
-  discordSent: boolean
-) {
-  await pool.query(
-    `INSERT INTO clip_streamer_notifications(streamer_id, first_clip_id, email_sent, discord_sent)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (streamer_id) DO NOTHING`,
-    [streamerId, clipId, emailSent, discordSent]
-  );
-}
-
-function buildEmail(displayName: string) {
-  const subject = `Un clip de votre stream a été créé automatiquement sur ${PLATFORM_NAME}`;
-
-  const text =
-`Bonjour ${displayName},
-
-Notre système de clip automatique LunaClip vient de générer un clip à partir de votre stream.
-Ce clip pourra être publié sur le compte Instagram officiel de ${PLATFORM_NAME} : ${INSTAGRAM_URL}
-
-Si vous souhaitez être identifié(e) sur la publication (mention / collaborateur), merci de contacter un administrateur sur notre Discord officiel : ${DISCORD_INVITE_URL}
-
-Vous pourrez également y transmettre les informations utiles (compte Instagram, nom à afficher, préférences de mise en avant).
-
-Ce message est automatique — vous ne le recevrez qu'une seule fois.
-
-L'équipe ${PLATFORM_NAME}`;
-
-  const html = `
-    <div style="font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;color:#1a1a1a;line-height:1.5">
-      <h2 style="margin:0 0 12px 0">Un clip de votre stream a été créé</h2>
-      <p>Bonjour <strong>${escapeHtml(displayName)}</strong>,</p>
-      <p>Notre système de clip automatique <strong>LunaClip</strong> vient de générer un clip à partir de votre stream.</p>
-      <p>
-        Ce clip pourra être publié sur le compte Instagram officiel de ${PLATFORM_NAME} :
-        <a href="${INSTAGRAM_URL}" target="_blank" rel="noopener">${INSTAGRAM_URL}</a>.
-      </p>
-      <p>
-        Si vous souhaitez être <strong>identifié(e)</strong> sur la publication (mention / collaborateur),
-        merci de contacter un administrateur sur notre Discord officiel :
-        <a href="${DISCORD_INVITE_URL}" target="_blank" rel="noopener">${DISCORD_INVITE_URL}</a>.
-      </p>
-      <p>Vous pourrez y transmettre les informations utiles (compte Instagram, nom à afficher, préférences de mise en avant).</p>
-      <p style="color:#666;font-size:13px;margin-top:24px">
-        Ce message est automatique — vous ne le recevrez qu'une seule fois.
-      </p>
-      <p style="margin-top:16px">— L'équipe ${PLATFORM_NAME}</p>
-    </div>
-  `;
-
-  return { subject, text, html };
-}
-
-function buildDiscordMessage(displayName: string) {
-  return [
-    `Bonjour **${displayName}**,`,
-    ``,
-    `Notre système de clip automatique **LunaClip** vient de générer un clip à partir de votre stream.`,
-    `Ce clip pourra être publié sur le compte Instagram officiel de ${PLATFORM_NAME} : ${INSTAGRAM_URL}`,
-    ``,
-    `Si vous souhaitez être identifié(e) sur la publication (mention / collaborateur), merci de contacter un administrateur sur le Discord officiel : ${DISCORD_INVITE_URL}`,
-    ``,
-    `Vous pouvez aussi y transmettre vos informations (compte Instagram, nom à afficher, préférences de mise en avant).`,
-    ``,
-    `_Ce message est automatique — vous ne le recevrez qu'une seule fois._`,
-  ].join("\n");
-}
-
-function escapeHtml(s: string): string {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-async function trySendEmail(to: string, displayName: string): Promise<boolean> {
-  if (!isMailReady()) return false;
-  const { subject, text, html } = buildEmail(displayName);
+async function fetchBuffer(url: string | null): Promise<Buffer | null> {
+  if (!url) return null;
   try {
-    await sendMail(to, subject, text, html);
-    return true;
-  } catch (e: any) {
-    console.warn(`[clip-notify] email failed to ${to}: ${e?.message || e}`);
-    return false;
-  }
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  } catch { return null; }
 }
 
-async function trySendDiscordDm(discordUserId: string, displayName: string): Promise<boolean> {
-  const client = (global as any).discordClient as Client | null | undefined;
-  if (!client) return false;
-  try {
-    const u = await client.users.fetch(discordUserId);
-    await u.send(buildDiscordMessage(displayName));
-    return true;
-  } catch (e: any) {
-    console.warn(`[clip-notify] discord DM failed to ${discordUserId}: ${e?.message || e}`);
-    return false;
-  }
+function buildEmbed(opts: {
+  streamerDisplayName: string;
+  streamerSlug: string;
+  clipTitle: string;
+  hasLogo: boolean;
+  hasThumb: boolean;
+}) {
+  const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${opts.streamerSlug}`;
+  const embed = new EmbedBuilder()
+    .setColor(0x9D4BFF)
+    .setAuthor({
+      name: "LunaLive  •  Nouveau clip généré",
+      ...(opts.hasLogo ? { iconURL: "attachment://logo.png" } : {}),
+      url: PUBLIC_WEB_BASE,
+    })
+    .setTitle(`🎬   Un clip de ton stream vient d'être créé !`)
+    .setURL(STREAMER_PAGE)
+    .setDescription(
+      `Salut **${opts.streamerDisplayName}**  👋\n\n` +
+      `Notre système **LunaClip** vient de générer automatiquement un clip à partir de ton stream. ` +
+      `Une fois validé par notre équipe, il pourra être publié sur le compte Instagram officiel de **LunaLive** ([@lunalive_tv](https://www.instagram.com/lunalive_tv)).\n` +
+      `​`
+    )
+    .addFields(
+      { name: "🎞️   Clip généré", value: `**${opts.clipTitle}**`, inline: true },
+      { name: "📺   Streamer",    value: `**${opts.streamerDisplayName}**\n[Voir la page](${STREAMER_PAGE})`, inline: true },
+      { name: "​", value: SEPARATOR, inline: false },
+      {
+        name: "🤝   Tu veux apparaître sur tes propres clips ?",
+        value:
+          `Demande à être **mentionné(e)** ou ajouté(e) en **collaborateur officiel** sur les Reels qui te concernent : ` +
+          `tes clips s'afficheront alors aussi automatiquement sur **ton propre profil Instagram**, dès leur publication.\n\n` +
+          `👉 Fais ta demande dans <#${COLLAB_REQUEST_CHANNEL_ID}>  •  un admin te répondra rapidement.`,
+        inline: false,
+      },
+    )
+    .setFooter({
+      text: "LunaLive  •  Notification automatique de création de clip",
+      ...(opts.hasLogo ? { iconURL: "attachment://logo.png" } : {}),
+    })
+    .setTimestamp(new Date());
+
+  if (opts.hasLogo)  embed.setThumbnail("attachment://logo.png");
+  if (opts.hasThumb) embed.setImage("attachment://clip_preview.jpg");
+  return embed;
+}
+
+function buildButtons(streamerSlug: string) {
+  const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${streamerSlug}`;
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("📺  Ma page LunaLive").setURL(STREAMER_PAGE),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("💬  Discord LunaLive").setURL(DISCORD_INVITE_URL),
+  );
 }
 
 /**
- * À appeler après la création réussie d'un clip auto par LunaClip.
- * Idempotent : n'envoie qu'une seule notification par streamer (jamais).
+ * À appeler après chaque création réussie d'un clip auto par LunaClip.
  * Silencieux en cas d'erreur — ne doit jamais faire planter la création de clip.
+ *
+ * Dédup : aucune (1 DM par clip auto), sauf si le streamer a déjà lié son IG
+ * (`streamer_ig_config.instagram_username` actif) → dans ce cas, silence
+ * (il recevra le DM "publication + collab" plus tard).
  */
-export async function notifyStreamerOfFirstAutoClip(
+export async function notifyStreamerOfAutoClip(
   pool: Pool,
   streamerId: number,
   clipId: number
@@ -195,27 +176,56 @@ export async function notifyStreamerOfFirstAutoClip(
   try {
     const info = await loadStreamerInfo(pool, streamerId);
     if (!info) return;
-
     if (LUNALIVE_RADIO_SLUGS.has(info.slug)) return;
-    if (await alreadyNotified(pool, streamerId)) return;
-    if (await hasIgConfig(pool, info.slug)) {
-      // déjà configuré → on enregistre quand même pour ne plus repasser ici
-      await recordNotification(pool, streamerId, clipId, false, false);
+    if (info.hasIgConfig) {
+      console.log(`${LOG} ${info.slug} a déjà un IG config — silence à la création`);
+      return;
+    }
+    if (!info.discordUserId) {
+      console.log(`${LOG} ${info.slug} sans discord_links — DM impossible`);
       return;
     }
 
-    let emailSent = false;
-    let discordSent = false;
-
-    if (info.email) {
-      emailSent = await trySendEmail(info.email, info.displayName);
-    }
-    if (info.discordUserId) {
-      discordSent = await trySendDiscordDm(info.discordUserId, info.displayName);
+    const client = (global as any).discordClient as Client | null | undefined;
+    if (!client) {
+      console.warn(`${LOG} Discord client absent — skip`);
+      return;
     }
 
-    await recordNotification(pool, streamerId, clipId, emailSent, discordSent);
+    const clip = await loadClipInfo(pool, clipId);
+    if (!clip) {
+      console.warn(`${LOG} clip ${clipId} introuvable — skip`);
+      return;
+    }
+
+    const [logoBuf, thumbBuf] = await Promise.all([
+      Promise.resolve(getLogoBuffer()),
+      fetchBuffer(clip.thumbUrl),
+    ]);
+
+    const files: AttachmentBuilder[] = [];
+    if (logoBuf)  files.push(new AttachmentBuilder(logoBuf,  { name: "logo.png" }));
+    if (thumbBuf) files.push(new AttachmentBuilder(thumbBuf, { name: "clip_preview.jpg" }));
+
+    const embed = buildEmbed({
+      streamerDisplayName: info.displayName,
+      streamerSlug: info.slug,
+      clipTitle: clip.title,
+      hasLogo:  !!logoBuf,
+      hasThumb: !!thumbBuf,
+    });
+    const row = buildButtons(info.slug);
+
+    const user = await client.users.fetch(info.discordUserId);
+    await user.send({ embeds: [embed], components: [row], files });
+
+    console.log(`${LOG} ✅ DM envoyé à ${info.slug} (${user.tag}) — clip #${clipId}`);
   } catch (e: any) {
-    console.warn(`[clip-notify] notifyStreamerOfFirstAutoClip failed (streamer=${streamerId}): ${e?.message || e}`);
+    console.warn(`${LOG} échec (streamer=${streamerId} clip=${clipId}): ${e?.message || e}`);
   }
 }
+
+// Alias rétro-compat — l'ancien nom `notifyStreamerOfFirstAutoClip` est encore
+// importé dans api/src/shared/clip_service.ts. Le comportement a changé (plus
+// de dédup lifetime), mais la signature est la même.
+export const notifyStreamerOfFirstAutoClip = notifyStreamerOfAutoClip;

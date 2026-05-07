@@ -478,6 +478,7 @@ async function processJob(job: PublishJob, accessToken: string, userId: string):
     clipTitle,
     reelUrl: permalink,
     thumbnailUrl,
+    collabInvited: collabSucceeded,
     jobId: job.id,
   });
 

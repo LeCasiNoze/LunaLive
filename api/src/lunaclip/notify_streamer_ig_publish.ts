@@ -3,20 +3,19 @@
 // Notifie un streamer (DM Discord uniquement) à CHAQUE publication réussie
 // d'un de ses clips sur l'Instagram officiel de LunaLive.
 //
-// Règle de dédoublonnage :
-//   - On envoie le DM tant que le streamer n'a PAS de compte Instagram lié
-//     (`streamer_ig_config.instagram_username` absent ou ligne désactivée).
-//   - Une fois le compte IG configuré → silence total.
-//   - On ignore les comptes radio LunaLive.
+// Deux variantes selon l'état du compte IG du streamer :
+//
+//   ┌──────────────────────────┬─────────────────────────────────────────────┐
+//   │ collabInvited = true     │ Meta a bien envoyé une invitation collab.   │
+//   │                          │ → DM "accepte l'invitation sur Instagram"   │
+//   ├──────────────────────────┼─────────────────────────────────────────────┤
+//   │ collabInvited = false    │ Pas de compte IG lié (ou collab rejetée).   │
+//   │                          │ → DM "demande la mention via #salon"        │
+//   └──────────────────────────┴─────────────────────────────────────────────┘
 //
 // Idempotent / silencieux : ne fait jamais planter le scheduler.
 //
-// Hook : appelé depuis api/src/instagram_scheduler.ts juste après la publication.
-//        Le `thumbnailUrl` (cover Reel renvoyée par Meta Graph API) est passé
-//        en argument pour servir d'image principale dans l'embed.
-//
-// Logo : api/assets/logo.png (joint au message comme attachment Discord).
-//        Path résolu via __dirname → fonctionne en dev (tsx) et en prod (dist).
+// Logo : api/assets/logo.png joint en attachment Discord (rendu fiable).
 
 import path from "node:path";
 import fs from "node:fs";
@@ -38,9 +37,8 @@ const LUNALIVE_RADIO_SLUGS = new Set(["lunalive", "lunalive-2424"]);
 const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
 const COLLAB_REQUEST_CHANNEL_ID = "1467142337460437255";
 const DISCORD_INVITE_URL = "https://discord.gg/VSbCZQ4gyT";
+const IG_ACTIVITY_URL = "https://www.instagram.com/accounts/activity/";
 
-// dist/lunaclip/notify_streamer_ig_publish.js → ../../assets/logo.png
-// src/lunaclip/notify_streamer_ig_publish.ts (tsx)  → ../../assets/logo.png
 const __filename = fileURLToPath(import.meta.url);
 const __dirnameLocal = path.dirname(__filename);
 const LOGO_PATH = path.resolve(__dirnameLocal, "../../assets/logo.png");
@@ -48,34 +46,28 @@ const LOGO_PATH = path.resolve(__dirnameLocal, "../../assets/logo.png");
 let _logoBuffer: Buffer | null = null;
 function getLogoBuffer(): Buffer | null {
   if (_logoBuffer) return _logoBuffer;
-  try {
-    _logoBuffer = fs.readFileSync(LOGO_PATH);
-    return _logoBuffer;
-  } catch (e: any) {
-    console.warn(`${LOG} logo introuvable à ${LOGO_PATH}: ${e?.message || e}`);
-    return null;
-  }
+  try { _logoBuffer = fs.readFileSync(LOGO_PATH); return _logoBuffer; }
+  catch (e: any) { console.warn(`${LOG} logo introuvable à ${LOGO_PATH}: ${e?.message}`); return null; }
 }
 
 type StreamerInfo = {
   slug: string;
   displayName: string;
   discordUserId: string | null;
-  hasIgConfig: boolean;
+  instagramUsername: string | null;
 };
 
 async function loadStreamerInfo(pool: Pool, streamerSlug: string): Promise<StreamerInfo | null> {
   const r = await pool.query(
     `SELECT
-       s.slug                                      AS slug,
-       s.display_name                              AS display_name,
-       dl.discord_user_id                          AS discord_user_id,
-       (sic.instagram_username IS NOT NULL
-        AND sic.active = true)                     AS has_ig_config
+       s.slug                    AS slug,
+       s.display_name            AS display_name,
+       dl.discord_user_id        AS discord_user_id,
+       sic.instagram_username    AS instagram_username
      FROM streamers s
-     LEFT JOIN discord_links dl  ON dl.user_id = s.user_id
+     LEFT JOIN discord_links dl ON dl.user_id = s.user_id
      LEFT JOIN streamer_ig_config sic
-       ON LOWER(sic.streamer_slug) = LOWER(s.slug)
+       ON LOWER(sic.streamer_slug) = LOWER(s.slug) AND sic.active = true
      WHERE LOWER(s.slug) = LOWER($1)
      LIMIT 1`,
     [streamerSlug]
@@ -83,10 +75,10 @@ async function loadStreamerInfo(pool: Pool, streamerSlug: string): Promise<Strea
   const row = r.rows?.[0];
   if (!row) return null;
   return {
-    slug:           String(row.slug || "").toLowerCase(),
-    displayName:    String(row.display_name || row.slug || ""),
-    discordUserId:  row.discord_user_id ? String(row.discord_user_id) : null,
-    hasIgConfig:    !!row.has_ig_config,
+    slug:              String(row.slug || "").toLowerCase(),
+    displayName:       String(row.display_name || row.slug || ""),
+    discordUserId:     row.discord_user_id ? String(row.discord_user_id) : null,
+    instagramUsername: row.instagram_username ? String(row.instagram_username) : null,
   };
 }
 
@@ -94,18 +86,14 @@ async function fetchThumbnailBuffer(thumbnailUrl: string | null): Promise<Buffer
   if (!thumbnailUrl) return null;
   try {
     const r = await fetch(thumbnailUrl);
-    if (!r.ok) {
-      console.warn(`${LOG} thumbnail fetch ${r.status} ${thumbnailUrl}`);
-      return null;
-    }
+    if (!r.ok) return null;
     return Buffer.from(await r.arrayBuffer());
-  } catch (e: any) {
-    console.warn(`${LOG} thumbnail fetch error: ${e?.message || e}`);
-    return null;
-  }
+  } catch { return null; }
 }
 
-function buildEmbed(opts: {
+const SEPARATOR = "─────────────────────────";
+
+function buildEmbedMentionVariant(opts: {
   streamerDisplayName: string;
   streamerSlug: string;
   reelUrl: string;
@@ -113,9 +101,7 @@ function buildEmbed(opts: {
   hasLogo: boolean;
   hasThumb: boolean;
 }) {
-  const SEPARATOR = "─────────────────────────";
   const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${opts.streamerSlug}`;
-
   const embed = new EmbedBuilder()
     .setColor(0x9D4BFF)
     .setAuthor({
@@ -131,21 +117,9 @@ function buildEmbed(opts: {
       `​`
     )
     .addFields(
-      {
-        name: "🎞️   Clip publié",
-        value: `**${opts.clipTitle}**`,
-        inline: true,
-      },
-      {
-        name: "📺   Streamer",
-        value: `**${opts.streamerDisplayName}**\n[Voir la page](${STREAMER_PAGE})`,
-        inline: true,
-      },
-      {
-        name: "​",
-        value: SEPARATOR,
-        inline: false,
-      },
+      { name: "🎞️   Clip publié", value: `**${opts.clipTitle}**`, inline: true },
+      { name: "📺   Streamer",    value: `**${opts.streamerDisplayName}**\n[Voir la page](${STREAMER_PAGE})`, inline: true },
+      { name: "​", value: SEPARATOR, inline: false },
       {
         name: "🤝   Tu veux apparaître sur tes propres clips ?",
         value:
@@ -164,11 +138,61 @@ function buildEmbed(opts: {
 
   if (opts.hasLogo)  embed.setThumbnail("attachment://logo.png");
   if (opts.hasThumb) embed.setImage("attachment://clip_preview.jpg");
-
   return embed;
 }
 
-function buildButtons(reelUrl: string, streamerSlug: string) {
+function buildEmbedCollabVariant(opts: {
+  streamerDisplayName: string;
+  streamerSlug: string;
+  instagramUsername: string;
+  reelUrl: string;
+  clipTitle: string;
+  hasLogo: boolean;
+  hasThumb: boolean;
+}) {
+  const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${opts.streamerSlug}`;
+  const embed = new EmbedBuilder()
+    .setColor(0x9D4BFF)
+    .setAuthor({
+      name: "LunaLive  •  Nouveau Reel publié",
+      ...(opts.hasLogo ? { iconURL: "attachment://logo.png" } : {}),
+      url: PUBLIC_WEB_BASE,
+    })
+    .setTitle(`🎬   Ton clip vient d'être publié sur Instagram !`)
+    .setURL(opts.reelUrl)
+    .setDescription(
+      `Salut **${opts.streamerDisplayName}**  👋\n\n` +
+      `Notre système **LunaClip** vient de publier un clip extrait de ton stream sur le compte Instagram officiel de **LunaLive**, ` +
+      `et on t'a invité(e) comme **collaborateur officiel** (@${opts.instagramUsername}).\n` +
+      `​`
+    )
+    .addFields(
+      { name: "🎞️   Clip publié", value: `**${opts.clipTitle}**`, inline: true },
+      { name: "📺   Streamer",    value: `**${opts.streamerDisplayName}**\n[Voir la page](${STREAMER_PAGE})`, inline: true },
+      { name: "​", value: SEPARATOR, inline: false },
+      {
+        name: "✅   Action requise — accepte l'invitation collab",
+        value:
+          `Pour que ce Reel apparaisse aussi **sur ton propre profil Instagram**, il faut accepter ` +
+          `l'invitation de collaboration que **@lunalive_tv** vient de t'envoyer.\n\n` +
+          `📲 Ouvre Instagram → onglet **Activité** (cœur en haut) → section **Demandes** ou **Tags**\n` +
+          `*ou bien ouvre directement le Reel ci-dessous, l'invite y apparaît aussi.*\n\n` +
+          `Une fois accepté, le clip sera visible sur ton feed et bénéficiera de la double audience 🚀`,
+        inline: false,
+      },
+    )
+    .setFooter({
+      text: "LunaLive  •  Notification automatique de publication Instagram",
+      ...(opts.hasLogo ? { iconURL: "attachment://logo.png" } : {}),
+    })
+    .setTimestamp(new Date());
+
+  if (opts.hasLogo)  embed.setThumbnail("attachment://logo.png");
+  if (opts.hasThumb) embed.setImage("attachment://clip_preview.jpg");
+  return embed;
+}
+
+function buildButtonsMention(reelUrl: string, streamerSlug: string) {
   const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${streamerSlug}`;
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("📸  Voir le Reel").setURL(reelUrl),
@@ -177,9 +201,24 @@ function buildButtons(reelUrl: string, streamerSlug: string) {
   );
 }
 
+function buildButtonsCollab(reelUrl: string, streamerSlug: string) {
+  const STREAMER_PAGE = `${PUBLIC_WEB_BASE}/s/${streamerSlug}`;
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("📸  Voir le Reel").setURL(reelUrl),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("🔔  Activité Instagram").setURL(IG_ACTIVITY_URL),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("📺  Ma page LunaLive").setURL(STREAMER_PAGE),
+  );
+}
+
 /**
  * À appeler après chaque publication IG réussie.
- * Silencieux en cas d'erreur — ne doit jamais faire planter le scheduler IG.
+ *
+ * - `collabInvited=true`  → variante "accepte la collab Instagram"
+ *                           (Meta a bien envoyé l'invitation à @instagramUsername).
+ * - `collabInvited=false` → variante "demande la mention via Discord"
+ *                           (pas de compte IG lié, ou Meta a rejeté la collab).
+ *
+ * Silencieux en cas d'erreur — ne doit jamais faire planter le scheduler.
  */
 export async function notifyStreamerOfIgPublish(opts: {
   pool: Pool;
@@ -187,9 +226,10 @@ export async function notifyStreamerOfIgPublish(opts: {
   clipTitle: string;
   reelUrl: string;
   thumbnailUrl: string | null;
+  collabInvited: boolean;
   jobId: number;
 }): Promise<void> {
-  const { pool, streamerSlug, clipTitle, reelUrl, thumbnailUrl, jobId } = opts;
+  const { pool, streamerSlug, clipTitle, reelUrl, thumbnailUrl, collabInvited, jobId } = opts;
   try {
     if (LUNALIVE_RADIO_SLUGS.has(streamerSlug.toLowerCase())) return;
 
@@ -198,12 +238,6 @@ export async function notifyStreamerOfIgPublish(opts: {
       console.log(`${LOG} [job #${jobId}] streamer ${streamerSlug} introuvable — skip`);
       return;
     }
-
-    if (info.hasIgConfig) {
-      console.log(`${LOG} [job #${jobId}] ${streamerSlug} a déjà un IG config — silence`);
-      return;
-    }
-
     if (!info.discordUserId) {
       console.log(`${LOG} [job #${jobId}] ${streamerSlug} sans discord_links — DM impossible`);
       return;
@@ -224,21 +258,30 @@ export async function notifyStreamerOfIgPublish(opts: {
     if (logoBuf)  files.push(new AttachmentBuilder(logoBuf,  { name: "logo.png" }));
     if (thumbBuf) files.push(new AttachmentBuilder(thumbBuf, { name: "clip_preview.jpg" }));
 
-    const embed = buildEmbed({
-      streamerDisplayName: info.displayName,
-      streamerSlug: info.slug,
-      reelUrl,
-      clipTitle,
-      hasLogo:  !!logoBuf,
-      hasThumb: !!thumbBuf,
-    });
+    const useCollab = collabInvited && !!info.instagramUsername;
+    const embed = useCollab
+      ? buildEmbedCollabVariant({
+          streamerDisplayName: info.displayName,
+          streamerSlug: info.slug,
+          instagramUsername: info.instagramUsername!,
+          reelUrl, clipTitle,
+          hasLogo: !!logoBuf, hasThumb: !!thumbBuf,
+        })
+      : buildEmbedMentionVariant({
+          streamerDisplayName: info.displayName,
+          streamerSlug: info.slug,
+          reelUrl, clipTitle,
+          hasLogo: !!logoBuf, hasThumb: !!thumbBuf,
+        });
 
-    const row = buildButtons(reelUrl, info.slug);
+    const row = useCollab
+      ? buildButtonsCollab(reelUrl, info.slug)
+      : buildButtonsMention(reelUrl, info.slug);
 
     const user = await client.users.fetch(info.discordUserId);
     await user.send({ embeds: [embed], components: [row], files });
 
-    console.log(`${LOG} [job #${jobId}] ✅ DM envoyé à ${info.slug} (${user.tag})`);
+    console.log(`${LOG} [job #${jobId}] ✅ DM envoyé à ${info.slug} (${user.tag}) variant=${useCollab ? "collab" : "mention"}`);
   } catch (e: any) {
     console.warn(`${LOG} [job #${opts.jobId}] échec: ${e?.message || e}`);
   }
