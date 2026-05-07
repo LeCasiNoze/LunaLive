@@ -75,7 +75,8 @@ async function handleFraisAjouter(interaction: ChatInputCommandInteraction): Pro
       new TextInputBuilder().setCustomId("description").setLabel("Description").setStyle(TextInputStyle.Short).setMaxLength(160).setRequired(true)
     ),
     new ActionRowBuilder<TextInputBuilder>().addComponents(
-      new TextInputBuilder().setCustomId("category").setLabel("Catégorie (giveaway/offres/parrainage/abonnement/personnalise)")
+      new TextInputBuilder().setCustomId("category").setLabel("Catégorie")
+        .setPlaceholder("giveaway / offres / parrainage / abonnement / personnalise")
         .setStyle(TextInputStyle.Short).setMaxLength(20).setRequired(true).setValue("personnalise")
     ),
     new ActionRowBuilder<TextInputBuilder>().addComponents(
