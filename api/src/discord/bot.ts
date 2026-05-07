@@ -7,6 +7,11 @@ import {
 } from "./blackjack.js";
 
 import {
+  FEES_BOARD_REFRESH_CID,
+  handleFeesBoardRefreshButton,
+} from "../agency_fees_board.js";
+
+import {
   Client,
   GatewayIntentBits,
   Partials,
@@ -448,6 +453,11 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
+      // ── Agency fees board — bouton refresh ────────────────────────────────
+      if (interaction.isButton() && interaction.customId === FEES_BOARD_REFRESH_CID) {
+        await handleFeesBoardRefreshButton(interaction); return;
+      }
+
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
       if (interaction.isButton() && interaction.customId.startsWith(CID_STATS_LIST)) {
         const casino = interaction.customId.slice(CID_STATS_LIST.length);

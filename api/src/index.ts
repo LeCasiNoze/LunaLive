@@ -24,6 +24,7 @@ import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
 import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
 import { startAgencyFeeReminder } from "./agency_fee_reminder.js";
+import { startAgencyFeesBoard } from "./agency_fees_board.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -177,6 +178,7 @@ function setupGracefulShutdown(server: http.Server) {
   startInstagramScheduler();
   startIgCommentScheduler();
   startAgencyFeeReminder();
+  startAgencyFeesBoard();
 
   if (process.env.RUN_DISCORD_BOT === "1") {
     startDiscordBot({

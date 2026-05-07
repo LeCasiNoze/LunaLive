@@ -38,9 +38,10 @@ import { pool } from "./db.js";
 
 const LOG = "[agency-fee-reminder]";
 
-// Salon privé "frais-agence" sur LunaLive (visible : LeCasiNoze, Fabiozsis,
-// Samyzsis quand il rejoint). Créé via scripts/create-private-fees-channel.cjs.
-const FEES_CHANNEL_ID = "1501889338902843454";
+// Salon ┊💀・qg-de-l-ombre-de-la-mort-qui-tue (catégorie privée AGENCE)
+// — c'est ici que vont les RAPPELS (pings J-7/J-2/J-0/retards). Le tableau
+// auto-actualisé vit dans un autre salon (cf. agency_fees_board.ts).
+const FEES_CHANNEL_ID = "1501890674620891268";
 
 // Mention au-dessus de l'embed pour déclencher la notification Discord.
 // Samyzsis sera ajouté ici dès qu'il rejoint le serveur (TODO).

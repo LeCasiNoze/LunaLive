@@ -116,6 +116,7 @@ import { mig106_tiktok_network_following_enrich } from "./mig106_tiktok_network_
 import { mig107_tiktok_seed_scanned_videos } from "./mig107_tiktok_seed_scanned_videos.js";
 import { mig108_affi_pages_editor_version } from "./mig108_affi_pages_editor_version.js";
 import { mig109_agency_fee_reminder_runs } from "./mig109_agency_fee_reminder_runs.js";
+import { mig110_agency_fees_board } from "./mig110_agency_fees_board.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -251,6 +252,7 @@ export async function migrateAll(pool: Pool) {
   await mig107_tiktok_seed_scanned_videos(pool);
   await mig108_affi_pages_editor_version(pool);
   await mig109_agency_fee_reminder_runs(pool);
+  await mig110_agency_fees_board(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
