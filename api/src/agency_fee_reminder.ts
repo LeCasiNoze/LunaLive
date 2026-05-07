@@ -37,7 +37,18 @@ import {
 import { pool } from "./db.js";
 
 const LOG = "[agency-fee-reminder]";
-const FABIO_DISCORD_USER_ID = "406965568755728395";
+
+// Salon privé "frais-agence" sur LunaLive (visible : LeCasiNoze, Fabiozsis,
+// Samyzsis quand il rejoint). Créé via scripts/create-private-fees-channel.cjs.
+const FEES_CHANNEL_ID = "1501889338902843454";
+
+// Mention au-dessus de l'embed pour déclencher la notification Discord.
+// Samyzsis sera ajouté ici dès qu'il rejoint le serveur (TODO).
+const PING_USER_IDS = [
+  "682472610868887567", // LeCasiNoze
+  "406965568755728395", // Fabiozsis
+];
+
 const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 
@@ -176,7 +187,6 @@ function buildEmbed(fees: FeeRow[], hasLogo: boolean) {
     .setTitle(`💰   Frais d'agence à payer — ${titlePrefix}${fees.length} échéance${fees.length > 1 ? "s" : ""}`)
     .setURL(FSB_BOARD_URL)
     .setDescription(
-      `Salut **Fabiozsis**  👋\n\n` +
       (grouped.overdue.length > 0
         ? `🚨 **${grouped.overdue.length} frais en retard** pour un total de **${eur(overdueTotal)}** — à régler en priorité.\n\n`
         : `Voici les paiements à prévoir, regroupés par échéance.\n\n`) +
@@ -269,10 +279,21 @@ async function tick(): Promise<void> {
     const embed = buildEmbed(fees, !!logoBuf);
     const row = buildButtons();
 
-    const user = await client.users.fetch(FABIO_DISCORD_USER_ID);
-    await user.send({ embeds: [embed], components: [row], files });
+    const channel = await client.channels.fetch(FEES_CHANNEL_ID);
+    if (!channel || !channel.isTextBased()) {
+      throw new Error(`channel ${FEES_CHANNEL_ID} introuvable ou non textuel`);
+    }
 
-    console.log(`${LOG} ✅ rappel envoyé à ${user.tag} — ${fees.length} échéance(s) — ${todayParis}`);
+    const mentions = PING_USER_IDS.map(id => `<@${id}>`).join(" ");
+    await (channel as any).send({
+      content: mentions,
+      embeds: [embed],
+      components: [row],
+      files,
+      allowedMentions: { users: PING_USER_IDS },
+    });
+
+    console.log(`${LOG} ✅ rappel envoyé dans #${(channel as any).name || FEES_CHANNEL_ID} — ${fees.length} échéance(s) — ${todayParis}`);
   } catch (e: any) {
     // Si l'envoi échoue, on retire le claim pour réessayer au prochain tick.
     console.warn(`${LOG} envoi échoué — retire le claim pour retry: ${e?.message || e}`);
