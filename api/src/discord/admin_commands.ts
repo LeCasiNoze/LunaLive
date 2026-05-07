@@ -37,6 +37,7 @@ const LOG = "[admin-cmd]";
 const ALLOWED_USER_IDS = new Set([
   "682472610868887567", // LeCasiNoze
   "406965568755728395", // Fabiozsis
+  "992099046472831066", // Samyzsis (eowite22)
 ]);
 
 const QG_CHANNEL_ID = "1501890674620891268";

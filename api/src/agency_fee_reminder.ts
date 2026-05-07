@@ -44,10 +44,10 @@ const LOG = "[agency-fee-reminder]";
 const FEES_CHANNEL_ID = "1501890674620891268";
 
 // Mention au-dessus de l'embed pour déclencher la notification Discord.
-// Samyzsis sera ajouté ici dès qu'il rejoint le serveur (TODO).
 const PING_USER_IDS = [
   "682472610868887567", // LeCasiNoze
   "406965568755728395", // Fabiozsis
+  "992099046472831066", // Samyzsis (eowite22)
 ];
 
 const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
