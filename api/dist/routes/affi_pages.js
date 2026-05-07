@@ -2,15 +2,21 @@ import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
+import { requireAuth } from "../auth.js";
+import { requireFsbAccess } from "./fsb_guard.js";
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
+fsbAffiPagesRouter.use("/fsb/affi-pages", requireAuth, requireFsbAccess);
 const optionalTrimmedString = (max) => z.preprocess((value) => {
     if (value == null)
         return null;
     const text = String(value).trim();
     return text ? text : null;
 }, z.string().max(max).nullable());
-const configSchema = z.record(z.string(), z.string()).default({});
+// V1 = string flat config | V2 = arbre de blocs (objets imbriqués).
+// On accepte les deux via z.record(any) — la validation profonde est faite
+// côté front-end via les types V2*.
+const configSchema = z.record(z.string(), z.any()).default({});
 const pageInputSchema = z.object({
     slug: optionalTrimmedString(160).optional().default(null),
     model: z.coerce.number().int().min(1).max(20),
@@ -18,6 +24,9 @@ const pageInputSchema = z.object({
     brandName: z.preprocess((value) => String(value == null ? "" : value).trim(), z.string().min(1).max(160)),
     title: z.preprocess((value) => String(value == null ? "" : value).trim(), z.string().min(1).max(220)),
     config: configSchema,
+    // editor_version : 1 (legacy V1) ou 2 (nouveau editor). Default 1 pour
+    // rétro-compat avec les payloads V1 qui ne fournissent pas le champ.
+    editorVersion: z.coerce.number().int().min(1).max(2).optional().default(1),
 });
 function slugifySegment(value) {
     return value
@@ -58,6 +67,7 @@ function pageRowToJson(row) {
         config: row.config && typeof row.config === "object" && !Array.isArray(row.config)
             ? row.config
             : {},
+        editorVersion: Number(row.editorVersion ?? row.editor_version ?? 1),
         ownerUserId: Number(row.ownerUserId || row.owner_user_id || 0),
         createdAt: row.createdAt || row.created_at || null,
         updatedAt: row.updatedAt || row.updated_at || null,
@@ -73,6 +83,7 @@ publicAffiPagesRouter.get("/public/affi-pages/:slug", a(async (req, res) => {
          brand_name AS "brandName",
          title,
          config,
+         editor_version AS "editorVersion",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -92,6 +103,7 @@ fsbAffiPagesRouter.get("/fsb/affi-pages", a(async (_req, res) => {
          brand_name AS "brandName",
          title,
          config,
+         editor_version AS "editorVersion",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -102,10 +114,14 @@ fsbAffiPagesRouter.get("/fsb/affi-pages", a(async (_req, res) => {
 }));
 fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
     const input = pageInputSchema.parse(req.body || {});
+    // V2 : si l'user a fourni un slug explicite, on le respecte tel quel
+    // (juste rendu unique si collision). V1 : comportement legacy de fallback.
     const baseSlug = input.slug ||
-        [input.brandName, input.model === 5 ? input.variant || "gold" : `model${input.model}`]
-            .filter(Boolean)
-            .join("-");
+        (input.editorVersion === 2
+            ? input.brandName // V2 sans slug = fallback brandName
+            : [input.brandName, input.model === 5 ? input.variant || "gold" : `model${input.model}`]
+                .filter(Boolean)
+                .join("-"));
     const slug = await resolveUniqueSlug(baseSlug);
     const { rows } = await pool.query(`INSERT INTO affi_landing_pages (
          owner_user_id,
@@ -114,9 +130,10 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
          variant,
          brand_name,
          title,
-         config
+         config,
+         editor_version
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
        RETURNING
          id,
          slug,
@@ -125,6 +142,7 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
          brand_name AS "brandName",
          title,
          config,
+         editor_version AS "editorVersion",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"`, [
@@ -135,6 +153,7 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
         input.brandName,
         input.title,
         JSON.stringify(input.config),
+        input.editorVersion,
     ]);
     return res.status(201).json({ ok: true, item: pageRowToJson(rows[0]) });
 }));
@@ -144,11 +163,27 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
         return res.status(400).json({ ok: false, error: "bad_id" });
     }
     const input = pageInputSchema.parse(req.body || {});
-    const baseSlug = input.slug ||
-        [input.brandName, input.model === 5 ? input.variant || "gold" : `model${input.model}`]
-            .filter(Boolean)
-            .join("-");
-    const slug = await resolveUniqueSlug(baseSlug, id);
+    // V2 : règle absolue — on ne re-génère JAMAIS le slug auto pour les pages
+    // V2 (URL verrouillée). Si l'input fournit un slug, on l'applique tel quel
+    // (juste rendu unique en cas de collision). Si pas de slug fourni, on
+    // garde l'existant en DB.
+    let slug;
+    if (input.editorVersion === 2) {
+        if (input.slug) {
+            slug = await resolveUniqueSlug(input.slug, id);
+        }
+        else {
+            const { rows: existing } = await pool.query(`SELECT slug FROM affi_landing_pages WHERE id=$1 LIMIT 1`, [id]);
+            slug = existing[0]?.slug || (await resolveUniqueSlug(input.brandName, id));
+        }
+    }
+    else {
+        const baseSlug = input.slug ||
+            [input.brandName, input.model === 5 ? input.variant || "gold" : `model${input.model}`]
+                .filter(Boolean)
+                .join("-");
+        slug = await resolveUniqueSlug(baseSlug, id);
+    }
     const { rows } = await pool.query(`UPDATE affi_landing_pages
           SET slug = $2,
               model = $3,
@@ -156,6 +191,7 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
               brand_name = $5,
               title = $6,
               config = $7::jsonb,
+              editor_version = $8,
               updated_at = NOW()
         WHERE id = $1
         RETURNING
@@ -166,9 +202,10 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
           brand_name AS "brandName",
           title,
           config,
+          editor_version AS "editorVersion",
           owner_user_id AS "ownerUserId",
           created_at AS "createdAt",
-          updated_at AS "updatedAt"`, [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config)]);
+          updated_at AS "updatedAt"`, [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion]);
     if (!rows[0])
         return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, item: pageRowToJson(rows[0]) });

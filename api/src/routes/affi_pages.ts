@@ -7,7 +7,7 @@ import { requireFsbAccess } from "./fsb_guard.js";
 
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
-fsbAffiPagesRouter.use(requireAuth, requireFsbAccess);
+fsbAffiPagesRouter.use("/fsb/affi-pages", requireAuth, requireFsbAccess);
 
 const optionalTrimmedString = (max: number) =>
   z.preprocess((value) => {
