@@ -1,6 +1,9 @@
 // api/src/discord/bot.ts
 import { pool } from "../db.js";
 import { handleBlackjackCommand, handleBlackjackButton, } from "./blackjack.js";
+import { FEES_BOARD_REFRESH_CID, handleFeesBoardRefreshButton, } from "../agency_fees_board.js";
+import { IG_AGENDA_REFRESH_CID, handleIgAgendaRefreshButton, } from "../instagram_agenda_board.js";
+import { routeAdminInteraction } from "./admin_commands.js";
 import { Client, GatewayIntentBits, Partials, REST, Routes, } from "discord.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient, fmtRemaining, monthKeyParis } from "../routes/bot/games_claim.js";
@@ -323,6 +326,20 @@ export async function startDiscordBot(ctx) {
     }
     client.on("interactionCreate", async (interaction) => {
         try {
+            // ── Admin commands (frais / agence / landing / dette / tiktok +
+            // boutons mark-paid). Routeur retourne true si géré.
+            if (await routeAdminInteraction(interaction))
+                return;
+            // ── Agency fees board — bouton refresh ────────────────────────────────
+            if (interaction.isButton() && interaction.customId === FEES_BOARD_REFRESH_CID) {
+                await handleFeesBoardRefreshButton(interaction);
+                return;
+            }
+            // ── Instagram agenda board — bouton refresh ───────────────────────────
+            if (interaction.isButton() && interaction.customId === IG_AGENDA_REFRESH_CID) {
+                await handleIgAgendaRefreshButton(interaction);
+                return;
+            }
             // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
             if (interaction.isButton() && interaction.customId.startsWith(CID_STATS_LIST)) {
                 const casino = interaction.customId.slice(CID_STATS_LIST.length);

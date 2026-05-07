@@ -105,6 +105,15 @@ import { mig100_titles_multi_slots } from "./mig100_titles_multi_slots.js";
 import { mig101_user_achievements_unlocks } from "./mig101_user_achievements_unlocks.js";
 import { mig102_blackjack_hands } from "./mig102_blackjack_hands.js";
 import { mig103_tiktok_seed_network } from "./mig103_tiktok_seed_network.js";
+import { mig104_tiktok_network_affil_signals } from "./mig104_tiktok_network_affil_signals.js";
+import { mig105_tiktok_affil_patterns } from "./mig105_tiktok_affil_patterns.js";
+import { mig106_tiktok_network_following_enrich } from "./mig106_tiktok_network_following_enrich.js";
+import { mig107_tiktok_seed_scanned_videos } from "./mig107_tiktok_seed_scanned_videos.js";
+import { mig108_affi_pages_editor_version } from "./mig108_affi_pages_editor_version.js";
+import { mig109_agency_fee_reminder_runs } from "./mig109_agency_fee_reminder_runs.js";
+import { mig110_agency_fees_board } from "./mig110_agency_fees_board.js";
+import { mig111_rumble_vods_youtube } from "./mig111_rumble_vods_youtube.js";
+import { mig112_instagram_agenda_board } from "./mig112_instagram_agenda_board.js";
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
 import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
@@ -215,6 +224,15 @@ export async function migrateAll(pool) {
     await mig101_user_achievements_unlocks(pool);
     await mig102_blackjack_hands(pool);
     await mig103_tiktok_seed_network(pool);
+    await mig104_tiktok_network_affil_signals(pool);
+    await mig105_tiktok_affil_patterns(pool);
+    await mig106_tiktok_network_following_enrich(pool);
+    await mig107_tiktok_seed_scanned_videos(pool);
+    await mig108_affi_pages_editor_version(pool);
+    await mig109_agency_fee_reminder_runs(pool);
+    await mig110_agency_fees_board(pool);
+    await mig111_rumble_vods_youtube(pool);
+    await mig112_instagram_agenda_board(pool);
     // Rumble migrations
     await mig040_rumble_info(pool);
     await mig041_rumble_accounts(pool);

@@ -1202,3 +1202,577 @@ tiktokOutreachRouter.get("/fsb/tiktok/:id/messages", a(async (req, res) => {
         })),
     });
 }));
+async function callSeedNetworkWorker(handle, videoLimit = 6, commentsPerVideo = 30) {
+    const worker = getDiscoveryWorker();
+    if (!worker)
+        return { signals: [], diag: { error: "worker_not_configured" } };
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 90_000);
+    try {
+        const res = await fetch(`${worker.url}/seed-network`, {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+                "Content-Type": "application/json",
+                "x-tiktok-discovery-token": worker.token,
+            },
+            body: JSON.stringify({ handle, videoLimit, commentsPerVideo }),
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            return { signals: [], diag: { error: `worker_${res.status}`, detail: text.slice(0, 200) } };
+        }
+        const data = await res.json().catch(() => null);
+        if (!data || data.ok !== true) {
+            return { signals: [], diag: { error: "worker_invalid_response" } };
+        }
+        return {
+            signals: Array.isArray(data.signals) ? data.signals : [],
+            diag: data.diag || {},
+        };
+    }
+    catch (err) {
+        return { signals: [], diag: { error: String(err?.message || err) } };
+    }
+    finally {
+        clearTimeout(t);
+    }
+}
+function mapSeed(row) {
+    return {
+        id: String(row.id),
+        handle: row.handle,
+        displayName: row.display_name || null,
+        avatarUrl: row.avatar_url || null,
+        notes: row.notes || null,
+        isActive: Boolean(row.is_active),
+        lastNetworkFetchAt: row.last_network_fetch_at
+            ? new Date(row.last_network_fetch_at).toISOString()
+            : null,
+        lastNetworkStatus: row.last_network_status || null,
+        lastNetworkError: row.last_network_error || null,
+        linksCount: Number(row.links_count ?? 0),
+        createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    };
+}
+// LIST seeds
+tiktokOutreachRouter.get("/fsb/tiktok/seeds", a(async (_req, res) => {
+    const result = await pool.query(`SELECT s.*, COALESCE(l.cnt, 0) AS links_count
+         FROM tiktok_seed_accounts s
+         LEFT JOIN (
+           SELECT seed_id, COUNT(*)::int AS cnt
+             FROM tiktok_network_links
+            GROUP BY seed_id
+         ) l ON l.seed_id = s.id
+        ORDER BY s.created_at DESC`);
+    return res.json({ ok: true, seeds: result.rows.map(mapSeed) });
+}));
+// CREATE seed
+const seedCreateSchema = z.object({
+    handle: z.string().min(1),
+    notes: z.string().max(2000).optional(),
+});
+tiktokOutreachRouter.post("/fsb/tiktok/seeds", a(async (req, res) => {
+    const parsed = seedCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+    const handle = normalizeHandle(parsed.data.handle);
+    if (!handle)
+        return res.status(400).json({ ok: false, error: "invalid_handle" });
+    // Best-effort scrape of profile metadata
+    let displayName = null;
+    let avatarUrl = null;
+    const scraped = (await scrapeProfileViaWorker(handle).catch(() => null)) ||
+        (await scrapeTikTokProfile(handle).catch(() => null));
+    if (scraped) {
+        displayName = scraped.displayName;
+        avatarUrl = scraped.avatarUrl;
+    }
+    const result = await pool.query(`INSERT INTO tiktok_seed_accounts (handle, display_name, avatar_url, notes)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (handle) DO UPDATE SET
+         display_name = COALESCE(EXCLUDED.display_name, tiktok_seed_accounts.display_name),
+         avatar_url   = COALESCE(EXCLUDED.avatar_url, tiktok_seed_accounts.avatar_url),
+         notes        = COALESCE(EXCLUDED.notes, tiktok_seed_accounts.notes),
+         is_active    = TRUE,
+         updated_at   = NOW()
+       RETURNING *`, [handle, displayName, avatarUrl, parsed.data.notes ?? null]);
+    const row = result.rows[0];
+    return res.json({ ok: true, seed: mapSeed({ ...row, links_count: 0 }) });
+}));
+// DELETE seed
+tiktokOutreachRouter.delete("/fsb/tiktok/seeds/:id", a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    await pool.query(`DELETE FROM tiktok_seed_accounts WHERE id = $1`, [id]);
+    return res.json({ ok: true });
+}));
+// REFRESH seed network — calls worker, persists signals
+tiktokOutreachRouter.post("/fsb/tiktok/seeds/:id/refresh", a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const seedRes = await pool.query(`SELECT id, handle FROM tiktok_seed_accounts WHERE id = $1`, [id]);
+    if (!seedRes.rows[0])
+        return res.status(404).json({ ok: false, error: "not_found" });
+    const seed = seedRes.rows[0];
+    const { signals, diag } = await callSeedNetworkWorker(String(seed.handle));
+    if (!signals.length) {
+        await pool.query(`UPDATE tiktok_seed_accounts
+            SET last_network_fetch_at = NOW(),
+                last_network_status   = 'empty',
+                last_network_error    = $2,
+                updated_at            = NOW()
+          WHERE id = $1`, [id, JSON.stringify(diag).slice(0, 1000)]);
+        return res.json({ ok: true, added: 0, total: 0, diag });
+    }
+    let upserts = 0;
+    for (const sig of signals) {
+        const h = String(sig.handle || "").toLowerCase();
+        if (!HANDLE_RE.test(h))
+            continue;
+        if (!["comment", "mention", "duet"].includes(sig.type))
+            continue;
+        await pool.query(`INSERT INTO tiktok_network_links (seed_id, candidate_handle, signal_type, count, first_seen_at, last_seen_at)
+         VALUES ($1, $2, $3, 1, NOW(), NOW())
+         ON CONFLICT (seed_id, candidate_handle, signal_type) DO UPDATE SET
+           count = tiktok_network_links.count + 1,
+           last_seen_at = NOW()`, [id, h, sig.type]);
+        upserts++;
+    }
+    await pool.query(`UPDATE tiktok_seed_accounts
+          SET last_network_fetch_at = NOW(),
+              last_network_status   = 'ok',
+              last_network_error    = NULL,
+              updated_at            = NOW()
+        WHERE id = $1`, [id]);
+    return res.json({ ok: true, added: upserts, signals: signals.length, diag });
+}));
+// CANDIDATES — agrégation, score, trié
+//
+// Score (calculé côté Postgres pour pouvoir trier) :
+//   seedTier      = 1 seed=10, 2=25, 3=50, 4+=100  (cross-seed exponentiel)
+//   weights       = following=15, affil_mention=20, affil_comment=10,
+//                   mention=3, duet=2, comment=1
+//   weighted      = SUM(count * weight)
+//   decay         = GREATEST(0.3, 1 - daysSinceLastSeen / 60)   (linéaire 60j)
+//   antiFanFactor = si seed_count==1 ET signal_sum>3 ET pas d'affil/following → 0.4
+//   bonusAffil    = +50 si has_affil
+//   bonusFollowing= +30 si has_following
+//   score         = round((seedTier + min(signal_sum,50) + weighted + bonusAffil + bonusFollowing) * decay * antiFanFactor)
+//
+// Exclusions automatiques :
+//   - candidats déjà déclinés / blacklistés en DSB sont retirés systématiquement
+//   - excludeImported (option) retire tous ceux déjà importés
+//   - affilOnly (option) ne garde que ceux avec au moins 1 signal affil_*
+tiktokOutreachRouter.get("/fsb/tiktok/network/candidates", a(async (req, res) => {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const excludeImported = String(req.query.excludeImported ?? "0") === "1";
+    const affilOnly = String(req.query.affilOnly ?? "0") === "1";
+    const rows = await pool.query(`
+      WITH agg AS (
+        SELECT
+          l.candidate_handle,
+          COUNT(DISTINCT l.seed_id)::int AS seed_count,
+          SUM(l.count)::int              AS signal_sum,
+          SUM(CASE l.signal_type
+                WHEN 'following'     THEN l.count * 15
+                WHEN 'affil_mention' THEN l.count * 20
+                WHEN 'affil_comment' THEN l.count * 10
+                WHEN 'mention'       THEN l.count * 3
+                WHEN 'duet'          THEN l.count * 2
+                ELSE l.count
+              END)::int                  AS weighted_signal,
+          BOOL_OR(l.signal_type IN ('affil_comment','affil_mention')) AS has_affil,
+          BOOL_OR(l.signal_type = 'following')                         AS has_following,
+          ARRAY_AGG(DISTINCT l.signal_type) AS types,
+          ARRAY_AGG(DISTINCT s.handle)      AS seed_handles,
+          MAX(l.last_seen_at)             AS last_seen_at,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT l.source_video_url), NULL) AS source_videos
+        FROM tiktok_network_links l
+        JOIN tiktok_seed_accounts s ON s.id = l.seed_id
+        GROUP BY l.candidate_handle
+      ),
+      scored AS (
+        SELECT
+          agg.*,
+          CASE
+            WHEN agg.seed_count >= 4 THEN 100
+            WHEN agg.seed_count = 3  THEN 50
+            WHEN agg.seed_count = 2  THEN 25
+            ELSE 10
+          END AS seed_tier,
+          GREATEST(
+            0.3,
+            1 - EXTRACT(EPOCH FROM (NOW() - agg.last_seen_at)) / (60 * 86400.0)
+          )::numeric(6,3) AS decay,
+          CASE
+            WHEN agg.seed_count = 1
+                 AND agg.signal_sum > 3
+                 AND NOT agg.has_affil
+                 AND NOT agg.has_following
+              THEN 0.4
+            ELSE 1.0
+          END::numeric(4,2) AS anti_fan_factor
+        FROM agg
+      )
+      SELECT
+        s2.*,
+        ROUND(
+          (s2.seed_tier
+            + LEAST(s2.signal_sum, 50)
+            + s2.weighted_signal
+            + CASE WHEN s2.has_affil THEN 50 ELSE 0 END
+            + CASE WHEN s2.has_following THEN 30 ELSE 0 END
+          ) * s2.decay * s2.anti_fan_factor
+        )::int AS score,
+        i.id            AS influencer_id,
+        i.status        AS influencer_status,
+        i.email         AS influencer_email,
+        i.follower_count AS influencer_follower_count,
+        i.display_name  AS influencer_display_name,
+        i.avatar_url    AS influencer_avatar_url,
+        cp.follower_count AS cand_follower_count,
+        cp.video_count    AS cand_video_count,
+        cp.heart_count    AS cand_heart_count,
+        cp.bio            AS cand_bio,
+        cp.bio_email      AS cand_bio_email,
+        cp.verified       AS cand_verified,
+        cp.region         AS cand_region,
+        cp.avatar_url     AS cand_avatar_url,
+        cp.display_name   AS cand_display_name,
+        cp.last_enriched_at AS cand_enriched_at
+      FROM scored s2
+      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = s2.candidate_handle
+      LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = s2.candidate_handle
+      WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
+        ${excludeImported ? "AND i.id IS NULL" : ""}
+        ${affilOnly ? "AND s2.has_affil = TRUE" : ""}
+      ORDER BY score DESC, s2.last_seen_at DESC
+      LIMIT $1
+      `, [limit]);
+    const candidates = rows.rows.map((r) => {
+        const seedCount = Number(r.seed_count || 0);
+        const signalSum = Number(r.signal_sum || 0);
+        const weighted = Number(r.weighted_signal || 0);
+        const hasAffil = Boolean(r.has_affil);
+        const hasFollowing = Boolean(r.has_following);
+        const score = Number(r.score || 0);
+        const decay = r.decay != null ? Number(r.decay) : 1;
+        const antiFanFactor = r.anti_fan_factor != null ? Number(r.anti_fan_factor) : 1;
+        // Profile (cache enrichi en priorité, sinon données du DSB si déjà importé)
+        const enrichedAvatar = r.cand_avatar_url || r.influencer_avatar_url || null;
+        const enrichedFollowers = r.cand_follower_count != null
+            ? Number(r.cand_follower_count)
+            : r.influencer_follower_count != null
+                ? Number(r.influencer_follower_count)
+                : null;
+        return {
+            handle: r.candidate_handle,
+            seedCount,
+            signalSum,
+            weightedSignal: weighted,
+            hasAffil,
+            hasFollowing,
+            decay,
+            antiFanFactor,
+            score,
+            signalTypes: Array.isArray(r.types) ? r.types : [],
+            seedHandles: Array.isArray(r.seed_handles) ? r.seed_handles : [],
+            sourceVideos: Array.isArray(r.source_videos) ? r.source_videos : [],
+            lastSeenAt: r.last_seen_at ? new Date(r.last_seen_at).toISOString() : null,
+            profile: {
+                displayName: r.cand_display_name || r.influencer_display_name || null,
+                avatarUrl: enrichedAvatar,
+                followerCount: enrichedFollowers,
+                videoCount: r.cand_video_count != null ? Number(r.cand_video_count) : null,
+                heartCount: r.cand_heart_count != null ? Number(r.cand_heart_count) : null,
+                verified: Boolean(r.cand_verified),
+                region: r.cand_region || null,
+                bio: r.cand_bio || null,
+                bioEmail: r.cand_bio_email || null,
+                enrichedAt: r.cand_enriched_at ? new Date(r.cand_enriched_at).toISOString() : null,
+            },
+            influencer: r.influencer_id
+                ? {
+                    id: String(r.influencer_id),
+                    status: r.influencer_status,
+                    email: r.influencer_email || null,
+                    followerCount: r.influencer_follower_count != null
+                        ? Number(r.influencer_follower_count)
+                        : null,
+                    displayName: r.influencer_display_name || null,
+                    avatarUrl: r.influencer_avatar_url || null,
+                }
+                : null,
+        };
+    });
+    return res.json({ ok: true, candidates });
+}));
+// Patterns d'affil libres (taap.it/..., lunalive.win/r/..., autres)
+// L'extension matche ces patterns en substring case-insensitive dans les
+// descriptions TikTok pour tagger les vidéos comme "affil".
+function mapAffilPattern(row) {
+    return {
+        id: String(row.id),
+        pattern: row.pattern,
+        label: row.label || null,
+        landingId: row.landing_id ? String(row.landing_id) : null,
+        createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    };
+}
+tiktokOutreachRouter.get("/fsb/tiktok/affil-patterns", a(async (_req, res) => {
+    const result = await pool.query(`SELECT id, pattern, label, landing_id, created_at
+         FROM tiktok_affil_patterns
+        ORDER BY created_at DESC`);
+    return res.json({
+        ok: true,
+        patterns: result.rows.map(mapAffilPattern),
+    });
+}));
+const affilPatternCreateSchema = z.object({
+    pattern: z.string().min(2).max(300),
+    label: z.string().max(200).optional(),
+});
+tiktokOutreachRouter.post("/fsb/tiktok/affil-patterns", a(async (req, res) => {
+    const parsed = affilPatternCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+    let pattern = String(parsed.data.pattern || "").trim();
+    if (!pattern)
+        return res.status(400).json({ ok: false, error: "empty_pattern" });
+    // Normalise : strip protocol pour matcher plus large (ex: "https://taap.it/abc" -> "taap.it/abc")
+    pattern = pattern.replace(/^https?:\/\//i, "").replace(/^\/+/, "");
+    const result = await pool.query(`INSERT INTO tiktok_affil_patterns (pattern, label)
+       VALUES ($1, $2)
+       ON CONFLICT (LOWER(pattern)) DO UPDATE SET
+         label = COALESCE(EXCLUDED.label, tiktok_affil_patterns.label)
+       RETURNING id, pattern, label, landing_id, created_at`, [pattern, parsed.data.label || null]);
+    return res.json({ ok: true, pattern: mapAffilPattern(result.rows[0]) });
+}));
+tiktokOutreachRouter.delete("/fsb/tiktok/affil-patterns/:id", a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    await pool.query(`DELETE FROM tiktok_affil_patterns WHERE id = $1`, [id]);
+    return res.json({ ok: true });
+}));
+// IMPORT signals from extension (logged TikTok session bypasses anti-bot)
+const SIGNAL_TYPES = [
+    "comment",
+    "mention",
+    "duet",
+    "affil_comment",
+    "affil_mention",
+    "following",
+];
+const importSignalsSchema = z.object({
+    signals: z.array(z.object({
+        handle: z.string().min(1),
+        type: z.enum(SIGNAL_TYPES),
+        sourceVideoUrl: z.string().url().optional().nullable(),
+    })),
+    // URLs des vidéos qui ont été scrapées avec succès lors de ce scan
+    // (ce qu'il faut skipper aux prochains scans).
+    scannedVideoUrls: z.array(z.string().url()).optional(),
+});
+// Liste des URLs vidéos déjà scrapées pour un seed → l'extension les skip.
+tiktokOutreachRouter.get("/fsb/tiktok/seeds/:id/scanned-videos", a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const result = await pool.query(`SELECT video_url, scraped_at FROM tiktok_seed_scanned_videos
+        WHERE seed_id = $1 ORDER BY scraped_at DESC`, [id]);
+    return res.json({
+        ok: true,
+        videos: result.rows.map((r) => ({
+            url: r.video_url,
+            scrapedAt: r.scraped_at ? new Date(r.scraped_at).toISOString() : null,
+        })),
+    });
+}));
+tiktokOutreachRouter.post("/fsb/tiktok/seeds/:id/import-signals", a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+        return res.status(400).json({ ok: false, error: "invalid_id" });
+    }
+    const seedRes = await pool.query(`SELECT id, handle FROM tiktok_seed_accounts WHERE id = $1`, [id]);
+    if (!seedRes.rows[0])
+        return res.status(404).json({ ok: false, error: "not_found" });
+    const seedHandle = String(seedRes.rows[0].handle).toLowerCase();
+    const parsed = importSignalsSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ ok: false, error: "invalid_input" });
+    }
+    let upserts = 0;
+    const seen = new Set();
+    for (const sig of parsed.data.signals) {
+        const h = String(sig.handle || "").toLowerCase();
+        if (!HANDLE_RE.test(h))
+            continue;
+        if (h === seedHandle)
+            continue;
+        if (!SIGNAL_TYPES.includes(sig.type))
+            continue;
+        const k = `${sig.type}:${h}`;
+        if (seen.has(k))
+            continue;
+        seen.add(k);
+        const srcUrl = typeof sig.sourceVideoUrl === "string" && sig.sourceVideoUrl.length > 0
+            ? sig.sourceVideoUrl
+            : null;
+        await pool.query(`INSERT INTO tiktok_network_links
+           (seed_id, candidate_handle, signal_type, count, first_seen_at, last_seen_at, source_video_url)
+         VALUES ($1, $2, $3, 1, NOW(), NOW(), $4)
+         ON CONFLICT (seed_id, candidate_handle, signal_type) DO UPDATE SET
+           count = tiktok_network_links.count + 1,
+           last_seen_at = NOW(),
+           source_video_url = COALESCE(EXCLUDED.source_video_url, tiktok_network_links.source_video_url)`, [id, h, sig.type, srcUrl]);
+        upserts++;
+    }
+    // Enregistre les vidéos qu'on vient de scraper avec succès → on skip au scan suivant
+    const scannedUrls = Array.isArray(parsed.data.scannedVideoUrls)
+        ? parsed.data.scannedVideoUrls
+        : [];
+    let scannedRecorded = 0;
+    for (const u of scannedUrls) {
+        const url = String(u || "").trim();
+        if (!url)
+            continue;
+        try {
+            await pool.query(`INSERT INTO tiktok_seed_scanned_videos (seed_id, video_url, signals_found)
+           VALUES ($1, $2, 0)
+           ON CONFLICT (seed_id, video_url) DO UPDATE SET scraped_at = NOW()`, [id, url]);
+            scannedRecorded++;
+        }
+        catch { }
+    }
+    await pool.query(`UPDATE tiktok_seed_accounts
+          SET last_network_fetch_at = NOW(),
+              last_network_status   = $2,
+              last_network_error    = NULL,
+              updated_at            = NOW()
+        WHERE id = $1`, [id, upserts > 0 ? "ok" : "empty"]);
+    return res.json({
+        ok: true,
+        added: upserts,
+        received: parsed.data.signals.length,
+        scannedRecorded,
+    });
+}));
+// ENRICH — scrape les profils des top N candidats non encore enrichis et stocke
+// dans tiktok_candidate_profiles (cache, n'ajoute PAS au DSB).
+tiktokOutreachRouter.post("/fsb/tiktok/network/enrich", a(async (req, res) => {
+    const limit = Math.max(1, Math.min(50, Number(req.body?.limit) || 10));
+    const force = String(req.body?.force ?? "0") === "1" || req.body?.force === true;
+    // Récupère le top N par score sur la même formule que l'endpoint candidates.
+    const topRes = await pool.query(`
+      WITH agg AS (
+        SELECT
+          l.candidate_handle,
+          COUNT(DISTINCT l.seed_id)::int AS seed_count,
+          SUM(l.count)::int AS signal_sum,
+          SUM(CASE l.signal_type
+                WHEN 'following'     THEN l.count * 15
+                WHEN 'affil_mention' THEN l.count * 20
+                WHEN 'affil_comment' THEN l.count * 10
+                WHEN 'mention'       THEN l.count * 3
+                WHEN 'duet'          THEN l.count * 2
+                ELSE l.count
+              END)::int AS weighted_signal,
+          BOOL_OR(l.signal_type IN ('affil_comment','affil_mention')) AS has_affil,
+          BOOL_OR(l.signal_type = 'following')                         AS has_following,
+          MAX(l.last_seen_at) AS last_seen_at
+        FROM tiktok_network_links l
+        GROUP BY l.candidate_handle
+      )
+      SELECT a.candidate_handle
+      FROM agg a
+      LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = a.candidate_handle
+      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = a.candidate_handle
+      WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
+        ${force ? "" : "AND cp.handle IS NULL"}
+      ORDER BY (
+        CASE
+          WHEN a.seed_count >= 4 THEN 100
+          WHEN a.seed_count = 3  THEN 50
+          WHEN a.seed_count = 2  THEN 25
+          ELSE 10
+        END
+        + LEAST(a.signal_sum, 50)
+        + a.weighted_signal
+        + CASE WHEN a.has_affil THEN 50 ELSE 0 END
+        + CASE WHEN a.has_following THEN 30 ELSE 0 END
+      ) DESC
+      LIMIT $1
+      `, [limit]);
+    const handles = topRes.rows.map((r) => String(r.candidate_handle));
+    let enriched = 0;
+    let failed = 0;
+    for (const h of handles) {
+        const profile = (await scrapeProfileViaWorker(h).catch(() => null)) ||
+            (await scrapeTikTokProfile(h).catch(() => null));
+        if (!profile) {
+            failed++;
+            continue;
+        }
+        await pool.query(`INSERT INTO tiktok_candidate_profiles
+           (handle, display_name, bio, bio_email, avatar_url, follower_count, following_count,
+            heart_count, video_count, verified, region, raw, last_enriched_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, NOW())
+         ON CONFLICT (handle) DO UPDATE SET
+           display_name = EXCLUDED.display_name,
+           bio = EXCLUDED.bio,
+           bio_email = EXCLUDED.bio_email,
+           avatar_url = EXCLUDED.avatar_url,
+           follower_count = EXCLUDED.follower_count,
+           following_count = EXCLUDED.following_count,
+           heart_count = EXCLUDED.heart_count,
+           video_count = EXCLUDED.video_count,
+           verified = EXCLUDED.verified,
+           region = EXCLUDED.region,
+           raw = EXCLUDED.raw,
+           last_enriched_at = NOW()`, [
+            profile.handle,
+            profile.displayName,
+            profile.bio,
+            profile.email,
+            profile.avatarUrl,
+            profile.followerCount,
+            profile.followingCount,
+            profile.heartCount,
+            profile.videoCount,
+            profile.verified,
+            profile.country,
+            profile.raw,
+        ]);
+        enriched++;
+    }
+    return res.json({ ok: true, enriched, failed, total: handles.length });
+}));
+// IMPORT a candidate handle into the DSB (scrape its profile + insert into tiktok_influencers)
+tiktokOutreachRouter.post("/fsb/tiktok/network/import", a(async (req, res) => {
+    const handleInput = String(req.body?.handle || "").trim();
+    const handle = normalizeHandle(handleInput);
+    if (!handle)
+        return res.status(400).json({ ok: false, error: "invalid_handle" });
+    const profile = (await scrapeProfileViaWorker(handle).catch(() => null)) ||
+        (await scrapeTikTokProfile(handle).catch(() => null));
+    if (!profile)
+        return res.status(502).json({ ok: false, error: "scrape_failed" });
+    const result = await upsertScrapedProfile(profile);
+    return res.json({
+        ok: true,
+        id: String(result.id),
+        handle: profile.handle,
+        hasEmail: Boolean(profile.email),
+        alreadyContacted: result.alreadyContacted,
+    });
+}));

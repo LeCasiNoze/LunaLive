@@ -2,6 +2,7 @@
 import express from "express";
 import { pool } from "../db.js";
 import { createAutoClipForStreamer } from "../shared/clip_service.js";
+import { markClipDeletedById } from "../bot_clips/store.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 import { sendRumbleMessage } from "../rumble_chat_bridge.js";
@@ -64,9 +65,62 @@ internalBotRouter.post("/internal/bot/clip/create", express.json(), async (req, 
         return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
     }
 });
-// --------------------  
+// --------------------
+// 1b) ✅ Update clip title (utilisé par lunaclip-local pour éditer un clip)
+// --------------------
+internalBotRouter.patch("/internal/bot/clip/:id", express.json(), async (req, res) => {
+    if (!requireBotKey(req, res))
+        return;
+    const clipId = Number(req.params.id || 0);
+    const body = req.body || {};
+    const newTitle = String(body.title ?? "").trim();
+    if (!clipId) {
+        return res.status(400).json({ ok: false, error: "clipId required" });
+    }
+    if (!newTitle) {
+        return res.status(400).json({ ok: false, error: "title required" });
+    }
+    try {
+        const r = await pool.query(`UPDATE bot_clips
+         SET title = $2
+         WHERE id = $1 AND deleted_ts IS NULL
+         RETURNING id, title`, [clipId, newTitle.slice(0, 200)]);
+        if (!r.rowCount) {
+            return res.status(404).json({ ok: false, error: "clip not found or deleted" });
+        }
+        return res.json({ ok: true, clip: r.rows[0] });
+    }
+    catch (e) {
+        console.error("[internal_bot] patch clip title error:", e);
+        return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
+    }
+});
+// --------------------
+// 1c) ✅ Delete clip (soft delete: deleted_ts + hidden_by_streamer)
+// --------------------
+internalBotRouter.delete("/internal/bot/clip/:id", async (req, res) => {
+    if (!requireBotKey(req, res))
+        return;
+    const clipId = Number(req.params.id || 0);
+    if (!clipId) {
+        return res.status(400).json({ ok: false, error: "clipId required" });
+    }
+    try {
+        const affected = await markClipDeletedById(clipId, Math.floor(Date.now() / 1000));
+        if (!affected) {
+            // already deleted or not found — idempotent: still return ok
+            return res.json({ ok: true, alreadyDeleted: true });
+        }
+        return res.json({ ok: true });
+    }
+    catch (e) {
+        console.error("[internal_bot] delete clip error:", e);
+        return res.status(500).json({ ok: false, error: e?.message || "internal_error" });
+    }
+});
+// --------------------
 // 2) ✅ Bot chat message injection
-// --------------------  
+// --------------------
 internalBotRouter.post("/internal/bot/chat/inject", express.json(), async (req, res) => {
     if (!requireBotKey(req, res))
         return;

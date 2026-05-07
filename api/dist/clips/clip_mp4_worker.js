@@ -107,37 +107,83 @@ async function prepareRumbleClipPlaylist(p) {
     const playlist = await fetchHlsPlaylist(p.m3u8Url);
     if (!playlist)
         return null;
-    // Détermine le début de la playlist sur la timeline du live.
-    // Cas 1 — MEDIA-SEQUENCE ≤ 1 : playlist commence au début du live (Rumble fait ça).
-    //         playlistStartInLive = 0 → target_in_playlist = clip_moment - pre directement.
-    // Cas 2 — ENDLIST sans MEDIA-SEQUENCE = 1 : VOD freeze, on se base sur la durée
-    //         (live_duration ≈ playlistDuration → playlistStartInLive ≈ 0).
-    // Cas 3 — Live ongoing avec sliding window (MEDIA-SEQUENCE > 1) : on retombe sur
-    //         l'estimation live_edge ≈ now.
     const playlistDuration = playlist.segments.reduce((a, s) => a + s.duration, 0);
-    let playlistStartInLive;
-    if (playlist.mediaSequence <= 1) {
-        // Cas 1 — la playlist contient depuis le segment 1 = depuis le début du live.
-        playlistStartInLive = 0;
+    const nowMsLocal = Date.now();
+    // Détermine la position du moment !clip dans la playlist.
+    //
+    // Stratégie A (live ongoing, !ENDLIST) :
+    //   On utilise le wall-clock — la live edge de la playlist ≈ now (quelques
+    //   secondes de latence HLS qu'on ignore). Le moment !clip s'est passé à
+    //   `clipCreatedTs` wall-clock. Donc :
+    //     clipMomentInPlaylist = playlistDuration - (now - clipCreatedTs)
+    //   Cette formule ne dépend PAS de live_started_at, qui peut être faux
+    //   de plusieurs minutes (le poller n'attrape pas toujours pubDate fiable).
+    //
+    // Stratégie B (live terminé, ENDLIST présent) :
+    //   La playlist est figée, "now" n'est plus le live edge. On utilise
+    //   at_sec qui correspond à un offset fixe depuis live_started_at (qui,
+    //   même imprécis, devient stable une fois le live commencé). Pour
+    //   Rumble, MEDIA-SEQUENCE=1 → la playlist commence au segment 1 (= début
+    //   du live), donc clipMomentInPlaylist = at_sec.
+    //
+    // Stratégie B1 (sliding window finalisé, MEDIA-SEQUENCE > 1) :
+    //   Cas rare chez Rumble. Fallback estimation horloge.
+    const clipAgeSec = Math.max(0, (nowMsLocal - p.clipCreatedTs) / 1000);
+    const wallClockEstimate = playlistDuration - clipAgeSec;
+    // Détermine la position du moment !clip dans la playlist.
+    //
+    // PRIORITÉ : wall-clock chaque fois que possible. C'est la SEULE valeur
+    // qui ne dépend pas de live_started_at en DB (potentiellement décalé de
+    // plusieurs minutes par le poller) et qui survit au snapshot foiré.
+    //
+    // Formule wall-clock :
+    //   playlist edge en wall-clock ≈ now (pour live ongoing, ou récent ENDLIST)
+    //   position du !clip = playlistDuration - (now - clipCreatedTs)
+    //
+    // at_sec n'est utilisé QUE si wall-clock impossible (live ENDED depuis
+    // longtemps + clip rendu en retard).
+    let clipMomentInPlaylist;
+    let strategyUsed;
+    if (!playlist.hasEndList) {
+        // Live ongoing — wall-clock direct, le plus fiable.
+        clipMomentInPlaylist = Math.max(0, wallClockEstimate);
+        strategyUsed = "wall-clock(live-ongoing)";
     }
-    else if (playlist.hasEndList) {
-        // Cas 2 — VOD figé, on suppose qu'elle couvre l'intégralité du live.
-        playlistStartInLive = 0;
+    else if (wallClockEstimate >= 0 && wallClockEstimate <= playlistDuration && clipAgeSec < 600) {
+        // Live ENDED mais render rapide (< 10 min après !clip) → wall-clock fiable.
+        clipMomentInPlaylist = wallClockEstimate;
+        strategyUsed = "wall-clock(live-just-ended)";
+    }
+    else if (p.clipMomentSec > 0 && p.clipMomentSec <= playlistDuration) {
+        // Live ENDED depuis longtemps, at_sec fiable (snapshot a fonctionné au !clip)
+        clipMomentInPlaylist = p.clipMomentSec;
+        strategyUsed = "at_sec(snapshot)";
+    }
+    else if (playlist.mediaSequence <= 1) {
+        // Last resort : at_sec brut, full DVR.
+        clipMomentInPlaylist = Math.min(p.clipMomentSec, playlistDuration);
+        strategyUsed = "at_sec(raw)";
     }
     else {
-        // Cas 3 — sliding window, estimation par l'horloge.
-        const nowSec = Date.now() / 1000;
-        const liveStartSec = p.liveStartTs / 1000;
-        const liveEdgeOffsetInLive = nowSec - liveStartSec;
-        playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
+        const liveEdgeOffsetInLive = (nowMsLocal - p.liveStartTs) / 1000;
+        const playlistStartInLive = Math.max(0, liveEdgeOffsetInLive - playlistDuration);
+        clipMomentInPlaylist = Math.max(0, p.clipMomentSec - playlistStartInLive);
+        strategyUsed = "sliding-window-estimate";
     }
-    // Fenêtre cible sur la timeline du live
-    const targetStartInLive = p.clipMomentSec - p.pre;
-    const targetEndInLive = p.clipMomentSec + p.post;
-    // Conversion vers la timeline de la playlist (relative à playlistStartInLive)
-    const targetStartInPlaylist = Math.max(0, targetStartInLive - playlistStartInLive);
-    const targetEndInPlaylist = Math.max(0, targetEndInLive - playlistStartInLive);
-    const truncatedPre = (targetStartInLive - playlistStartInLive) < 0;
+    // Pas de compensation HLS live edge : avec +15s, la commande chat apparaissait
+    // à 1m dans le clip rendu (pre=75 - 15 = 60s) au lieu de ~1m15. Maintenant
+    // la commande est à pre_sec dans le clip (≈ 1m15 pour pre=75 + ~5s de réaction
+    // = ressentie comme "1m20" côté utilisateur).
+    const HLS_LIVE_EDGE_LAG_SEC = 0;
+    const adjustedClipMoment = clipMomentInPlaylist + HLS_LIVE_EDGE_LAG_SEC;
+    console.log(`[clips-mp4] rumble seek strategy=${strategyUsed} ` +
+        `playlistDur=${playlistDuration.toFixed(1)}s clipAge=${clipAgeSec.toFixed(0)}s ` +
+        `at_sec=${p.clipMomentSec} wallClock=${wallClockEstimate.toFixed(0)} ` +
+        `→ clipMoment=${clipMomentInPlaylist.toFixed(0)} adjusted=${adjustedClipMoment.toFixed(0)}`);
+    // Fenêtre cible (en position dans la playlist)
+    const targetStartInPlaylist = Math.max(0, adjustedClipMoment - p.pre);
+    const targetEndInPlaylist = Math.max(0, adjustedClipMoment + p.post);
+    const truncatedPre = (adjustedClipMoment - p.pre) < 0;
     // Sélection des segments qui chevauchent [targetStartInPlaylist..targetEndInPlaylist]
     let acc = 0;
     let startIdx = -1;
@@ -252,6 +298,7 @@ async function renderAndUploadClip(clip) {
             pre,
             post,
             liveStartTs,
+            clipCreatedTs: Number(clip.created_ts || Date.now()),
             clipId: Number(clip.id),
         });
         if (!prepared) {
@@ -402,11 +449,17 @@ export function startClipsMp4Renderer() {
     const tick = async () => {
         if (running >= RENDER_CONCURRENCY)
             return;
-        const clip = await claimOneClipToRenderMp4({ minCreatedTs, maxAgeMs }).catch(() => null);
-        if (!clip)
-            return;
+        // ✅ Réserve un slot AVANT le claim async pour éviter le TOCTOU :
+        // sans ça, plusieurs ticks pouvaient passer le check `running < N`
+        // pendant que claimOneClipToRenderMp4 était en attente DB → on lançait
+        // 4-5 ffmpeg en parallèle au lieu de 1 → OOM.
         running++;
-        (async () => {
+        let claimed = false;
+        try {
+            const clip = await claimOneClipToRenderMp4({ minCreatedTs, maxAgeMs }).catch(() => null);
+            if (!clip)
+                return;
+            claimed = true;
             try {
                 if (!clip.vod_url) {
                     await setClipMp4Error(Number(clip.id), "vod_missing").catch(() => { });
@@ -420,12 +473,11 @@ export function startClipsMp4Renderer() {
                 console.warn(`[clips-mp4] rendered clip=${clip?.id} error`, msg);
                 await setClipMp4Error(Number(clip?.id || 0), msg).catch(() => { });
             }
-            finally {
-                running--;
-            }
-        })().catch(() => {
+        }
+        finally {
             running--;
-        });
+            void claimed;
+        }
     };
     ensureBotClips()
         .catch(() => { })

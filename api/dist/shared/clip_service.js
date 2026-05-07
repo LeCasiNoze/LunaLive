@@ -1,6 +1,55 @@
 // api/src/shared/clip_service.ts
 // Service local pour la création de clips (API uniquement)
 import { notifyStreamerOfFirstAutoClip } from "../lunaclip/notify_streamer.js";
+/**
+ * Au moment du !clip, snapshot la durée totale de la playlist HLS DVR.
+ * Sur Rumble (MEDIA-SEQUENCE:1, full DVR), cette durée correspond à la
+ * position exacte du !clip dans la playlist (live edge = !clip moment).
+ * C'est la valeur la plus fiable pour at_sec : elle ne dépend pas de
+ * live_started_at qui peut être décalé de plusieurs minutes.
+ */
+async function snapshotHlsPlaylistDuration(m3u8Url) {
+    if (!/^https?:\/\//i.test(m3u8Url) || !/\.m3u8(\?|$)/i.test(m3u8Url))
+        return null;
+    // 3 tentatives avec timeout progressif (10s, 12s, 15s)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        const timeoutMs = 8_000 + attempt * 2_000;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        try {
+            const r = await fetch(m3u8Url, {
+                signal: ctrl.signal,
+                headers: {
+                    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Safari/537.36",
+                    "accept": "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
+                },
+            }).finally(() => clearTimeout(t));
+            if (!r.ok) {
+                console.warn(`[clip] snapshotHls attempt ${attempt}/3 HTTP=${r.status} url=${m3u8Url.slice(0, 80)}`);
+                continue;
+            }
+            const text = await r.text();
+            let total = 0;
+            const re = /#EXTINF:([\d.]+)/g;
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                const d = Number(m[1]);
+                if (Number.isFinite(d) && d > 0)
+                    total += d;
+            }
+            if (total > 0) {
+                console.log(`[clip] snapshotHls OK attempt=${attempt} dur=${Math.floor(total)}s`);
+                return Math.floor(total);
+            }
+            console.warn(`[clip] snapshotHls attempt ${attempt}/3 parsed 0 segments`);
+        }
+        catch (e) {
+            console.warn(`[clip] snapshotHls attempt ${attempt}/3 error: ${e?.message || e}`);
+        }
+    }
+    console.warn(`[clip] snapshotHls FAILED après 3 tentatives — fallback vers (now - liveStartedAt)`);
+    return null;
+}
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 const LATENCY_PAD_SEC = 0; // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
 const DEFAULT_PRE_SEC = 75; // 1m15 avant la commande/détection
@@ -210,17 +259,32 @@ export async function createClipForStreamer(p) {
                 : (rumble.vodMp4Url || rumble.vodHlsUrl || rumble.hlsUrl);
             if (!sourceUrl)
                 return { ok: false, reason: rumble.isLive ? "live_not_active" : "vod_not_ready" };
+            // Calcul de l'offset (= position du !clip dans la playlist HLS).
+            //
+            // ❶ Méthode préférée : snapshot la playlistDuration en LIVE — la live
+            //    edge à l'instant du !clip = playlistDuration. C'est la valeur la
+            //    plus fiable car indépendante de live_started_at (potentiellement
+            //    décalé de plusieurs minutes par le poller).
+            // ❷ Fallback : forcedOffsetSec (commande !clip avec offset explicite).
+            // ❸ Fallback : (now - live_started_at) si playlist injoignable.
             let offset;
             if (forcedOffsetSec !== undefined) {
                 offset = Math.max(0, forcedOffsetSec);
             }
-            else if (rumble.liveStartedAtMs) {
-                const nowSec = Math.floor(Date.now() / 1000);
-                const startSec = Math.floor(rumble.liveStartedAtMs / 1000);
-                offset = Math.max(0, nowSec - startSec);
-            }
             else {
-                offset = 0;
+                // Tentative snapshot playlistDuration depuis le HLS DVR
+                const snap = rumble.isLive && sourceUrl ? await snapshotHlsPlaylistDuration(sourceUrl) : null;
+                if (snap != null) {
+                    offset = snap;
+                }
+                else if (rumble.liveStartedAtMs) {
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const startSec = Math.floor(rumble.liveStartedAtMs / 1000);
+                    offset = Math.max(0, nowSec - startSec);
+                }
+                else {
+                    offset = 0;
+                }
             }
             const isAutoClip = !author || author === "lunaclip";
             const finalPreSec = isAutoClip ? DEFAULT_PRE_SEC : Math.min(Math.max(0, Math.floor(preSec || DEFAULT_PRE_SEC)), 300);

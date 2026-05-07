@@ -2,7 +2,80 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { addLunaClip } from "./clips.js";
+import { spawn } from "child_process";
+import { r2Enabled, buildPublicUrl, putR2Buffer } from "../clips/r2.js";
+import { FFMPEG_BIN, FFMPEG_OK } from "../routes/thumbs.js";
 export const lunaclipRouter = Router();
+/**
+ * POST /admin/lunaclip/clips/:id/regen-thumb
+ * Régénère le thumbnail d'un clip à partir du mp4 R2 existant.
+ * Utile quand le thumb a foiré pendant un crash mémoire (mp4 OK mais
+ * pas de jpg). Mutex global pour éviter rafale ffmpeg.
+ */
+let thumbRegenBusy = false;
+lunaclipRouter.post("/clips/:id/regen-thumb", async (req, res) => {
+    const clipId = Number(req.params.id || 0);
+    if (!Number.isFinite(clipId) || clipId <= 0) {
+        return res.status(400).json({ ok: false, error: "id_required" });
+    }
+    if (!FFMPEG_OK || !r2Enabled()) {
+        return res.status(503).json({ ok: false, error: "ffmpeg_or_r2_unavailable" });
+    }
+    if (thumbRegenBusy) {
+        return res.status(429).json({ ok: false, error: "another_regen_in_progress" });
+    }
+    thumbRegenBusy = true;
+    try {
+        const r = await pool.query(`SELECT mp4_key FROM bot_clips WHERE id=$1 AND deleted_ts IS NULL LIMIT 1`, [clipId]);
+        const mp4Key = String(r.rows?.[0]?.mp4_key || "").trim();
+        if (!mp4Key)
+            return res.status(404).json({ ok: false, error: "mp4_not_ready" });
+        const mp4Url = buildPublicUrl(mp4Key);
+        if (!mp4Url)
+            return res.status(500).json({ ok: false, error: "build_url_failed" });
+        const args = [
+            "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-rw_timeout", "10000000",
+            "-ss", "1", "-i", mp4Url,
+            "-an", "-frames:v", "1", "-vf", "scale=640:-1", "-q:v", "5",
+            "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"
+        ];
+        const buf = await new Promise((resolve, reject) => {
+            const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+            const chunks = [];
+            let stderr = "";
+            const killTimer = setTimeout(() => { try {
+                p.kill("SIGKILL");
+            }
+            catch { } }, 15_000);
+            p.stdout.on("data", (d) => chunks.push(Buffer.from(d)));
+            p.stderr.on("data", (d) => { stderr += String(d); });
+            p.on("error", (e) => { clearTimeout(killTimer); reject(e); });
+            p.on("close", (code) => {
+                clearTimeout(killTimer);
+                const out = Buffer.concat(chunks);
+                if (code !== 0 || out.length < 1000) {
+                    return reject(new Error(`ffmpeg exit ${code} bytes=${out.length} stderr=${stderr.slice(0, 200)}`));
+                }
+                resolve(out);
+            });
+        });
+        const r2Key = `clips/thumbnails/${clipId}.jpg`;
+        const ok = await putR2Buffer({ key: r2Key, contentType: "image/jpeg", buffer: buf });
+        if (!ok)
+            return res.status(500).json({ ok: false, error: "r2_upload_failed" });
+        const publicUrl = buildPublicUrl(r2Key);
+        if (!publicUrl)
+            return res.status(500).json({ ok: false, error: "build_thumb_url_failed" });
+        await pool.query(`UPDATE bot_clips SET thumbnail_url=$1 WHERE id=$2`, [publicUrl, clipId]);
+        return res.json({ ok: true, clipId, thumbnailUrl: publicUrl, bytes: buf.length });
+    }
+    catch (e) {
+        return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+    finally {
+        thumbRegenBusy = false;
+    }
+});
 const ALERT_MULTI = parseFloat(process.env.LUNACLIP_ALERT_MULTI ?? "300");
 // GET /admin/lunaclip/status
 lunaclipRouter.get("/status", async (_req, res) => {
