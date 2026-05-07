@@ -12,6 +12,7 @@ import {
   getTikTokTemplate,
   addTikTokAffilPattern,
   deleteTikTokAffilPattern,
+  dismissTikTokCandidate,
   enrichTikTokCandidatesBulk,
   enrichTikTokTopCandidates,
   importSeedNetworkSignals,
@@ -844,6 +845,18 @@ export function FsbTikTokOutreachSection() {
       await reloadCandidates();
     } catch (err: any) {
       window.alert(`Suppression: ${err?.message || err}`);
+    }
+  };
+
+  const handleDismissCandidate = async (handle: string) => {
+    if (!window.confirm(`Retirer définitivement @${handle} des candidats ?\nIl ne réapparaîtra plus, même si un seed le redécouvre.`)) return;
+    try {
+      await dismissTikTokCandidate(handle);
+      // optimistic: retire localement avant le reload
+      setCandidates((prev) => prev.filter((c) => c.handle !== handle));
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Dismiss: ${err?.message || err}`);
     }
   };
 
@@ -2146,6 +2159,19 @@ export function FsbTikTokOutreachSection() {
                           )}
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="fsb-btn"
+                        onClick={() => handleDismissCandidate(c.handle)}
+                        title="Retirer définitivement de la liste (il ne reviendra plus)"
+                        style={{
+                          marginLeft: 6,
+                          color: "#f04e4e",
+                          borderColor: "rgba(240,78,78,.4)",
+                        }}
+                      >
+                        ✕
+                      </button>
                     </td>
                   </tr>
                 ))}

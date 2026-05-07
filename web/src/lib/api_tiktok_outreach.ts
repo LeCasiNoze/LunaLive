@@ -471,6 +471,13 @@ export function listSeedScannedVideos(seedId: string) {
   );
 }
 
+export function dismissTikTokCandidate(handle: string, reason?: string) {
+  return request<{ ok: true }>(`/api/fsb/tiktok/network/dismiss`, {
+    method: "POST",
+    body: JSON.stringify({ handle, reason }),
+  });
+}
+
 export function enrichTikTokCandidatesBulk(profiles: any[]) {
   return request<{ ok: true; upserted: number; total: number }>(
     `/api/fsb/tiktok/network/enrich-bulk`,

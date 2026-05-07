@@ -1747,7 +1747,9 @@ tiktokOutreachRouter.get(
       FROM scored s2
       LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = s2.candidate_handle
       LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = s2.candidate_handle
+      LEFT JOIN tiktok_dismissed_candidates dc ON dc.handle = s2.candidate_handle
       WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
+        AND dc.handle IS NULL
         ${excludeImported ? "AND i.id IS NULL" : ""}
         ${affilOnly ? "AND s2.has_affil = TRUE" : ""}
       ORDER BY score DESC, s2.last_seen_at DESC
@@ -2053,7 +2055,9 @@ tiktokOutreachRouter.post(
       FROM agg a
       LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = a.candidate_handle
       LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = a.candidate_handle
+      LEFT JOIN tiktok_dismissed_candidates dc ON dc.handle = a.candidate_handle
       WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
+        AND dc.handle IS NULL
         ${force ? "" : "AND cp.handle IS NULL"}
       ORDER BY (
         CASE
@@ -2175,6 +2179,39 @@ tiktokOutreachRouter.post(
       upserted++;
     }
     return res.json({ ok: true, upserted, total: parsed.data.profiles.length });
+  })
+);
+
+// DISMISS a candidate permanently (won't appear in candidates list anymore)
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/dismiss",
+  a(async (req, res) => {
+    const handleInput = String(req.body?.handle || "").trim();
+    const handle = normalizeHandle(handleInput);
+    if (!handle) return res.status(400).json({ ok: false, error: "invalid_handle" });
+    const reason = String(req.body?.reason || "").slice(0, 200) || null;
+    await pool.query(
+      `INSERT INTO tiktok_dismissed_candidates (handle, reason)
+       VALUES ($1, $2)
+       ON CONFLICT (handle) DO UPDATE SET dismissed_at = NOW(), reason = EXCLUDED.reason`,
+      [handle, reason]
+    );
+    return res.json({ ok: true });
+  })
+);
+
+// UNDISMISS — au cas où on veut le réintégrer
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/undismiss",
+  a(async (req, res) => {
+    const handleInput = String(req.body?.handle || "").trim();
+    const handle = normalizeHandle(handleInput);
+    if (!handle) return res.status(400).json({ ok: false, error: "invalid_handle" });
+    await pool.query(
+      `DELETE FROM tiktok_dismissed_candidates WHERE handle = $1`,
+      [handle]
+    );
+    return res.json({ ok: true });
   })
 );
 
