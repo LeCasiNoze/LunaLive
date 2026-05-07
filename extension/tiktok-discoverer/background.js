@@ -942,6 +942,248 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Dump full /following list for a single handle (seed or candidate).
+  // Used by the FSB Board to build the follow-graph (peer discovery).
+  // Briefly focuses the new tab so TikTok's SPA fully boots, then scrolls
+  // the modal (NOT the page background) until handles plateau.
+  if (message?.type === "LUNALIVE_TIKTOK_DUMP_FOLLOWING") {
+    (async () => {
+      const { handle = "", maxScrollTicks = 80, maxHandles = 20000 } =
+        message.payload || {};
+      const cleaned = String(handle).trim().replace(/^@/, "").toLowerCase();
+      if (!cleaned) {
+        sendResponse({ ok: false, error: "invalid_handle" });
+        return;
+      }
+      const senderTabId = sender.tab?.id || null;
+      const url = `https://www.tiktok.com/@${encodeURIComponent(cleaned)}`;
+
+      const result = await new Promise((resolve) => {
+        // Open tab as ACTIVE so TikTok's SPA actually mounts (background
+        // tabs are throttled and the user reported pages not loading).
+        chrome.tabs.create({ url, active: true }, async (tab) => {
+          if (chrome.runtime.lastError || !tab?.id) {
+            return resolve({
+              ok: false,
+              error: chrome.runtime.lastError?.message || "tab_create_failed",
+            });
+          }
+          let done = false;
+          const finish = (r) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            // Restore focus to the original (lunalive) tab.
+            if (senderTabId) {
+              chrome.tabs.update(senderTabId, { active: true }).catch(() => {});
+            }
+            chrome.tabs.remove(tab.id).catch(() => {});
+            resolve(r);
+          };
+          const timer = setTimeout(
+            () => finish({ ok: false, error: "following_timeout" }),
+            120_000
+          );
+
+          const onUpdated = async (tabId, info) => {
+            if (tabId !== tab.id || info.status !== "complete") return;
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+
+            // Wait a bit longer than usual — focused tab loads heavier content.
+            await new Promise((r) => setTimeout(r, 4000));
+
+            // Click "Following" stat to open modal
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                  const btn =
+                    document.querySelector('[data-e2e="following-count"]') ||
+                    document.querySelector('[data-e2e="following"]');
+                  if (btn) {
+                    const clickable =
+                      btn.closest("button,a,[role='button']") ||
+                      btn.parentElement ||
+                      btn;
+                    if (clickable && typeof clickable.click === "function") {
+                      clickable.click();
+                    }
+                  }
+                },
+                args: [],
+              });
+            } catch {}
+            await new Promise((r) => setTimeout(r, 2500));
+
+            // Robust scroll loop: target ONLY the modal/dialog scroller,
+            // never the page background.
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: (max) =>
+                  new Promise((resolve) => {
+                    function findDialog() {
+                      return (
+                        document.querySelector('[role="dialog"]') ||
+                        document.querySelector('div[aria-modal="true"]') ||
+                        null
+                      );
+                    }
+                    function findModalScrollable(dialog) {
+                      if (!dialog) return null;
+                      // Prefer the deepest scrollable child within the dialog
+                      const all = dialog.querySelectorAll("*");
+                      let best = null;
+                      let bestDepth = -1;
+                      for (const el of Array.from(all)) {
+                        try {
+                          const cs = getComputedStyle(el);
+                          if (
+                            (cs.overflowY === "auto" ||
+                              cs.overflowY === "scroll") &&
+                            el.scrollHeight - el.clientHeight > 50
+                          ) {
+                            // Compute depth so we pick the innermost scroller
+                            let depth = 0;
+                            let p = el;
+                            while (p && p !== dialog) {
+                              p = p.parentElement;
+                              depth++;
+                            }
+                            if (depth > bestDepth) {
+                              best = el;
+                              bestDepth = depth;
+                            }
+                          }
+                        } catch {}
+                      }
+                      // Fall back to the dialog itself if nothing scrollable inside
+                      if (
+                        !best &&
+                        dialog.scrollHeight - dialog.clientHeight > 50
+                      ) {
+                        best = dialog;
+                      }
+                      return best;
+                    }
+                    let i = 0;
+                    let lastCount = -1;
+                    let stableTicks = 0;
+                    const tick = () => {
+                      const dialog = findDialog();
+                      const target = findModalScrollable(dialog);
+
+                      if (target) {
+                        try {
+                          target.scrollBy({ top: 2400, behavior: "auto" });
+                          // Some implementations ignore scrollBy and need scrollTop manual write
+                          target.scrollTop = target.scrollTop + 2400;
+                          // Also dispatch a wheel inside the target — rarely needed
+                          target.dispatchEvent(
+                            new WheelEvent("wheel", {
+                              deltaY: 2400,
+                              bubbles: true,
+                              cancelable: true,
+                            })
+                          );
+                        } catch {}
+                      } else if (dialog) {
+                        // Modal exists but no scrollable detected → wheel on dialog
+                        try {
+                          dialog.dispatchEvent(
+                            new WheelEvent("wheel", {
+                              deltaY: 2400,
+                              bubbles: true,
+                              cancelable: true,
+                            })
+                          );
+                        } catch {}
+                      }
+                      // EXPLICITLY DO NOT scroll window/body — that was the
+                      // bug user reported: list of 'follows of background page'.
+
+                      const scope = dialog || document.body;
+                      const links = scope.querySelectorAll('a[href^="/@"]');
+                      const currCount = links.length;
+
+                      if (currCount === lastCount) stableTicks++;
+                      else {
+                        stableTicks = 0;
+                        lastCount = currCount;
+                      }
+                      i++;
+                      // Stop after 6 stable ticks (truly plateaued) or max ticks
+                      if (i < max && stableTicks < 6) {
+                        setTimeout(tick, 700);
+                      } else {
+                        resolve({
+                          ticks: i,
+                          finalAnchorCount: currCount,
+                          modalFound: !!dialog,
+                          scrollTargetFound: !!target,
+                        });
+                      }
+                    };
+                    tick();
+                  }),
+                args: [maxScrollTicks],
+              });
+            } catch {}
+
+            // Final extraction — ONLY from inside the modal
+            try {
+              const results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: (max, ownHandle) => {
+                  const HRE = /^[A-Za-z0-9._]{1,30}$/;
+                  const set = new Set();
+                  const dialog =
+                    document.querySelector('[role="dialog"]') ||
+                    document.querySelector('div[aria-modal="true"]');
+                  const scope = dialog || document;
+                  const links = scope.querySelectorAll('a[href^="/@"]');
+                  for (const a of Array.from(links)) {
+                    const href = a.getAttribute("href") || "";
+                    const m = href.match(/^\/@([A-Za-z0-9._]{1,30})/);
+                    if (m && HRE.test(m[1])) {
+                      const h = m[1].toLowerCase();
+                      if (h !== ownHandle) set.add(h);
+                      if (set.size >= max) break;
+                    }
+                  }
+                  return {
+                    handles: Array.from(set),
+                    diag: {
+                      modalFound: !!dialog,
+                      anchorsInModal: links.length,
+                      anchorsTotalPage: document.querySelectorAll('a[href^="/@"]').length,
+                      title: document.title.slice(0, 80),
+                    },
+                  };
+                },
+                args: [maxHandles, cleaned],
+              });
+              const out = (results && results[0] && results[0].result) || null;
+              return finish({
+                ok: !!out,
+                handle: cleaned,
+                handles: out?.handles || [],
+                total: out?.handles?.length || 0,
+                diag: out?.diag || null,
+              });
+            } catch (err) {
+              return finish({ ok: false, error: String(err?.message || err) });
+            }
+          };
+          chrome.tabs.onUpdated.addListener(onUpdated);
+        });
+      });
+
+      sendResponse(result);
+    })();
+    return true;
+  }
+
   return false;
 });
 

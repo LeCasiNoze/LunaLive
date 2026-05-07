@@ -1695,38 +1695,107 @@ tiktokOutreachRouter.get(
         JOIN tiktok_seed_accounts s ON s.id = l.seed_id
         GROUP BY l.candidate_handle
       ),
+      overlap_agg AS (
+        SELECT candidate_handle, COUNT(DISTINCT seed_id)::int AS follow_overlap
+        FROM tiktok_seed_follows
+        GROUP BY candidate_handle
+      ),
+      mutual_agg AS (
+        SELECT
+          cf.candidate_handle,
+          COUNT(*) FILTER (
+            WHERE LOWER(s.handle) = LOWER(cf.follows_handle)
+          )::int AS mutual_count
+        FROM tiktok_candidate_follows cf
+        LEFT JOIN tiktok_seed_accounts s ON LOWER(s.handle) = LOWER(cf.follows_handle)
+        GROUP BY cf.candidate_handle
+      ),
       scored AS (
         SELECT
           agg.*,
-          CASE
-            WHEN agg.seed_count >= 4 THEN 100
-            WHEN agg.seed_count = 3  THEN 50
-            WHEN agg.seed_count = 2  THEN 25
-            ELSE 10
-          END AS seed_tier,
+          COALESCE(o.follow_overlap, 0) AS follow_overlap,
+          COALESCE(m.mutual_count, 0)   AS mutual_count,
           GREATEST(
             0.3,
             1 - EXTRACT(EPOCH FROM (NOW() - agg.last_seen_at)) / (60 * 86400.0)
-          )::numeric(6,3) AS decay,
-          CASE
-            WHEN agg.seed_count = 1
-                 AND agg.signal_sum > 3
-                 AND NOT agg.has_affil
-                 AND NOT agg.has_following
-              THEN 0.4
-            ELSE 1.0
-          END::numeric(4,2) AS anti_fan_factor
+          )::numeric(6,3) AS decay
         FROM agg
+        LEFT JOIN overlap_agg o ON o.candidate_handle = agg.candidate_handle
+        LEFT JOIN mutual_agg  m ON m.candidate_handle = agg.candidate_handle
       )
       SELECT
         s2.*,
+        -- Peer score: combine follow_overlap (vrai signal créateur) + mutuel
+        -- (anti-célébrité) + bonus niche bio + pénalité célébrité.
         ROUND(
-          (s2.seed_tier
-            + LEAST(s2.signal_sum, 50)
-            + s2.weighted_signal
+          (
+            -- 1) Coeur du score : follow_overlap (signal le + propre)
+            (s2.follow_overlap * 60)
+            -- 2) Mutualité (anti-célébrité)
+            + CASE
+                WHEN s2.mutual_count >= 3 THEN 120
+                WHEN s2.mutual_count = 2  THEN 80
+                WHEN s2.mutual_count = 1  THEN 50
+                ELSE 0
+              END
+            -- 3) Bonus niche bio (whitelist mots-clés)
+            + CASE
+                WHEN cp.bio IS NULL THEN 0
+                WHEN LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick|jeu |jeux |pari|stake|roobet|winamax|betclic|unibet|pmu|freespin|bonanza|rtp|blackjack|roulette|poker|crash|plinko)'
+                  THEN 80
+                ELSE 0
+              END
+            -- 4) Affil signals (vrais créateurs qui mentionnent partenaires)
             + CASE WHEN s2.has_affil THEN 50 ELSE 0 END
-            + CASE WHEN s2.has_following THEN 30 ELSE 0 END
-          ) * s2.decay * s2.anti_fan_factor
+            -- 5) Tier d'engagement par seed_count (ancien)
+            + CASE
+                WHEN s2.seed_count >= 4 THEN 50
+                WHEN s2.seed_count = 3  THEN 25
+                WHEN s2.seed_count = 2  THEN 10
+                ELSE 0
+              END
+            -- 6) Bonus follower-tier (peer = 5K-500K, idéal)
+            + CASE
+                WHEN cp.follower_count IS NULL THEN 0
+                WHEN cp.follower_count BETWEEN 10000 AND 200000 THEN 40
+                WHEN cp.follower_count BETWEEN 5000 AND 10000   THEN 20
+                WHEN cp.follower_count BETWEEN 200000 AND 500000 THEN 20
+                ELSE 0
+              END
+            -- 7) Pénalité célébrité : grosse account + zéro mutuel = 99% non-peer
+            + CASE
+                WHEN cp.follower_count IS NOT NULL
+                     AND cp.follower_count >= 1000000
+                     AND COALESCE(s2.mutual_count, 0) = 0
+                  THEN -300
+                WHEN cp.follower_count IS NOT NULL
+                     AND cp.follower_count >= 500000
+                     AND COALESCE(s2.mutual_count, 0) = 0
+                  THEN -150
+                ELSE 0
+              END
+            -- 8) Pénalité bio hors-niche
+            + CASE
+                WHEN cp.bio IS NULL THEN 0
+                WHEN LOWER(cp.bio) ~ '(rappeur|chanteur|humoriste|sketch|magasin|supermarch|cuisine|recette|chef cuisinier|tourisme|journaliste|presse|député|depute|ministre)'
+                     AND LOWER(cp.bio) !~ '(casino|slot|bonus|hunt|streamer|jeu |jeux |pari|twitch|kick)'
+                  THEN -200
+                ELSE 0
+              END
+            -- 9) Pénalité micro-fan (followers connu et < 1000, sans mutuel)
+            + CASE
+                WHEN cp.follower_count IS NOT NULL
+                     AND cp.follower_count < 1000
+                     AND COALESCE(s2.mutual_count, 0) = 0
+                  THEN -100
+                ELSE 0
+              END
+            -- 10) Bonus région FR/BE/CH/etc. quand région connue
+            + CASE
+                WHEN cp.region IN ('FR','BE','CH','LU','MC','MA','TN','DZ') THEN 15
+                ELSE 0
+              END
+          ) * s2.decay
         )::int AS score,
         i.id            AS influencer_id,
         i.status        AS influencer_status,
@@ -1743,7 +1812,26 @@ tiktokOutreachRouter.get(
         cp.region         AS cand_region,
         cp.avatar_url     AS cand_avatar_url,
         cp.display_name   AS cand_display_name,
-        cp.last_enriched_at AS cand_enriched_at
+        cp.last_enriched_at AS cand_enriched_at,
+        -- Verdict niche pour l'UI
+        CASE
+          WHEN cp.follower_count IS NOT NULL
+               AND cp.follower_count >= 1000000
+               AND COALESCE(s2.mutual_count, 0) = 0
+            THEN 'celebrity'
+          WHEN cp.bio IS NOT NULL
+               AND LOWER(cp.bio) ~ '(rappeur|chanteur|humoriste|sketch|magasin|supermarch|cuisine|recette)'
+               AND LOWER(cp.bio) !~ '(casino|slot|bonus|hunt|streamer)'
+            THEN 'off_niche'
+          WHEN s2.mutual_count >= 1 THEN 'peer_confirmed'
+          WHEN cp.bio IS NOT NULL
+               AND LOWER(cp.bio) ~ '(casino|slot|bonus|hunt|gambling|streamer|twitch|kick)'
+            THEN 'peer_likely'
+          WHEN cp.follower_count IS NOT NULL
+               AND cp.follower_count < 1000
+            THEN 'fan'
+          ELSE 'unknown'
+        END AS niche_verdict
       FROM scored s2
       LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = s2.candidate_handle
       LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = s2.candidate_handle
@@ -1767,6 +1855,9 @@ tiktokOutreachRouter.get(
       const score = Number(r.score || 0);
       const decay = r.decay != null ? Number(r.decay) : 1;
       const antiFanFactor = r.anti_fan_factor != null ? Number(r.anti_fan_factor) : 1;
+      const followOverlap = Number(r.follow_overlap || 0);
+      const mutualCount = Number(r.mutual_count || 0);
+      const nicheVerdict = String(r.niche_verdict || "unknown");
 
       // Profile (cache enrichi en priorité, sinon données du DSB si déjà importé)
       const enrichedAvatar = r.cand_avatar_url || r.influencer_avatar_url || null;
@@ -1784,6 +1875,9 @@ tiktokOutreachRouter.get(
         weightedSignal: weighted,
         hasAffil,
         hasFollowing,
+        followOverlap,
+        mutualCount,
+        nicheVerdict,
         decay,
         antiFanFactor,
         score,
@@ -2179,6 +2273,249 @@ tiktokOutreachRouter.post(
       upserted++;
     }
     return res.json({ ok: true, upserted, total: parsed.data.profiles.length });
+  })
+);
+
+// ─── FOLLOW-GRAPH (peer discovery) ───────────────────────────────────────
+
+// L'extension dump la /following d'un seed → on remplace l'ensemble.
+const seedFollowsSchema = z.object({
+  seedHandle: z.string().trim().min(1).max(40),
+  follows: z.array(z.string().trim().min(1).max(40)).max(20000),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/seed-follows",
+  a(async (req, res) => {
+    const parsed = seedFollowsSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_payload" });
+    }
+    const seedHandle = normalizeHandle(parsed.data.seedHandle);
+    const follows = parsed.data.follows
+      .map((h) => normalizeHandle(h))
+      .filter((h) => h && h !== seedHandle);
+
+    const seedRow = await pool.query(
+      `SELECT id FROM tiktok_seed_accounts WHERE handle = $1`,
+      [seedHandle]
+    );
+    if (!seedRow.rows.length) {
+      return res.status(404).json({ ok: false, error: "seed_not_found" });
+    }
+    const seedId = seedRow.rows[0].id;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Reset complet pour ce seed (la liste est l'autorité)
+      await client.query(
+        `DELETE FROM tiktok_seed_follows WHERE seed_id = $1`,
+        [seedId]
+      );
+      if (follows.length) {
+        const values: string[] = [];
+        const params: any[] = [seedId];
+        let i = 2;
+        for (const h of follows) {
+          values.push(`($1, $${i++})`);
+          params.push(h);
+        }
+        await client.query(
+          `INSERT INTO tiktok_seed_follows (seed_id, candidate_handle)
+           VALUES ${values.join(",")}
+           ON CONFLICT DO NOTHING`,
+          params
+        );
+      }
+      // Aussi refléter dans tiktok_network_links comme signal 'following' pour
+      // garder la rétrocompat avec l'ancien pipeline.
+      for (const h of follows) {
+        await client.query(
+          `INSERT INTO tiktok_network_links
+             (seed_id, candidate_handle, signal_type, count, last_seen_at)
+           VALUES ($1, $2, 'following', 1, NOW())
+           ON CONFLICT (seed_id, candidate_handle, signal_type)
+           DO UPDATE SET last_seen_at = NOW()`,
+          [seedId, h]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+    return res.json({ ok: true, seedHandle, count: follows.length });
+  })
+);
+
+// L'extension dump la /following d'un candidat → on stocke pour mutualité.
+const candidateFollowsSchema = z.object({
+  candidateHandle: z.string().trim().min(1).max(40),
+  follows: z.array(z.string().trim().min(1).max(40)).max(20000),
+});
+
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/candidate-follows",
+  a(async (req, res) => {
+    const parsed = candidateFollowsSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "invalid_payload" });
+    }
+    const candidate = normalizeHandle(parsed.data.candidateHandle);
+    const follows = parsed.data.follows
+      .map((h) => normalizeHandle(h))
+      .filter((h) => h && h !== candidate);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM tiktok_candidate_follows WHERE candidate_handle = $1`,
+        [candidate]
+      );
+      if (follows.length) {
+        const values: string[] = [];
+        const params: any[] = [candidate];
+        let i = 2;
+        for (const h of follows) {
+          values.push(`($1, $${i++})`);
+          params.push(h);
+        }
+        await client.query(
+          `INSERT INTO tiktok_candidate_follows (candidate_handle, follows_handle)
+           VALUES ${values.join(",")}
+           ON CONFLICT DO NOTHING`,
+          params
+        );
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+    return res.json({ ok: true, candidateHandle: candidate, count: follows.length });
+  })
+);
+
+// Auto-dismiss heuristique: tout candidat enrichi qui matche le profil
+// "célébrité hors-niche" est marqué dismissed en lot. Ne touche pas aux
+// candidats avec mutual >= 1 ou bio niche-friendly.
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/auto-dismiss",
+  a(async (req, res) => {
+    const dryRun =
+      String(req.body?.dryRun ?? "0") === "1" || req.body?.dryRun === true;
+
+    const NICHE_BLACKLIST = [
+      "rappeur", "rap ", "musique", "chanteur", "beatmaker",
+      "humour", "humoriste", "sketch", "comédien", "comedien",
+      "actu", "actualite", "actualité", "journaliste", "presse",
+      "député", "depute", "politique", "ministre",
+      "magasin", "supermarché", "supermarche", "carrefour",
+      "boutique", "marque officielle", "compte officiel",
+      "cuisine", "recette ", "chef cuisinier",
+      "voyage", "tourisme",
+      "foot ", "football ", "basket ", "mma ", "ufc ",
+    ];
+    const NICHE_WHITELIST = [
+      "casino", "slot", "bonus", "hunt", "gambling", "streamer",
+      "twitch", "kick", "jeu", "jeux d", "pari", "stake", "roobet",
+      "winamax", "betclic", "unibet", "pmu", "freespin", "bonanza",
+      "rtp", "blackjack", "roulette", "poker", "crash", "plinko",
+    ];
+
+    // 1) Trouver les candidats avec follower_count >= 500_000 ET aucun mutuel
+    //    OU bio contenant un mot blacklist (et aucun mot whitelist)
+    const rows = await pool.query(
+      `
+      WITH agg AS (
+        SELECT l.candidate_handle, BOOL_OR(l.signal_type = 'following') AS has_follow
+        FROM tiktok_network_links l
+        GROUP BY l.candidate_handle
+      ),
+      mutual AS (
+        SELECT cf.candidate_handle, COUNT(*) FILTER (
+          WHERE LOWER(s.handle) = LOWER(cf.follows_handle)
+        ) AS mutual_count
+        FROM tiktok_candidate_follows cf
+        LEFT JOIN tiktok_seed_accounts s ON LOWER(s.handle) = LOWER(cf.follows_handle)
+        GROUP BY cf.candidate_handle
+      )
+      SELECT
+        a.candidate_handle,
+        cp.bio,
+        cp.follower_count,
+        COALESCE(m.mutual_count, 0) AS mutual_count
+      FROM agg a
+      LEFT JOIN tiktok_candidate_profiles cp ON cp.handle = a.candidate_handle
+      LEFT JOIN tiktok_dismissed_candidates dc ON dc.handle = a.candidate_handle
+      LEFT JOIN tiktok_influencers i ON LOWER(i.handle) = a.candidate_handle
+      LEFT JOIN mutual m ON m.candidate_handle = a.candidate_handle
+      WHERE dc.handle IS NULL
+        AND i.id IS NULL
+      `
+    );
+
+    const toDismiss: Array<{ handle: string; reason: string }> = [];
+    for (const r of rows.rows) {
+      const handle = String(r.candidate_handle);
+      const bio = String(r.bio || "").toLowerCase();
+      const followers = r.follower_count != null ? Number(r.follower_count) : null;
+      const mutual = Number(r.mutual_count || 0);
+
+      // Si on a un mutuel, on ne dismiss jamais
+      if (mutual >= 1) continue;
+
+      // Whitelist niche → on protège
+      const hasWhitelist = NICHE_WHITELIST.some((kw) => bio.includes(kw));
+      if (hasWhitelist) continue;
+
+      // Cas 1: célébrité = grosse follower count, pas mutuel
+      if (followers !== null && followers >= 500_000) {
+        toDismiss.push({ handle, reason: `celebrity_${followers}` });
+        continue;
+      }
+      // Cas 2: bio explicitement hors-niche
+      const blacklistHit = NICHE_BLACKLIST.find((kw) => bio.includes(kw));
+      if (blacklistHit) {
+        toDismiss.push({ handle, reason: `niche_blacklist_${blacklistHit.trim()}` });
+        continue;
+      }
+      // Cas 3: micro-fan certain (followers connu et < 100, pas mutuel)
+      if (followers !== null && followers < 100) {
+        toDismiss.push({ handle, reason: `micro_fan_${followers}` });
+        continue;
+      }
+    }
+
+    if (!dryRun && toDismiss.length) {
+      const values: string[] = [];
+      const params: any[] = [];
+      let i = 1;
+      for (const d of toDismiss) {
+        values.push(`($${i++}, $${i++})`);
+        params.push(d.handle, d.reason);
+      }
+      await pool.query(
+        `INSERT INTO tiktok_dismissed_candidates (handle, reason)
+         VALUES ${values.join(",")}
+         ON CONFLICT (handle) DO UPDATE SET dismissed_at = NOW(), reason = EXCLUDED.reason`,
+        params
+      );
+    }
+
+    return res.json({
+      ok: true,
+      dryRun,
+      candidatesAnalyzed: rows.rows.length,
+      dismissed: toDismiss.length,
+      preview: toDismiss.slice(0, 30),
+    });
   })
 );
 

@@ -120,6 +120,7 @@ import { mig110_agency_fees_board } from "./mig110_agency_fees_board.js";
 import { mig111_rumble_vods_youtube } from "./mig111_rumble_vods_youtube.js";
 import { mig112_instagram_agenda_board } from "./mig112_instagram_agenda_board.js";
 import { mig113_tiktok_dismissed_candidates } from "./mig113_tiktok_dismissed_candidates.js";
+import { mig114_tiktok_follow_graph } from "./mig114_tiktok_follow_graph.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -259,6 +260,7 @@ export async function migrateAll(pool: Pool) {
   await mig111_rumble_vods_youtube(pool);
   await mig112_instagram_agenda_board(pool);
   await mig113_tiktok_dismissed_candidates(pool);
+  await mig114_tiktok_follow_graph(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

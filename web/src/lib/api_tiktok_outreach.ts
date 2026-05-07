@@ -354,6 +354,15 @@ export type TikTokNetworkCandidate = {
   weightedSignal: number;
   hasAffil: boolean;
   hasFollowing: boolean;
+  followOverlap: number;
+  mutualCount: number;
+  nicheVerdict:
+    | "celebrity"
+    | "off_niche"
+    | "peer_confirmed"
+    | "peer_likely"
+    | "fan"
+    | "unknown";
   decay: number;
   antiFanFactor: number;
   score: number;
@@ -469,6 +478,39 @@ export function listSeedScannedVideos(seedId: string) {
   return request<{ ok: true; videos: Array<{ url: string; scrapedAt: string | null }> }>(
     `/api/fsb/tiktok/seeds/${encodeURIComponent(seedId)}/scanned-videos`
   );
+}
+
+export function postSeedFollows(seedHandle: string, follows: string[]) {
+  return request<{ ok: true; seedHandle: string; count: number }>(
+    `/api/fsb/tiktok/network/seed-follows`,
+    {
+      method: "POST",
+      body: JSON.stringify({ seedHandle, follows }),
+    }
+  );
+}
+
+export function postCandidateFollows(candidateHandle: string, follows: string[]) {
+  return request<{ ok: true; candidateHandle: string; count: number }>(
+    `/api/fsb/tiktok/network/candidate-follows`,
+    {
+      method: "POST",
+      body: JSON.stringify({ candidateHandle, follows }),
+    }
+  );
+}
+
+export function autoDismissTikTokCelebrities(dryRun = false) {
+  return request<{
+    ok: true;
+    dryRun: boolean;
+    candidatesAnalyzed: number;
+    dismissed: number;
+    preview: Array<{ handle: string; reason: string }>;
+  }>(`/api/fsb/tiktok/network/auto-dismiss`, {
+    method: "POST",
+    body: JSON.stringify({ dryRun }),
+  });
 }
 
 export function dismissTikTokCandidate(handle: string, reason?: string) {

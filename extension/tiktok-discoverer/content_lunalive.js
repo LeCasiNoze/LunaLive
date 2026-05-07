@@ -88,6 +88,32 @@
       return;
     }
 
+    if (data.type === "DUMP_FOLLOWING") {
+      const requestId = data.requestId;
+      chrome.runtime.sendMessage(
+        { type: "LUNALIVE_TIKTOK_DUMP_FOLLOWING", payload: data.payload || {} },
+        (resp) => {
+          window.postMessage(
+            {
+              source: "lunalive-tiktok-ext",
+              type: "DUMP_FOLLOWING_RESULT",
+              requestId,
+              ok: !!resp?.ok,
+              handle: resp?.handle || null,
+              handles: resp?.handles || [],
+              total: resp?.total || 0,
+              diag: resp?.diag || null,
+              error:
+                resp?.error ||
+                (resp ? null : chrome.runtime.lastError?.message || "no_response"),
+            },
+            window.location.origin
+          );
+        }
+      );
+      return;
+    }
+
     if (data.type === "DISCOVER") {
       const requestId = data.requestId;
       chrome.runtime.sendMessage(

@@ -12,9 +12,12 @@ import {
   getTikTokTemplate,
   addTikTokAffilPattern,
   deleteTikTokAffilPattern,
+  autoDismissTikTokCelebrities,
   dismissTikTokCandidate,
   enrichTikTokCandidatesBulk,
   enrichTikTokTopCandidates,
+  postCandidateFollows,
+  postSeedFollows,
   importSeedNetworkSignals,
   importTikTokBulk,
   importTikTokNetworkHandle,
@@ -398,8 +401,8 @@ export function FsbTikTokOutreachSection() {
   const [candidatesDisplayLimit, setCandidatesDisplayLimit] = React.useState(50);
   const [importingCandidate, setImportingCandidate] = React.useState<string | null>(null);
   const [candidateTier, setCandidateTier] = React.useState<
-    "high" | "long" | "low" | "unknown"
-  >("high");
+    "peers" | "high" | "long" | "low" | "unknown"
+  >("peers");
   // Scan settings
   const [scanVideoLimit, setScanVideoLimit] = React.useState(5);
   const [scanCommentsPerVideo, setScanCommentsPerVideo] = React.useState(30);
@@ -454,6 +457,178 @@ export function FsbTikTokOutreachSection() {
       setEnrichProgress(null);
       setEnriching(false);
       await reloadCandidates();
+    }
+  };
+
+  // Helper: demande à l'extension de dumper la /following d'un handle.
+  // Renvoie la liste des handles suivis (vide si erreur).
+  const dumpFollowingViaExtension = async (
+    handle: string,
+    timeoutMs = 150_000
+  ): Promise<{ ok: boolean; handles: string[]; error?: string }> => {
+    return new Promise((resolve) => {
+      const requestId = `df-${Date.now()}-${handle}`;
+      const handler = (event: MessageEvent) => {
+        if (event.source !== window) return;
+        const data: any = event.data;
+        if (!data || data.source !== "lunalive-tiktok-ext") return;
+        if (
+          data.type === "DUMP_FOLLOWING_RESULT" &&
+          data.requestId === requestId
+        ) {
+          window.removeEventListener("message", handler);
+          resolve({
+            ok: !!data.ok,
+            handles: data.handles || [],
+            error: data.error,
+          });
+        }
+      };
+      window.addEventListener("message", handler);
+      window.postMessage(
+        {
+          source: "lunalive-tiktok-page",
+          type: "DUMP_FOLLOWING",
+          requestId,
+          payload: { handle },
+        },
+        window.location.origin
+      );
+      setTimeout(() => {
+        window.removeEventListener("message", handler);
+        resolve({ ok: false, handles: [], error: "extension_timeout" });
+      }, timeoutMs);
+    });
+  };
+
+  // Sprint 1 — pivot vers le graphe de follows.
+  // Pour chaque seed actif : ouvre /user/@seed, ouvre la modale /following,
+  // scroll jusqu'au plateau, dump tous les handles, persiste en DB.
+  const handleScanAllSeedFollows = async () => {
+    if (enriching) return;
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    const activeSeeds = seeds.filter((s) => s.isActive !== false);
+    if (!activeSeeds.length) {
+      window.alert("Aucun seed actif.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Scanner la /following de ${activeSeeds.length} seed(s) ? Compte ~30s/seed (page focus, scroll modale, dump). Total ~${Math.ceil(
+          (activeSeeds.length * 30) / 60
+        )} min.`
+      )
+    )
+      return;
+
+    setEnriching(true);
+    let okCount = 0;
+    let totalEdges = 0;
+    try {
+      for (let i = 0; i < activeSeeds.length; i++) {
+        const seed = activeSeeds[i];
+        setEnrichProgress(
+          `Seed ${i + 1}/${activeSeeds.length} · @${seed.handle} · ${totalEdges} liens…`
+        );
+        const r = await dumpFollowingViaExtension(seed.handle);
+        if (!r.ok) continue;
+        try {
+          const sent = await postSeedFollows(seed.handle, r.handles);
+          okCount++;
+          totalEdges += sent.count;
+        } catch {}
+        // Recharger les candidats au fil de l'eau pour voir le score bouger
+        if ((i + 1) % 3 === 0) await reloadCandidates();
+      }
+      window.alert(
+        `Scan /following terminé : ${okCount}/${activeSeeds.length} seeds OK, ${totalEdges} liens stockés`
+      );
+    } catch (err: any) {
+      window.alert(`Scan follows: ${err?.message || err}`);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+      await reloadCandidates();
+    }
+  };
+
+  // Sprint 2 — mutualité. Pour les top N candidats avec follow_overlap >= 1
+  // ET pas encore vérifiés, ouvre LEUR /following et stocke pour calculer
+  // mutual_count = combien de nos seeds ce candidat suit en retour.
+  const handleScanCandidateMutuality = async (topN = 30) => {
+    if (enriching) return;
+    if (!extensionVersion) {
+      window.alert("Extension TikTok non détectée.");
+      return;
+    }
+    // On prend les candidats avec follow_overlap >= 1 et mutualCount non vérifié
+    // (= 0 mais peut signifier "jamais checké"). Pour MVP on prend top N par
+    // follow_overlap desc avec mutualCount === 0.
+    const targets = candidates
+      .filter((c) => c.followOverlap >= 1 && c.mutualCount === 0)
+      .slice(0, topN);
+    if (!targets.length) {
+      window.alert("Aucun candidat avec follow_overlap à vérifier.");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Vérifier la mutualité de ${targets.length} candidat(s) ? Compte ~30s chacun.`
+      )
+    )
+      return;
+
+    setEnriching(true);
+    let okCount = 0;
+    let mutualsFound = 0;
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        const c = targets[i];
+        setEnrichProgress(
+          `Mutual ${i + 1}/${targets.length} · @${c.handle} · ${mutualsFound} mutuels…`
+        );
+        const r = await dumpFollowingViaExtension(c.handle);
+        if (!r.ok) continue;
+        try {
+          await postCandidateFollows(c.handle, r.handles);
+          okCount++;
+          // Compte mutuel local pour feedback (les seeds sont dans `seeds`)
+          const seedSet = new Set(seeds.map((s) => s.handle.toLowerCase()));
+          const mutual = r.handles.filter((h) =>
+            seedSet.has(h.toLowerCase())
+          ).length;
+          if (mutual >= 1) mutualsFound++;
+        } catch {}
+        if ((i + 1) % 5 === 0) await reloadCandidates();
+      }
+      window.alert(
+        `Mutualité : ${okCount}/${targets.length} OK, ${mutualsFound} candidats avec ≥1 mutuel`
+      );
+    } catch (err: any) {
+      window.alert(`Mutual: ${err?.message || err}`);
+    } finally {
+      setEnrichProgress(null);
+      setEnriching(false);
+      await reloadCandidates();
+    }
+  };
+
+  const handleAutoDismissCelebrities = async () => {
+    try {
+      const dryRun = await autoDismissTikTokCelebrities(true);
+      const sample = dryRun.preview
+        .map((p) => `@${p.handle} (${p.reason})`)
+        .join("\n");
+      const msg = `${dryRun.dismissed} candidat(s) seraient marqués hors-niche sur ${dryRun.candidatesAnalyzed} analysés.\n\nÉchantillon :\n${sample || "(aucun)"}\n\nConfirmer ?`;
+      if (!window.confirm(msg)) return;
+      const result = await autoDismissTikTokCelebrities(false);
+      window.alert(`Auto-dismiss : ${result.dismissed} candidats retirés.`);
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Auto-dismiss: ${err?.message || err}`);
     }
   };
 
@@ -1604,6 +1779,44 @@ export function FsbTikTokOutreachSection() {
               "🧩 Enrichir via extension"
             )}
           </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handleScanAllSeedFollows}
+            disabled={enriching || seeds.length === 0 || !extensionVersion}
+            title="Scanne /following de chaque seed pour calculer follow_overlap (gros boost qualité)"
+            style={{ borderColor: "#10b981", color: "#10b981" }}
+          >
+            {enriching && enrichProgress?.startsWith("Seed") ? (
+              <span style={{ fontSize: 11 }}>{enrichProgress}</span>
+            ) : (
+              "📡 Scanner /following seeds"
+            )}
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={() => handleScanCandidateMutuality(30)}
+            disabled={enriching || candidates.length === 0 || !extensionVersion}
+            title="Vérifie la mutualité du top 30 candidats (anti-célébrité)"
+            style={{ borderColor: "#a855f7", color: "#a855f7" }}
+          >
+            {enriching && enrichProgress?.startsWith("Mutual") ? (
+              <span style={{ fontSize: 11 }}>{enrichProgress}</span>
+            ) : (
+              "🧪 Vérif mutualité top 30"
+            )}
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
+            onClick={handleAutoDismissCelebrities}
+            disabled={enriching || candidates.length === 0}
+            title="Pré-sélectionne les célébrités/hors-niche détectés et les retire en bulk"
+            style={{ borderColor: "#f04e4e", color: "#f04e4e" }}
+          >
+            🧹 Auto-dismiss célébrités
+          </button>
         </div>
 
         {/* Patterns d'affiliation */}
@@ -1854,6 +2067,12 @@ export function FsbTikTokOutreachSection() {
           </h3>
           {(() => {
             const buckets = {
+              peers: candidates.filter(
+                (c) =>
+                  c.nicheVerdict === "peer_confirmed" ||
+                  c.nicheVerdict === "peer_likely" ||
+                  c.followOverlap >= 2
+              ),
               high: candidates.filter(
                 (c) => (c.profile.followerCount ?? -1) >= 40000
               ),
@@ -1870,10 +2089,11 @@ export function FsbTikTokOutreachSection() {
               ),
             };
             const tabs: Array<{
-              k: "high" | "long" | "low" | "unknown";
+              k: "peers" | "high" | "long" | "low" | "unknown";
               label: string;
               color: string;
             }> = [
+              { k: "peers", label: `🟢 Peers (${buckets.peers.length})`, color: "#10b981" },
               { k: "high", label: `🔥 Fort potentiel · ≥40K (${buckets.high.length})`, color: "#fbbf24" },
               { k: "long", label: `🌱 Long terme · 5K–40K (${buckets.long.length})`, color: "#22d3ee" },
               { k: "low", label: `💤 Faibles · <5K (${buckets.low.length})`, color: "#94a3b8" },
@@ -1965,6 +2185,13 @@ export function FsbTikTokOutreachSection() {
               <tbody>
                 {candidates
                   .filter((c) => {
+                    if (candidateTier === "peers") {
+                      return (
+                        c.nicheVerdict === "peer_confirmed" ||
+                        c.nicheVerdict === "peer_likely" ||
+                        c.followOverlap >= 2
+                      );
+                    }
                     const f = c.profile.followerCount;
                     if (candidateTier === "unknown") return f == null;
                     if (f == null) return false;
@@ -2052,6 +2279,100 @@ export function FsbTikTokOutreachSection() {
                           déjà DSB · {c.influencer.status}
                         </span>
                       ) : null}
+                      <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {c.followOverlap >= 1 ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(16,185,129,.15)",
+                              border: "1px solid rgba(16,185,129,.4)",
+                              color: "#10b981",
+                              fontWeight: 700,
+                            }}
+                            title={`${c.followOverlap} de nos seeds suivent ce compte`}
+                          >
+                            🔗 overlap {c.followOverlap}
+                          </span>
+                        ) : null}
+                        {c.mutualCount >= 1 ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(34,211,238,.15)",
+                              border: "1px solid rgba(34,211,238,.4)",
+                              color: "#22d3ee",
+                              fontWeight: 700,
+                            }}
+                            title={`Suit ${c.mutualCount} de nos seeds en retour`}
+                          >
+                            ↔ mutual {c.mutualCount}
+                          </span>
+                        ) : null}
+                        {c.nicheVerdict === "celebrity" ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(240,78,78,.15)",
+                              border: "1px solid rgba(240,78,78,.4)",
+                              color: "#f04e4e",
+                              fontWeight: 700,
+                            }}
+                          >
+                            ⭐ célébrité
+                          </span>
+                        ) : null}
+                        {c.nicheVerdict === "off_niche" ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(148,163,184,.15)",
+                              border: "1px solid var(--bd)",
+                              color: "var(--muted)",
+                              fontWeight: 700,
+                            }}
+                          >
+                            🚫 hors-niche
+                          </span>
+                        ) : null}
+                        {c.nicheVerdict === "peer_confirmed" ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(16,185,129,.18)",
+                              border: "1px solid rgba(16,185,129,.5)",
+                              color: "#10b981",
+                              fontWeight: 800,
+                            }}
+                          >
+                            ✓ peer confirmé
+                          </span>
+                        ) : null}
+                        {c.nicheVerdict === "peer_likely" ? (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              padding: "2px 7px",
+                              borderRadius: 999,
+                              background: "rgba(34,211,238,.12)",
+                              border: "1px solid rgba(34,211,238,.35)",
+                              color: "#22d3ee",
+                              fontWeight: 700,
+                            }}
+                          >
+                            🎯 peer probable
+                          </span>
+                        ) : null}
+                      </div>
                       {c.antiFanFactor < 1 ? (
                         <span
                           style={{
