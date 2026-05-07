@@ -696,14 +696,18 @@ export function FsbTikTokOutreachSection() {
           msg = `❌ TEST /following @${handle} ÉCHEC\nErreur : ${r.error}${diagShort}`;
         }
       } else {
+        const sa = r.diag?.scrollAnchors;
+        const scrollStr = Array.isArray(sa) && sa.length
+          ? `\n\nScroll progression : ${sa.length} ticks · final ${sa[sa.length - 1]} anchors\n  ${sa.slice(0, 20).join(" → ")}${sa.length > 20 ? "…" : ""}`
+          : "";
         msg =
           `✅ TEST /following @${handle}\n\n` +
           `${r.handles.length} handles capturés\n` +
-          `Exemple : ${sample}${r.handles.length > 10 ? "…" : ""}\n` +
+          `Exemple : ${sample}${r.handles.length > 10 ? "…" : ""}` +
+          scrollStr +
           (r.handles.length < 30
-            ? "⚠️ Peu de résultats — la modale a peut-être stoppé tôt"
-            : "👍 Volume cohérent") +
-          diagShort;
+            ? "\n⚠️ Peu de résultats — la modale a peut-être stoppé tôt"
+            : "\n👍 Volume cohérent");
       }
       window.alert(msg);
     } finally {

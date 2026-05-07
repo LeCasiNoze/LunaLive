@@ -1349,80 +1349,72 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               });
             }
 
-            // Robust scroll loop: hybrid — programmatic scroll inside page
-            // + TRUSTED wheel via CDP at modal center to force virtual list.
+            // Aggressive scroll loop: hybrid programmatic + TRUSTED wheel.
+            // Multiple wheel ticks per iteration to force virtual list growth.
+            await new Promise((r) => setTimeout(r, 1500)); // Let modal settle
+            allDiag.scrollAnchors = [];
+            allDiag.scrollStable = 0;
             try {
               for (let scrollI = 0; scrollI < maxScrollTicks; scrollI++) {
                 const rectInfo = await findRect(tab.id, () => {
                   let scope =
-                    document.querySelector('[role="dialog"]') ||
-                    document.querySelector('div[aria-modal="true"]') ||
                     document.querySelector('[class*="DivUserListContainer"]') ||
                     document.querySelector('[class*="UserListContainer"]') ||
+                    document.querySelector('[role="dialog"]') ||
+                    document.querySelector('div[aria-modal="true"]') ||
                     null;
-                  if (!scope) {
-                    const fb = document.querySelectorAll(
-                      '[data-e2e="follow-button"]'
-                    );
-                    if (fb.length >= 3) {
-                      let n = fb[0].parentElement;
-                      while (n && n !== document.body) {
-                        const lb = n.querySelectorAll(
-                          '[data-e2e="follow-button"]'
-                        );
-                        const ll = n.querySelectorAll('a[href^="/@"]');
-                        if (lb.length >= 3 && ll.length >= 3) {
-                          scope = n;
-                          break;
-                        }
-                        n = n.parentElement;
-                      }
-                    }
-                  }
                   if (!scope) return { found: false };
                   const r = scope.getBoundingClientRect();
-                  // Programmatic scroll on the deepest scrollable inside scope
-                  let target = scope;
+                  // Find ALL scrollable candidates (ancestors + descendants)
+                  const candidates = [];
                   let node = scope;
-                  for (let i = 0; i < 5 && node; i++) {
+                  for (let i = 0; i < 6 && node; i++) {
                     try {
                       const cs = getComputedStyle(node);
                       if (
                         (cs.overflowY === "auto" ||
                           cs.overflowY === "scroll") &&
-                        node.scrollHeight - node.clientHeight > 30
+                        node.scrollHeight - node.clientHeight > 10
                       ) {
-                        target = node;
-                        break;
+                        candidates.push(node);
                       }
                     } catch {}
                     node = node.parentElement;
                   }
-                  if (target === scope) {
-                    // try inside
-                    const all = scope.querySelectorAll("*");
-                    for (const el of Array.from(all)) {
-                      try {
-                        const cs = getComputedStyle(el);
-                        if (
-                          (cs.overflowY === "auto" ||
-                            cs.overflowY === "scroll") &&
-                          el.scrollHeight - el.clientHeight > 30
-                        ) {
-                          target = el;
-                          break;
-                        }
-                      } catch {}
-                    }
+                  const all = scope.querySelectorAll("*");
+                  for (const el of Array.from(all)) {
+                    try {
+                      const cs = getComputedStyle(el);
+                      if (
+                        (cs.overflowY === "auto" ||
+                          cs.overflowY === "scroll") &&
+                        el.scrollHeight - el.clientHeight > 10
+                      ) {
+                        candidates.push(el);
+                      }
+                    } catch {}
                   }
-                  try {
-                    target.scrollBy({ top: 2400 });
-                    target.scrollTop = target.scrollTop + 2400;
-                  } catch {}
+                  // Scroll EVERY candidate (the scroller might be elsewhere
+                  // than expected; scrolling many is harmless)
+                  for (const t of candidates) {
+                    try {
+                      t.scrollBy({ top: 4000 });
+                      t.scrollTop = t.scrollTop + 4000;
+                    } catch {}
+                  }
+                  // Also scroll into view the LAST list item (forces virtual list to load next)
+                  const items = scope.querySelectorAll("li, [class*='UserContainer']");
+                  if (items.length) {
+                    try {
+                      items[items.length - 1].scrollIntoView({ block: "end" });
+                    } catch {}
+                  }
                   const links = scope.querySelectorAll('a[href^="/@"]').length;
                   return {
                     found: true,
                     anchors: links,
+                    candidatesCount: candidates.length,
+                    itemsCount: items.length,
                     rect: {
                       left: r.left,
                       top: r.top,
@@ -1432,16 +1424,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   };
                 });
                 if (!rectInfo?.found || !rectInfo.rect) break;
-                // Trusted wheel at modal center
+                // 3 trusted wheels per tick at modal center for extra punch
                 const cx = Math.floor(rectInfo.rect.left + rectInfo.rect.width / 2);
                 const cy = Math.floor(rectInfo.rect.top + rectInfo.rect.height / 2);
-                await trustedWheel(tab.id, cx, cy, 1500);
-                await new Promise((r) => setTimeout(r, 800));
-                // Track plateau via the anchors count
-                if (typeof allDiag.scrollAnchors === "undefined") {
-                  allDiag.scrollAnchors = [];
-                  allDiag.scrollStable = 0;
-                }
+                await trustedWheel(tab.id, cx, cy, 3500);
+                await new Promise((r) => setTimeout(r, 250));
+                await trustedWheel(tab.id, cx, cy, 3500);
+                await new Promise((r) => setTimeout(r, 250));
+                await trustedWheel(tab.id, cx, cy, 3500);
+                await new Promise((r) => setTimeout(r, 700));
+                // Track plateau
                 const last =
                   allDiag.scrollAnchors[allDiag.scrollAnchors.length - 1];
                 allDiag.scrollAnchors.push(rectInfo.anchors);
@@ -1450,9 +1442,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 } else {
                   allDiag.scrollStable = 0;
                 }
-                if (allDiag.scrollStable >= 6) break;
+                // Plateau threshold raised from 6 → 12 (~12s of no growth)
+                if (allDiag.scrollStable >= 12) break;
               }
-            } catch {}
+            } catch (err) {
+              allDiag.scrollError = String(err?.message || err);
+            }
             // Old in-page scroll loop kept as belt-and-braces (truncated)
             try {
               await chrome.scripting.executeScript({
@@ -1699,13 +1694,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const out = (results && results[0] && results[0].result) || null;
               // Reject if extraction bailed (no dialog) or got 0 handles
               const handlesOk = out && out.handles && out.handles.length > 0;
+              // Merge scroll diag into the final diag for visibility
+              const mergedDiag = {
+                ...(out?.diag || {}),
+                scrollAnchors: allDiag?.scrollAnchors || [],
+                scrollStable: allDiag?.scrollStable ?? null,
+                scrollTicks: (allDiag?.scrollAnchors || []).length,
+              };
               return finish({
                 ok: !!handlesOk,
                 error: handlesOk ? undefined : "no_handles_extracted",
                 handle: cleaned,
                 handles: out?.handles || [],
                 total: out?.handles?.length || 0,
-                diag: out?.diag || null,
+                diag: mergedDiag,
               });
             } catch (err) {
               return finish({ ok: false, error: String(err?.message || err) });
