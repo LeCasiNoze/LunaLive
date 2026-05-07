@@ -1755,12 +1755,17 @@ tiktokOutreachRouter.get(
                 WHEN s2.seed_count = 2  THEN 10
                 ELSE 0
               END
-            -- 6) Bonus follower-tier (peer = 5K-500K, idéal)
+            -- 6) Bonus follower-tier (peer = 5K-500K, idéal).
+            --    PÉNALITÉ DURE pour <1K (vrais kids/fans) et non-enrichis
+            --    (sinon ils dominent le top avec leur follow_overlap brut).
             + CASE
-                WHEN cp.follower_count IS NULL THEN 0
-                WHEN cp.follower_count BETWEEN 10000 AND 200000 THEN 40
-                WHEN cp.follower_count BETWEEN 5000 AND 10000   THEN 20
-                WHEN cp.follower_count BETWEEN 200000 AND 500000 THEN 20
+                WHEN cp.follower_count IS NULL THEN -150
+                WHEN cp.follower_count < 500   THEN -250
+                WHEN cp.follower_count < 1000  THEN -150
+                WHEN cp.follower_count < 5000  THEN -50
+                WHEN cp.follower_count BETWEEN 5000 AND 10000   THEN 30
+                WHEN cp.follower_count BETWEEN 10000 AND 200000 THEN 60
+                WHEN cp.follower_count BETWEEN 200000 AND 500000 THEN 30
                 ELSE 0
               END
             -- 7) Pénalité célébrité DURE : >=2M + zéro mutuel = vraie célébrité

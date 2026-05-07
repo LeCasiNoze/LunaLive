@@ -922,9 +922,25 @@ export function FsbTikTokOutreachSection() {
       }
       await reloadCandidates();
 
-      // Étape 2: enrichir profils des candidats actuels
-      setEnrichProgress("Pipeline 2/5 — enrichir profils…");
-      const toEnrich = candidates
+      // Étape 2: enrichir profils des candidats actuels.
+      // ⚠️ On fetch FRESH depuis l'API, pas le state React (qui est asynchrone
+      // et peut être encore vide à cet instant).
+      setEnrichProgress("Pipeline 2/5 — fetch candidats…");
+      const freshCandsAfterStep1 = await (async () => {
+        try {
+          const res = await listTikTokNetworkCandidates({
+            limit: 1000,
+            excludeImported: true,
+          });
+          return res.candidates;
+        } catch {
+          return [] as typeof candidates;
+        }
+      })();
+      setEnrichProgress(
+        `Pipeline 2/5 — enrichir profils (${freshCandsAfterStep1.length} candidats trouvés)…`
+      );
+      const toEnrich = freshCandsAfterStep1
         .filter((c) => c.profile.followerCount == null)
         .map((c) => c.handle);
       let enrichOk = 0;
@@ -974,11 +990,20 @@ export function FsbTikTokOutreachSection() {
       }
       await reloadCandidates();
 
-      // Étape 3: mutualité top 50
+      // Étape 3: mutualité top 50 — fetch FRESH depuis l'API
       setEnrichProgress("Pipeline 3/5 — mutualité top 50…");
-      const fresh = await reloadCandidates();
-      void fresh;
-      const mutTargets = candidates
+      const freshCandsAfterStep2 = await (async () => {
+        try {
+          const res = await listTikTokNetworkCandidates({
+            limit: 1000,
+            excludeImported: true,
+          });
+          return res.candidates;
+        } catch {
+          return [] as typeof candidates;
+        }
+      })();
+      const mutTargets = freshCandsAfterStep2
         .filter((c) => c.followOverlap >= 1 && c.mutualCount === 0)
         .slice(0, 50);
       let mutOk = 0;
