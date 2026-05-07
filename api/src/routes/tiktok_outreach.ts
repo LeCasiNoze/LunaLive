@@ -1854,6 +1854,9 @@ tiktokOutreachRouter.get(
       LEFT JOIN tiktok_dismissed_candidates dc ON dc.handle = s2.candidate_handle
       WHERE COALESCE(i.status, '') NOT IN ('declined','blacklisted')
         AND dc.handle IS NULL
+        -- HARD CUTOFF: <5K followers = OUT, peu importe overlap/mutual.
+        -- Les non-enrichis (NULL) restent visibles le temps de l'enrichment.
+        AND (cp.follower_count IS NULL OR cp.follower_count >= 5000)
         ${excludeImported ? "AND i.id IS NULL" : ""}
         ${affilOnly ? "AND s2.has_affil = TRUE" : ""}
       ORDER BY score DESC, s2.last_seen_at DESC
@@ -2533,6 +2536,13 @@ tiktokOutreachRouter.post(
       const bio = String(r.bio || "").toLowerCase();
       const followers = r.follower_count != null ? Number(r.follower_count) : null;
       const mutual = Number(r.mutual_count || 0);
+
+      // Cas 0 (PRIORITAIRE) : règle business stricte du user.
+      // <5K followers ENRICHI = out, peu importe mutual/overlap/whitelist.
+      if (followers !== null && followers < 5000) {
+        toDismiss.push({ handle, reason: `sub_5k_${followers}` });
+        continue;
+      }
 
       // Mutuel ≥ 1 → JAMAIS dismiss (signal le plus fort, prime tout)
       if (mutual >= 1) continue;
