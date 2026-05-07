@@ -48,17 +48,29 @@ function isPathSelected(ctx: V2EditCtx | null, zone: V2ZoneKey, indices: number[
 // ─── Style helpers ───────────────────────────────────────────────────────────
 
 function commonToStyle(c: V2CommonStyle, isMobile: boolean): React.CSSProperties {
-  return {
-    marginTop:    (isMobile && c.marginTopMobile)    || c.marginTop,
-    marginBottom: (isMobile && c.marginBottomMobile) || c.marginBottom,
-    marginLeft:   c.marginX,
-    marginRight:  c.marginX,
-    paddingTop:    (isMobile && c.paddingTopMobile)    || c.paddingTop,
-    paddingBottom: (isMobile && c.paddingBottomMobile) || c.paddingBottom,
-    paddingLeft:  c.paddingX,
-    paddingRight: c.paddingX,
-    textAlign: c.align && c.align !== "stretch" ? c.align : undefined,
-  };
+  // CRITIQUE : on omet les clés à `undefined` plutôt que de les inclure. Sinon
+  // un spread `{ marginTop: 0, ...commonToStyle({}) }` donne `marginTop:
+  // undefined` qui efface le 0 et fait revenir la marge par défaut du browser
+  // (h1 ≈ 0.67em par exemple).
+  const out: React.CSSProperties = {};
+  const mt = (isMobile && c.marginTopMobile) || c.marginTop;
+  if (mt !== undefined) out.marginTop = mt;
+  const mb = (isMobile && c.marginBottomMobile) || c.marginBottom;
+  if (mb !== undefined) out.marginBottom = mb;
+  if (c.marginX !== undefined) {
+    out.marginLeft = c.marginX;
+    out.marginRight = c.marginX;
+  }
+  const pt = (isMobile && c.paddingTopMobile) || c.paddingTop;
+  if (pt !== undefined) out.paddingTop = pt;
+  const pb = (isMobile && c.paddingBottomMobile) || c.paddingBottom;
+  if (pb !== undefined) out.paddingBottom = pb;
+  if (c.paddingX !== undefined) {
+    out.paddingLeft = c.paddingX;
+    out.paddingRight = c.paddingX;
+  }
+  if (c.align && c.align !== "stretch") out.textAlign = c.align;
+  return out;
 }
 
 function effectsToStyle(e: V2Effects): React.CSSProperties {
