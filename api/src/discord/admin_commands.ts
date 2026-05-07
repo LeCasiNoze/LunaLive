@@ -30,6 +30,7 @@ import {
 } from "discord.js";
 import { pool } from "../db.js";
 import { refreshAgencyFeesBoard } from "../agency_fees_board.js";
+import { buildV3PageFromQuickInputs, type V3QuickInputs } from "../lib/affi_v3_quick_builder.js";
 
 const LOG = "[admin-cmd]";
 
@@ -265,27 +266,38 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
     if (depositAmount !== null && !isFinite(depositAmount)) throw new Error("Dépôt invalide");
     if (bonusAmount   !== null && !isFinite(bonusAmount))   throw new Error("Bonus invalide");
 
-    // Slug auto à partir du pseudo
-    const baseSlug = pseudo.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const slug = await resolveUniqueSlug(baseSlug || "landing");
-
-    // V3 stocke ses inputs dans config.__v3Inputs ; quand le user ouvre le V3
-    // dashboard et clique sur la page, le wizard se pré-remplit. Le user
-    // clique "Save" pour finaliser le rendu V2.
-    const v3Inputs = {
+    // Construit les V3QuickInputs (defaults pour ce qui n'est pas dans le modal)
+    const inputs: V3QuickInputs = {
       modelKind: "M1",
       pseudo,
       affiLink,
       depositAmount,
       bonusAmount,
       profileImageUrl: profile,
-      card1Image: { kind: "penalty", url: "" },
-      card2Image: { kind: "mines",   url: "" },
+      // Cartes : présets penalty + mines (mêmes URLs que defaultV3QuickInputs)
+      card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
+      card2Image: { kind: "mines",   url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
       cardAspect: "16/9",
       cardObjectFit: "cover",
+      pseudoStyle:      { font: "Inter", color: "#FFD700", size: "m",  weight: "black", glow: true },
+      depositLineStyle: { font: "Inter", color: "#ffffff", size: "l",  weight: "black" },
+      bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "l",  weight: "black", glow: true },
     };
-    const config: any = { __v3: true, __v3Inputs: v3Inputs };
+
+    // Build complet de la V2Page comme le ferait l'éditeur V3 côté front.
+    const v2Page = buildV3PageFromQuickInputs(inputs);
+
+    // Slug : si le builder a déduit un slug depuis affiLink, on l'utilise ;
+    // sinon fallback sur slugify(pseudo). Puis garantit unicité.
+    const builderSlug = String((v2Page as any).slug || "").trim();
+    const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const slug = await resolveUniqueSlug(baseSlug || "landing");
+    (v2Page as any).slug = slug;
+
+    // Marqueurs V3 dans le config pour qu'à la ré-ouverture, le wizard
+    // puisse pré-remplir ses inputs (cohérent avec le save côté EditorV3Page).
+    const config: any = { ...v2Page, __v3: true, __v3Inputs: inputs };
 
     const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
 
@@ -309,9 +321,9 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
       .setTitle(`🌐 Landing V3 créée`)
       .setURL(publicUrl)
       .setDescription(
-        `Page **${pseudo}** créée (#${id}, slug \`${finalSlug}\`).\n\n` +
-        `⚠️ Les **inputs V3 sont enregistrés** mais le rendu V2 n'est pas encore généré. ` +
-        `Ouvre l'éditeur V3, clique sur la page dans le dashboard, ajuste si besoin et clique **Sauver** pour publier.`
+        `Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`).\n\n` +
+        `🎯 La page est **directement live** — pseudo, lien d'affi, dépôt et bonus sont déjà appliqués. ` +
+        `Ouvre l'éditeur V3 pour ajuster les images, polices, couleurs ou ajouter une photo de profil si besoin.`
       )
       .addFields(
         { name: "🔗 URL publique", value: publicUrl, inline: false },
