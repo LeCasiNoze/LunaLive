@@ -16,7 +16,6 @@ type RelayVodItem = {
 };
 import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
 import { sendRumbleMessage } from "../rumble_chat_bridge.js";
-import { cycleFetch } from "../rumble_http.js";
 
 export const adminRumbleRouter = Router();
 
@@ -104,7 +103,7 @@ adminRumbleRouter.get("/admin/rumble/status", requireAdminKey, async (req, res) 
 /**
  * GET /admin/rumble/send-queue?limit=10
  * Retourne les messages en attente d'envoi (pour le relay local qui les
- * exécutera via cycletls depuis l'IP résidentielle où cookies sont valides).
+ * exécutera depuis l'IP résidentielle où cookies sont valides).
  */
 adminRumbleRouter.get("/admin/rumble/send-queue", requireAdminKey, async (req, res) => {
   try {
@@ -410,25 +409,26 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
 
     const session = await getRumbleBotSession();
 
-    // Scrape via cycletls pour passer Cloudflare. Tente /c/{username} puis /user/{username}
+    // Scrape direct (Cloudflare bloque souvent les IP Render → fallback CF Worker
+    // si dispo). Tente /c/{username} puis /user/{username}.
     let html = "";
     let used = "";
+    const headers: Record<string, string> = {
+      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+      "accept-language": "fr-FR,fr;q=0.9",
+      "referer": "https://rumble.com/",
+      "user-agent": session.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    };
+    if (session.cookie) headers["cookie"] = session.cookie;
     for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
-      const r = await cycleFetch(`https://rumble.com${path}`, {
-        method: "get",
-        userAgent: session.userAgent || undefined,
-        cookie: session.cookie || undefined,
-        headers: {
-          "accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-          "accept-language": "fr-FR,fr;q=0.9",
-          "referer": "https://rumble.com/",
-        },
-      });
-      if (r.status >= 200 && r.status < 300 && r.body) {
-        html = r.body;
-        used = path;
-        break;
-      }
+      try {
+        const r = await fetch(`https://rumble.com${path}`, { method: "GET", headers });
+        if (r.status >= 200 && r.status < 300) {
+          html = await r.text();
+          used = path;
+          break;
+        }
+      } catch {}
     }
     if (!html) return res.status(502).json({ ok: false, error: "scrape_failed" });
 
@@ -496,7 +496,7 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
  * POST /admin/rumble/send-test
  * Body: { videoIdNumeric: string, text?: string }
  * Envoie un message de test dans un chat Rumble via le bot. Utile pour valider
- * le pipeline cycletls + cookies sans attendre qu'un live LunaLive démarre.
+ * le pipeline cookies sans attendre qu'un live LunaLive démarre.
  */
 /**
  * POST /admin/rumble/ingest-vods

@@ -9,9 +9,6 @@ import { chatStore } from "./chat_store.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
-// cycletls retiré : il consommait ~30-50 MB par instance Go en sous-processus
-// (OOM Render sous rafale), et son fallback aboutissait au même 403 que Node
-// fetch quand u_s est périmé. Le SEUL fix utile est de rafraîchir la session.
 
 type Bridge = {
   stop: () => void;
@@ -127,10 +124,6 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
     .join("; ");
 
   try {
-    // Node native fetch uniquement. cycletls retiré : il fallback-ait sur le
-    // même 403 "logged_in: false" (problème = session u_s périmée, pas TLS
-    // fingerprint), mais coûtait ~30-50 MB par instance Go → OOM Render
-    // sous rafale (clip + msg bot + duplicates).
     const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
       method: "POST",
       headers: {
@@ -158,7 +151,7 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
       const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
       return { id: id || `rumble_${Date.now()}`, userId };
     }
-    // Non-2xx : log compact (1 ligne) et abandon, pas de fallback cycletls.
+    // Non-2xx : log compact (1 ligne) et abandon.
     const snippet = respText.replace(/\s+/g, " ").slice(0, 200);
     console.warn(`[rumble_chat] send http=${r.status} server=${r.headers.get("server")} cookieLen=${cleanCookie.length} body=${snippet}`);
     return null;

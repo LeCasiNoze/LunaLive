@@ -1,7 +1,7 @@
 // api/src/db/migrations/mig091_rumble_send_queue.ts
 // Queue de messages bot à envoyer dans le chat Rumble.
-// Render écrit dedans (via mirror), le relay local pioche et exécute via cycletls
-// depuis l'IP résidentielle (cookies cf_clearance valides).
+// Render écrit dedans (via mirror), un relay local peut piocher et exécuter
+// depuis l'IP résidentielle si nécessaire (cookies cf_clearance valides).
 import type { Pool } from "pg";
 
 export async function mig091_rumble_send_queue(pool: Pool) {

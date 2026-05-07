@@ -94,10 +94,6 @@ export async function sendRumbleMessage(videoIdNumeric, text) {
         .filter(c => c && !/^cf_clearance=/i.test(c) && !/^__cf_bm=/i.test(c))
         .join("; ");
     try {
-        // Node native fetch uniquement. cycletls retiré : il fallback-ait sur le
-        // même 403 "logged_in: false" (problème = session u_s périmée, pas TLS
-        // fingerprint), mais coûtait ~30-50 MB par instance Go → OOM Render
-        // sous rafale (clip + msg bot + duplicates).
         const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
             method: "POST",
             headers: {
@@ -128,7 +124,7 @@ export async function sendRumbleMessage(videoIdNumeric, text) {
             const userId = j?.data?.user?.id ? String(j.data.user.id) : "";
             return { id: id || `rumble_${Date.now()}`, userId };
         }
-        // Non-2xx : log compact (1 ligne) et abandon, pas de fallback cycletls.
+        // Non-2xx : log compact (1 ligne) et abandon.
         const snippet = respText.replace(/\s+/g, " ").slice(0, 200);
         console.warn(`[rumble_chat] send http=${r.status} server=${r.headers.get("server")} cookieLen=${cleanCookie.length} body=${snippet}`);
         return null;

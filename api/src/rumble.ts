@@ -406,7 +406,7 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{
  * Renvoie null si pas de live actif ou si CF bloque.
  */
 async function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
-  // Cloudflare bloque les fetch standard et même cycletls depuis Render IPs.
+  // Cloudflare bloque les fetch standard depuis Render IPs.
   // Solution: passer par notre CF Worker (lunalive-hls.lunalive.workers.dev)
   // qui tourne dans le réseau Cloudflare → fetch interne CF→CF, pas de WAF anti-bot.
   // Le worker fait le scrape et nous renvoie juste le slug en JSON.

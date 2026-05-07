@@ -291,7 +291,7 @@ internalBotRouter.post(
     const io = req.app.locals.io;
     if (io) emitChatAll(io, slug, "chat:message", msg);
 
-    // Mirror sur le chat Rumble du streamer si live actif (cycletls + bot session).
+    // Mirror sur le chat Rumble du streamer si live actif (Node fetch + bot session).
     void mirrorBotMessageToRumble(streamerId, messageText);
 
     return res.json({ ok: true, id: msg.id });
