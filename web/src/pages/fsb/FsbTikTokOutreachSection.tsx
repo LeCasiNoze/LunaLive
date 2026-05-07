@@ -467,7 +467,7 @@ export function FsbTikTokOutreachSection() {
   const dumpFollowingViaExtension = async (
     handle: string,
     timeoutMs = 150_000
-  ): Promise<{ ok: boolean; handles: string[]; error?: string }> => {
+  ): Promise<{ ok: boolean; handles: string[]; error?: string; diag?: any }> => {
     return new Promise((resolve) => {
       const requestId = `df-${Date.now()}-${handle}`;
       const handler = (event: MessageEvent) => {
@@ -483,6 +483,7 @@ export function FsbTikTokOutreachSection() {
             ok: !!data.ok,
             handles: data.handles || [],
             error: data.error,
+            diag: data.diag,
           });
         }
       };
@@ -665,14 +666,26 @@ export function FsbTikTokOutreachSection() {
     try {
       const r = await dumpFollowingViaExtension(handle);
       const sample = r.handles.slice(0, 10).join(", ");
-      const msg = r.ok
-        ? `✅ TEST /following @${handle}\n\n` +
+      const diagStr = r.diag ? `\n\nDiag: ${JSON.stringify(r.diag)}` : "";
+      let msg: string;
+      if (!r.ok) {
+        if (r.error === "private_account") {
+          msg = `🔒 @${handle} a un COMPTE PRIVÉ\n\nLa /following n'est pas accessible. C'est normal pour beaucoup d'influenceurs.${diagStr}`;
+        } else if (r.error === "modal_not_opened") {
+          msg = `❌ La modale Following ne s'est pas ouverte\n\nPossibles raisons : compte avec /following privé, sélecteurs TikTok ont changé, ou clic intercepté.${diagStr}`;
+        } else {
+          msg = `❌ TEST /following @${handle} ÉCHEC\n\nErreur : ${r.error}${diagStr}`;
+        }
+      } else {
+        msg =
+          `✅ TEST /following @${handle}\n\n` +
           `${r.handles.length} handles capturés\n` +
-          `Exemple : ${sample}${r.handles.length > 10 ? "…" : ""}\n\n` +
+          `Exemple : ${sample}${r.handles.length > 10 ? "…" : ""}\n` +
           (r.handles.length < 30
-            ? "⚠️ Peu de résultats — la modale n'a peut-être pas scrollé tout le long"
-            : "👍 Volume cohérent")
-        : `❌ TEST /following @${handle} ÉCHEC\n\nErreur : ${r.error}`;
+            ? "⚠️ Peu de résultats — la modale a peut-être stoppé tôt"
+            : "👍 Volume cohérent") +
+          diagStr;
+      }
       window.alert(msg);
     } finally {
       setEnrichProgress(null);

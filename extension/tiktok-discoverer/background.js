@@ -992,6 +992,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Wait for SPA to mount.
             await new Promise((r) => setTimeout(r, 4500));
 
+            // PRIVATE ACCOUNT CHECK — read SSR data; if profile is private,
+            // bail explicitly so we don't capture suggestions as "follows".
+            try {
+              const probeRes = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                  let priv = false;
+                  let secret = false;
+                  let followingCount = null;
+                  try {
+                    const script = document.getElementById(
+                      "__UNIVERSAL_DATA_FOR_REHYDRATION__"
+                    );
+                    if (script && script.textContent) {
+                      const json = JSON.parse(script.textContent);
+                      const scope = (json && json.__DEFAULT_SCOPE__) || {};
+                      const ud = scope["webapp.user-detail"];
+                      const u = ud?.userInfo?.user || null;
+                      const s = ud?.userInfo?.stats || {};
+                      if (u) {
+                        priv = !!u.privateAccount;
+                        secret = !!u.secret;
+                        followingCount =
+                          typeof s.followingCount === "number"
+                            ? s.followingCount
+                            : null;
+                      }
+                    }
+                  } catch {}
+                  return { priv, secret, followingCount };
+                },
+              });
+              const probe = probeRes && probeRes[0] && probeRes[0].result;
+              if (probe?.priv || probe?.secret) {
+                return finish({
+                  ok: false,
+                  error: "private_account",
+                  diag: probe,
+                });
+              }
+            } catch {}
+
             // Try opening the modal up to 4 times with different strategies
             let modalOpened = false;
             for (let attempt = 0; attempt < 4 && !modalOpened; attempt++) {
@@ -1062,7 +1104,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     },
                   });
                   const out = checkRes && checkRes[0] && checkRes[0].result;
-                  if (out?.open && (out.anchors > 0 || /follow|abon/i.test(out.title || ""))) {
+                  // STRICTER: require title to mention follow/abon AND have anchors.
+                  // If title mismatch, this is a wrong modal (e.g. "Sign in" or share)
+                  if (
+                    out?.open &&
+                    /follow|abon/i.test(out.title || "") &&
+                    out.anchors >= 1
+                  ) {
                     modalOpened = true;
                     break;
                   }
@@ -1309,43 +1357,112 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const onUpdated = async (tabId, info) => {
             if (tabId !== tab.id || info.status !== "complete") return;
             chrome.tabs.onUpdated.removeListener(onUpdated);
-            await new Promise((r) => setTimeout(r, 4000));
-            // Scroll the comment panel
+            await new Promise((r) => setTimeout(r, 4500));
+
+            // STEP A — Make sure the "Commentaires" tab is selected, not
+            // "Tu pourrais aimer" / "You may like".
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: () => {
+                  // Find tabs by text. Click the one that says Commentaires/Comments.
+                  const candidates = Array.from(
+                    document.querySelectorAll(
+                      'button,a,[role="tab"],[role="button"],div'
+                    )
+                  ).filter((el) => {
+                    const txt = (el.textContent || "").trim().toLowerCase();
+                    if (!txt || txt.length > 40) return false;
+                    return /(commentaires|comments)\b/.test(txt);
+                  });
+                  // Prefer the most specific (smallest text)
+                  candidates.sort(
+                    (a, b) =>
+                      (a.textContent || "").length - (b.textContent || "").length
+                  );
+                  for (const c of candidates) {
+                    try {
+                      const interactive =
+                        c.closest("button,a,[role='tab'],[role='button']") || c;
+                      interactive.click();
+                      return { clicked: true, text: interactive.textContent?.slice(0, 30) };
+                    } catch {}
+                  }
+                  return { clicked: false, found: candidates.length };
+                },
+              });
+            } catch {}
+            await new Promise((r) => setTimeout(r, 1500));
+
+            // STEP B — Scroll the comment list aggressively. Target ONLY the
+            // [data-e2e="comment-list"] scrollable; don't fall back to anything else.
             try {
               await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 func: (max) =>
                   new Promise((resolve) => {
+                    function findCommentScroller() {
+                      const list = document.querySelector(
+                        '[data-e2e="comment-list"]'
+                      );
+                      if (!list) return null;
+                      // Walk DOM up & down to find the actual scroll container
+                      let node = list;
+                      // Check ancestors first (sometimes the list is inside the scroller)
+                      for (let i = 0; i < 4 && node; i++) {
+                        try {
+                          const cs = getComputedStyle(node);
+                          if (
+                            (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                            node.scrollHeight - node.clientHeight > 30
+                          ) {
+                            return node;
+                          }
+                        } catch {}
+                        node = node.parentElement;
+                      }
+                      // Else, the deepest scrollable child inside the list
+                      const all = list.querySelectorAll("*");
+                      for (const el of Array.from(all)) {
+                        try {
+                          const cs = getComputedStyle(el);
+                          if (
+                            (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+                            el.scrollHeight - el.clientHeight > 30
+                          ) {
+                            return el;
+                          }
+                        } catch {}
+                      }
+                      return list;
+                    }
                     let i = 0;
                     let last = -1;
                     let stable = 0;
                     const tick = () => {
-                      const panels = [
-                        document.querySelector('[data-e2e="comment-list"]'),
-                        document.querySelector('[data-e2e="comment-list-container"]'),
-                        ...Array.from(document.querySelectorAll('[data-e2e*="comment"]')),
-                      ].filter(Boolean);
-                      let scrolled = false;
-                      for (const p of panels) {
+                      const target = findCommentScroller();
+                      if (target) {
                         try {
-                          // Find the deepest scrollable inside or use the panel itself
-                          let target = p;
-                          const all = p.querySelectorAll("*");
-                          for (const el of Array.from(all)) {
-                            try {
-                              const cs = getComputedStyle(el);
-                              if (
-                                (cs.overflowY === "auto" || cs.overflowY === "scroll") &&
-                                el.scrollHeight - el.clientHeight > 50
-                              ) {
-                                target = el;
-                                break;
-                              }
-                            } catch {}
+                          // Multi-method scroll
+                          target.scrollBy({ top: 1500, behavior: "auto" });
+                          target.scrollTop = target.scrollTop + 1500;
+                          target.dispatchEvent(
+                            new WheelEvent("wheel", {
+                              deltaY: 1500,
+                              bubbles: true,
+                              cancelable: true,
+                            })
+                          );
+                          // Also focus the last comment to encourage virtual list to load
+                          const items = target.querySelectorAll(
+                            '[data-e2e^="comment-level"], [data-e2e*="comment-item"]'
+                          );
+                          if (items.length) {
+                            items[items.length - 1].scrollIntoView({
+                              block: "end",
+                              behavior: "auto",
+                            });
                           }
-                          target.scrollBy({ top: 1800 });
-                          target.scrollTop = target.scrollTop + 1800;
-                          scrolled = true;
                         } catch {}
                       }
                       const count = document.querySelectorAll(
@@ -1357,8 +1474,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         last = count;
                       }
                       i++;
-                      if (i < max && stable < 4) setTimeout(tick, 800);
-                      else resolve({ ticks: i, finalCount: count, scrolled });
+                      if (i < max && stable < 5) setTimeout(tick, 900);
+                      else resolve({ ticks: i, finalCount: count, hasTarget: !!target });
                     };
                     tick();
                   }),
