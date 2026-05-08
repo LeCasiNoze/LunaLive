@@ -98,7 +98,7 @@ const ACTIONABLE_DAYS = new Set([0, 2, 7]); // déclencheurs (en plus du retard)
 import { loadUnpaidOccurrences } from "./lib/expenses_unpaid.js";
 
 async function loadAllUnpaidFees(todayParis: string): Promise<FeeRow[]> {
-  const rows = await loadUnpaidOccurrences(todayParis, 365, 90);
+  const rows = await loadUnpaidOccurrences(todayParis, 365, 15);
   return rows.map((r) => ({
     id:          r.expense_id,
     description: r.description + (r.is_recurring ? " (mensuel)" : ""),

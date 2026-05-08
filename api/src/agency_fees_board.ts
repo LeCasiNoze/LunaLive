@@ -82,7 +82,7 @@ type FeeRow = { id: number; description: string; amount: number; due_date: strin
 import { loadUnpaidOccurrences } from "./lib/expenses_unpaid.js";
 
 async function loadUnpaid(todayParis: string): Promise<FeeRow[]> {
-  const rows = await loadUnpaidOccurrences(todayParis, 365, 90);
+  const rows = await loadUnpaidOccurrences(todayParis, 365, 15);
   return rows.map((r) => ({
     id: r.expense_id,
     description: r.description + (r.is_recurring ? " (mensuel)" : ""),

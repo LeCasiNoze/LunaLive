@@ -408,7 +408,7 @@ async function handleDette(interaction: ChatInputCommandInteraction): Promise<vo
     const todayParis = new Intl.DateTimeFormat("fr-CA", {
       timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    const fees = await loadUnpaidOccurrences(todayParis, 365, 90);
+    const fees = await loadUnpaidOccurrences(todayParis, 365, 15);
     if (fees.length === 0) {
       await interaction.editReply({ content: "✅ Aucun frais impayé. Profite." });
       return;
@@ -511,7 +511,7 @@ async function handleMarkPaidOpen(interaction: ButtonInteraction): Promise<void>
     const todayParis = new Intl.DateTimeFormat("fr-CA", {
       timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    const fees = await loadUnpaidOccurrences(todayParis, 365, 90);
+    const fees = await loadUnpaidOccurrences(todayParis, 365, 15);
     if (fees.length === 0) {
       await interaction.reply({ ephemeral: true, content: "_Aucun frais impayé._" });
       return;
@@ -559,7 +559,7 @@ async function handleMarkPaidSelect(interaction: any): Promise<void> {
     const todayParis = new Intl.DateTimeFormat("fr-CA", {
       timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    const allUnpaid = await loadUnpaidOccurrences(todayParis, 365, 90);
+    const allUnpaid = await loadUnpaidOccurrences(todayParis, 365, 15);
     const byKey = new Map(allUnpaid.map(f => [`${f.expense_id}:${f.occurrence_date ?? ""}`, f]));
 
     let count = 0;
