@@ -149,7 +149,7 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     profileImageUrl: "",
     card1Image: { kind: "penalty", url: V3_GAME_IMAGES[0].url },
     card2Image: { kind: "mines",   url: V3_GAME_IMAGES[1].url },
-    cardAspect: "16/9",
+    cardAspect: "1/1",
     cardObjectFit: "cover",
     pseudoStyle:      { font: "Inter", color: "#FFD700", size: "xxl", weight: "black", glow: true },
     depositLineStyle: { font: "Inter", color: "#ffffff", size: "xl",  weight: "black" },
