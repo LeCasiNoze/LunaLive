@@ -242,6 +242,10 @@ export interface V2Page {
   slug: string;
   /** Métadonnées SEO. */
   pageTitle?: string;
+  /** Si true : les <section> autour des zones n'ont AUCUNE padding (ni
+   *  horizontale ni verticale). Les blocs gèrent eux-mêmes leur spacing.
+   *  Default false → padding 16px 12px. */
+  compactSpacing?: boolean;
   /** Zones structurelles avec leurs blocs. */
   zones: Record<V2ZoneKey, V2Block[]>;
   /** Variables CSS globales. */

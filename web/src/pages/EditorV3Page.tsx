@@ -316,7 +316,7 @@ function GameImagePicker({
 
 // ─── Wizard view ────────────────────────────────────────────────────────────
 
-type SectionKey = "profile" | "pseudo" | "deposit" | "bonus" | "card1" | "card2";
+type SectionKey = "profile" | "pseudo" | "deposit" | "bonus" | "card1" | "card2" | "amounts" | "visual" | "background";
 
 function WizardQuickView({
   initialInputs,
@@ -387,7 +387,7 @@ function WizardQuickView({
         if (name === "Wrapper image profil") setOpenSection("profile");
         else if (name === "Cadre pseudo") setOpenSection("pseudo");
         else if (name === "Ligne — Déposez X€") setOpenSection("deposit");
-        else if (name === "Ligne — Jouer à Y€") setOpenSection("bonus");
+        else if (name === "Ligne — Recevez Y€") setOpenSection("bonus");
       }
     },
   }), [page]);
@@ -546,7 +546,7 @@ function WizardQuickView({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          <div ref={(el) => { sectionRefs.current.amounts = el; }} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
             <div>
               <label style={labelStyle}>Déposez X (€)</label>
               <input
@@ -639,7 +639,7 @@ function WizardQuickView({
               </Accordion>
               <Accordion
                 sectionRef={(el) => { sectionRefs.current.bonus = el; }}
-                label="« Jouer à Y€ »"
+                label="« Recevez Y€ »"
                 open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
               >
                 <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} />
@@ -651,7 +651,7 @@ function WizardQuickView({
             <>
               <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Visuel & images</h3>
 
-              <div style={{ marginBottom: 10 }}>
+              <div ref={(el) => { sectionRefs.current.visual = el; }} style={{ marginBottom: 10 }}>
                 <label style={labelStyle}>Mode visuel</label>
                 <div style={{ display: "flex", gap: 4 }}>
                   <Chip active={(inputs.m5VisualMode || "chest") === "chest"} onClick={() => update({ m5VisualMode: "chest" })}>Coffre</Chip>
@@ -684,7 +684,7 @@ function WizardQuickView({
                 </div>
               ) : null}
 
-              <div style={{ marginBottom: 14 }}>
+              <div ref={(el) => { sectionRefs.current.background = el; }} style={{ marginBottom: 14 }}>
                 <label style={labelStyle}>Background hero (optionnel)</label>
                 <input type="url"
                   value={inputs.m5BackgroundUrl || ""}
@@ -739,6 +739,14 @@ function WizardQuickView({
                   }}
                   variant={inputs.m5Variant || "gold"}
                   isMobile={isMobilePreview}
+                  onElementClick={(key) => {
+                    // Map des clés iframe → sections wizard pour focus + scroll
+                    if (key === "pseudo") setOpenSection("pseudo");
+                    else if (key === "profile") setOpenSection("profile");
+                    else if (key === "amounts") setOpenSection("amounts");
+                    else if (key === "visual") setOpenSection("visual");
+                    else if (key === "background") setOpenSection("background");
+                  }}
                 />
               )}
             </div>

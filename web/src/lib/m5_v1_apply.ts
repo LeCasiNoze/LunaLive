@@ -78,10 +78,11 @@ export function applyM5V1Config(
   html = html.replace(/data-offer-bonus="[^"]*"/, `data-offer-bonus="${escAttr(bon)}"`);
   html = html.replace(/data-offer-total="[^"]*"/, `data-offer-total="${escAttr(tot)}"`);
 
-  // Textes hardcodés non touchés par le script
+  // Textes hardcodés non touchés par le script.
+  // Phrases V3 : "DÉPOSEZ X€" / "RECEVEZ Y€" (au lieu de DÉPOSE/JOUE A Total).
   html = html.replace(
     /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
-    `<h1 class="hero-title">D&Eacute;POSE ${esc(dep)}&euro; <span>JOUE A ${esc(tot)}&euro;</span></h1>`
+    `<h1 class="hero-title">D&Eacute;POSEZ ${esc(dep)}&euro; <span>RECEVEZ ${esc(bon)}&euro;</span></h1>`
   );
   html = html.replace(
     /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
@@ -89,12 +90,37 @@ export function applyM5V1Config(
   );
   html = html.replace(
     /<span class="step-deposit">[^<]*<\/span>/,
-    `<span class="step-deposit">DEPOSE ${esc(dep)}EUR</span>`
+    `<span class="step-deposit">DEPOSEZ ${esc(dep)}EUR</span>`
   );
   html = html.replace(
     /<span class="step-receive">[^<]*<\/span>/,
-    `<span class="step-receive">RECOIS ${esc(bon)}EUR</span>`
+    `<span class="step-receive">RECEVEZ ${esc(bon)}EUR</span>`
   );
+
+  // Hero btn-jouer + sticky CTA = "DÉPOSEZ X€ → RECEVEZ Y€"
+  // Le V1 template avait "RÉCLAME TES Y€ OFFERTS" — on remplace par un texte
+  // qui inclut X ET Y dynamiquement (data-bind-offer-value pour live update).
+  const newCtaInner = `D&Eacute;POSEZ <span data-bind-offer-value="deposit">${esc(dep)}&euro;</span> &rarr; RECEVEZ <span data-bind-offer-value="bonus">${esc(bon)}&euro;</span>`;
+  // hero btn-jouer (inside hero-card)
+  html = html.replace(
+    /<a([^>]*class="btn-jouer"[^>]*)>[\s\S]*?<\/a>/,
+    `<a$1>${newCtaInner}</a>`
+  );
+  // sticky-cta (bottom of page)
+  html = html.replace(
+    /<a([^>]*class="sticky-cta"[^>]*)>[\s\S]*?<\/a>/,
+    `<a$1>${newCtaInner}</a>`
+  );
+
+  // Vertical offset M2 : descend les textes hero d'environ 3cm (~113px)
+  // mais on garde l'espacement entre brand-signature et offer-copy.
+  const verticalOffsetCss = `<style data-affi-m5-v3-offset>
+.hero-content { padding-top: 113px !important; }
+@media (max-width: 720px) {
+  .hero-content { padding-top: 80px !important; }
+}
+</style>`;
+  html = html.replace(/<\/head>/, `${verticalOffsetCss}\n</head>`);
 
   // 3) Pseudo (brand-logo-main)
   if (cfg.pseudo && cfg.pseudo.trim()) {
@@ -172,6 +198,53 @@ export function applyM5V1Config(
       `<img class="hero-bg-media" src="${safe}" alt="">`
     );
   }
+
+  // 8) Click-to-edit : injecte un script qui poste un message au parent
+  // quand l'utilisateur clique sur un élément éditable depuis le wizard.
+  // Empêche aussi la navigation (preventDefault sur les <a>) en mode preview.
+  const clickToEditScript = `<script data-affi-m5-v3-click-to-edit>
+(function() {
+  const MAP = [
+    [".brand-logo-main", "pseudo"],
+    [".brand-logo-sub", "pseudo"],
+    [".hero-avatar", "profile"],
+    [".hero-title", "amounts"],
+    [".step-deposit", "amounts"],
+    [".step-receive", "amounts"],
+    [".hero-subtitle", "amounts"],
+    [".btn-jouer", "amounts"],
+    [".sticky-cta", "amounts"],
+    [".promo-image-container", "visual"],
+    [".chest-link", "visual"],
+    [".final-chest-link", "visual"],
+    [".hero-bg-media", "background"],
+    [".hero-bg", "background"],
+  ];
+  function findKey(el) {
+    while (el && el !== document.body) {
+      for (const [sel, key] of MAP) {
+        if (el.matches && el.matches(sel)) return key;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+  document.addEventListener("click", function(e) {
+    const key = findKey(e.target);
+    if (key) {
+      // En preview on bloque la navigation des <a> et postMessage au parent.
+      e.preventDefault();
+      e.stopPropagation();
+      try { window.parent.postMessage({ type: "v3-m5-click", key: key }, "*"); } catch (_) {}
+    }
+  }, true);
+  // Outline visuel au hover sur éléments cliquables (feedback)
+  const style = document.createElement("style");
+  style.textContent = ".brand-logo-main:hover, .brand-logo-sub:hover, .hero-avatar:hover, .hero-title:hover, .step-deposit:hover, .step-receive:hover, .hero-subtitle:hover, .btn-jouer:hover, .sticky-cta:hover, .promo-image-container:hover, .chest-link:hover, .final-chest-link:hover { outline: 2px dashed rgba(124,92,255,.6); outline-offset: 4px; cursor: pointer !important; }";
+  document.head.appendChild(style);
+})();
+</script>`;
+  html = html.replace(/<\/body>/, `${clickToEditScript}\n</body>`);
 
   return html;
 }

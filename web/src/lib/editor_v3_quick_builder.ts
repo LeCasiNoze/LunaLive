@@ -151,9 +151,9 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     card2Image: { kind: "mines",   url: V3_GAME_IMAGES[1].url },
     cardAspect: "16/9",
     cardObjectFit: "cover",
-    pseudoStyle:      { font: "Inter", color: "#FFD700", size: "m",  weight: "black", glow: true },
-    depositLineStyle: { font: "Inter", color: "#ffffff", size: "l",  weight: "black" },
-    bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "l",  weight: "black", glow: true },
+    pseudoStyle:      { font: "Inter", color: "#FFD700", size: "xxl", weight: "black", glow: true },
+    depositLineStyle: { font: "Inter", color: "#ffffff", size: "xl",  weight: "black" },
+    bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "xl",  weight: "black", glow: true },
     // M2 defaults
     m5Variant: "gold",
     m5VisualMode: "chest",
@@ -206,10 +206,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       shadow: "0 8px 24px rgba(0,0,0,.45)",
       glow: "rgba(255,215,0,.45)",
       align: "center",
-      marginTop: "32px",
-      marginBottom: "16px",
+      marginTop: "0",
+      marginBottom: "8px",
     };
-    // wrapper container pour bien centrer (l'image n'a pas display:block centré seule)
     const wrap: V2ContainerBlock = {
       id: makeV2BlockId("container"),
       type: "container",
@@ -218,8 +217,8 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       children: [profileBlock],
       justify: "center",
       itemsAlign: "center",
-      marginTop: "24px",
-      marginBottom: "8px",
+      marginTop: "8px",   // près du haut
+      marginBottom: "4px",
     };
     aboveCards.push(wrap);
   }
@@ -250,10 +249,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       paddingX: "18px",
       paddingTop: "6px",
       paddingBottom: "6px",
-      marginTop: inputs.profileImageUrl ? "0px" : "32px",
-      marginBottom: "40px",   // ↑ espace entre pseudo et "Déposez X€"
+      marginTop: inputs.profileImageUrl ? "0px" : "8px",  // pseudo près du haut
+      marginBottom: "12px",   // ↑ petite séparation pseudo/offre
       maxWidth: "fit-content",
-      // pas de width fixe → RenderContainer applique margin: 0 auto = centré.
     };
     aboveCards.push(pseudoBox);
   }
@@ -272,31 +270,29 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
     });
   }
 
-  // 2d) "Jouer à Y€" — caché si Y null
-  // marginBottom = 8px : compense les 32px de padding (16 bottom de
-  // aboveCards + 16 top de cards) pour que le total visible (8 + 32 = 40)
-  // = la marginBottom du pseudo box (40). → équidistance pseudo↔cards.
+  // 2d) "Recevez Y€" — caché si Y null
   if (inputs.bonusAmount != null) {
     aboveCards.push({
       id: makeV2BlockId("text"),
       type: "text",
-      name: "Ligne — Jouer à Y€",
+      name: "Ligne — Recevez Y€",
       tag: "h1",
-      content: `Jouer à ${inputs.bonusAmount}€`,
+      content: `Recevez ${inputs.bonusAmount}€`,
       align: "center",
       style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
-      marginBottom: "8px",
+      // marginBottom set below par règle "dernier visible".
     });
   }
 
-  // Le DERNIER bloc visible du hero impose la distance avant les cartes.
-  // On force sa marginBottom à 8px : 8 (margin) + 16 (aboveCards section
-  // padding-bottom) + 16 (cards section padding-top) = 40px visible. Cette
-  // valeur correspond au pseudo.marginBottom (40) → bloc offre équidistant.
+  // En mode compactSpacing, les sections n'ont AUCUNE padding → le
+  // dernier bloc impose directement la distance avec les cartes.
+  // 20px = ~12px visible quand le float -8px atteint son pic, équivalent
+  // à pseudo.marginBottom (12px) + buffer pour l'animation.
   const last = aboveCards[aboveCards.length - 1] as any;
-  if (last) last.marginBottom = "8px";
+  if (last) last.marginBottom = "20px";
 
   page.zones.aboveCards = aboveCards;
+  page.compactSpacing = true;
 
   // Sections du bas : remplacer reviews + faq + footer par le bloc preset V1
   // (rend exactement le HTML/CSS de model4.html). Le sticky CTA est inclus.

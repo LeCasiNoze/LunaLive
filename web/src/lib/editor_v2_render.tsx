@@ -433,8 +433,10 @@ export function RenderV2Page({ page, isMobile, editCtx }: { page: V2Page; isMobi
         // Si la zone contient un bloc full-bleed (preset V1 lower sections),
         // on retire la padding du <section> pour qu'il s'étende edge-to-edge.
         const hasFullBleed = page.zones[zk].some((b) => b.type === "m4V1LowerSections");
+        // Mode compactSpacing : les blocs gèrent leur propre spacing.
+        const sectionPad = hasFullBleed ? 0 : (page.compactSpacing ? 0 : "16px 12px");
         return (
-          <section key={zk} data-zone={zk} style={{ padding: hasFullBleed ? 0 : "16px 12px" }}>
+          <section key={zk} data-zone={zk} style={{ padding: sectionPad }}>
             {page.zones[zk].map((b, i) => (
               <RenderBlock
                 key={b.id || i}

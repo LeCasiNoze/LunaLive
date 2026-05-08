@@ -34,13 +34,18 @@ function loadTemplate(): Promise<string> {
   return _templateCache;
 }
 
+export type M5V1ClickKey = "pseudo" | "profile" | "amounts" | "visual" | "background";
+
 export type M5V1PreviewProps = {
   cfg: M5V1QuickConfig;
   variant: M5V1Variant;
   isMobile?: boolean;
+  /** Callback déclenché quand l'utilisateur clique sur un élément éditable
+   *  dans la preview iframe. Reçoit un identifiant logique d'élément. */
+  onElementClick?: (key: M5V1ClickKey) => void;
 };
 
-export function M5V1Preview({ cfg, variant, isMobile = false }: M5V1PreviewProps) {
+export function M5V1Preview({ cfg, variant, isMobile = false, onElementClick }: M5V1PreviewProps) {
   const [template, setTemplate] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -51,6 +56,19 @@ export function M5V1Preview({ cfg, variant, isMobile = false }: M5V1PreviewProps
       .catch((e) => { if (alive) setError(String(e?.message || e)); });
     return () => { alive = false; };
   }, []);
+
+  // Écoute postMessage de l'iframe (script click-to-edit injecté par applyM5V1Config)
+  React.useEffect(() => {
+    if (!onElementClick) return;
+    const handler = (ev: MessageEvent) => {
+      const data: any = ev.data;
+      if (data && data.type === "v3-m5-click" && typeof data.key === "string") {
+        onElementClick(data.key as M5V1ClickKey);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [onElementClick]);
 
   const srcDoc = React.useMemo(() => {
     if (!template) return null;
