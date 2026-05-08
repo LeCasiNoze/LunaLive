@@ -97,10 +97,12 @@ export function applyM5V1Config(
     `<span class="step-receive">RECEVEZ ${esc(bon)}EUR</span>`
   );
 
-  // Hero btn-jouer + sticky CTA = "DÉPOSEZ X€ → RECEVEZ Y€"
-  // Le V1 template avait "RÉCLAME TES Y€ OFFERTS" — on remplace par un texte
-  // qui inclut X ET Y dynamiquement (data-bind-offer-value pour live update).
-  const newCtaInner = `D&Eacute;POSEZ <span data-bind-offer-value="deposit">${esc(dep)}&euro;</span> &rarr; RECEVEZ <span data-bind-offer-value="bonus">${esc(bon)}&euro;</span>`;
+  // Hero btn-jouer + sticky CTA = "RÉCLAMEZ VOS Y€" (Y = bonus, ce que le
+  // joueur "réclame" en cliquant). data-bind-offer-value="bonus" pour live
+  // update si l'utilisateur change Y. À long terme : si on passait à un
+  // schéma total/deposit, utiliser data-bind-offer-value="bonus" reste
+  // cohérent (le script propage la valeur configurée).
+  const newCtaInner = `R&Eacute;CLAMEZ VOS <span data-bind-offer-value="bonus">${esc(bon)}&euro;</span>`;
   // hero btn-jouer (inside hero-card)
   html = html.replace(
     /<a([^>]*class="btn-jouer"[^>]*)>[\s\S]*?<\/a>/,
