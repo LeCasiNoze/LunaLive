@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LunaLive — TikTok Discoverer",
-  "version": "1.7.12",
+  "version": "1.7.13",
   "description": "Récolte automatique d'influenceurs TikTok depuis le FSB Board LunaLive (utilise ton navigateur connecté).",
   "permissions": ["tabs", "storage", "scripting", "debugger"],
   "host_permissions": [

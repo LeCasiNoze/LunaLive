@@ -1159,8 +1159,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Wait for SPA to mount.
             await new Promise((r) => setTimeout(r, 4500));
 
-            // PRIVATE ACCOUNT CHECK — read SSR data; if profile is private,
-            // bail explicitly so we don't capture suggestions as "follows".
+            // PRIVATE ACCOUNT CHECK + récupération followingCount depuis SSR
+            // (sert à valider après scrape qu'on a bien capturé un volume cohérent).
+            let profileFollowingCount = null;
             try {
               const probeRes = await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
@@ -1198,6 +1199,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   error: "private_account",
                   diag: probe,
                 });
+              }
+              if (probe?.followingCount != null) {
+                profileFollowingCount = probe.followingCount;
               }
             } catch {}
 
@@ -1753,13 +1757,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const out = (results && results[0] && results[0].result) || null;
               // Reject if extraction bailed (no dialog) or got 0 handles
               const handlesOk = out && out.handles && out.handles.length > 0;
-              // Merge scroll diag into the final diag for visibility
+              // VALIDATION: if profile has lots of follows but we got few,
+              // it's likely a private list fallback (TikTok shows Suggérés
+              // tab) → bail with "scrape_incomplete" instead of polluting DB.
+              let incompleteScrape = false;
+              if (
+                handlesOk &&
+                profileFollowingCount != null &&
+                profileFollowingCount >= 50
+              ) {
+                const captured = out.handles.length;
+                const ratio = captured / profileFollowingCount;
+                // Si on capture moins de 10% du total ET que le profil est gros
+                // → presque sûrement le fallback (Suggérés / page background)
+                if (ratio < 0.1 && captured < 30) {
+                  incompleteScrape = true;
+                }
+              }
               const mergedDiag = {
                 ...(out?.diag || {}),
+                profileFollowingCount,
+                scrapeRatio:
+                  profileFollowingCount && out?.handles
+                    ? +(out.handles.length / profileFollowingCount).toFixed(3)
+                    : null,
                 scrollAnchors: allDiag?.scrollAnchors || [],
                 scrollStable: allDiag?.scrollStable ?? null,
                 scrollTicks: (allDiag?.scrollAnchors || []).length,
               };
+              if (incompleteScrape) {
+                return finish({
+                  ok: false,
+                  error: "scrape_incomplete_or_private_list",
+                  handle: cleaned,
+                  handles: [],
+                  total: 0,
+                  diag: mergedDiag,
+                });
+              }
               return finish({
                 ok: !!handlesOk,
                 error: handlesOk ? undefined : "no_handles_extracted",

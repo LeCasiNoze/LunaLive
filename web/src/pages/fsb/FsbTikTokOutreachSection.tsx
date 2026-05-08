@@ -19,6 +19,7 @@ import {
   fullResetTikTokNetwork,
   postCandidateFollows,
   postSeedFollows,
+  purgeSuspiciousSeedFollows,
   purgeTikTokFollowGraph,
   importSeedNetworkSignals,
   importTikTokBulk,
@@ -1047,6 +1048,30 @@ export function FsbTikTokOutreachSection() {
       setEnrichProgress(null);
       setEnriching(false);
       await reloadCandidates();
+    }
+  };
+
+  const handlePurgeSuspiciousSeeds = async () => {
+    if (
+      !window.confirm(
+        "Purger les seed_follows des seeds avec ≤30 follows capturés ?\n\n" +
+          "→ supprime uniquement les seeds qui ont chopé du fallback ghost\n" +
+          "→ conserve les bons scrapes (ex: 4bdv660 588 follows)\n" +
+          "→ tu pourras re-scanner ces seeds après (en v1.7.13 le fallback est rejected)"
+      )
+    )
+      return;
+    try {
+      const r = await purgeSuspiciousSeedFollows(30);
+      const list = r.purgedSeeds
+        .map((s) => `@${s.handle} (${s.wasFollows})`)
+        .join(", ");
+      window.alert(
+        `Purge sélective OK\n\n${r.purgedSeeds.length} seed(s) purgés : ${list || "(aucun)"}\n\n${r.deletedFollows} edges supprimés.`
+      );
+      await reloadCandidates();
+    } catch (err: any) {
+      window.alert(`Purge: ${err?.message || err}`);
     }
   };
 
@@ -2275,9 +2300,19 @@ export function FsbTikTokOutreachSection() {
           <button
             type="button"
             className="fsb-btn"
+            onClick={handlePurgeSuspiciousSeeds}
+            disabled={enriching}
+            title="Purge UNIQUEMENT les seeds avec ≤30 follows (fallback ghost). Garde les bons scrapes."
+            style={{ borderColor: "#fbbf24", color: "#fbbf24" }}
+          >
+            🧹 Purger seeds suspects (≤30)
+          </button>
+          <button
+            type="button"
+            className="fsb-btn"
             onClick={handlePurgeFollowGraph}
             disabled={enriching}
-            title="Vide tiktok_seed_follows et tiktok_candidate_follows (à utiliser si scrape corrompu)"
+            title="Vide TOUT le graphe follows (à utiliser si scrape corrompu en bloc)"
             style={{ borderColor: "#94a3b8", color: "#94a3b8" }}
           >
             🗑️ Purger graphe follows

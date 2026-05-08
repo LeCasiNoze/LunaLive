@@ -494,6 +494,18 @@ export function fullResetTikTokNetwork() {
   }>(`/api/fsb/tiktok/network/full-reset`, { method: "POST" });
 }
 
+export function purgeSuspiciousSeedFollows(threshold = 30) {
+  return request<{
+    ok: true;
+    purgedSeeds: Array<{ handle: string; wasFollows: number }>;
+    deletedFollows: number;
+    deletedLinks: number;
+  }>(`/api/fsb/tiktok/network/follow-graph/purge-suspicious-seeds`, {
+    method: "POST",
+    body: JSON.stringify({ threshold }),
+  });
+}
+
 export function purgeTikTokFollowGraph() {
   return request<{
     ok: true;

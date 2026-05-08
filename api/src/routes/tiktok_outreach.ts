@@ -1746,6 +1746,15 @@ tiktokOutreachRouter.get(
                   THEN 80
                 ELSE 0
               END
+            -- 3b) BONUS OR : taap.it dans la bio = streamer affilié casino actif
+            --     (tous nos liens d'affil passent par taap.it). Signal le plus
+            --     fort possible — booste de +200 et protège d'auto-dismiss.
+            + CASE
+                WHEN cp.bio IS NULL THEN 0
+                WHEN LOWER(cp.bio) LIKE '%taap.it%'
+                  THEN 200
+                ELSE 0
+              END
             -- 4) Affil signals (vrais créateurs qui mentionnent partenaires)
             + CASE WHEN s2.has_affil THEN 50 ELSE 0 END
             -- 5) Tier d'engagement par seed_count (ancien)
@@ -1829,8 +1838,11 @@ tiktokOutreachRouter.get(
         cp.avatar_url     AS cand_avatar_url,
         cp.display_name   AS cand_display_name,
         cp.last_enriched_at AS cand_enriched_at,
-        -- Verdict niche pour l'UI. Mutual ≥ 1 prime tout (peer confirmé).
+        -- Verdict niche pour l'UI. taap.it bio prime tout (= affilié casino
+        -- actif). Puis mutual ≥ 1 (peer confirmé).
         CASE
+          WHEN cp.bio IS NOT NULL AND LOWER(cp.bio) LIKE '%taap.it%'
+            THEN 'peer_confirmed'
           WHEN s2.mutual_count >= 1 THEN 'peer_confirmed'
           WHEN cp.follower_count IS NOT NULL
                AND cp.follower_count >= 2000000
@@ -2398,6 +2410,59 @@ tiktokOutreachRouter.post(
   })
 );
 
+// Purge SÉLECTIVE des seed_follows : supprime uniquement les seeds dont
+// le scrape a capturé un volume suspect (≤30 follows = signe de fallback
+// 21 ghosts quand /following privée).
+tiktokOutreachRouter.post(
+  "/fsb/tiktok/network/follow-graph/purge-suspicious-seeds",
+  a(async (req, res) => {
+    const threshold = Math.max(
+      1,
+      Math.min(100, Number(req.body?.threshold) || 30)
+    );
+    // Trouve les seeds avec count <= threshold
+    const suspectRes = await pool.query(
+      `
+      SELECT s.id, s.handle, COUNT(sf.candidate_handle)::int AS follows
+      FROM tiktok_seed_accounts s
+      LEFT JOIN tiktok_seed_follows sf ON sf.seed_id = s.id
+      GROUP BY s.id, s.handle
+      HAVING COUNT(sf.candidate_handle) > 0
+         AND COUNT(sf.candidate_handle) <= $1
+      ORDER BY follows DESC
+      `,
+      [threshold]
+    );
+    const suspectIds = suspectRes.rows.map((r) => Number(r.id));
+    if (!suspectIds.length) {
+      return res.json({
+        ok: true,
+        purgedSeeds: [],
+        deletedFollows: 0,
+        deletedLinks: 0,
+      });
+    }
+    const delFollows = await pool.query(
+      `DELETE FROM tiktok_seed_follows WHERE seed_id = ANY($1::bigint[])`,
+      [suspectIds]
+    );
+    // Aussi nettoyer les signaux 'following' miroir dans network_links
+    const delLinks = await pool.query(
+      `DELETE FROM tiktok_network_links WHERE seed_id = ANY($1::bigint[]) AND signal_type = 'following'`,
+      [suspectIds]
+    );
+    return res.json({
+      ok: true,
+      purgedSeeds: suspectRes.rows.map((r) => ({
+        handle: r.handle,
+        wasFollows: Number(r.follows),
+      })),
+      deletedFollows: delFollows.rowCount || 0,
+      deletedLinks: delLinks.rowCount || 0,
+    });
+  })
+);
+
 // Purge complète du graphe de follows (utilisé après détection de scrape
 // corrompu, ex: capture des recommandations TikTok au lieu des /following).
 tiktokOutreachRouter.post(
@@ -2536,6 +2601,10 @@ tiktokOutreachRouter.post(
       const bio = String(r.bio || "").toLowerCase();
       const followers = r.follower_count != null ? Number(r.follower_count) : null;
       const mutual = Number(r.mutual_count || 0);
+
+      // taap.it dans la bio = affilié casino actif → JAMAIS dismiss
+      // (signal le plus fort, prime même la règle <5K)
+      if (bio.includes("taap.it")) continue;
 
       // Cas 0 (PRIORITAIRE) : règle business stricte du user.
       // <5K followers ENRICHI = out, peu importe mutual/overlap/whitelist.
