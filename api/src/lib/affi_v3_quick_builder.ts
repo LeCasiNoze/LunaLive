@@ -19,6 +19,7 @@ import {
   makeV2BlockId,
 } from "./affi_v2_types.js";
 import { buildM4V2Starter } from "./affi_v2_starters.js";
+import { type M1ThemeKey, getM1Theme, themeToColors } from "./m1_themes.js";
 
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
@@ -109,6 +110,10 @@ export type V3ObjectFit = "cover" | "contain";
 export interface V3QuickInputs {
   /** Modèle utilisé (en V3 : "M1" = M4V1 dupliqué). */
   modelKind: "M1";
+  /** Applique le thème global (default true). Si false → couleurs par défaut "or". */
+  m1UseTheme?: boolean;
+  /** Clé de thème (default "gold"). */
+  m1Theme?: M1ThemeKey;
   pseudo?: string;                 // optionnel
   affiLink: string;                // requis
   /** X (en €) — null = champ vidé : on cache la ligne « Déposez X€ ». */
@@ -170,6 +175,11 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   // 1) Partir du starter M4V2 fidèle V1 (cards/reviews/faq/footer déjà OK).
   const page = buildM4V2Starter();
 
+  // Résolution du theme M1 (mirroir du builder côté web).
+  const useTheme = inputs.m1UseTheme !== false;
+  const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
+  const themeColors = theme ? themeToColors(theme) : undefined;
+
   // 2) Hero zone : remplacer les 3 blocs par défaut par notre composition V3.
   const aboveCards: V2Page["zones"]["aboveCards"] = [];
 
@@ -185,9 +195,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       height: "120px",
       objectFit: "cover",
       borderRadius: "50%",
-      border: "3px solid #FFD700",
+      border: `3px solid ${theme?.accent || "#FFD700"}`,
       shadow: "0 8px 24px rgba(0,0,0,.45)",
-      glow: "rgba(255,215,0,.45)",
+      glow: theme?.accentGlow || "rgba(255,215,0,.45)",
       align: "center",
       marginTop: "32px",
       marginBottom: "16px",
@@ -209,7 +219,10 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 
   // 2b) Pseudo encadré (si fourni)
   if (inputs.pseudo && inputs.pseudo.trim()) {
-    const pseudoStyle = lineStyleToV2(inputs.pseudoStyle, "#FFD700");
+    const baseStyle = useTheme && theme
+      ? { ...inputs.pseudoStyle, color: theme.accent, glow: true }
+      : inputs.pseudoStyle;
+    const pseudoStyle = lineStyleToV2(baseStyle, theme?.accent || "#FFD700");
     const pseudoText: V2TextBlock = {
       id: makeV2BlockId("text"),
       type: "text",
@@ -227,8 +240,8 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       children: [pseudoText],
       justify: "center",
       itemsAlign: "center",
-      bg: "rgba(255,214,0,.08)",
-      border: "1px solid rgba(255,214,0,.35)",
+      bg: theme?.accentSoft || "rgba(255,214,0,.08)",
+      border: `1px solid ${theme?.accentBorder || "rgba(255,214,0,.35)"}`,
       borderRadius: "999px",
       paddingX: "18px",
       paddingTop: "6px",
@@ -260,6 +273,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   // aboveCards + 16 top de cards) pour que le total visible (8 + 32 = 40)
   // = la marginBottom du pseudo box (40). → équidistance pseudo↔cards.
   if (inputs.bonusAmount != null) {
+    const baseStyle = useTheme && theme
+      ? { ...inputs.bonusLineStyle, color: theme.accent, glow: true }
+      : inputs.bonusLineStyle;
     aboveCards.push({
       id: makeV2BlockId("text"),
       type: "text",
@@ -267,7 +283,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       tag: "h1",
       content: `Jouer à ${inputs.bonusAmount}€`,
       align: "center",
-      style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
+      style: lineStyleToV2(baseStyle, theme?.accent || "#FFD700"),
       marginBottom: "8px",
     });
   }
@@ -292,6 +308,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       type: "m4V1LowerSections",
       affiLink: inputs.affiLink,
       brandName: inputs.pseudo?.trim() || "",
+      theme: themeColors,
     } as any,
   ];
 
@@ -310,6 +327,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       c1.href = inputs.affiLink;
       c1.imageAspectRatio = inputs.cardAspect;
       c1.imageObjectFit = inputs.cardObjectFit;
+      (c1 as any).theme = themeColors;
     }
     if (c2 && c2.type === "fsnCardM4") {
       c2.imgSrc = inputs.card2Image.url || c2.imgSrc;
@@ -319,10 +337,22 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       c2.href = inputs.affiLink;
       c2.imageAspectRatio = inputs.cardAspect;
       c2.imageObjectFit = inputs.cardObjectFit;
+      (c2 as any).theme = themeColors;
     }
   }
 
-  // 4) Affi link / code → slug.
+  // 5) Globals : bgPage/bgCard/brandGold/borderColor selon le thème actif.
+  if (theme) {
+    page.globals = {
+      ...page.globals,
+      bgPage: theme.bgPage,
+      bgCard: theme.bgCard,
+      brandGold: theme.accent,
+      borderColor: theme.borderColor,
+    };
+  }
+
+  // 6) Affi link / code → slug.
   page.affiLink = inputs.affiLink;
   try {
     const u = new URL(inputs.affiLink);

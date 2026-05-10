@@ -31,6 +31,8 @@ import {
 import { pool } from "../db.js";
 import { refreshAgencyFeesBoard } from "../agency_fees_board.js";
 import { buildV3PageFromQuickInputs, type V3QuickInputs } from "../lib/affi_v3_quick_builder.js";
+import { makeV2BlockId } from "../lib/affi_v2_types.js";
+import { type M1ThemeKey, M1_THEMES, getM1Theme, themeToColors } from "../lib/m1_themes.js";
 import { loadUnpaidOccurrences, markExpensePaid } from "../lib/expenses_unpaid.js";
 
 const LOG = "[admin-cmd]";
@@ -226,11 +228,26 @@ async function handleAgenceRecap(interaction: ChatInputCommandInteraction): Prom
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MODAL_LANDING_CREER = "admin:landing:creer:modal";
+type LandingModelKind = "M1" | "M3" | "M4" | "M5" | "M6";
+const LANDING_MODEL_LABEL: Record<LandingModelKind, string> = {
+  M1: "Cards + Reviews",
+  M3: "Spinning Wheel",
+  M4: "Scratch Card",
+  M5: "Slot Machine",
+  M6: "Treasure Chest",
+};
 
 async function handleLandingCreer(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!await checkAccess(interaction)) return;
 
-  const modal = new ModalBuilder().setCustomId(MODAL_LANDING_CREER).setTitle("Créer une landing V3");
+  const rawModel = (interaction.options.getString("model") || "M1").toUpperCase();
+  const modelKind: LandingModelKind = (["M1","M3","M4","M5","M6"].includes(rawModel) ? rawModel : "M1") as LandingModelKind;
+  const rawTheme = (interaction.options.getString("theme") || "gold").toLowerCase();
+  const themeKey: M1ThemeKey = (M1_THEMES.some(t => t.key === rawTheme) ? rawTheme : "gold") as M1ThemeKey;
+
+  const modal = new ModalBuilder()
+    .setCustomId(`${MODAL_LANDING_CREER}:${modelKind}:${themeKey}`)
+    .setTitle(`Landing V3 — ${modelKind} / ${getM1Theme(themeKey).label}`.slice(0, 45));
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(
       new TextInputBuilder().setCustomId("pseudo").setLabel("Pseudo / nom du streamer").setStyle(TextInputStyle.Short).setMaxLength(60).setRequired(true)
@@ -254,6 +271,14 @@ async function handleLandingCreer(interaction: ChatInputCommandInteraction): Pro
 async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
   try {
+    // customId = "admin:landing:creer:modal:M3:emerald" → parse model + theme
+    const suffix = interaction.customId.slice(MODAL_LANDING_CREER.length + 1);
+    const [rawModel, rawTheme] = suffix.split(":");
+    const modelUp = (rawModel || "").toUpperCase();
+    const modelKind: LandingModelKind = (["M1","M3","M4","M5","M6"].includes(modelUp) ? modelUp : "M1") as LandingModelKind;
+    const themeLo = (rawTheme || "gold").toLowerCase();
+    const themeKey: M1ThemeKey = (M1_THEMES.some(t => t.key === themeLo) ? themeLo : "gold") as M1ThemeKey;
+
     const pseudo  = interaction.fields.getTextInputValue("pseudo").trim();
     const affiLink = interaction.fields.getTextInputValue("affiLink").trim();
     const depStr  = interaction.fields.getTextInputValue("depositAmount").trim();
@@ -268,15 +293,16 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
     if (depositAmount !== null && !isFinite(depositAmount)) throw new Error("Dépôt invalide");
     if (bonusAmount   !== null && !isFinite(bonusAmount))   throw new Error("Bonus invalide");
 
-    // Construit les V3QuickInputs (defaults pour ce qui n'est pas dans le modal)
-    const inputs: V3QuickInputs = {
-      modelKind: "M1",
+    // Inputs partagés (le wizard V3 côté front les relit via __v3Inputs).
+    const inputs: any = {
+      modelKind,
+      m1UseTheme: true,
+      m1Theme: themeKey,
       pseudo,
       affiLink,
       depositAmount,
       bonusAmount,
       profileImageUrl: profile,
-      // Cartes : présets penalty + mines (mêmes URLs que defaultV3QuickInputs)
       card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
       card2Image: { kind: "mines",   url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
       cardAspect: "1/1",
@@ -286,8 +312,11 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
       bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "l",  weight: "black", glow: true },
     };
 
-    // Build complet de la V2Page comme le ferait l'éditeur V3 côté front.
-    const v2Page = buildV3PageFromQuickInputs(inputs);
+    // Build V2Page selon le modèle. M1 = builder M4V1-dupliqué ; M3-M6 = bloc
+    // unique v3GameModel (mini-jeu plein écran, idem buildV3GameModelPage côté front).
+    const v2Page = modelKind === "M1"
+      ? buildV3PageFromQuickInputs(inputs as V3QuickInputs)
+      : buildV3GameModelPageMin(modelKind, themeKey, { pseudo, affiLink, depositAmount, bonusAmount, profileImageUrl: profile });
 
     // Slug : si le builder a déduit un slug depuis affiLink, on l'utilise ;
     // sinon fallback sur slugify(pseudo). Puis garantit unicité.
@@ -320,10 +349,10 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
 
     const embed = new EmbedBuilder()
       .setColor(0x9D4BFF)
-      .setTitle(`🌐 Landing V3 créée`)
+      .setTitle(`🌐 Landing V3 créée — ${modelKind} (${LANDING_MODEL_LABEL[modelKind]})`)
       .setURL(publicUrl)
       .setDescription(
-        `Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`).\n\n` +
+        `Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`, modèle ${modelKind}, thème ${getM1Theme(themeKey).label}).\n\n` +
         `🎯 La page est **directement live** — pseudo, lien d'affi, dépôt et bonus sont déjà appliqués. ` +
         `Ouvre l'éditeur V3 pour ajuster les images, polices, couleurs ou ajouter une photo de profil si besoin.`
       )
@@ -341,6 +370,70 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
   } catch (e: any) {
     await interaction.editReply({ content: `❌ ${e?.message || e}` });
   }
+}
+
+// Construit un V2Page minimal pour M3-M6 : un seul bloc full-page
+// `v3GameModel` (rendu côté front par le composant correspondant) + le bloc
+// preset `m4V1LowerSections` en footer (reviews/FAQ/footer/sticky CTA).
+// Mirroir de buildV3GameModelPage() côté web/src/lib/editor_v3_quick_builder.ts.
+function buildV3GameModelPageMin(
+  kind: "M3" | "M4" | "M5" | "M6",
+  themeKey: M1ThemeKey,
+  inputs: { pseudo: string; affiLink: string; depositAmount: number | null; bonusAmount: number | null; profileImageUrl?: string },
+): any {
+  const pseudo = inputs.pseudo.trim();
+  const theme = getM1Theme(themeKey);
+  const themeColors = themeToColors(theme);
+  let affiCode = "";
+  try {
+    const u = new URL(inputs.affiLink);
+    const last = u.pathname.split("/").filter(Boolean).pop() || "";
+    affiCode = last.replace(/[^A-Za-z0-9_-]/g, "");
+  } catch { /* noop */ }
+
+  return {
+    modelKind: "M4V2",
+    affiCode,
+    affiLink: inputs.affiLink,
+    casinoName: pseudo || kind,
+    slug: affiCode ? `${affiCode}V3` : "",
+    pageTitle: pseudo || kind,
+    compactSpacing: true,
+    zones: {
+      aboveCards: [],
+      cards: [
+        {
+          id: makeV2BlockId("container" as any),
+          type: "v3GameModel",
+          gameKind: kind,
+          pseudo,
+          profileImageUrl: inputs.profileImageUrl || "",
+          depositAmount: inputs.depositAmount,
+          bonusAmount: inputs.bonusAmount,
+          affiLink: inputs.affiLink,
+          theme: themeColors,
+        },
+      ],
+      belowCards: [],
+      reviews: [],
+      faq: [],
+      footer: [
+        {
+          id: makeV2BlockId("m4V1LowerSections"),
+          type: "m4V1LowerSections",
+          affiLink: inputs.affiLink,
+          brandName: pseudo,
+          theme: themeColors,
+        },
+      ],
+    },
+    globals: {
+      bgPage: theme.bgPage,
+      bgCard: theme.bgCard,
+      brandGold: theme.accent,
+      borderColor: theme.borderColor,
+    },
+  };
 }
 
 async function resolveUniqueSlug(base: string): Promise<string> {
@@ -673,7 +766,7 @@ export async function routeAdminInteraction(interaction: Interaction): Promise<b
     }
     if (interaction.isModalSubmit()) {
       if (interaction.customId === MODAL_FRAIS_AJOUTER)  { await handleFraisAjouterSubmit(interaction);  return true; }
-      if (interaction.customId === MODAL_LANDING_CREER)  { await handleLandingCreerSubmit(interaction);  return true; }
+      if (interaction.customId === MODAL_LANDING_CREER || interaction.customId.startsWith(MODAL_LANDING_CREER + ":"))  { await handleLandingCreerSubmit(interaction);  return true; }
     }
     if (interaction.isButton()) {
       if (interaction.customId === FEES_BOARD_MARK_PAID_OPEN_CID) { await handleMarkPaidOpen(interaction); return true; }
