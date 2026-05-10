@@ -430,6 +430,13 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
     borderColor: theme.borderColor,
   } : (inputs.m1CustomBgPage?.trim() ? { bgPage: inputs.m1CustomBgPage.trim() } : undefined);
 
+  // Si thème actif → la couleur du pseudo suit le thème (override sur le
+  // pseudoStyle, preserve font/size/weight/glow user). Si thème off, on
+  // garde la couleur custom choisie par l'user dans le LineStylePicker.
+  const pseudoStyleResolved = useTheme && theme
+    ? { ...inputs.pseudoStyle, color: theme.accent, glow: true }
+    : inputs.pseudoStyle;
+
   // V2Page minimal : zones quasi vides, juste un bloc full-page dans `cards`
   // + le bloc preset M4V1LowerSections en footer pour les sections reviews/
   // FAQ/footer/sticky CTA (identique à M1, conversion-driver important).
@@ -454,7 +461,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           bonusAmount: inputs.bonusAmount,
           affiLink: inputs.affiLink,
           theme: themeColors,
-          pseudoStyle: inputs.pseudoStyle,
+          pseudoStyle: pseudoStyleResolved,
         } as any,
       ],
       belowCards: [],
