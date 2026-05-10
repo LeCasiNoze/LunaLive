@@ -6,6 +6,7 @@
 
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
+import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M6ChestProps = {
   pseudo?: string;
@@ -21,6 +22,7 @@ export type M6ChestProps = {
     bgCard?: string;
     borderColor?: string;
   };
+  pseudoStyle?: V3LineStyleLike;
 };
 
 type CellState = "closed" | "diamond" | "bomb";
@@ -41,7 +43,7 @@ const BombIcon = () => (
   </div>
 );
 
-export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M6ChestProps) {
+export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M6ChestProps) {
   const T = {
     accent:      theme?.accent      || "#d4a843",
     accentLight: theme?.accentLight || "#f0c84a",
@@ -149,7 +151,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
         .m6-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
         .m6-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m6-pseudo{font-size:1.05rem;font-weight:600;color:#f5f1e6}
+        .m6-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
         .m6-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:18px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
         .m6-promo .accent{color:${T.accent};font-weight:700}
@@ -207,6 +209,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
         .m6-popup .reward-box .val{font-weight:700;color:#f5f1e6}
         .m6-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
+        .m6-popup .m6-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
 
         @keyframes m6-bomb-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-3px)}75%{transform:rotateY(180deg) translateX(3px)}}
         @keyframes m6-fuse-flicker{from{opacity:.85;transform:translateX(-50%) scale(.9)}to{opacity:1;transform:translateX(-50%) scale(1.15)}}
@@ -216,7 +219,13 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
       <div className="m6-header">
         {profileImageUrl ? <div className="m6-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? <div className="m6-pseudo">{pseudo}</div> : null}
+        {pseudo ? (
+          <div className="m6-pseudo-wrap">
+            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+              {pseudo}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="m6-promo">{mini}</div>

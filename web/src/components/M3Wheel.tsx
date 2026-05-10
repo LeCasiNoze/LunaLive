@@ -6,6 +6,7 @@
 
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
+import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M3WheelProps = {
   pseudo?: string;
@@ -21,6 +22,7 @@ export type M3WheelProps = {
     bgCard?: string;
     borderColor?: string;
   };
+  pseudoStyle?: V3LineStyleLike;
 };
 
 const SEGMENTS = [
@@ -46,7 +48,7 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 }
 
-export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M3WheelProps) {
+export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M3WheelProps) {
   const T = {
     accent:      theme?.accent      || "#d4a843",
     accentLight: theme?.accentLight || "#f0c84a",
@@ -92,7 +94,8 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:24px;position:relative;z-index:2}
         .m3-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
         .m3-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m3-pseudo{font-size:1.05rem;font-weight:600;color:#f5f1e6;letter-spacing:.02em}
+        /* Pseudo : pill stylé inline (style appliqué via React inline style) */
+        .m3-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
         .m3-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:28px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
         .m3-promo strong{color:${T.accent};font-weight:700}
@@ -135,6 +138,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
         .m3-popup .reward-box .val{font-weight:700;color:#f5f1e6}
         .m3-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
+        .m3-popup .m3-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
 
         @keyframes m3-blink{0%,100%{opacity:1}50%{opacity:.3}}
         @keyframes m3-fade{from{opacity:0}to{opacity:1}}
@@ -143,7 +147,13 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
       <div className="m3-header">
         {profileImageUrl ? <div className="m3-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? <div className="m3-pseudo">{pseudo}</div> : null}
+        {pseudo ? (
+          <div className="m3-pseudo-wrap">
+            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+              {pseudo}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="m3-promo">

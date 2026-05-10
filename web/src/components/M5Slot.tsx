@@ -5,6 +5,7 @@
 
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
+import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M5SlotProps = {
   pseudo?: string;
@@ -20,6 +21,7 @@ export type M5SlotProps = {
     bgCard?: string;
     borderColor?: string;
   };
+  pseudoStyle?: V3LineStyleLike;
 };
 
 const SYMBOLS = ["🍒", "🍋", "🍇", "💎", "🔔", "7️⃣", "🍇", "💎", "🍋", "🔔", "🍒", "💎"];
@@ -71,7 +73,7 @@ function Reel({ spinning, duration, tension, won, spinKey }: {
   );
 }
 
-export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M5SlotProps) {
+export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M5SlotProps) {
   const T = {
     accent:      theme?.accent      || "#d4a843",
     accentLight: theme?.accentLight || "#f0c84a",
@@ -119,7 +121,7 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
         .m5-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
         .m5-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m5-pseudo{font-size:1.05rem;font-weight:600;color:#f5f1e6}
+        .m5-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
         .m5-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:22px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
         .m5-promo strong{color:${T.accent}}
@@ -172,6 +174,7 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
         .m5-popup .reward-box .val{font-weight:700;color:#f5f1e6}
         .m5-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
+        .m5-popup .m5-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
 
         @keyframes m5-tension-pulse{from{box-shadow:inset 0 0 24px ${T.accent}55}to{box-shadow:inset 0 0 32px ${T.accent}88}}
         @keyframes m5-win-pulse{0%,100%{box-shadow:inset 0 0 16px ${T.accent}88}50%{box-shadow:inset 0 0 24px ${T.accent}}}
@@ -181,7 +184,13 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
 
       <div className="m5-header">
         {profileImageUrl ? <div className="m5-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? <div className="m5-pseudo">{pseudo}</div> : null}
+        {pseudo ? (
+          <div className="m5-pseudo-wrap">
+            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+              {pseudo}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="m5-promo">Machine à sous · <strong>1 spin gratuit</strong></div>

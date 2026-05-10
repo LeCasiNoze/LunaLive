@@ -698,19 +698,22 @@ function WizardQuickView({
                 </div>
               </Accordion>
 
+              {/* Style des textes — pseudo visible pour M1 + M3-M6 (mais pas M2).
+                  Lignes Déposez/Recevez : uniquement M1 (M3-M6 baked in game). */}
+              <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
+
+              {inputs.pseudo ? (
+                <Accordion
+                  sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
+                  label="Pseudo"
+                  open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
+                >
+                  <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
+                </Accordion>
+              ) : null}
+
               {inputs.modelKind === "M1" ? (
                 <>
-                  <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
-
-                  {inputs.pseudo ? (
-                    <Accordion
-                      sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
-                      label="Pseudo"
-                      open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
-                    >
-                      <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
-                    </Accordion>
-                  ) : null}
                   <Accordion
                     sectionRef={(el) => { sectionRefs.current.deposit = el; }}
                     label="« Déposez X€ »"

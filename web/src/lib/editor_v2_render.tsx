@@ -374,6 +374,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     bonusAmount: b.bonusAmount,
     affiLink: b.affiLink,
     theme: b.theme,
+    pseudoStyle: b.pseudoStyle,
   };
   switch (b.gameKind) {
     case "M3": return <M3Wheel {...props} />;

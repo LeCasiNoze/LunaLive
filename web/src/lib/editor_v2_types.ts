@@ -238,6 +238,10 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   bonusAmount?: number | null;
   affiLink: string;
   theme?: M4ThemeColors;
+  /** Style typographique du pseudo (font/size/color/weight/glow).
+   *  Type V3LineStyle structurellement compatible (lazy any pour éviter
+   *  un import circulaire avec editor_v3_quick_builder). */
+  pseudoStyle?: any;
 }
 
 // ─── Union ───────────────────────────────────────────────────────────────────

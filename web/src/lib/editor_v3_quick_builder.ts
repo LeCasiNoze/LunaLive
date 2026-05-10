@@ -454,6 +454,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           bonusAmount: inputs.bonusAmount,
           affiLink: inputs.affiLink,
           theme: themeColors,
+          pseudoStyle: inputs.pseudoStyle,
         } as any,
       ],
       belowCards: [],
