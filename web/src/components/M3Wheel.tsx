@@ -66,12 +66,15 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const spin = () => {
     if (phase !== "idle") return;
     sfx.click();
-    sfx.spin(4400);
+    // Ticks mécaniques décélérants qui matchent la rotation visuelle (4.2s,
+    // courbe cubic-bezier(.17,.67,.16,.99) → ticks denses au début, espacés
+    // à la fin = "vraie" roue qui ralentit.
+    sfx.wheelTicks(4200);
     setPhase("spinning");
     const target = 360 * 6 + (360 - (WIN_INDEX * SLICE_DEG + SLICE_DEG / 2));
     setAngle(target);
-    // Tension-rising sound during last 1.2s (when wheel slows down)
-    setTimeout(() => sfx.tension(1200), 3200);
+    // Tension finale sur les 800 derniers ms (quand la roue ralentit le plus)
+    setTimeout(() => sfx.tension(800), 3400);
     setTimeout(() => {
       sfx.win();
       setPhase("won");

@@ -23,8 +23,11 @@ export type M5SlotProps = {
 };
 
 // Symboles incluant 💎 dans la rotation pour que le user les voie passer.
-const SYMBOLS = ["🍒", "🍋", "🍇", "💎", "🍒", "🔔", "💎", "7️⃣", "🍋", "💎"];
+const SYMBOLS = ["🍒", "🍋", "🍇", "💎", "🔔", "7️⃣", "🍇", "💎", "🍋", "🔔", "🍒", "💎"];
 const WIN = "💎";
+const CELL_H = 108;     // hauteur d'une cell visible
+const STRIP_LEN = 36;   // nombre de cells dans la strip (long pour fluidité)
+const TARGET_IDX = 35;  // index du symbole gagnant (dernier cell de la strip)
 
 const PAYTABLE = [
   { sym: "🍒", label: "Cerises × 3",  pct: "10%" },
@@ -35,23 +38,46 @@ const PAYTABLE = [
   { sym: "💎", label: "Diamants × 3", pct: "100%", jackpot: true },
 ];
 
+// Reel naturel : strip de 36 cells qui translate du début (translate 0)
+// jusqu'à la position finale (target = dernière cell = WIN) avec une easing
+// de décélération cubic-bezier. Pas de display:none ni de loop infini —
+// une seule transition CSS = mouvement fluide qui ralentit en fin.
 function Reel({
-  stopped, finalSymbol, delay, tension, won,
+  spinning, duration, tension, won, spinKey,
 }: {
-  stopped: boolean;
-  finalSymbol: string;
-  delay: number;
-  tension?: boolean;  // 3ème reel en attente : ralenti + glow
-  won?: boolean;      // surlignage doré une fois gagné
+  spinning: boolean;
+  duration: number;     // durée de la transition en secondes
+  tension?: boolean;    // 3ème reel en tension (glow doré pulsé)
+  won?: boolean;        // doré une fois gagné
+  spinKey: number;      // change pour regen la strip à chaque spin
 }) {
+  // Strip random à chaque spin pour éviter la répétition visible.
+  // Cell finale = WIN (💎) à l'index TARGET_IDX.
+  const strip = React.useMemo(() => {
+    const arr: string[] = [];
+    for (let i = 0; i < STRIP_LEN; i++) {
+      if (i === TARGET_IDX) arr.push(WIN);
+      else arr.push(SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
+    }
+    return arr;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spinKey]);
+
+  const translateY = spinning ? -(TARGET_IDX * CELL_H) : 0;
+
   return (
     <div className={`m5s-reel ${tension ? "tension" : ""} ${won ? "won" : ""}`}>
-      <div className={`m5s-strip ${stopped ? "stopped" : ""} ${tension ? "tension" : ""}`} style={{ animationDelay: `${delay}ms` }}>
-        {Array.from({ length: 24 }).map((_, i) => (
-          <div key={i} className="m5s-cell">{SYMBOLS[i % SYMBOLS.length]}</div>
+      <div
+        className="m5s-strip"
+        style={{
+          transform: `translateY(${translateY}px)`,
+          transition: spinning ? `transform ${duration}s cubic-bezier(.17,.67,.16,.99)` : "none",
+        }}
+      >
+        {strip.map((sym, i) => (
+          <div key={i} className="m5s-cell">{sym}</div>
         ))}
       </div>
-      {stopped ? <div className="m5s-final">{finalSymbol}</div> : null}
     </div>
   );
 }
@@ -66,39 +92,35 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
     border:      theme?.borderColor || "#331A47",
   };
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "tension" | "won">("idle");
-  const [stopped, setStopped] = React.useState<[boolean, boolean, boolean]>([false, false, false]);
+  const [spinKey, setSpinKey] = React.useState(0);
   const [popupOpen, setPopupOpen] = React.useState(false);
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
 
+  // Durées des 3 reels (en s). Le 3ème est volontairement plus long pour
+  // que sa décélération matche la phase TENSION (suspense montant).
+  const REEL_DURATIONS = [1.4, 2.4, 4.0] as const;
+
   const play = () => {
     if (phase !== "idle") return;
     sfx.click();
+    setSpinKey((k) => k + 1);  // regen les strips
     setPhase("spinning");
-    setStopped([false, false, false]);
-    // Reel 1 stops à 1.4s
+    // Sound : reel stops timing match les end-of-transition de chaque reel
+    setTimeout(() => sfx.reelStop(), REEL_DURATIONS[0] * 1000);
     setTimeout(() => {
       sfx.reelStop();
-      setStopped((s) => [true, s[1], s[2]]);
-    }, 1400);
-    // Reel 2 stops à 2.1s — 2 diamants alignés → on entre en TENSION
-    setTimeout(() => {
-      sfx.reelStop();
-      setStopped((s) => [s[0], true, s[2]]);
       setPhase("tension");
-      // Tension build-up sound (1.6s rising sweep)
-      sfx.tension(1600);
-    }, 2100);
-    // Tension qui dure 1.8s avant que le 3e reel s'arrête
+      sfx.tension(REEL_DURATIONS[2] * 1000 - REEL_DURATIONS[1] * 1000);
+    }, REEL_DURATIONS[1] * 1000);
     setTimeout(() => {
       sfx.reelStop();
-      setStopped([true, true, true]);
       setPhase("won");
       sfx.win();
       setTimeout(() => setPopupOpen(true), 800);
-    }, 3900);
+    }, REEL_DURATIONS[2] * 1000);
   };
 
   return (
@@ -130,12 +152,9 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-reel::before,.m5s-reel::after{content:"";position:absolute;left:0;right:0;height:24px;z-index:2;pointer-events:none}
         .m5s-reel::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.85),transparent)}
         .m5s-reel::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.85),transparent)}
-        .m5s-strip{display:flex;flex-direction:column;animation:m5s-spin .12s linear infinite}
-        .m5s-strip.tension{animation:m5s-spin .35s linear infinite}
-        .m5s-strip.stopped{animation-play-state:paused;display:none}
+        .m5s-strip{display:flex;flex-direction:column;will-change:transform}
         .m5s-tension-banner{margin-top:10px;text-align:center;font-family:'Playfair Display',serif;font-size:.95rem;font-weight:900;letter-spacing:.18em;color:${T.accent};text-shadow:0 0 14px ${T.accentGlow};animation:m5s-tension-text .3s ease-in-out infinite alternate}
-        .m5s-cell{height:108px;display:flex;align-items:center;justify-content:center;font-size:2.6rem}
-        .m5s-final{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3.2rem;background:radial-gradient(circle,${T.bgCard},#1a0d2a);animation:m5s-pop .35s ease-out;text-shadow:0 0 20px ${T.accentGlow}}
+        .m5s-cell{height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;flex-shrink:0}
         .m5s-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.5);border:1px solid ${T.border};border-radius:8px;padding:8px 14px;font-size:.85rem;color:rgba(255,255,255,.75)}
         .m5s-bar strong{color:${T.accent};font-weight:900;text-shadow:0 0 8px ${T.accentGlow}}
 
@@ -164,7 +183,6 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1rem;text-shadow:0 0 10px ${T.accentGlow}}
         .m5s-popup .m5s-cta{width:100%;font-size:.95rem;padding:14px 18px;letter-spacing:.08em}
 
-        @keyframes m5s-spin{0%{transform:translateY(0)}100%{transform:translateY(-108px)}}
         @keyframes m5s-tension{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 32px ${T.accentGlow}}50%{box-shadow:0 0 40px ${T.accent},inset 0 0 48px ${T.accent}}}
         @keyframes m5s-win-glow{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 16px ${T.accentGlow}}50%{box-shadow:0 0 48px ${T.accent},inset 0 0 24px ${T.accent}}}
         @keyframes m5s-tension-text{from{transform:scale(1);opacity:.7}to{transform:scale(1.06);opacity:1}}
@@ -195,14 +213,24 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
             ))}
           </div>
           <div className="m5s-screen">
-            <Reel stopped={stopped[0]} finalSymbol={WIN} delay={0}   won={phase === "won"} />
-            <Reel stopped={stopped[1]} finalSymbol={WIN} delay={150} won={phase === "won"} />
             <Reel
-              stopped={stopped[2]}
-              finalSymbol={WIN}
-              delay={300}
+              spinning={phase !== "idle"}
+              duration={REEL_DURATIONS[0]}
+              won={phase === "won"}
+              spinKey={spinKey}
+            />
+            <Reel
+              spinning={phase !== "idle"}
+              duration={REEL_DURATIONS[1]}
+              won={phase === "won"}
+              spinKey={spinKey + 100}
+            />
+            <Reel
+              spinning={phase !== "idle"}
+              duration={REEL_DURATIONS[2]}
               tension={phase === "tension"}
               won={phase === "won"}
+              spinKey={spinKey + 200}
             />
           </div>
           {phase === "tension" ? (

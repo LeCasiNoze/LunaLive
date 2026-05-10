@@ -118,6 +118,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6c-status{display:flex;align-items:center;gap:14px;font-size:.85rem;color:rgba(255,255,255,.7);margin-bottom:14px;position:relative;z-index:2;letter-spacing:.04em}
         .m6c-status .pill{background:rgba(0,0,0,.4);border:1px solid ${T.border};padding:6px 12px;border-radius:999px;color:#fff;font-weight:700}
         .m6c-status .pill.win{background:${T.accent}15;border-color:${T.accent};color:${T.accent};text-shadow:0 0 8px ${T.accentGlow}}
+        .m6c-status .pill.super{background:${T.accent}25;border-color:${T.accentLight};color:${T.accentLight};text-shadow:0 0 12px ${T.accentGlow};animation:m6c-super-pulse 1.4s ease-in-out infinite}
 
         .m6c-grid{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:min(80vw,340px);margin-bottom:22px}
         .m6c-cell{aspect-ratio:1/1;perspective:1000px;cursor:pointer}
@@ -151,6 +152,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         @keyframes m6c-fade{from{opacity:0}to{opacity:1}}
         @keyframes m6c-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
         @keyframes m6c-bomb-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-4px)}75%{transform:rotateY(180deg) translateX(4px)}}
+        @keyframes m6c-super-pulse{0%,100%{box-shadow:0 0 0 0 ${T.accent}00}50%{box-shadow:0 0 0 6px ${T.accent}33}}
       `}</style>
 
       <div className="m6c-header">
@@ -158,15 +160,52 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         {pseudo ? <div className="m6c-pseudo">{pseudo}</div> : null}
       </div>
 
-      <div className="m6c-offer">
-        <div className="m6c-offer-mini">✦ Démineur · gain mystère ✦</div>
-        <div className="m6c-offer-main">
-          Trouve <span className="accent">3 diamants</span> · gagne ton bonus
-        </div>
-      </div>
+      {/* Bannière offre — escalier de tease selon le palier atteint */}
+      {(() => {
+        // Tier system :
+        //   0-2  : "Trouve 3 diamants pour gagner ton bonus"
+        //   3-5  : "Bonus débloqué · 3 de plus pour SUPER BONUS"
+        //   6-7  : "SUPER BONUS · X de plus pour JACKPOT"
+        //   8    : "JACKPOT en vue"
+        let mini: string;
+        let main: React.ReactNode;
+        let icon: string = "✦";
+        if (winType) {
+          mini = "✦ Bonus débloqué ✦";
+          main = <>Récupère ton <span className="accent">{winType === "all" ? "JACKPOT" : "bonus"}</span></>;
+          icon = "🎁";
+        } else if (diamondCount === 0) {
+          mini = "✦ Démineur · 1 bombe cachée ✦";
+          main = <>Trouve <span className="accent">3 diamants</span> · gagne ton bonus</>;
+        } else if (diamondCount < 3) {
+          mini = `✦ Plus que ${3 - diamondCount} diamant${3 - diamondCount > 1 ? "s" : ""} ✦`;
+          main = <>Tu approches du <span className="accent">bonus</span></>;
+          icon = "🎯";
+        } else if (diamondCount < 6) {
+          mini = "✦ Bonus débloqué · continue ! ✦";
+          main = <>Encore <span className="accent">{6 - diamondCount}</span> pour le SUPER BONUS</>;
+          icon = "🎁";
+        } else if (diamondCount < 8) {
+          mini = "✦ SUPER BONUS débloqué ! ✦";
+          main = <>Encore <span className="accent">{8 - diamondCount}</span> pour le JACKPOT</>;
+          icon = "⭐";
+        } else {
+          mini = "✦ JACKPOT en vue ✦";
+          main = <><span className="accent">Une dernière case</span>… ose-tu ?</>;
+          icon = "💎";
+        }
+        return (
+          <div className="m6c-offer">
+            <div className="m6c-offer-mini">{mini}</div>
+            <div className="m6c-offer-main">{main}</div>
+          </div>
+        );
+      })()}
 
       <div className="m6c-status">
-        <span className={`pill ${diamondCount >= 3 ? "win" : ""}`}>💎 {diamondCount}/9 diamants</span>
+        <span className={`pill ${diamondCount >= 6 ? "super" : diamondCount >= 3 ? "win" : ""}`}>
+          {diamondCount >= 6 ? "⭐" : "💎"} {diamondCount}/9
+        </span>
         <span>·</span>
         <span style={{ color: closedCount === 1 ? "#ff6b6b" : "rgba(255,255,255,.6)" }}>
           {closedCount === 1 ? "💣 1 bombe restante…" : `${closedCount} cases fermées`}
@@ -192,10 +231,14 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
       {!winType ? (
         canCollect ? (
-          <button className="m6c-cta m6c-cta-pulse" onClick={collect}>💰 Collecter maintenant</button>
+          <button className="m6c-cta m6c-cta-pulse" onClick={collect}>
+            {diamondCount >= 6 ? "⭐ Collecter SUPER BONUS" : "💰 Collecter maintenant"}
+          </button>
         ) : (
           <button className="m6c-cta" disabled>
-            {diamondCount === 0 ? "👆 Trouve 3 diamants" : `Encore ${3 - diamondCount} diamant${3 - diamondCount > 1 ? "s" : ""}`}
+            {diamondCount === 0
+              ? "👆 Trouve 3 diamants"
+              : `Encore ${3 - diamondCount} diamant${3 - diamondCount > 1 ? "s" : ""}`}
           </button>
         )
       ) : (
@@ -212,12 +255,25 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         <div className="m6c-overlay" onClick={() => setPopupOpen(false)}>
           <div className="m6c-popup" onClick={(e) => e.stopPropagation()}>
             <button className="m6c-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m6c-popup-icon">{winType === "all" ? "🛡️" : "💎"}</div>
-            <h2>{winType === "all" ? "TU AS SURVÉCU !" : "BIEN JOUÉ !"}</h2>
+            <div className="m6c-popup-icon">
+              {winType === "all" ? "🏆" : diamondCount >= 6 ? "⭐" : "💎"}
+            </div>
+            <h2>
+              {winType === "all"
+                ? "JACKPOT MEGA !"
+                : diamondCount >= 6
+                  ? "SUPER BONUS !"
+                  : "BIEN JOUÉ !"}
+            </h2>
             {winType === "all" ? (
               <>
                 <p>Tu as révélé tous les diamants en évitant la bombe.</p>
                 <p><strong style={{ color: T.accent }}>JACKPOT 100%</strong> sur ton premier dépôt.</p>
+              </>
+            ) : diamondCount >= 6 ? (
+              <>
+                <p>Tu as collecté <strong>{diamondCount} diamants</strong> · niveau SUPER BONUS.</p>
+                <p>Bonus <strong style={{ color: T.accent }}>100%</strong> verrouillé pour toi.</p>
               </>
             ) : (
               <>

@@ -77,6 +77,26 @@ export const sfx = {
   /** Spin/whir : noise + sweep — pour roue qui tourne */
   spin: (durMs = 4000) => noise(durMs, 0.04, 800, { sweepTo: 200 }),
 
+  /** Wheel ticks décélérants — clic mécanique de la roue qui ralentit
+   *  progressivement (curve quadratique = match cubic-bezier visuel). */
+  wheelTicks: (durMs: number) => {
+    const c = ctx();
+    if (!c) return;
+    let elapsed = 0;
+    const tick = () => {
+      if (elapsed >= durMs) return;
+      // Click court "clack" mécanique
+      tone(1100, 18, { type: "square", gain: 0.10 });
+      tone(420, 15, { type: "triangle", gain: 0.06, delayMs: 5 });
+      const progress = elapsed / durMs;
+      // Délai croît avec progress² → ticks denses au début, espacés à la fin
+      const delay = 30 + Math.pow(progress, 2.2) * 580;
+      elapsed += delay;
+      setTimeout(tick, delay);
+    };
+    tick();
+  },
+
   /** Ticktack régulier (slot) */
   tick: () => tone(1200, 25, { type: "square", gain: 0.06 }),
 
