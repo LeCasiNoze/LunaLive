@@ -153,7 +153,6 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-reel::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.85),transparent)}
         .m5s-reel::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.85),transparent)}
         .m5s-strip{display:flex;flex-direction:column;will-change:transform}
-        .m5s-tension-banner{margin-top:10px;text-align:center;font-family:'Playfair Display',serif;font-size:.95rem;font-weight:900;letter-spacing:.18em;color:${T.accent};text-shadow:0 0 14px ${T.accentGlow};animation:m5s-tension-text .3s ease-in-out infinite alternate}
         .m5s-cell{height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;flex-shrink:0}
         .m5s-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.5);border:1px solid ${T.border};border-radius:8px;padding:8px 14px;font-size:.85rem;color:rgba(255,255,255,.75)}
         .m5s-bar strong{color:${T.accent};font-weight:900;text-shadow:0 0 8px ${T.accentGlow}}
@@ -233,9 +232,6 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
               spinKey={spinKey + 200}
             />
           </div>
-          {phase === "tension" ? (
-            <div className="m5s-tension-banner">⚡ ALMOST THERE… ⚡</div>
-          ) : null}
           <div className="m5s-bar">
             <span>Mise</span>
             <span><strong>{dep || "X€"}</strong> → <strong>{bon || "Y€"}</strong></span>
