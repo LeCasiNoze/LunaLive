@@ -520,7 +520,7 @@ function WizardQuickView({
               {inputs.modelKind === "M3" && "M3 = Roue à tourner — gagne toujours 100% bonus"}
               {inputs.modelKind === "M4" && "M4 = Carte à gratter — révèle ton bonus"}
               {inputs.modelKind === "M5" && "M5 = Machine à sous 3 reels — jackpot garanti"}
-              {inputs.modelKind === "M6" && "M6 = Coffre légendaire — 3 cadenas à ouvrir"}
+              {inputs.modelKind === "M6" && "M6 = Mines — grille 3x3 sans bombe"}
             </div>
           </div>
 
