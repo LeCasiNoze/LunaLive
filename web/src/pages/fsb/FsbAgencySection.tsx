@@ -2036,47 +2036,65 @@ function SnapshotPanel({
             </div>
 
             {/* Live preview */}
-            {preview != null && (
-              <div style={{ marginTop: 14, padding: 12, background: "rgba(16,185,129,.07)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 10, fontSize: 13 }}>
-                <div style={{ fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(110,231,183,.7)", marginBottom: 8 }}>
-                  Prévisualisation calculs
+            {preview != null && (() => {
+              const ftd = toSnapshotNum(form.ftdCount) ?? 0;
+              const ftdAdj = Math.max(0, ftd - (preview.bonusSplit.ftdRemoved ?? 0));
+              const rsTotal = toSnapshotNum(form.rsAmount) ?? 0;
+              const cpaUnit = preview.deal.cpaStreamerUnit;
+              const streamerCpa = ftdAdj * cpaUnit;
+              const streamerRs = rsTotal * (preview.deal.rsStreamerPct / 100);
+              const streamerTotal = streamerCpa + streamerRs;
+              // Marge agence = (CPA total réel - CPA streamer) + (RS total réel - RS streamer)
+              const cpaAgencyUnit = deal.cpaAgencyCut ?? 0;
+              const rsAgencyPct = deal.ersAgencyPercent ?? 0;
+              const baseAgencyCpa = ftd * cpaAgencyUnit; // sur tous les FTD réels
+              const baseAgencyRs = rsTotal * (rsAgencyPct / 100);
+              const bonusAmount = toSnapshotNum(form.bonusAmount) ?? 0;
+              // Total agence = part de base + bonus net (positif = on prend, négatif = on donne)
+              const agencyCpa = baseAgencyCpa + (preview.bonusSplit.bonusCpaSplit ?? 0);
+              const agencyRs = baseAgencyRs + (preview.bonusSplit.bonusRsSplit ?? 0);
+              const agencyTotal = agencyCpa + agencyRs;
+              return (
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  {/* Vue affilié */}
+                  <div style={{ padding: 12, background: "rgba(16,185,129,.07)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 10, fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(110,231,183,.7)", marginBottom: 8 }}>
+                      👁 Vue affilié
+                    </div>
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      <StatChip label="FTD vu" value={String(ftdAdj)} />
+                      <StatChip label="CPA" value={eur(streamerCpa)} accent />
+                      <StatChip label="RS" value={eur(streamerRs)} accent />
+                      <StatChip label="Total affilié" value={eur(streamerTotal)} accent />
+                    </div>
+                  </div>
+                  {/* Vue agence */}
+                  <div style={{ padding: 12, background: "rgba(167,139,250,.07)", border: "1px solid rgba(167,139,250,.25)", borderRadius: 10, fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(167,139,250,.85)", marginBottom: 8 }}>
+                      💼 Marge agence
+                    </div>
+                    <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                      <StatChip label="CPA agence" value={eur(agencyCpa)} />
+                      <StatChip label="RS agence" value={eur(agencyRs)} />
+                      <StatChip label="Total agence" value={eur(agencyTotal)} accent />
+                      {hasBonusInForm && (
+                        <StatChip
+                          label={bonusAmount >= 0 ? "Bonus pris" : "Bonus offert"}
+                          value={eur(Math.abs(bonusAmount))}
+                        />
+                      )}
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 11, color: "rgba(255,255,255,.45)" }}>
+                      Base contractuelle ({eur(baseAgencyCpa)} CPA + {eur(baseAgencyRs)} RS)
+                      {hasBonusInForm ? ` + bonus (${eur(preview.bonusSplit.bonusCpaSplit ?? 0)} CPA + ${eur(preview.bonusSplit.bonusRsSplit ?? 0)} RS)` : ""}
+                    </div>
+                  </div>
+                  {(preview.bonusSplit.error) ? (
+                    <div style={{ fontSize: 11, color: "rgba(255,150,100,.8)" }}>{preview.bonusSplit.error}</div>
+                  ) : null}
                 </div>
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                  <StatChip
-                    label="Affilié CPA"
-                    value={(() => {
-                      const ftd = toSnapshotNum(form.ftdCount) ?? 0;
-                      const ftdAdj = Math.max(0, ftd - (preview.bonusSplit.ftdRemoved ?? 0));
-                      const cpaUnit = preview.deal.cpaStreamerUnit;
-                      return eur(ftdAdj * cpaUnit);
-                    })()}
-                    accent
-                  />
-                  <StatChip
-                    label="Affilié RS"
-                    value={eur((toSnapshotNum(form.rsAmount) ?? 0) * (preview.deal.rsStreamerPct / 100))}
-                    accent
-                  />
-                  <StatChip
-                    label="Total affilié"
-                    value={(() => {
-                      const ftd = toSnapshotNum(form.ftdCount) ?? 0;
-                      const ftdAdj = Math.max(0, ftd - (preview.bonusSplit.ftdRemoved ?? 0));
-                      const cpa = ftdAdj * preview.deal.cpaStreamerUnit;
-                      const rs = (toSnapshotNum(form.rsAmount) ?? 0) * (preview.deal.rsStreamerPct / 100);
-                      return eur(cpa + rs);
-                    })()}
-                    accent
-                  />
-                  {hasBonusInForm && (
-                    <StatChip label="Ajustement bonus" value={eur(toSnapshotNum(form.bonusAmount) ?? 0)} />
-                  )}
-                </div>
-                {(preview.bonusSplit.error) ? (
-                  <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,150,100,.8)" }}>{preview.bonusSplit.error}</div>
-                ) : null}
-              </div>
-            )}
+              );
+            })()}
             {previewError ? (
               <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,150,100,.7)" }}>{previewError}</div>
             ) : null}

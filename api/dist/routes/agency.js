@@ -821,6 +821,21 @@ function serializeAgencyPortalPayload(agency) {
                 visibleTotal: (assignment.stats.showCpaToStreamer ? assignment.payouts.streamerCpa : 0) +
                     (assignment.stats.showRsToStreamer ? assignment.payouts.payableStreamerErs : 0),
             },
+            // Snapshot v2 — vue ajustée (bonus déjà appliqué) que l'UI streamer doit privilégier
+            periodAggregate: assignment.periodAggregate
+                ? {
+                    rawTotals: undefined, // ne JAMAIS exposer les totaux bruts au streamer
+                    agencyTotals: undefined, // ni la marge agence
+                    perSnapshot: undefined,
+                    adjustedTotals: assignment.periodAggregate.adjustedTotals,
+                }
+                : null,
+            latestSnapshot: assignment.latestSnapshot
+                ? {
+                    id: assignment.latestSnapshot.id,
+                    capturedAt: assignment.latestSnapshot.capturedAt,
+                }
+                : null,
             updatedAt: assignment.stats.updatedAt || assignment.updatedAt,
         })),
         summary: agency.summary,
