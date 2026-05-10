@@ -25,31 +25,20 @@ export type M6ChestProps = {
 
 type CellState = "closed" | "diamond" | "bomb";
 
-// SVG diamond bleu/cyan style Stake
+// Diamond CSS-only (pas de SVG → pas de problème d'ID gradient en cas
+// de multiples instances). Forme via clip-path polygon, gradient linéaire
+// pour le facettage.
 const DiamondIcon = () => (
-  <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
-    <defs>
-      <linearGradient id="m6-diamond" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#7dd3fc" />
-        <stop offset=".5" stopColor="#0ea5e9" />
-        <stop offset="1" stopColor="#0369a1" />
-      </linearGradient>
-    </defs>
-    <path d="M6 9 L12 2 L18 9 L12 22 Z" fill="url(#m6-diamond)" stroke="#0c4a6e" strokeWidth=".8" strokeLinejoin="round" />
-    <path d="M6 9 L18 9" stroke="rgba(255,255,255,.45)" strokeWidth=".8" />
-    <path d="M12 2 L12 9" stroke="rgba(255,255,255,.35)" strokeWidth=".5" />
-    <path d="M9 9 L12 22" stroke="rgba(0,0,0,.2)" strokeWidth=".5" />
-  </svg>
+  <div className="m6-gem">
+    <div className="m6-gem-shine" />
+  </div>
 );
 
 const BombIcon = () => (
-  <svg viewBox="0 0 24 24" width="36" height="36" fill="none">
-    <circle cx="12" cy="14" r="8" fill="#27272a" stroke="#0a0a0a" strokeWidth=".8" />
-    <circle cx="9.5" cy="11.5" r="2" fill="rgba(255,255,255,.18)" />
-    <rect x="11" y="3" width="2" height="4" fill="#52525b" rx=".3" />
-    <path d="M13 5 L15 3 M11 5 L9 3" stroke="#ef4444" strokeWidth="1.2" strokeLinecap="round" />
-    <circle cx="14" cy="2" r="1.2" fill="#ef4444" />
-  </svg>
+  <div className="m6-bomb">
+    <div className="m6-bomb-fuse" />
+    <div className="m6-bomb-shine" />
+  </div>
 );
 
 export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M6ChestProps) {
@@ -74,20 +63,52 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const canCollect = diamondCount >= 3 && !winType;
 
   const reveal = (idx: number) => {
-    if (cells[idx] !== "closed" || winType) return;
-    sfx.reveal();
-    setCells((prev) => { const next = [...prev]; next[idx] = "diamond"; return next; });
+    if (winType) return;
+    // Lecture/mutation via setCells((prev) => …) pour gérer le speedrun :
+    // si l'user clique vite sur les 2 dernières cases, la 2ème va voir
+    // prev = état post-1ère-clic, donc closedInPrev=1 → BOMBE direct
+    // (au lieu de devenir un 9e diamant et de zapper le boom).
+    setCells((prev) => {
+      if (prev[idx] !== "closed") return prev;
+      const closedInPrev = prev.filter((c) => c === "closed").length;
+      const next = [...prev];
+      if (closedInPrev <= 1) {
+        next[idx] = "bomb";
+        sfx.boom();
+      } else {
+        next[idx] = "diamond";
+        sfx.reveal();
+      }
+      return next;
+    });
   };
 
   React.useEffect(() => {
     if (winType) return;
+    // Si une bombe est déjà sur la grille (speedrun OR auto-flip) →
+    // déclenche la win popup après une courte pause.
+    if (cells.some((c) => c === "bomb")) {
+      const tmo = setTimeout(() => {
+        sfx.win();
+        setWinType("all");
+        setPopupOpen(true);
+      }, 600);
+      return () => clearTimeout(tmo);
+    }
+    // Path normal : 1 case fermée restante → tension + auto-flip BOMBE
+    // après 800ms. Si l'user clique entretemps (speedrun), le cleanup
+    // annule ce timeout et reveal() s'en charge directement.
     if (closedCount === 1) {
       const lastIdx = cells.findIndex((c) => c === "closed");
       sfx.tension(800);
       const tmo = setTimeout(() => {
-        sfx.boom();
-        setCells((prev) => { const next = [...prev]; next[lastIdx] = "bomb"; return next; });
-        setTimeout(() => { sfx.win(); setWinType("all"); setPopupOpen(true); }, 600);
+        setCells((prev) => {
+          if (prev[lastIdx] !== "closed") return prev;
+          const next = [...prev];
+          next[lastIdx] = "bomb";
+          sfx.boom();
+          return next;
+        });
       }, 800);
       return () => clearTimeout(tmo);
     }
@@ -158,6 +179,17 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-face-back{transform:rotateY(180deg);background:linear-gradient(180deg,#0a070f,#15101a);border:1px solid #0ea5e966}
         .m6-face-back.bomb{background:linear-gradient(180deg,#1a0808,#0a0404);border-color:#ef4444;animation:m6-bomb-shake .4s ease-in-out}
 
+        /* Diamant CSS pure */
+        .m6-gem{position:relative;width:42%;aspect-ratio:1/1;background:linear-gradient(180deg,#7dd3fc 0%,#38bdf8 35%,#0ea5e9 65%,#0369a1 100%);clip-path:polygon(50% 0%,100% 35%,50% 100%,0% 35%);filter:drop-shadow(0 2px 6px rgba(14,165,233,.5))}
+        .m6-gem-shine{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,.15) 35%,transparent 50%);clip-path:polygon(50% 0%,100% 35%,50% 100%,0% 35%)}
+
+        /* Bombe CSS pure */
+        .m6-bomb{position:relative;width:48%;aspect-ratio:1/1}
+        .m6-bomb::before{content:"";position:absolute;left:8%;right:8%;bottom:0;top:18%;border-radius:50%;background:radial-gradient(circle at 32% 30%,#52525b,#1a1a1d 50%,#0a0a0a);box-shadow:inset 0 -3px 6px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.6)}
+        .m6-bomb-shine{position:absolute;width:18%;height:14%;left:24%;top:38%;border-radius:50%;background:rgba(255,255,255,.35);filter:blur(1px)}
+        .m6-bomb-fuse{position:absolute;left:54%;top:0;width:8%;height:24%;background:linear-gradient(180deg,#52525b,#27272a);border-radius:1px;transform:rotate(8deg);transform-origin:bottom}
+        .m6-bomb-fuse::before{content:"";position:absolute;top:-22%;left:50%;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle,#fef08a 0%,#f97316 40%,#dc2626 80%);box-shadow:0 0 8px #f97316,0 0 14px #fbbf24;transform:translateX(-50%);animation:m6-fuse-flicker .3s ease-in-out infinite alternate}
+
         .m6-cta{display:block;width:min(94vw,360px);padding:16px 24px;background:${T.accent};color:#0e0a05;font-weight:700;text-transform:uppercase;letter-spacing:.16em;font-size:.92rem;border:none;border-radius:4px;cursor:pointer;box-shadow:0 4px 0 ${T.accentDark},0 6px 20px rgba(0,0,0,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease;position:relative;z-index:2}
         .m6-cta:not(:disabled):hover{background:${T.accentLight};transform:translateY(1px);box-shadow:0 3px 0 ${T.accentDark}}
         .m6-cta:disabled{background:${T.chrome};color:rgba(255,255,255,.5);cursor:not-allowed;box-shadow:0 2px 0 rgba(0,0,0,.4)}
@@ -177,6 +209,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
 
         @keyframes m6-bomb-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-3px)}75%{transform:rotateY(180deg) translateX(3px)}}
+        @keyframes m6-fuse-flicker{from{opacity:.85;transform:translateX(-50%) scale(.9)}to{opacity:1;transform:translateX(-50%) scale(1.15)}}
         @keyframes m6-fade{from{opacity:0}to{opacity:1}}
         @keyframes m6-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
       `}</style>
