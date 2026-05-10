@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { sfx } from "../lib/v3_sound";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -85,10 +86,20 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
 
   const pick = (i: number) => {
     if (picked !== -1) return;
+    sfx.click();
     setPicked(i);
-    // Animation : on attend que le coffre choisi s'ouvre, puis on ouvre les 2 autres
-    setTimeout(() => setRevealedOthers(true), 1200);
-    setTimeout(() => setPopupOpen(true), 2400);
+    // Reveal du coffre choisi → ding gagnant
+    setTimeout(() => sfx.reveal(), 600);
+    // Reveal des 2 autres → 2 sons "loss" léger pour effet "j'ai eu de la chance"
+    setTimeout(() => {
+      setRevealedOthers(true);
+      sfx.loss();
+      setTimeout(() => sfx.loss(), 200);
+    }, 1200);
+    setTimeout(() => {
+      sfx.win();
+      setPopupOpen(true);
+    }, 2400);
   };
 
   const reset = () => {
@@ -100,7 +111,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
   return (
     <div className="m4mb-root" style={{ background: T.bgPage, color: "#fff" }}>
       <style>{`
-        .m4mb-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
+        .m4mb-root{display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
         .m4mb-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(ellipse at 50% 30%,${T.accentGlow},transparent 55%);pointer-events:none;opacity:.55}
         .m4mb-root::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 20% 20%,${T.accent}10 1.5px,transparent 1.5px),radial-gradient(circle at 80% 70%,${T.accent}10 1.5px,transparent 1.5px);background-size:50px 50px,70px 70px;pointer-events:none;opacity:.4}
 

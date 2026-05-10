@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { sfx } from "../lib/v3_sound";
 
 export type M6ChestProps = {
   pseudo?: string;
@@ -51,11 +52,9 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
   const reveal = (idx: number) => {
     if (cells[idx] !== "closed" || winType) return;
+    sfx.reveal();
     setCells((prev) => {
       const next = [...prev];
-      // Rigged : tant qu'il reste plus d'une case fermée → diamant.
-      // Quand il ne reste qu'une fermée, click pas requis (auto), mais
-      // si ça arrive on la fait diamant aussi.
       next[idx] = "diamond";
       return next;
     });
@@ -66,23 +65,29 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
     if (winType) return;
     if (closedCount === 1) {
       const lastIdx = cells.findIndex((c) => c === "closed");
+      // Tension build-up sur 800ms avant la révélation de la bombe
+      sfx.tension(800);
       const tmo = setTimeout(() => {
+        sfx.boom();
         setCells((prev) => {
           const next = [...prev];
           next[lastIdx] = "bomb";
           return next;
         });
         setTimeout(() => {
+          sfx.win();
           setWinType("all");
           setPopupOpen(true);
         }, 600);
-      }, 500);
+      }, 800);
       return () => clearTimeout(tmo);
     }
   }, [closedCount, cells, winType]);
 
   const collect = () => {
     if (!canCollect) return;
+    sfx.coin();
+    sfx.win();
     setWinType("collect");
     setPopupOpen(true);
   };
@@ -96,7 +101,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   return (
     <div className="m6c-root" style={{ background: T.bgPage, color: "#fff" }}>
       <style>{`
-        .m6c-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
+        .m6c-root{display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
         .m6c-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 50% 30%,${T.accentGlow},transparent 50%);pointer-events:none;opacity:.55}
         .m6c-root::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 25% 25%,${T.accent}10 1.5px,transparent 1.5px),radial-gradient(circle at 75% 75%,${T.accent}10 1.5px,transparent 1.5px);background-size:50px 50px,70px 70px;pointer-events:none;opacity:.4}
 

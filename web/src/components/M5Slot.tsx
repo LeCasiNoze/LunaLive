@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { sfx } from "../lib/v3_sound";
 
 export type M5SlotProps = {
   pseudo?: string;
@@ -34,10 +35,18 @@ const PAYTABLE = [
   { sym: "💎", label: "Diamants × 3", pct: "100%", jackpot: true },
 ];
 
-function Reel({ stopped, finalSymbol, delay }: { stopped: boolean; finalSymbol: string; delay: number }) {
+function Reel({
+  stopped, finalSymbol, delay, tension, won,
+}: {
+  stopped: boolean;
+  finalSymbol: string;
+  delay: number;
+  tension?: boolean;  // 3ème reel en attente : ralenti + glow
+  won?: boolean;      // surlignage doré une fois gagné
+}) {
   return (
-    <div className="m5s-reel">
-      <div className={`m5s-strip ${stopped ? "stopped" : ""}`} style={{ animationDelay: `${delay}ms` }}>
+    <div className={`m5s-reel ${tension ? "tension" : ""} ${won ? "won" : ""}`}>
+      <div className={`m5s-strip ${stopped ? "stopped" : ""} ${tension ? "tension" : ""}`} style={{ animationDelay: `${delay}ms` }}>
         {Array.from({ length: 24 }).map((_, i) => (
           <div key={i} className="m5s-cell">{SYMBOLS[i % SYMBOLS.length]}</div>
         ))}
@@ -56,7 +65,7 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
     bgCard:      theme?.bgCard      || "#150821",
     border:      theme?.borderColor || "#331A47",
   };
-  const [phase, setPhase] = React.useState<"idle" | "spinning" | "won">("idle");
+  const [phase, setPhase] = React.useState<"idle" | "spinning" | "tension" | "won">("idle");
   const [stopped, setStopped] = React.useState<[boolean, boolean, boolean]>([false, false, false]);
   const [popupOpen, setPopupOpen] = React.useState(false);
 
@@ -66,21 +75,36 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
 
   const play = () => {
     if (phase !== "idle") return;
+    sfx.click();
     setPhase("spinning");
     setStopped([false, false, false]);
-    setTimeout(() => setStopped((s) => [true, s[1], s[2]]), 1400);
-    setTimeout(() => setStopped((s) => [s[0], true, s[2]]), 2100);
+    // Reel 1 stops à 1.4s
     setTimeout(() => {
+      sfx.reelStop();
+      setStopped((s) => [true, s[1], s[2]]);
+    }, 1400);
+    // Reel 2 stops à 2.1s — 2 diamants alignés → on entre en TENSION
+    setTimeout(() => {
+      sfx.reelStop();
+      setStopped((s) => [s[0], true, s[2]]);
+      setPhase("tension");
+      // Tension build-up sound (1.6s rising sweep)
+      sfx.tension(1600);
+    }, 2100);
+    // Tension qui dure 1.8s avant que le 3e reel s'arrête
+    setTimeout(() => {
+      sfx.reelStop();
       setStopped([true, true, true]);
       setPhase("won");
+      sfx.win();
       setTimeout(() => setPopupOpen(true), 800);
-    }, 2800);
+    }, 3900);
   };
 
   return (
     <div className="m5s-root" style={{ background: T.bgPage, color: "#fff" }}>
       <style>{`
-        .m5s-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
+        .m5s-root{display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
         .m5s-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 50% 0%,${T.accentGlow},transparent 55%);pointer-events:none;opacity:.5}
         .m5s-root::after{content:"";position:absolute;inset:0;background-image:linear-gradient(${T.accent}06 1px,transparent 1px),linear-gradient(90deg,${T.accent}06 1px,transparent 1px);background-size:32px 32px;pointer-events:none;opacity:.4}
 
@@ -100,12 +124,16 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-machine-leds{position:absolute;top:8px;left:0;right:0;display:flex;justify-content:space-around;padding:0 18px;pointer-events:none}
         .m5s-led{width:8px;height:8px;border-radius:50%;background:radial-gradient(circle,${T.accentLight},${T.accent});box-shadow:0 0 6px ${T.accentLight};animation:m5s-blink 1.4s ease-in-out infinite}
         .m5s-screen{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#000;border:2px solid ${T.border};border-radius:12px;padding:8px;margin-top:8px;margin-bottom:14px;box-shadow:inset 0 0 24px rgba(0,0,0,.8)}
-        .m5s-reel{position:relative;height:108px;background:linear-gradient(180deg,#1a0d2a,#0d0617);border-radius:8px;overflow:hidden;border:1px solid ${T.border}}
+        .m5s-reel{position:relative;height:108px;background:linear-gradient(180deg,#1a0d2a,#0d0617);border-radius:8px;overflow:hidden;border:1px solid ${T.border};transition:box-shadow .3s ease,border-color .3s ease}
+        .m5s-reel.tension{border-color:${T.accent};box-shadow:0 0 24px ${T.accentGlow},inset 0 0 32px ${T.accentGlow};animation:m5s-tension 0.4s ease-in-out infinite}
+        .m5s-reel.won{border-color:${T.accent};box-shadow:0 0 32px ${T.accentGlow},inset 0 0 16px ${T.accentGlow};animation:m5s-win-glow 1.5s ease-in-out infinite}
         .m5s-reel::before,.m5s-reel::after{content:"";position:absolute;left:0;right:0;height:24px;z-index:2;pointer-events:none}
         .m5s-reel::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.85),transparent)}
         .m5s-reel::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.85),transparent)}
         .m5s-strip{display:flex;flex-direction:column;animation:m5s-spin .12s linear infinite}
+        .m5s-strip.tension{animation:m5s-spin .35s linear infinite}
         .m5s-strip.stopped{animation-play-state:paused;display:none}
+        .m5s-tension-banner{margin-top:10px;text-align:center;font-family:'Playfair Display',serif;font-size:.95rem;font-weight:900;letter-spacing:.18em;color:${T.accent};text-shadow:0 0 14px ${T.accentGlow};animation:m5s-tension-text .3s ease-in-out infinite alternate}
         .m5s-cell{height:108px;display:flex;align-items:center;justify-content:center;font-size:2.6rem}
         .m5s-final{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:3.2rem;background:radial-gradient(circle,${T.bgCard},#1a0d2a);animation:m5s-pop .35s ease-out;text-shadow:0 0 20px ${T.accentGlow}}
         .m5s-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.5);border:1px solid ${T.border};border-radius:8px;padding:8px 14px;font-size:.85rem;color:rgba(255,255,255,.75)}
@@ -137,6 +165,9 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-popup .m5s-cta{width:100%;font-size:.95rem;padding:14px 18px;letter-spacing:.08em}
 
         @keyframes m5s-spin{0%{transform:translateY(0)}100%{transform:translateY(-108px)}}
+        @keyframes m5s-tension{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 32px ${T.accentGlow}}50%{box-shadow:0 0 40px ${T.accent},inset 0 0 48px ${T.accent}}}
+        @keyframes m5s-win-glow{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 16px ${T.accentGlow}}50%{box-shadow:0 0 48px ${T.accent},inset 0 0 24px ${T.accent}}}
+        @keyframes m5s-tension-text{from{transform:scale(1);opacity:.7}to{transform:scale(1.06);opacity:1}}
         @keyframes m5s-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
         @keyframes m5s-fade{from{opacity:0}to{opacity:1}}
         @keyframes m5s-blink{0%,100%{opacity:1}50%{opacity:.3}}
@@ -164,10 +195,19 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
             ))}
           </div>
           <div className="m5s-screen">
-            <Reel stopped={stopped[0]} finalSymbol={WIN} delay={0} />
-            <Reel stopped={stopped[1]} finalSymbol={WIN} delay={150} />
-            <Reel stopped={stopped[2]} finalSymbol={WIN} delay={300} />
+            <Reel stopped={stopped[0]} finalSymbol={WIN} delay={0}   won={phase === "won"} />
+            <Reel stopped={stopped[1]} finalSymbol={WIN} delay={150} won={phase === "won"} />
+            <Reel
+              stopped={stopped[2]}
+              finalSymbol={WIN}
+              delay={300}
+              tension={phase === "tension"}
+              won={phase === "won"}
+            />
           </div>
+          {phase === "tension" ? (
+            <div className="m5s-tension-banner">⚡ ALMOST THERE… ⚡</div>
+          ) : null}
           <div className="m5s-bar">
             <span>Mise</span>
             <span><strong>{dep || "X€"}</strong> → <strong>{bon || "Y€"}</strong></span>
@@ -198,6 +238,8 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         <button className="m5s-cta m5s-cta-pulse" onClick={play}>🎰 Lancer la machine</button>
       ) : phase === "spinning" ? (
         <button className="m5s-cta" disabled>⏳ Roulement…</button>
+      ) : phase === "tension" ? (
+        <button className="m5s-cta" disabled style={{ animation: "m5s-tension-text 0.3s ease-in-out infinite alternate" }}>⚡ Suspense…</button>
       ) : (
         <button className="m5s-cta" onClick={() => setPopupOpen(true)}>💎 Voir mon gain</button>
       )}

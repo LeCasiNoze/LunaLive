@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { sfx } from "../lib/v3_sound";
 
 export type M3WheelProps = {
   pseudo?: string;
@@ -64,19 +65,24 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
   const spin = () => {
     if (phase !== "idle") return;
+    sfx.click();
+    sfx.spin(4400);
     setPhase("spinning");
-    // Atterrit pile au milieu du segment WIN_INDEX (qui est en haut, sous la flèche).
-    // Flèche pointe vers le top (-90deg en SVG natif). Notre SVG démarre à 12h
-    // donc le segment 0 est centré pile sous la flèche → angle final = -360*N (rotations entières).
     const target = 360 * 6 + (360 - (WIN_INDEX * SLICE_DEG + SLICE_DEG / 2));
     setAngle(target);
-    setTimeout(() => { setPhase("won"); setPopupOpen(true); }, 4400);
+    // Tension-rising sound during last 1.2s (when wheel slows down)
+    setTimeout(() => sfx.tension(1200), 3200);
+    setTimeout(() => {
+      sfx.win();
+      setPhase("won");
+      setPopupOpen(true);
+    }, 4400);
   };
 
   return (
     <div className="m3-root" style={{ background: T.bgPage, color: "#fff" }}>
       <style>{`
-        .m3-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
+        .m3-root{display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
         .m3-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 50% 0%,${T.accentGlow},transparent 50%);pointer-events:none;opacity:.6}
         .m3-root::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 30% 40%,${T.accent}10 1px,transparent 1px),radial-gradient(circle at 70% 80%,${T.accent}10 1px,transparent 1px);background-size:60px 60px,80px 80px;pointer-events:none;opacity:.3}
 
@@ -132,10 +138,9 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       </div>
 
       <div className="m3-offer">
-        <div className="m3-offer-mini">✦ Offre exclusive ✦</div>
+        <div className="m3-offer-mini">✦ Roue de la fortune ✦</div>
         <div className="m3-offer-main">
-          {dep ? <>Dépose <span className="accent">{dep}</span> · </> : null}
-          {bon ? <>Reçois <span className="accent">{bon}</span></> : "Bonus 100% garanti"}
+          Tente ta chance · gagne ton <span className="accent">bonus</span>
         </div>
       </div>
 
