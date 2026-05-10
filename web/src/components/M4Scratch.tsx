@@ -28,11 +28,12 @@ export type M4ScratchProps = {
 
 type BoxSpec = { prize: string; win: boolean; sub: string };
 
-const FILLER: Array<{ prize: string; sub: string }> = [
-  { prize: "0%",  sub: "Cassé" },
-  { prize: "20%", sub: "Bonus mineur" },
-  { prize: "0%",  sub: "Vide" },
-  { prize: "10%", sub: "Petit lot" },
+// Lots "presque-gagnants" — pas de 0% pour éviter le sentiment de "perte" ;
+// 10% et 50% donnent l'impression que TOUTES les cartes étaient bonnes,
+// mais celle choisie était LA meilleure.
+const LOSERS: Array<{ prize: string; sub: string }> = [
+  { prize: "10%", sub: "Lot mineur" },
+  { prize: "50%", sub: "Bon lot" },
 ];
 
 // SVG coffre fermé — bois + bande métal + cadenas
@@ -79,12 +80,16 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
   };
 
   const [picked, setPicked] = React.useState<number>(-1);
-  const [revealedOthers, setRevealedOthers] = React.useState(false);
+  // revealedSet : ordre dans lequel les boxes ont été flippées (build suspense)
+  const [revealedSet, setRevealedSet] = React.useState<Set<number>>(new Set());
+  // phase : étape narrative pour adapter texte + animations
+  const [phase, setPhase] = React.useState<"idle" | "tension1" | "tension2" | "won">("idle");
   const [popupOpen, setPopupOpen] = React.useState(false);
 
+  // Lots 10% et 50% mélangés (l'un sur chaque non-picked)
   const [losers] = React.useState<BoxSpec[]>(() => {
-    const shuffled = [...FILLER].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 2).map((p) => ({ prize: p.prize, sub: p.sub, win: false }));
+    const shuffled = [...LOSERS].sort(() => Math.random() - 0.5);
+    return shuffled.map((p) => ({ prize: p.prize, sub: p.sub, win: false }));
   });
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
@@ -92,7 +97,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
   const safeAffi = affiLink || "#";
 
   const boxes: BoxSpec[] = React.useMemo(() => {
-    const winBox: BoxSpec = { prize: "100%", sub: "JACKPOT", win: true };
+    const winBox: BoxSpec = { prize: "100%", sub: "MEGA BONUS", win: true };
     const arr: BoxSpec[] = [];
     let loserIdx = 0;
     for (let i = 0; i < 3; i++) {
@@ -106,16 +111,50 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
     if (picked !== -1) return;
     sfx.click();
     setPicked(i);
-    setTimeout(() => sfx.reveal(), 600);
+
+    // Les 2 cartes NON sélectionnées flippent une par une pour build le suspense.
+    // La carte choisie flippe en DERNIER avec l'animation celebrate (climax).
+    const others = [0, 1, 2].filter((idx) => idx !== i);
+    const [firstOther, secondOther] = others;
+
+    // --- 1ère carte non choisie : flip rapide + shake (t=0.7s)
+    setTimeout(() => setPhase("tension1"), 600);
     setTimeout(() => {
-      setRevealedOthers(true);
+      setRevealedSet((s) => new Set(s).add(firstOther));
       sfx.loss();
-      setTimeout(() => sfx.loss(), 200);
-    }, 1200);
-    setTimeout(() => { sfx.win(); setPopupOpen(true); }, 2400);
+    }, 900);
+
+    // --- 2ème carte non choisie : flip plus lent + tension audio (t=2.5s)
+    setTimeout(() => {
+      setPhase("tension2");
+      sfx.tension(1100);
+    }, 2200);
+    setTimeout(() => {
+      setRevealedSet((s) => new Set(s).add(secondOther));
+      sfx.loss();
+    }, 3000);
+
+    // --- Carte choisie : flip avec celebration (t=3.8s)
+    setTimeout(() => {
+      setRevealedSet((s) => new Set(s).add(i));
+      sfx.win();
+    }, 3700);
+
+    setTimeout(() => {
+      setPhase("won");
+      setPopupOpen(true);
+    }, 4500);
   };
 
-  const reset = () => { setPicked(-1); setRevealedOthers(false); setPopupOpen(false); };
+  const reset = () => {
+    setPicked(-1);
+    setRevealedSet(new Set());
+    setPhase("idle");
+    setPopupOpen(false);
+  };
+
+  const allOthersRevealed = picked !== -1
+    && [0, 1, 2].filter((idx) => idx !== picked).every((idx) => revealedSet.has(idx));
 
   return (
     <div className="m4-root" style={{ background: T.bgPage, color: "#f5f1e6" }}>
@@ -139,8 +178,16 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         .m4-box{position:relative;aspect-ratio:.9/1;cursor:pointer;perspective:1200px}
         .m4-box.disabled{cursor:default}
         .m4-box.dim{opacity:.55;filter:grayscale(.35)}
-        .m4-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .9s cubic-bezier(.4,1.6,.6,1)}
+        .m4-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.4,1.6,.6,1)}
         .m4-box.opened .m4-inner{transform:rotateY(180deg)}
+        /* 2ème non-choisie : flip plus lent pour build tension */
+        .m4-box.tense .m4-inner{transition:transform 1.2s cubic-bezier(.34,1.56,.64,1)}
+        /* Carte choisie : flip dramatique avec celebrate */
+        .m4-box.celebrate .m4-inner{transition:transform .9s cubic-bezier(.34,1.8,.64,1);animation:m4-celebrate-pop .8s ease-out .9s both}
+        /* Shake léger sur 1ère carte qui se révèle */
+        .m4-box.shake .m4-inner{animation:m4-shake .35s ease-in-out .55s 2}
+        /* Pulsing glow pendant la tension sur 2ème carte */
+        .m4-box.tense{animation:m4-tense-glow .6s ease-in-out infinite alternate}
         .m4-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px}
 
         /* Face fermée */
@@ -177,6 +224,9 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
 
         @keyframes m4-fade{from{opacity:0}to{opacity:1}}
         @keyframes m4-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
+        @keyframes m4-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-4px) rotateZ(-1deg)}75%{transform:rotateY(180deg) translateX(4px) rotateZ(1deg)}}
+        @keyframes m4-tense-glow{from{filter:none}to{filter:drop-shadow(0 0 12px ${T.accent}88)}}
+        @keyframes m4-celebrate-pop{0%{transform:rotateY(180deg) scale(1)}40%{transform:rotateY(180deg) scale(1.12)}100%{transform:rotateY(180deg) scale(1)}}
       `}</style>
 
       <div className="m4-header">
@@ -194,20 +244,36 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
 
       <div className="m4-step">
         {picked === -1
-          ? <>Sélectionne <strong>1 coffre parmi les 3</strong></>
-          : !revealedOthers
-            ? <strong>Ouverture du coffre…</strong>
-            : <strong>Tu as fait le bon choix</strong>}
+          ? <>Derrière l'une de ces cartes se cache une <strong>grosse récompense</strong>, bonne chance</>
+          : phase === "tension1"
+            ? <strong>Ouverture des autres cartes…</strong>
+            : phase === "tension2"
+              ? <strong>Plus que ta carte… suspense</strong>
+              : revealedSet.has(picked)
+                ? <strong>🎉 Tu as choisi la bonne carte</strong>
+                : <strong>Préparation…</strong>}
       </div>
 
       <div className="m4-grid">
         {boxes.map((b, i) => {
-          const isOpened = picked === i || (revealedOthers && picked !== -1);
-          const isDimmed = picked !== -1 && picked !== i && !revealedOthers;
+          const isOpened = revealedSet.has(i);
+          const isPicked = picked === i;
+          const isDimmed = picked !== -1 && !isPicked && !isOpened;
+          const isShake = !isPicked && isOpened && phase === "tension1";
+          const isTense = !isPicked && phase === "tension2" && !isOpened;
+          const isCelebrate = isPicked && isOpened;
           return (
             <div
               key={i}
-              className={`m4-box ${picked === -1 ? "idle" : "disabled"} ${isOpened ? "opened" : ""} ${isDimmed ? "dim" : ""}`}
+              className={[
+                "m4-box",
+                picked === -1 ? "idle" : "disabled",
+                isOpened ? "opened" : "",
+                isDimmed ? "dim" : "",
+                isShake ? "shake" : "",
+                isTense ? "tense" : "",
+                isCelebrate ? "celebrate" : "",
+              ].filter(Boolean).join(" ")}
               onClick={() => pick(i)}
             >
               <div className="m4-inner">
@@ -227,17 +293,19 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
 
       {picked === -1 ? (
         <button className="m4-cta" disabled>Sélectionne un coffre</button>
-      ) : !revealedOthers ? (
-        <button className="m4-cta" disabled>Ouverture…</button>
+      ) : !revealedSet.has(picked) ? (
+        <button className="m4-cta" disabled>
+          {phase === "tension2" ? "Suspense…" : "Ouverture…"}
+        </button>
       ) : (
         <a href={safeAffi} target="_blank" rel="noreferrer" className="m4-cta v3-cta">
           Récupérer mon bonus
         </a>
       )}
 
-      {revealedOthers ? <button className="m4-cta ghost" onClick={reset}>Rejouer</button> : null}
+      {allOthersRevealed ? <button className="m4-cta ghost" onClick={reset}>Rejouer</button> : null}
 
-      {popupOpen && revealedOthers ? (
+      {popupOpen && revealedSet.has(picked) ? (
         <div className="m4-overlay" onClick={() => setPopupOpen(false)}>
           <div className="m4-popup" onClick={(e) => e.stopPropagation()}>
             <button className="m4-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
