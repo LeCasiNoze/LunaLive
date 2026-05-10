@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M5 — Slot Machine premium : 3 reels qui s'arrêtent en cascade sur 💎.
-// Avec paytable visible et diamants dans la rotation.
+// M5 — Slot Machine : cabinet chrome avec depth, less LEDs, plus mature.
+// Reels naturels avec décélération physique, paytable propre, marquee chrome.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -22,37 +22,28 @@ export type M5SlotProps = {
   };
 };
 
-// Symboles incluant 💎 dans la rotation pour que le user les voie passer.
 const SYMBOLS = ["🍒", "🍋", "🍇", "💎", "🔔", "7️⃣", "🍇", "💎", "🍋", "🔔", "🍒", "💎"];
 const WIN = "💎";
-const CELL_H = 108;     // hauteur d'une cell visible
-const STRIP_LEN = 36;   // nombre de cells dans la strip (long pour fluidité)
-const TARGET_IDX = 35;  // index du symbole gagnant (dernier cell de la strip)
+const CELL_H = 96;
+const STRIP_LEN = 36;
+const TARGET_IDX = 35;
 
 const PAYTABLE = [
-  { sym: "🍒", label: "Cerises × 3",  pct: "10%" },
-  { sym: "🍋", label: "Citrons × 3",  pct: "30%" },
-  { sym: "🍇", label: "Raisins × 3",  pct: "50%" },
-  { sym: "🔔", label: "Cloches × 3",  pct: "70%" },
-  { sym: "7️⃣", label: "Lucky 7 × 3",  pct: "90%" },
-  { sym: "💎", label: "Diamants × 3", pct: "100%", jackpot: true },
+  { sym: "🍒", pct: "10%" },
+  { sym: "🍋", pct: "30%" },
+  { sym: "🍇", pct: "50%" },
+  { sym: "🔔", pct: "70%" },
+  { sym: "7️⃣", pct: "90%" },
+  { sym: "💎", pct: "100%", jackpot: true },
 ];
 
-// Reel naturel : strip de 36 cells qui translate du début (translate 0)
-// jusqu'à la position finale (target = dernière cell = WIN) avec une easing
-// de décélération cubic-bezier. Pas de display:none ni de loop infini —
-// une seule transition CSS = mouvement fluide qui ralentit en fin.
-function Reel({
-  spinning, duration, tension, won, spinKey,
-}: {
+function Reel({ spinning, duration, tension, won, spinKey }: {
   spinning: boolean;
-  duration: number;     // durée de la transition en secondes
-  tension?: boolean;    // 3ème reel en tension (glow doré pulsé)
-  won?: boolean;        // doré une fois gagné
-  spinKey: number;      // change pour regen la strip à chaque spin
+  duration: number;
+  tension?: boolean;
+  won?: boolean;
+  spinKey: number;
 }) {
-  // Strip random à chaque spin pour éviter la répétition visible.
-  // Cell finale = WIN (💎) à l'index TARGET_IDX.
   const strip = React.useMemo(() => {
     const arr: string[] = [];
     for (let i = 0; i < STRIP_LEN; i++) {
@@ -66,17 +57,15 @@ function Reel({
   const translateY = spinning ? -(TARGET_IDX * CELL_H) : 0;
 
   return (
-    <div className={`m5s-reel ${tension ? "tension" : ""} ${won ? "won" : ""}`}>
+    <div className={`m5-reel ${tension ? "tension" : ""} ${won ? "won" : ""}`}>
       <div
-        className="m5s-strip"
+        className="m5-strip"
         style={{
           transform: `translateY(${translateY}px)`,
           transition: spinning ? `transform ${duration}s cubic-bezier(.17,.67,.16,.99)` : "none",
         }}
       >
-        {strip.map((sym, i) => (
-          <div key={i} className="m5s-cell">{sym}</div>
-        ))}
+        {strip.map((sym, i) => <div key={i} className="m5-cell">{sym}</div>)}
       </div>
     </div>
   );
@@ -84,13 +73,14 @@ function Reel({
 
 export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M5SlotProps) {
   const T = {
-    accent:      theme?.accent      || "#FFD700",
-    accentLight: theme?.accentLight || "#FFE552",
-    accentGlow:  theme?.accentGlow  || "rgba(255,214,0,.5)",
-    bgPage:      theme?.bgPage      || "#080212",
-    bgCard:      theme?.bgCard      || "#150821",
-    border:      theme?.borderColor || "#331A47",
+    accent:      theme?.accent      || "#d4a843",
+    accentLight: theme?.accentLight || "#f0c84a",
+    accentDark:  "#8a6724",
+    bgPage:      theme?.bgPage      || "#0a0712",
+    bgCard:      theme?.bgCard      || "#15101a",
+    chrome:      "#3a3a42",
   };
+
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "tension" | "won">("idle");
   const [spinKey, setSpinKey] = React.useState(0);
   const [popupOpen, setPopupOpen] = React.useState(false);
@@ -99,16 +89,13 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
 
-  // Durées des 3 reels (en s). Le 3ème est volontairement plus long pour
-  // que sa décélération matche la phase TENSION (suspense montant).
   const REEL_DURATIONS = [1.4, 2.4, 4.0] as const;
 
   const play = () => {
     if (phase !== "idle") return;
     sfx.click();
-    setSpinKey((k) => k + 1);  // regen les strips
+    setSpinKey((k) => k + 1);
     setPhase("spinning");
-    // Sound : reel stops timing match les end-of-transition de chaque reel
     setTimeout(() => sfx.reelStop(), REEL_DURATIONS[0] * 1000);
     setTimeout(() => {
       sfx.reelStop();
@@ -124,166 +111,143 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
   };
 
   return (
-    <div className="m5s-root" style={{ background: T.bgPage, color: "#fff" }}>
+    <div className="m5-root" style={{ background: T.bgPage, color: "#f5f1e6" }}>
       <style>{`
-        .m5s-root{display:flex;flex-direction:column;align-items:center;padding:24px 16px 40px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
-        .m5s-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(circle at 50% 0%,${T.accentGlow},transparent 55%);pointer-events:none;opacity:.5}
-        .m5s-root::after{content:"";position:absolute;inset:0;background-image:linear-gradient(${T.accent}06 1px,transparent 1px),linear-gradient(90deg,${T.accent}06 1px,transparent 1px);background-size:32px 32px;pointer-events:none;opacity:.4}
+        .m5-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative}
+        .m5-root::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(212,168,67,.08),transparent 60%);pointer-events:none}
 
-        .m5s-header{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:14px;position:relative;z-index:2}
-        .m5s-avatar{width:78px;height:78px;border-radius:50%;border:3px solid ${T.accent};box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 4px ${T.accentGlow};overflow:hidden}
-        .m5s-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m5s-pseudo{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:700;color:#fff;text-shadow:0 0 16px ${T.accentGlow};margin-top:6px}
+        .m5-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
+        .m5-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+        .m5-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+        .m5-pseudo{font-size:1.05rem;font-weight:600;color:#f5f1e6}
 
-        .m5s-offer{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 24px;margin-bottom:18px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));border:1px solid ${T.accent}55;border-radius:14px;backdrop-filter:blur(8px);box-shadow:0 0 30px ${T.accentGlow}40}
-        .m5s-offer-mini{font-size:.72rem;font-weight:700;letter-spacing:.18em;color:${T.accent};text-transform:uppercase}
-        .m5s-offer-main{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:#fff;text-align:center;line-height:1.1}
-        .m5s-offer-main .accent{color:${T.accent};text-shadow:0 0 14px ${T.accentGlow}}
+        .m5-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:22px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
+        .m5-promo strong{color:${T.accent}}
 
-        .m5s-board{position:relative;z-index:2;display:flex;flex-direction:column;gap:14px;width:min(94vw,440px);margin-bottom:22px}
+        /* Cabinet */
+        .m5-cabinet{position:relative;z-index:2;width:min(94vw,420px);background:linear-gradient(180deg,#1f1d24,#0d0a12);border:2px solid ${T.chrome};border-radius:10px;padding:18px 14px 16px;box-shadow:0 12px 32px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06);margin-bottom:14px}
 
-        .m5s-machine{position:relative;background:linear-gradient(180deg,${T.bgCard},#0a0612);border:4px solid ${T.accent};border-radius:24px;padding:20px 16px 18px;box-shadow:0 0 50px ${T.accentGlow},0 14px 40px rgba(0,0,0,.7),inset 0 0 24px rgba(0,0,0,.3)}
-        .m5s-machine-leds{position:absolute;top:8px;left:0;right:0;display:flex;justify-content:space-around;padding:0 18px;pointer-events:none}
-        .m5s-led{width:8px;height:8px;border-radius:50%;background:radial-gradient(circle,${T.accentLight},${T.accent});box-shadow:0 0 6px ${T.accentLight};animation:m5s-blink 1.4s ease-in-out infinite}
-        .m5s-screen{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;background:#000;border:2px solid ${T.border};border-radius:12px;padding:8px;margin-top:8px;margin-bottom:14px;box-shadow:inset 0 0 24px rgba(0,0,0,.8)}
-        .m5s-reel{position:relative;height:108px;background:linear-gradient(180deg,#1a0d2a,#0d0617);border-radius:8px;overflow:hidden;border:1px solid ${T.border};transition:box-shadow .3s ease,border-color .3s ease}
-        .m5s-reel.tension{border-color:${T.accent};box-shadow:0 0 24px ${T.accentGlow},inset 0 0 32px ${T.accentGlow};animation:m5s-tension 0.4s ease-in-out infinite}
-        .m5s-reel.won{border-color:${T.accent};box-shadow:0 0 32px ${T.accentGlow},inset 0 0 16px ${T.accentGlow};animation:m5s-win-glow 1.5s ease-in-out infinite}
-        .m5s-reel::before,.m5s-reel::after{content:"";position:absolute;left:0;right:0;height:24px;z-index:2;pointer-events:none}
-        .m5s-reel::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.85),transparent)}
-        .m5s-reel::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.85),transparent)}
-        .m5s-strip{display:flex;flex-direction:column;will-change:transform}
-        .m5s-cell{height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-size:2.6rem;flex-shrink:0}
-        .m5s-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.5);border:1px solid ${T.border};border-radius:8px;padding:8px 14px;font-size:.85rem;color:rgba(255,255,255,.75)}
-        .m5s-bar strong{color:${T.accent};font-weight:900;text-shadow:0 0 8px ${T.accentGlow}}
+        /* Marquee chrome top */
+        .m5-marquee{display:flex;align-items:center;justify-content:center;padding:8px 12px;margin-bottom:14px;background:linear-gradient(180deg,#52525b,#27272a);border-radius:4px;border:1px solid #18181b;box-shadow:inset 0 1px 0 rgba(255,255,255,.15);font-family:'Playfair Display',serif;font-size:.95rem;font-weight:700;letter-spacing:.12em;color:#f5f1e6;text-transform:uppercase;text-shadow:0 1px 0 rgba(0,0,0,.6)}
 
-        .m5s-paytable{background:${T.bgCard};border:1px solid ${T.border};border-radius:12px;padding:12px 14px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
-        .m5s-paytable h3{font-family:'Playfair Display',serif;font-size:.9rem;color:${T.accent};margin:0 0 8px;text-align:center;letter-spacing:.06em;text-transform:uppercase}
-        .m5s-pt-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
-        .m5s-pt-row{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:6px;font-size:.78rem;color:rgba(255,255,255,.85);gap:6px}
-        .m5s-pt-row.jackpot{background:${T.accent}15;color:${T.accent};font-weight:900;border:1px solid ${T.accent}55;grid-column:1/-1}
-        .m5s-pt-syms{font-size:1rem;letter-spacing:-2px;flex-shrink:0}
-        .m5s-pt-pct{font-weight:900;flex-shrink:0}
-        .m5s-pt-row.jackpot .m5s-pt-pct{text-shadow:0 0 8px ${T.accentGlow}}
+        /* Screen avec frame */
+        .m5-screen-frame{padding:6px;background:linear-gradient(180deg,#27272a,#18181b);border-radius:6px;border:1px solid #0a0a0c;box-shadow:inset 0 2px 4px rgba(0,0,0,.6)}
+        .m5-screen{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:#000;border-radius:3px;padding:4px}
 
-        .m5s-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:min(96vw,460px);padding:18px 24px;background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:1.08rem;border:none;border-radius:14px;cursor:pointer;box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15);text-decoration:none;position:relative;z-index:2}
-        .m5s-cta:not(:disabled):hover{transform:translateY(-2px)}
-        .m5s-cta:disabled{opacity:.65;cursor:not-allowed;animation:none}
-        .m5s-cta-pulse{animation:m5s-pulse 2s ease-in-out infinite}
+        .m5-reel{position:relative;height:${CELL_H}px;background:linear-gradient(180deg,#0a070e,#15101a);border-radius:2px;overflow:hidden;transition:box-shadow .25s ease}
+        .m5-reel::before,.m5-reel::after{content:"";position:absolute;left:0;right:0;height:18px;z-index:2;pointer-events:none}
+        .m5-reel::before{top:0;background:linear-gradient(180deg,rgba(0,0,0,.9),transparent)}
+        .m5-reel::after{bottom:0;background:linear-gradient(0deg,rgba(0,0,0,.9),transparent)}
+        .m5-reel.tension{box-shadow:inset 0 0 24px ${T.accent}55;animation:m5-tension-pulse .4s ease-in-out infinite alternate}
+        .m5-reel.won{box-shadow:inset 0 0 16px ${T.accent}88;animation:m5-win-pulse 1.5s ease-in-out infinite}
+        .m5-strip{display:flex;flex-direction:column;will-change:transform}
+        .m5-cell{height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-size:2.4rem;flex-shrink:0}
 
-        .m5s-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m5s-fade .3s ease-out}
-        .m5s-popup{position:relative;background:linear-gradient(180deg,${T.bgCard},${T.bgPage});border:2px solid ${T.accent};border-radius:22px;padding:30px 22px 22px;text-align:center;max-width:380px;width:100%;box-shadow:0 0 80px ${T.accentGlow};animation:m5s-pop .4s cubic-bezier(.17,.84,.34,1.27);box-sizing:border-box}
-        .m5s-popup-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .m5s-popup-close:hover{background:rgba(255,255,255,.18)}
-        .m5s-popup-icon{font-size:2rem;margin-bottom:4px}
-        .m5s-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:900;margin:0 0 8px;color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
-        .m5s-popup p{color:rgba(255,255,255,.85);margin:0 0 6px;font-size:.92rem;line-height:1.5}
-        .m5s-popup .amounts{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;color:rgba(255,255,255,.7);background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;padding:8px 12px;border-radius:10px;margin:12px 0 18px;flex-wrap:wrap;justify-content:center}
-        .m5s-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1rem;text-shadow:0 0 10px ${T.accentGlow}}
-        .m5s-popup .m5s-cta{width:100%;font-size:.95rem;padding:14px 18px;letter-spacing:.08em}
+        /* Bet bar */
+        .m5-bar{display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:8px 12px;background:rgba(0,0,0,.5);border:1px solid #0a0a0c;border-radius:3px;font-size:.78rem;color:rgba(245,241,230,.7);letter-spacing:.06em}
+        .m5-bar strong{color:${T.accent};font-weight:700}
 
-        @keyframes m5s-tension{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 32px ${T.accentGlow}}50%{box-shadow:0 0 40px ${T.accent},inset 0 0 48px ${T.accent}}}
-        @keyframes m5s-win-glow{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 16px ${T.accentGlow}}50%{box-shadow:0 0 48px ${T.accent},inset 0 0 24px ${T.accent}}}
-        @keyframes m5s-tension-text{from{transform:scale(1);opacity:.7}to{transform:scale(1.06);opacity:1}}
-        @keyframes m5s-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
-        @keyframes m5s-fade{from{opacity:0}to{opacity:1}}
-        @keyframes m5s-blink{0%,100%{opacity:1}50%{opacity:.3}}
-        @keyframes m5s-pulse{0%,100%{box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}50%{box-shadow:0 14px 40px ${T.accentGlow},0 0 0 6px ${T.accent}25,inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}}
+        /* Paytable */
+        .m5-paytable{position:relative;z-index:2;background:${T.bgCard};border:1px solid #1f1d24;border-radius:6px;padding:12px 14px;width:min(94vw,420px);margin-bottom:22px}
+        .m5-paytable-title{font-size:.7rem;font-weight:600;letter-spacing:.18em;color:rgba(245,241,230,.6);text-transform:uppercase;text-align:center;margin-bottom:10px}
+        .m5-pt-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 14px}
+        .m5-pt-row{display:flex;align-items:center;justify-content:space-between;padding:4px 6px;font-size:.85rem;color:rgba(245,241,230,.85);gap:8px}
+        .m5-pt-row.jackpot{background:${T.accent}15;color:${T.accent};font-weight:700;border:1px solid ${T.accent}55;border-radius:3px;grid-column:1/-1}
+        .m5-pt-sym{font-size:1rem}
+        .m5-pt-pct{font-weight:700;font-variant-numeric:tabular-nums}
+
+        .m5-cta{display:block;width:min(94vw,420px);padding:16px 24px;background:${T.accent};color:#0e0a05;font-weight:700;text-transform:uppercase;letter-spacing:.16em;font-size:.92rem;border:none;border-radius:4px;cursor:pointer;box-shadow:0 4px 0 ${T.accentDark},0 6px 20px rgba(0,0,0,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease;position:relative;z-index:2}
+        .m5-cta:not(:disabled):hover{background:${T.accentLight};transform:translateY(1px);box-shadow:0 3px 0 ${T.accentDark}}
+        .m5-cta:disabled{background:${T.chrome};color:rgba(255,255,255,.5);cursor:not-allowed;box-shadow:0 2px 0 rgba(0,0,0,.4)}
+
+        /* Popup */
+        .m5-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m5-fade .2s ease-out}
+        .m5-popup{position:relative;background:${T.bgCard};border-top:3px solid ${T.accent};border-radius:6px;padding:32px 26px 24px;text-align:center;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:m5-pop .35s cubic-bezier(.17,.84,.34,1.27)}
+        .m5-popup-close{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:4px;background:transparent;border:none;color:rgba(245,241,230,.5);font-size:20px;cursor:pointer}
+        .m5-popup-close:hover{color:#fff;background:rgba(255,255,255,.06)}
+        .m5-popup-eyebrow{font-size:.72rem;font-weight:600;letter-spacing:.18em;color:${T.accent};text-transform:uppercase;margin-bottom:8px}
+        .m5-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:700;margin:0 0 14px;color:#f5f1e6;line-height:1.1}
+        .m5-popup h2 span{color:${T.accent}}
+        .m5-popup .reward-box{background:rgba(0,0,0,.4);border:1px solid ${T.accent}55;border-radius:4px;padding:14px 16px;margin:16px 0 22px}
+        .m5-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+        .m5-popup .reward-box .val{font-weight:700;color:#f5f1e6}
+        .m5-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
+
+        @keyframes m5-tension-pulse{from{box-shadow:inset 0 0 24px ${T.accent}55}to{box-shadow:inset 0 0 32px ${T.accent}88}}
+        @keyframes m5-win-pulse{0%,100%{box-shadow:inset 0 0 16px ${T.accent}88}50%{box-shadow:inset 0 0 24px ${T.accent}}}
+        @keyframes m5-fade{from{opacity:0}to{opacity:1}}
+        @keyframes m5-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
       `}</style>
 
-      <div className="m5s-header">
-        {profileImageUrl ? <div className="m5s-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? <div className="m5s-pseudo">{pseudo}</div> : null}
+      <div className="m5-header">
+        {profileImageUrl ? <div className="m5-avatar"><img src={profileImageUrl} alt="" /></div> : null}
+        {pseudo ? <div className="m5-pseudo">{pseudo}</div> : null}
       </div>
 
-      <div className="m5s-offer">
-        <div className="m5s-offer-mini">✦ Offre exclusive ✦</div>
-        <div className="m5s-offer-main">
-          {dep ? <>Dépose <span className="accent">{dep}</span> · </> : null}
-          {bon ? <>Reçois <span className="accent">{bon}</span></> : "Bonus 100% garanti"}
+      <div className="m5-promo">Machine à sous · <strong>1 spin gratuit</strong></div>
+
+      <div className="m5-cabinet">
+        <div className="m5-marquee">Lucky Slots</div>
+        <div className="m5-screen-frame">
+          <div className="m5-screen">
+            <Reel spinning={phase !== "idle"} duration={REEL_DURATIONS[0]} won={phase === "won"} spinKey={spinKey} />
+            <Reel spinning={phase !== "idle"} duration={REEL_DURATIONS[1]} won={phase === "won"} spinKey={spinKey + 100} />
+            <Reel spinning={phase !== "idle"} duration={REEL_DURATIONS[2]} tension={phase === "tension"} won={phase === "won"} spinKey={spinKey + 200} />
+          </div>
+        </div>
+        <div className="m5-bar">
+          <span>Mise · <strong>{dep || "—"}</strong></span>
+          <span>Gain · <strong>{bon || "—"}</strong></span>
         </div>
       </div>
 
-      <div className="m5s-board">
-        <div className="m5s-machine">
-          <div className="m5s-machine-leds">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="m5s-led" style={{ animationDelay: `${i * 0.18}s` }} />
-            ))}
-          </div>
-          <div className="m5s-screen">
-            <Reel
-              spinning={phase !== "idle"}
-              duration={REEL_DURATIONS[0]}
-              won={phase === "won"}
-              spinKey={spinKey}
-            />
-            <Reel
-              spinning={phase !== "idle"}
-              duration={REEL_DURATIONS[1]}
-              won={phase === "won"}
-              spinKey={spinKey + 100}
-            />
-            <Reel
-              spinning={phase !== "idle"}
-              duration={REEL_DURATIONS[2]}
-              tension={phase === "tension"}
-              won={phase === "won"}
-              spinKey={spinKey + 200}
-            />
-          </div>
-          <div className="m5s-bar">
-            <span>Mise</span>
-            <span><strong>{dep || "X€"}</strong> → <strong>{bon || "Y€"}</strong></span>
-          </div>
-        </div>
-
-        <div className="m5s-paytable">
-          <h3>Tableau des gains</h3>
-          <div className="m5s-pt-grid">
-            {PAYTABLE.filter((p) => !p.jackpot).map((p, i) => (
-              <div key={i} className="m5s-pt-row">
-                <span className="m5s-pt-syms">{p.sym}{p.sym}{p.sym}</span>
-                <span className="m5s-pt-pct">{p.pct}</span>
-              </div>
-            ))}
-            {PAYTABLE.filter((p) => p.jackpot).map((p, i) => (
-              <div key={`j${i}`} className="m5s-pt-row jackpot">
-                <span className="m5s-pt-syms">{p.sym}{p.sym}{p.sym}</span>
-                <span style={{ flex: 1, fontSize: ".7rem" }}>JACKPOT</span>
-                <span className="m5s-pt-pct">{p.pct}</span>
-              </div>
-            ))}
-          </div>
+      <div className="m5-paytable">
+        <div className="m5-paytable-title">Tableau des gains</div>
+        <div className="m5-pt-grid">
+          {PAYTABLE.filter((p) => !p.jackpot).map((p, i) => (
+            <div key={i} className="m5-pt-row">
+              <span className="m5-pt-sym">{p.sym}{p.sym}{p.sym}</span>
+              <span className="m5-pt-pct">{p.pct}</span>
+            </div>
+          ))}
+          {PAYTABLE.filter((p) => p.jackpot).map((p, i) => (
+            <div key={`j${i}`} className="m5-pt-row jackpot">
+              <span className="m5-pt-sym">{p.sym}{p.sym}{p.sym}</span>
+              <span style={{ flex: 1, fontSize: ".72rem", letterSpacing: ".1em" }}>JACKPOT</span>
+              <span className="m5-pt-pct">{p.pct}</span>
+            </div>
+          ))}
         </div>
       </div>
 
       {phase === "idle" ? (
-        <button className="m5s-cta m5s-cta-pulse" onClick={play}>🎰 Lancer la machine</button>
+        <button className="m5-cta" onClick={play}>Lancer la machine</button>
       ) : phase === "spinning" ? (
-        <button className="m5s-cta" disabled>⏳ Roulement…</button>
+        <button className="m5-cta" disabled>Roulement…</button>
       ) : phase === "tension" ? (
-        <button className="m5s-cta" disabled style={{ animation: "m5s-tension-text 0.3s ease-in-out infinite alternate" }}>⚡ Suspense…</button>
+        <button className="m5-cta" disabled>Suspense…</button>
       ) : (
-        <button className="m5s-cta" onClick={() => setPopupOpen(true)}>💎 Voir mon gain</button>
+        <button className="m5-cta" onClick={() => setPopupOpen(true)}>Voir mon gain</button>
       )}
 
       {phase === "won" && popupOpen ? (
-        <div className="m5s-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m5s-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m5s-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m5s-popup-icon">💎💎💎</div>
-            <h2>JACKPOT</h2>
-            <p>Trois diamants alignés. Bonus <strong style={{ color: T.accent }}>100%</strong> débloqué.</p>
+        <div className="m5-overlay" onClick={() => setPopupOpen(false)}>
+          <div className="m5-popup" onClick={(e) => e.stopPropagation()}>
+            <button className="m5-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
+            <div className="m5-popup-eyebrow">Jackpot</div>
+            <h2>3 diamants · <span>bonus 100%</span></h2>
             {(dep || bon) ? (
-              <div className="amounts">
-                {dep ? <span>Dépose <strong>{dep}</strong></span> : null}
-                {dep && bon ? <span style={{ color: T.accent }}>→</span> : null}
-                {bon ? <span>Reçois <strong>{bon}</strong></span> : null}
+              <div className="reward-box">
+                <div className="lbl">Ton offre</div>
+                <div className="val">
+                  {dep ? <>Dépose <strong>{dep}</strong></> : null}
+                  {dep && bon ? " · " : null}
+                  {bon ? <>Reçois <strong>{bon}</strong></> : null}
+                </div>
               </div>
             ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m5s-cta v3-cta">
-              🎁 Récupérer mon bonus
+            <a href={safeAffi} target="_blank" rel="noreferrer" className="m5-cta v3-cta">
+              Récupérer mon bonus
             </a>
           </div>
         </div>
