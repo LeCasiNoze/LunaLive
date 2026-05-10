@@ -354,7 +354,8 @@ adminRumbleRouter.post("/admin/rumble/backfill-vods", requireAdminKey, async (re
         if (!username)
             return res.status(400).json({ ok: false, error: "no_rumble_username" });
         const session = await getRumbleBotSession();
-        // Scrape direct (Cloudflare bloque souvent les IP Render).
+        // Scrape direct (Cloudflare bloque souvent les IP Render → fallback CF Worker
+        // si dispo). Tente /c/{username} puis /user/{username}.
         let html = "";
         let used = "";
         const headers = {

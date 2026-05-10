@@ -2,7 +2,12 @@ import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { login } from "../lib/api";
-import { getFsbAgencyStreamerPreview, getMyAgencyStats } from "../lib/api_agency";
+import {
+  getFsbAgencyStreamerPreview,
+  getMyAgencyStats,
+  getMyAgencyStatsPeriod,
+} from "../lib/api_agency";
+import type { AgencyPeriodAggregate } from "../lib/api_agency";
 import { canAccessFsbBoard } from "../lib/fsb_access";
 
 type AgencyData = Awaited<ReturnType<typeof getMyAgencyStats>>["agency"];
@@ -25,25 +30,6 @@ function currentMonthKey() {
   return currentParisDateKey().slice(0, 7);
 }
 
-/** Return the Monday of the ISO week containing dateKey (YYYY-MM-DD). */
-function getWeekMonday(dateKey: string): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  const dow = d.getUTCDay(); // 0=Sun, 1=Mon, …6=Sat
-  const diffToMonday = (dow === 0 ? -6 : 1 - dow);
-  d.setUTCDate(d.getUTCDate() + diffToMonday);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function addDays(dateKey: string, n: number): string {
-  const [year, month, day] = dateKey.split("-").map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day + n));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function dateKeyToMonthKey(dateKey: string): string {
-  return dateKey.slice(0, 7);
-}
 
 function addMonths(monthKey: string, delta: number) {
   const [year, month] = monthKey.split("-").map(Number);
@@ -61,13 +47,6 @@ function shortDate(dateKey: string) {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", day: "numeric", month: "short" })
     .format(new Date(Date.UTC(year, month - 1, day)));
-}
-
-/** True if updatedAt (ISO datetime) falls within [weekStart, weekEnd] date keys. */
-function isUpdatedInWeek(updatedAt: string | null | undefined, weekStart: string, weekEnd: string): boolean {
-  if (!updatedAt) return false;
-  const dateKey = updatedAt.slice(0, 10);
-  return dateKey >= weekStart && dateKey <= weekEnd;
 }
 
 function eur(value: number | null | undefined) {
@@ -105,13 +84,6 @@ function parseLinks(text: string | null | undefined) {
       const label = line.replace(url, "").replace(/[:\-]\s*$/, "").trim() || url;
       return { label, url };
     });
-}
-
-/** Is the assignment active during [weekStart, weekEnd] ? */
-function isActiveInWeek(a: Assignment, weekStart: string, weekEnd: string): boolean {
-  const start = a.startDate ?? "0000-01-01";
-  const end = a.endDate ?? "9999-12-31";
-  return start <= weekEnd && end >= weekStart;
 }
 
 // ─── Global aggregation ────────────────────────────────────────────────────────
@@ -153,6 +125,10 @@ function aggregateGlobal(list: NonNullable<AgencyData>[]): GlobalSummary {
   return acc;
 }
 
+// ─── Period selector type ──────────────────────────────────────────────────────
+
+type PeriodMode = "week" | "month" | "prev-month";
+
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
 const PAGE_CSS = `
@@ -175,27 +151,38 @@ const PAGE_CSS = `
 .ap-period{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
 .ap-period-label{font-weight:800;font-size:15px}
 .ap-period-sub{font-size:12px;color:var(--muted);margin-left:4px}
+.ap-period-toggle{display:flex;gap:4px;padding:4px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--line);flex-wrap:nowrap}
+.ap-period-opt{padding:8px 16px;border-radius:10px;border:none;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:700;cursor:pointer;transition:background .12s,color .12s;white-space:nowrap}
+.ap-period-opt:hover{color:var(--text)}
+.ap-period-opt-active{background:rgba(255,178,107,.15);border:1px solid rgba(255,178,107,.25);color:var(--accent)}
 .ap-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .ap-stat{border:1px solid var(--line);border-radius:18px;background:var(--soft);padding:16px}
 .ap-stat small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800;margin-bottom:10px}
 .ap-stat strong{display:block;font-size:26px;letter-spacing:-.04em}
 .ap-stat span{display:block;margin-top:6px;color:var(--muted);font-size:12px}
 .ap-stat-accent strong{color:var(--accent)}
+.ap-stat-skel strong{color:transparent;background:rgba(255,255,255,.06);border-radius:6px;animation:ap-pulse 1.4s ease-in-out infinite}
+.ap-stat-skel small{color:transparent;background:rgba(255,255,255,.04);border-radius:4px}
+@keyframes ap-pulse{0%,100%{opacity:.5}50%{opacity:1}}
 .ap-note{margin-top:14px;padding:14px 16px;border-radius:16px;background:rgba(113,213,210,.07);border:1px solid rgba(113,213,210,.14);color:var(--muted);line-height:1.6;font-size:14px}
 .ap-banner{margin-bottom:16px;padding:11px 14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--muted);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .ap-list{display:grid;gap:12px;margin-top:20px}
-.ap-card{border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.025);padding:16px}
-.ap-card-week{border-color:rgba(113,213,210,.18)}
+.ap-card{border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.025);padding:16px;transition:border-color .15s}
+.ap-card-active{border-color:rgba(113,213,210,.18)}
+.ap-card-period{border-color:rgba(255,178,107,.14)}
 .ap-cardhead{display:flex;gap:10px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
 .ap-card h3{margin:0;font-size:18px;letter-spacing:-.02em}
 .ap-cardmeta{margin:5px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
 .ap-pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:11px;font-weight:800;letter-spacing:.02em}
 .ap-pill-ok{background:rgba(120,231,180,.10);border-color:rgba(120,231,180,.18);color:#8cf5c8}
 .ap-pill-off{background:rgba(255,178,107,.08);border-color:rgba(255,178,107,.16);color:#ffc46a}
+.ap-pill-new{background:rgba(255,178,107,.14);border-color:rgba(255,178,107,.25);color:var(--accent)}
 .ap-subgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:12px}
 .ap-substat{border:1px solid rgba(255,255,255,.05);border-radius:12px;background:rgba(255,255,255,.025);padding:10px 12px}
 .ap-substat small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.07em;font-weight:800;margin-bottom:6px}
 .ap-substat strong{font-size:17px}
+.ap-substat-accent strong{color:var(--accent)}
+.ap-substat-skel strong{color:transparent;background:rgba(255,255,255,.06);border-radius:4px;animation:ap-pulse 1.4s ease-in-out infinite}
 .ap-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .ap-linkbtn{border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);padding:8px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
 .ap-auth{width:min(420px,100%);margin:8vh auto 0}
@@ -206,7 +193,11 @@ const PAGE_CSS = `
 .ap-empty{padding:28px;text-align:center;color:var(--muted);font-size:14px}
 .ap-loading{padding:28px;text-align:center;color:var(--muted);font-size:14px}
 .ap-section-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px}
-@media(max-width:680px){.ap-wrap{width:calc(100% - 16px)}.ap-shell{padding:16px}.ap-title{font-size:22px}}
+.ap-skel-card{border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.025);padding:16px;animation:ap-pulse 1.4s ease-in-out infinite}
+.ap-skel-line{height:14px;border-radius:6px;background:rgba(255,255,255,.06);margin-bottom:8px}
+.ap-skel-title{height:20px;width:55%;border-radius:8px;background:rgba(255,255,255,.08);margin-bottom:10px}
+.ap-period-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:10px;background:rgba(255,178,107,.08);border:1px solid rgba(255,178,107,.14);color:rgba(255,178,107,.85);font-size:12px;font-weight:700}
+@media(max-width:680px){.ap-wrap{width:calc(100% - 16px)}.ap-shell{padding:16px}.ap-title{font-size:22px}.ap-period-toggle{flex-wrap:wrap}}
 `;
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -215,16 +206,14 @@ export default function AgencyPortalPage() {
   const [searchParams] = useSearchParams();
   const { user, setAuth, logout } = useAuth();
 
-  const [tab, setTab] = React.useState<"week" | "month" | "global">("week");
+  const [tab, setTab] = React.useState<"period" | "global">("period");
 
-  // Month view state
+  // Period selector
+  const [periodMode, setPeriodMode] = React.useState<PeriodMode>("month");
+
+  // Month key used when periodMode = "month" or "prev-month"
   const [monthKey, setMonthKey] = React.useState(currentMonthKey);
-
-  // Week view state — Monday of the current week
-  const [weekStart, setWeekStart] = React.useState(() => getWeekMonday(currentParisDateKey()));
-  const weekEnd = addDays(weekStart, 6); // Sunday
-  // The month we load for the week: month of Thursday (ISO week's anchor)
-  const weekMonthKey = dateKeyToMonthKey(addDays(weekStart, 3));
+  const prevMonthKey = addMonths(currentMonthKey(), -1);
 
   const [loading, setLoading] = React.useState(false);
   const [globalLoading, setGlobalLoading] = React.useState(false);
@@ -246,20 +235,11 @@ export default function AgencyPortalPage() {
 
   React.useEffect(() => { setUsername(prefilledUsername); }, [prefilledUsername]);
 
-  // Which month key to actually load (driven by active tab)
-  const activeMonthKey = tab === "week" ? weekMonthKey : monthKey;
-
   const assignments = agency?.assignments ?? [];
   const historyMonths = agency?.historyMonths ?? [];
 
-  // Weekly: filter assignments active during the week
-  const weekAssignments = React.useMemo(
-    () => assignments.filter((a) => isActiveInWeek(a, weekStart, weekEnd)),
-    [assignments, weekStart, weekEnd]
-  );
-
-  // Monthly: active deals or fallback to all
-  const relevantAssignments = React.useMemo(() => {
+  // Active assignments for period view
+  const periodAssignments = React.useMemo(() => {
     const active = assignments.filter((a) => a.activeDuringMonth);
     return active.length ? active : assignments;
   }, [assignments]);
@@ -270,14 +250,22 @@ export default function AgencyPortalPage() {
   const globalCpaVisible = allMonthsData.some((d) => d.assignments.some((a) => a.stats.showCpaToStreamer));
   const globalRsVisible = allMonthsData.some((d) => d.assignments.some((a) => a.stats.showRsToStreamer));
 
-  const loadMonth = React.useCallback(async (mk: string) => {
+  // Derive the API call params from periodMode
+  const periodApiParams = React.useMemo((): { apiPeriod: "week" | "month"; apiMonthKey: string | null } => {
+    if (periodMode === "week") return { apiPeriod: "week", apiMonthKey: null };
+    if (periodMode === "prev-month") return { apiPeriod: "month", apiMonthKey: prevMonthKey };
+    return { apiPeriod: "month", apiMonthKey: monthKey };
+  }, [periodMode, monthKey, prevMonthKey]);
+
+  const loadPeriod = React.useCallback(async (apiPeriod: "week" | "month", apiMonthKey: string | null) => {
     if (!user && !canPreview) return;
     setLoading(true);
     setError(null);
     try {
+      // Preview mode uses old API (no period support), fall back to getMyAgencyStats
       const response = canPreview && previewId
-        ? await getFsbAgencyStreamerPreview(previewId, mk)
-        : await getMyAgencyStats(mk);
+        ? await getFsbAgencyStreamerPreview(previewId, apiMonthKey ?? undefined)
+        : await getMyAgencyStatsPeriod(apiPeriod, apiMonthKey, null);
       setAgency(response.agency);
     } catch (err: any) {
       setError(String(err?.message || "Impossible de charger les stats."));
@@ -308,11 +296,13 @@ export default function AgencyPortalPage() {
     }
   }, [canPreview, previewId, user]);
 
-  // Load month data when activeMonthKey changes
+  // Load period data when selector changes
   React.useEffect(() => {
     if (!user && !canPreview) { setAgency(null); return; }
-    void loadMonth(activeMonthKey);
-  }, [canPreview, loadMonth, activeMonthKey, user]);
+    if (tab === "period") {
+      void loadPeriod(periodApiParams.apiPeriod, periodApiParams.apiMonthKey);
+    }
+  }, [canPreview, loadPeriod, periodApiParams, tab, user]);
 
   // Load global when switching to global tab
   React.useEffect(() => {
@@ -335,6 +325,13 @@ export default function AgencyPortalPage() {
       setLoginBusy(false);
     }
   }
+
+  // Period label for display
+  const periodDisplayLabel = React.useMemo(() => {
+    if (periodMode === "week") return "Cette semaine";
+    if (periodMode === "prev-month") return monthLabel(prevMonthKey);
+    return monthLabel(monthKey);
+  }, [periodMode, monthKey, prevMonthKey]);
 
   // ─── Login screen ───────────────────────────────────────────────────────────
 
@@ -387,7 +384,11 @@ export default function AgencyPortalPage() {
               </p>
             </div>
             <div className="ap-actions">
-              <button className="ap-btn" onClick={() => void loadMonth(activeMonthKey)} disabled={loading}>
+              <button
+                className="ap-btn"
+                onClick={() => void loadPeriod(periodApiParams.apiPeriod, periodApiParams.apiMonthKey)}
+                disabled={loading}
+              >
                 {loading ? "..." : "Rafraichir"}
               </button>
               {canPreview
@@ -402,117 +403,60 @@ export default function AgencyPortalPage() {
             <>
               {/* Tabs */}
               <div className="ap-tabs">
-                <button className={`ap-tab ${tab === "week" ? "ap-tab-active" : ""}`} onClick={() => setTab("week")}>
-                  Semaine
-                </button>
-                <button className={`ap-tab ${tab === "month" ? "ap-tab-active" : ""}`} onClick={() => setTab("month")}>
-                  Mois
+                <button className={`ap-tab ${tab === "period" ? "ap-tab-active" : ""}`} onClick={() => setTab("period")}>
+                  Stats
                 </button>
                 <button className={`ap-tab ${tab === "global" ? "ap-tab-active" : ""}`} onClick={() => setTab("global")}>
-                  Global {historyMonths.length > 0 ? `(${historyMonths.length})` : ""}
+                  Historique {historyMonths.length > 0 ? `(${historyMonths.length})` : ""}
                 </button>
               </div>
 
-              {/* ── WEEKLY VIEW ────────────────────────────────────────────── */}
-              {tab === "week" && (
+              {/* ── PERIOD VIEW ────────────────────────────────────────────── */}
+              {tab === "period" && (
                 <div className="ap-tab-content">
-                  {/* Week navigator */}
+
+                  {/* Period selector */}
                   <div className="ap-period">
-                    <button className="ap-btn" onClick={() => setWeekStart((ws) => addDays(ws, -7))}>{"<"}</button>
-                    <span>
-                      <span className="ap-period-label">
-                        Lun {shortDate(weekStart)} → Dim {shortDate(weekEnd)}
-                      </span>
-                      <span className="ap-period-sub">{monthLabel(weekMonthKey)}</span>
-                    </span>
-                    <button className="ap-btn" onClick={() => setWeekStart((ws) => addDays(ws, 7))}>{">"}</button>
-                    <button
-                      className="ap-btn ap-btn-active"
-                      onClick={() => setWeekStart(getWeekMonday(currentParisDateKey()))}
-                    >
-                      Cette semaine
-                    </button>
+                    <div className="ap-period-toggle">
+                      <button
+                        className={`ap-period-opt ${periodMode === "week" ? "ap-period-opt-active" : ""}`}
+                        onClick={() => setPeriodMode("week")}
+                      >
+                        Semaine
+                      </button>
+                      <button
+                        className={`ap-period-opt ${periodMode === "month" ? "ap-period-opt-active" : ""}`}
+                        onClick={() => setPeriodMode("month")}
+                      >
+                        Mois en cours
+                      </button>
+                      <button
+                        className={`ap-period-opt ${periodMode === "prev-month" ? "ap-period-opt-active" : ""}`}
+                        onClick={() => setPeriodMode("prev-month")}
+                      >
+                        Mois precedent
+                      </button>
+                    </div>
+
+                    {/* Month navigator (only in "month" mode) */}
+                    {periodMode === "month" && (
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <button className="ap-btn" style={{ padding: "7px 11px" }} onClick={() => setMonthKey((mk) => addMonths(mk, -1))}>{"<"}</button>
+                        <span className="ap-period-label">{monthLabel(monthKey)}</span>
+                        <button className="ap-btn" style={{ padding: "7px 11px" }} onClick={() => setMonthKey((mk) => addMonths(mk, 1))}>{">"}</button>
+                        {monthKey !== currentMonthKey() && (
+                          <button className="ap-btn ap-btn-active" onClick={() => setMonthKey(currentMonthKey())}>Ce mois</button>
+                        )}
+                      </div>
+                    )}
+
+                    {periodMode !== "month" && (
+                      <span className="ap-period-badge">{periodDisplayLabel}</span>
+                    )}
                   </div>
 
-                  {loading ? (
-                    <div className="ap-loading">Chargement...</div>
-                  ) : (
-                    <>
-                      {/* Weekly summary */}
-                      {weekAssignments.length > 0 && (
-                        <>
-                          <div className="ap-section-label">Deals actifs cette semaine</div>
-                          <div className="ap-list" style={{ marginTop: 0 }}>
-                            {weekAssignments.map((assignment) => (
-                              <WeekAssignmentCard
-                                key={assignment.id}
-                                assignment={assignment}
-                                canPreview={canPreview}
-                                weekStart={weekStart}
-                                weekEnd={weekEnd}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
-
-                      {weekAssignments.length === 0 && (
-                        <div className="ap-empty">Aucun deal actif cette semaine.</div>
-                      )}
-
-                      {/* Totals for the week period */}
-                      {weekAssignments.length > 0 && (() => {
-                        const currentWeekStart = getWeekMonday(currentParisDateKey());
-                        const isCurrentWeek = weekStart === currentWeekStart;
-                        const anyUpdated = weekAssignments.some((a) => isUpdatedInWeek(a.stats.updatedAt, weekStart, weekEnd));
-                        const showTotals = !isCurrentWeek || anyUpdated || canPreview;
-                        return (
-                          <>
-                            <div className="ap-section-label">
-                              Totaux {isCurrentWeek ? "de la semaine" : `du mois (${monthLabel(weekMonthKey)})`}
-                            </div>
-                            {!showTotals ? (
-                              <div className="ap-banner" style={{ background: "rgba(255,178,107,.06)", borderColor: "rgba(255,178,107,.14)", color: "rgba(255,178,107,.8)" }}>
-                                Aucune mise à jour reçue pour cette semaine. Les chiffres seront visibles dès que l'agence aura saisi tes stats.
-                              </div>
-                            ) : (
-                              <div className="ap-grid">
-                                <MonthStatCard label="Inscrits" value={num(agency.summary.signups)} sub={monthLabel(weekMonthKey)} />
-                                <MonthStatCard label="FTD" value={num(agency.summary.ftdCount)} sub="Premiers dépôts" />
-                                <MonthStatCard label="Nb dépôts" value={num(agency.summary.depositCount)} sub="Total" />
-                                <MonthStatCard label="Volume" value={eur(agency.summary.totalDeposits)} sub="Cumul" />
-                                {(canPreview || cpaVisible) && (
-                                  <MonthStatCard label="CPA" value={eur(canPreview ? agency.summary.cpa : agency.summary.visibleCpa)} sub="Net affilié" />
-                                )}
-                                {(canPreview || rsVisible) && (
-                                  <MonthStatCard label="RS" value={eur(canPreview ? agency.summary.rs : agency.summary.visibleRs)} sub="Revenue share" />
-                                )}
-                                <MonthStatCard label={canPreview ? "A payer" : "Total"} accent value={eur(canPreview ? agency.summary.total : agency.summary.visibleTotal)} sub={`Màj ${dateTime(agency.updatedAt)}`} />
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      {agency.streamer.publicNote && (
-                        <div className="ap-note" style={{ marginTop: 18 }}>{agency.streamer.publicNote}</div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* ── MONTHLY VIEW ───────────────────────────────────────────── */}
-              {tab === "month" && (
-                <div className="ap-tab-content">
-                  <div className="ap-period">
-                    <button className="ap-btn" onClick={() => setMonthKey((mk) => addMonths(mk, -1))}>{"<"}</button>
-                    <span className="ap-period-label">{monthLabel(monthKey)}</span>
-                    <button className="ap-btn" onClick={() => setMonthKey((mk) => addMonths(mk, 1))}>{">"}</button>
-                    <button className="ap-btn ap-btn-active" onClick={() => setMonthKey(currentMonthKey())}>Ce mois</button>
-                  </div>
-
-                  {historyMonths.length > 1 && (
+                  {/* Month history quick-nav */}
+                  {periodMode === "month" && historyMonths.length > 1 && (
                     <div className="ap-actions" style={{ marginBottom: 18 }}>
                       {historyMonths.slice(0, 8).map((mk) => (
                         <button key={mk} className={`ap-btn ${mk === monthKey ? "ap-btn-primary" : ""}`} onClick={() => setMonthKey(mk)}>
@@ -522,15 +466,17 @@ export default function AgencyPortalPage() {
                     </div>
                   )}
 
+                  {/* Skeleton loading */}
                   {loading ? (
-                    <div className="ap-loading">Chargement...</div>
+                    <PeriodSkeleton />
                   ) : (
                     <>
+                      {/* Global summary grid */}
                       <div className="ap-grid">
-                        <MonthStatCard label="Inscrits" value={num(agency.summary.signups)} sub={monthLabel(monthKey)} />
+                        <MonthStatCard label="Inscrits" value={num(agency.summary.signups)} sub={periodDisplayLabel} />
                         <MonthStatCard label="FTD" value={num(agency.summary.ftdCount)} sub="Premiers depots" />
-                        <MonthStatCard label="Nb depots" value={num(agency.summary.depositCount)} sub="Transactions" />
-                        <MonthStatCard label="Volume depots" value={eur(agency.summary.totalDeposits)} sub="Declare" />
+                        <MonthStatCard label="Nb depots" value={num(agency.summary.depositCount)} sub="Total" />
+                        <MonthStatCard label="Volume" value={eur(agency.summary.totalDeposits)} sub="Declare" />
                         {(canPreview || cpaVisible) && (
                           <MonthStatCard label="CPA" value={eur(canPreview ? agency.summary.cpa : agency.summary.visibleCpa)} sub="Net affilie" />
                         )}
@@ -550,20 +496,25 @@ export default function AgencyPortalPage() {
                         <div className="ap-note">{agency.streamer.publicNote}</div>
                       )}
 
-                      <div className="ap-list">
-                        {relevantAssignments.map((a) => (
-                          <AssignmentCard key={a.id} assignment={a} canPreview={canPreview} />
-                        ))}
-                        {relevantAssignments.length === 0 && (
-                          <div className="ap-empty">Aucun deal actif sur ce mois.</div>
-                        )}
-                      </div>
+                      {/* Per-assignment cards */}
+                      {periodAssignments.length === 0 ? (
+                        <div className="ap-empty">Aucune assignation active sur cette periode.</div>
+                      ) : (
+                        <>
+                          <div className="ap-section-label">Detail par casino</div>
+                          <div className="ap-list" style={{ marginTop: 0 }}>
+                            {periodAssignments.map((a) => (
+                              <PeriodAssignmentCard key={a.id} assignment={a} canPreview={canPreview} />
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
               )}
 
-              {/* ── GLOBAL VIEW ────────────────────────────────────────────── */}
+              {/* ── GLOBAL / HISTORY VIEW ──────────────────────────────────── */}
               {tab === "global" && (
                 <div className="ap-tab-content">
                   {globalLoading ? (
@@ -643,6 +594,9 @@ export default function AgencyPortalPage() {
                             </div>
                           );
                         })}
+                        {allMonthsData.length === 0 && (
+                          <div className="ap-empty">Aucun historique disponible.</div>
+                        )}
                       </div>
                     </>
                   )}
@@ -660,6 +614,40 @@ export default function AgencyPortalPage() {
   );
 }
 
+// ─── Skeleton ──────────────────────────────────────────────────────────────────
+
+function PeriodSkeleton() {
+  return (
+    <>
+      <div className="ap-grid" style={{ marginTop: 4 }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="ap-stat ap-stat-skel">
+            <small>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</small>
+            <strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</strong>
+          </div>
+        ))}
+      </div>
+      <div className="ap-section-label">Detail par casino</div>
+      <div className="ap-list" style={{ marginTop: 0 }}>
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="ap-skel-card">
+            <div className="ap-skel-title" />
+            <div className="ap-skel-line" style={{ width: "35%" }} />
+            <div className="ap-subgrid" style={{ marginTop: 10 }}>
+              {Array.from({ length: 4 }).map((_, j) => (
+                <div key={j} className="ap-substat ap-substat-skel">
+                  <small>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</small>
+                  <strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function MonthStatCard({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
@@ -672,116 +660,40 @@ function MonthStatCard({ label, value, sub, accent }: { label: string; value: st
   );
 }
 
-/** Weekly deal card: shows deal info + active date range overlap + monthly stats */
-function WeekAssignmentCard({
+/** Period-aware assignment card: prefers periodAggregate.adjustedTotals when available. */
+function PeriodAssignmentCard({
   assignment,
   canPreview,
-  weekStart,
-  weekEnd,
 }: {
   assignment: Assignment;
   canPreview: boolean;
-  weekStart: string;
-  weekEnd: string;
 }) {
+  const agg: AgencyPeriodAggregate | null | undefined = assignment.periodAggregate;
+  const adj = agg?.adjustedTotals;
+
+  // Whether we have new-format period aggregate data
+  const hasPeriodData = adj != null;
+
+  // Earnings derived from adjustedTotals (streamer-side only)
+  const cpaPerFtd = assignment.deal.cpaPerFtd ?? 0;
+  const rsPercent = assignment.deal.rsPercent ?? 0;
+  const derivedCpa = adj != null ? (adj.ftd * cpaPerFtd) : null;
+  const derivedRs = adj != null ? (adj.rsAmount * rsPercent / 100) : null;
+  const derivedTotal = derivedCpa != null && derivedRs != null ? (derivedCpa + derivedRs) : null;
+
+  // Fallback to old earnings
   const cpaV = assignment.stats.showCpaToStreamer;
   const rsV = assignment.stats.showRsToStreamer;
+
   const links = parseLinks(assignment.linksText);
+  const isActive = assignment.activeDuringMonth;
 
-  // Visible overlap between deal active range and week
-  const overlapStart = (assignment.startDate ?? weekStart) > weekStart ? assignment.startDate! : weekStart;
-  const overlapEnd = assignment.endDate && assignment.endDate < weekEnd ? assignment.endDate : weekEnd;
-  const fullWeek = overlapStart === weekStart && overlapEnd === weekEnd;
-
-  // Weekly-zero logic: current week shows 0 unless stats were updated this week
-  const currentWeekStart = getWeekMonday(currentParisDateKey());
-  const isCurrentWeek = weekStart === currentWeekStart;
-  const updatedThisWeek = isUpdatedInWeek(assignment.stats.updatedAt, weekStart, weekEnd);
-  // For past weeks OR if stats were updated this week → show real data
-  const showRealStats = !isCurrentWeek || updatedThisWeek || canPreview;
+  // Snapshot freshness hint
+  const latestSnap = assignment.latestSnapshot;
+  const snapDate = latestSnap?.capturedAt ? latestSnap.capturedAt.slice(0, 10) : null;
 
   return (
-    <article className="ap-card ap-card-week">
-      <div className="ap-cardhead">
-        <div>
-          <h3>
-            {assignment.casino.name}
-            <span style={{ color: "var(--muted)", fontWeight: 400, fontSize: 14 }}> · {assignment.deal.name}</span>
-          </h3>
-          <div className="ap-cardmeta">
-            {fullWeek
-              ? "Actif toute la semaine"
-              : `Actif du ${shortDate(overlapStart)} au ${shortDate(overlapEnd)}`}
-            {isCurrentWeek && !updatedThisWeek && !canPreview && (
-              <span style={{ marginLeft: 8, color: "rgba(255,178,107,.7)", fontSize: 11 }}>
-                · Mise à jour en attente
-              </span>
-            )}
-            {isCurrentWeek && updatedThisWeek && assignment.stats.updatedAt && (
-              <span style={{ marginLeft: 8, color: "rgba(120,231,180,.7)", fontSize: 11 }}>
-                · Mis à jour le {shortDate(assignment.stats.updatedAt.slice(0, 10))}
-              </span>
-            )}
-          </div>
-        </div>
-        <span className="ap-pill ap-pill-ok">Actif</span>
-      </div>
-
-      {(canPreview || cpaV || rsV) && (
-        <div className="ap-subgrid">
-          <div className="ap-substat">
-            <small>Inscrits</small>
-            <strong>{showRealStats ? (assignment.stats.signups ?? "-") : "0"}</strong>
-          </div>
-          <div className="ap-substat">
-            <small>FTD</small>
-            <strong>{showRealStats ? (assignment.stats.ftdCount ?? "-") : "0"}</strong>
-          </div>
-          {(canPreview || cpaV) && (
-            <div className="ap-substat">
-              <small>CPA</small>
-              <strong>{showRealStats ? eur(canPreview ? assignment.earnings.cpa : assignment.earnings.visibleCpa) : eur(0)}</strong>
-            </div>
-          )}
-          {(canPreview || rsV) && (
-            <div className="ap-substat">
-              <small>RS</small>
-              <strong>{showRealStats ? eur(canPreview ? assignment.earnings.rs : assignment.earnings.visibleRs) : eur(0)}</strong>
-            </div>
-          )}
-          <div className="ap-substat">
-            <small>{canPreview ? "A payer" : "Total"}</small>
-            <strong style={{ color: showRealStats ? undefined : "var(--muted)" }}>
-              {showRealStats ? eur(canPreview ? assignment.earnings.total : assignment.earnings.visibleTotal) : eur(0)}
-            </strong>
-          </div>
-        </div>
-      )}
-
-      {links.length > 0 && (
-        <div className="ap-links">
-          {links.map((item, index) =>
-            item.url ? (
-              <a key={`${item.url}-${index}`} className="ap-linkbtn" href={item.url} target="_blank" rel="noreferrer">
-                {item.label || "Lien"}
-              </a>
-            ) : (
-              <span key={`${item.label}-${index}`} className="ap-pill">{item.label}</span>
-            )
-          )}
-        </div>
-      )}
-    </article>
-  );
-}
-
-function AssignmentCard({ assignment, canPreview }: { assignment: Assignment; canPreview: boolean }) {
-  const cpaV = assignment.stats.showCpaToStreamer;
-  const rsV = assignment.stats.showRsToStreamer;
-  const links = parseLinks(assignment.linksText);
-
-  return (
-    <article className="ap-card">
+    <article className={`ap-card ${isActive ? "ap-card-active" : ""} ${hasPeriodData ? "ap-card-period" : ""}`}>
       <div className="ap-cardhead">
         <div>
           <h3>
@@ -791,26 +703,93 @@ function AssignmentCard({ assignment, canPreview }: { assignment: Assignment; ca
           <div className="ap-cardmeta">
             Depuis {dateOnly(assignment.startDate)}
             {assignment.endDate ? ` jusqu au ${dateOnly(assignment.endDate)}` : ""}
+            {snapDate && (
+              <span style={{ marginLeft: 8, color: "rgba(113,213,210,.7)", fontSize: 11 }}>
+                · Snapshot {shortDate(snapDate)}
+              </span>
+            )}
           </div>
         </div>
-        <span className={`ap-pill ${assignment.activeDuringMonth ? "ap-pill-ok" : "ap-pill-off"}`}>
-          {assignment.activeDuringMonth ? "Actif" : "Inactif"}
-        </span>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          {hasPeriodData && <span className="ap-pill ap-pill-new">Periode</span>}
+          <span className={`ap-pill ${isActive ? "ap-pill-ok" : "ap-pill-off"}`}>
+            {isActive ? "Actif" : "Inactif"}
+          </span>
+        </div>
       </div>
 
       {canPreview && assignment.notes ? (
         <div className="ap-cardmeta" style={{ marginTop: 8 }}>{assignment.notes}</div>
       ) : null}
 
-      {(canPreview || cpaV || rsV) && (
+      {/* Period aggregate stats (new format) */}
+      {hasPeriodData && adj && (
+        <div className="ap-subgrid">
+          <div className="ap-substat">
+            <small>Inscrits</small>
+            <strong>{num(adj.signups)}</strong>
+          </div>
+          <div className="ap-substat">
+            <small>FTD</small>
+            <strong>{num(adj.ftd)}</strong>
+          </div>
+          {adj.sumDep > 0 && (
+            <div className="ap-substat">
+              <small>Depot FTD</small>
+              <strong>{eur(adj.sumDep)}</strong>
+            </div>
+          )}
+          {adj.totalDeposits > 0 && (
+            <div className="ap-substat">
+              <small>Total depots</small>
+              <strong>{eur(adj.totalDeposits)}</strong>
+            </div>
+          )}
+          {cpaPerFtd > 0 && derivedCpa !== null && (
+            <div className="ap-substat">
+              <small>CPA ({eur(cpaPerFtd)}/FTD)</small>
+              <strong>{eur(derivedCpa)}</strong>
+            </div>
+          )}
+          {rsPercent > 0 && derivedRs !== null && adj.rsAmount > 0 && (
+            <div className="ap-substat">
+              <small>RS ({rsPercent}%)</small>
+              <strong>{eur(derivedRs)}</strong>
+            </div>
+          )}
+          {derivedTotal !== null && (derivedCpa !== null || derivedRs !== null) && (
+            <div className="ap-substat ap-substat-accent">
+              <small>Total periode</small>
+              <strong>{eur(derivedTotal)}</strong>
+            </div>
+          )}
+          {canPreview && agg?.agencyTotals && (
+            <>
+              <div className="ap-substat">
+                <small>Marge agence</small>
+                <strong>{eur(agg.agencyTotals.total)}</strong>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Fallback: old stats format (when no period aggregate) */}
+      {!hasPeriodData && (canPreview || cpaV || rsV) && (
         <div className="ap-subgrid">
           {(canPreview || cpaV) && (
-            <div className="ap-substat"><small>CPA</small><strong>{eur(canPreview ? assignment.earnings.cpa : assignment.earnings.visibleCpa)}</strong></div>
+            <div className="ap-substat">
+              <small>CPA</small>
+              <strong>{eur(canPreview ? assignment.earnings.cpa : assignment.earnings.visibleCpa)}</strong>
+            </div>
           )}
           {(canPreview || rsV) && (
-            <div className="ap-substat"><small>RS</small><strong>{eur(canPreview ? assignment.earnings.rs : assignment.earnings.visibleRs)}</strong></div>
+            <div className="ap-substat">
+              <small>RS</small>
+              <strong>{eur(canPreview ? assignment.earnings.rs : assignment.earnings.visibleRs)}</strong>
+            </div>
           )}
-          <div className="ap-substat">
+          <div className="ap-substat ap-substat-accent">
             <small>{canPreview ? "A payer" : "Total"}</small>
             <strong>{eur(canPreview ? assignment.earnings.total : assignment.earnings.visibleTotal)}</strong>
           </div>

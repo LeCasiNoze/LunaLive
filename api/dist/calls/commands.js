@@ -77,8 +77,8 @@ export async function sendBotChat(pool, io, opts, body) {
 }
 /**
  * Si le streamer est en live sur Rumble, envoie directement le message via
- * sendRumbleMessage (Node fetch). Compte LunaLive_Bot
- * vérifié → l'envoi direct depuis Render fonctionne (n'a plus besoin du relay).
+ * sendRumbleMessage (Node fetch). Compte LunaLive_Bot vérifié → l'envoi
+ * direct depuis Render fonctionne (n'a plus besoin du relay).
  */
 async function mirrorBotMessageToRumble(pool, streamerId, text) {
     try {

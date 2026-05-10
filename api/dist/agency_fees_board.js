@@ -17,7 +17,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { AttachmentBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder, } from "discord.js";
+import { ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder, } from "discord.js";
 import { pool } from "./db.js";
 const LOG = "[agency-fees-board]";
 export const FEES_BOARD_CHANNEL_ID = "1501890675992432803"; // ┊💰・frais
@@ -26,7 +26,7 @@ const REFRESH_INTERVAL_MS = 24 * 60 * 60_000;
 const FIRST_REFRESH_DELAY_MS = 60_000;
 const PAID_RECENT_LIMIT = 15;
 const PAID_RECENT_DAYS = 30;
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 const __filename = fileURLToPath(import.meta.url);
 const __dirnameLocal = path.dirname(__filename);
@@ -60,21 +60,15 @@ function parisToday() {
     const get = (t) => parts.find(p => p.type === t)?.value ?? "";
     return `${get("year")}-${get("month")}-${get("day")}`;
 }
+import { loadUnpaidOccurrences } from "./lib/expenses_unpaid.js";
 async function loadUnpaid(todayParis) {
-    const r = await pool.query(`
-    SELECT id::text AS id, description, amount::float AS amount,
-           to_char(date, 'YYYY-MM-DD') AS due_date,
-           (date - $1::date) AS days_until
-    FROM expenses
-    WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
-    ORDER BY date ASC, id ASC
-    `, [todayParis]);
-    return r.rows.map((row) => ({
-        id: Number(row.id),
-        description: String(row.description || ""),
-        amount: Number(row.amount || 0),
-        due_date: String(row.due_date),
-        days_until: Number(row.days_until),
+    const rows = await loadUnpaidOccurrences(todayParis, 365, 15);
+    return rows.map((r) => ({
+        id: r.expense_id,
+        description: r.description + (r.is_recurring ? " (mensuel)" : ""),
+        amount: r.amount,
+        due_date: r.due_date,
+        days_until: r.days_until,
     }));
 }
 async function loadPaidRecent() {
@@ -82,8 +76,7 @@ async function loadPaidRecent() {
     SELECT id::text AS id, description, amount::float AS amount,
            to_char(paid_at AT TIME ZONE 'Europe/Paris', 'YYYY-MM-DD') AS paid_date
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NOT NULL
+    WHERE paid_at IS NOT NULL
       AND paid_at >= NOW() - ($1 || ' days')::interval
     ORDER BY paid_at DESC
     LIMIT $2
@@ -91,8 +84,7 @@ async function loadPaidRecent() {
     const totals = await pool.query(`
     SELECT COUNT(*)::int AS cnt, COALESCE(SUM(amount), 0)::float AS sum
     FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NOT NULL
+    WHERE paid_at IS NOT NULL
       AND paid_at >= NOW() - ($1 || ' days')::interval
     `, [String(PAID_RECENT_DAYS)]);
     return {
@@ -243,12 +235,11 @@ export async function refreshAgencyFeesBoard() {
         }
         const today = parisToday();
         const [unpaid, paid] = await Promise.all([loadUnpaid(today), loadPaidRecent()]);
-        const logoBuf = getLogoBuffer();
-        const embed = buildBoardEmbed(unpaid, paid, !!logoBuf);
+        // Pas de logo joint : Discord l'affichait comme image séparée au-dessus
+        // du message → bruit visuel inutile. On garde l'embed pur.
+        const embed = buildBoardEmbed(unpaid, paid, false);
         const row = buildButtons();
         const files = [];
-        if (logoBuf)
-            files.push(new AttachmentBuilder(logoBuf, { name: "logo.png" }));
         // Récupère message_id existant
         const stored = await pool.query(`SELECT message_id FROM agency_fees_board WHERE id = 1 LIMIT 1`);
         const existingMsgId = stored.rows[0]?.message_id ? String(stored.rows[0].message_id) : null;

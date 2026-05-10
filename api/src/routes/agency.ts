@@ -4,6 +4,13 @@ import type { PoolClient } from "pg";
 import { z } from "zod";
 import { hashPassword, requireAuth } from "../auth.js";
 import { pool } from "../db.js";
+import {
+  aggregateSnapshotsForPeriod,
+  applyBonusToDelta,
+  computeBonusSplit,
+  type DealParams,
+  type SnapshotRaw,
+} from "../lib/agency_bonus.js";
 import { a } from "../utils/async.js";
 import { requireFsbAccess } from "./fsb_guard.js";
 
@@ -578,6 +585,92 @@ function mapDashboardRows(rows: any[], monthKey: string) {
   return { streamers, assignments };
 }
 
+async function enrichAssignmentsWithSnapshots(
+  assignments: any[],
+  monthKey: string
+): Promise<void> {
+  if (assignments.length === 0) return;
+
+  const assignmentIds = assignments.map((a: any) => Number(a.id));
+  const bounds = periodBounds("month", `${monthKey}-01`);
+
+  // Latest snapshot par assignment (toutes périodes)
+  const latestResult = await pool.query(
+    `
+    SELECT DISTINCT ON (assignment_id)
+      *
+    FROM agency_stat_snapshots
+    WHERE assignment_id = ANY($1::bigint[])
+    ORDER BY assignment_id, captured_at DESC, id DESC
+    `,
+    [assignmentIds]
+  );
+
+  // Snapshots dans la période mensuelle
+  const inPeriodResult = await pool.query(
+    `
+    SELECT *
+    FROM agency_stat_snapshots
+    WHERE assignment_id = ANY($1::bigint[])
+      AND captured_at >= $2::timestamptz
+      AND captured_at <= ($3::date + interval '1 day')::timestamptz
+    ORDER BY assignment_id, captured_at ASC, id ASC
+    `,
+    [assignmentIds, bounds.start, bounds.end]
+  );
+
+  // Baseline (dernier snapshot avant la période) par assignment
+  const baselineResult = await pool.query(
+    `
+    SELECT DISTINCT ON (assignment_id)
+      *
+    FROM agency_stat_snapshots
+    WHERE assignment_id = ANY($1::bigint[])
+      AND captured_at < $2::timestamptz
+    ORDER BY assignment_id, captured_at DESC, id DESC
+    `,
+    [assignmentIds, bounds.start]
+  );
+
+  const latestByAssignment = new Map<number, any>();
+  for (const row of latestResult.rows) {
+    latestByAssignment.set(Number(row.assignment_id), row);
+  }
+
+  const inPeriodByAssignment = new Map<number, any[]>();
+  for (const row of inPeriodResult.rows) {
+    const aid = Number(row.assignment_id);
+    if (!inPeriodByAssignment.has(aid)) inPeriodByAssignment.set(aid, []);
+    inPeriodByAssignment.get(aid)!.push(row);
+  }
+
+  const baselineByAssignment = new Map<number, any>();
+  for (const row of baselineResult.rows) {
+    baselineByAssignment.set(Number(row.assignment_id), row);
+  }
+
+  for (const assignment of assignments) {
+    const aid = Number(assignment.id);
+    const latestRow = latestByAssignment.get(aid);
+    const inPeriodRows = (inPeriodByAssignment.get(aid) || []).map(mapSnapshotRow);
+    const baselineRow = baselineByAssignment.get(aid);
+    const baselineSnap = baselineRow ? mapSnapshotRow(baselineRow) : null;
+
+    assignment.latestSnapshot = latestRow ? serializeSnapshot(latestRow) : null;
+
+    const deal: DealParams = {
+      cpaAmount: assignment.deal.cpaAmount,
+      cpaAgencyCut: assignment.deal.cpaAgencyCut,
+      ersAgencyPercent: assignment.deal.ersAgencyPercent,
+    };
+
+    assignment.periodAggregate =
+      inPeriodRows.length > 0
+        ? aggregateSnapshotsForPeriod(inPeriodRows, baselineSnap, deal)
+        : null;
+  }
+}
+
 async function getAgencyDashboardPayload(monthKey: string) {
   const dashboardQuery = buildDashboardQuery(monthKey);
   const [casinosResult, dealsResult, dashboardResult, availableStreamersResult, historyMonthsResult] = await Promise.all([
@@ -654,6 +747,8 @@ async function getAgencyDashboardPayload(monthKey: string) {
   }));
 
   const { streamers, assignments } = mapDashboardRows(dashboardResult.rows, monthKey);
+
+  await enrichAssignmentsWithSnapshots(assignments, monthKey);
 
   const summary = assignments.reduce(
     (acc, assignment: any) => {
@@ -1569,17 +1664,700 @@ agencyRouter.get(
   })
 );
 
+// ── Schémas snapshot v2 ───────────────────────────────────────────────────────
+
+const isoStringOrNull = z.preprocess((v) => {
+  if (v == null || v === "") return null;
+  return String(v).trim() || null;
+}, z.string().nullable());
+
+const snapshotBodySchema = z.object({
+  capturedAt: isoStringOrNull.optional().default(null),
+  signups: intOrNull.optional().default(null),
+  ftdCount: intOrNull.optional().default(null),
+  ftdSumDep: moneyOrNull.optional().default(null),
+  totalDeposits: moneyOrNull.optional().default(null),
+  rsAmount: moneyOrNull.optional().default(null),
+  bonusAmount: z
+    .preprocess((v) => {
+      if (v == null || v === "") return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    }, z.number().min(-1_000_000).max(1_000_000))
+    .optional()
+    .default(0),
+  manualCpaSplit: z
+    .preprocess((v) => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }, z.number().min(-1_000_000).max(1_000_000).nullable())
+    .optional()
+    .default(null),
+  manualRsSplit: z
+    .preprocess((v) => {
+      if (v == null || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    }, z.number().min(-1_000_000).max(1_000_000).nullable())
+    .optional()
+    .default(null),
+  note: textOrNull(4000).optional().default(null),
+});
+
+// ── Helpers snapshot ─────────────────────────────────────────────────────────
+
+function readPeriodParams(req: any): { period: "week" | "month" | "all"; date: string } {
+  const raw = String(req?.query?.period || "month").trim().toLowerCase();
+  const period: "week" | "month" | "all" = raw === "week" || raw === "all" ? raw : "month";
+  const dateRaw = String(req?.query?.date || "").trim();
+  const date = dateOnlyPattern.test(dateRaw) ? dateRaw : currentParisDateKey();
+  return { period, date };
+}
+
+function periodBounds(period: "week" | "month" | "all", date: string): { start: string; end: string } {
+  if (period === "all") return { start: "2000-01-01", end: "9999-12-31" };
+
+  if (period === "week") {
+    // Lundi de la semaine contenant `date`
+    const d = new Date(`${date}T12:00:00Z`);
+    const dow = d.getUTCDay(); // 0=dimanche
+    const daysFromMon = dow === 0 ? 6 : dow - 1;
+    const mon = new Date(d.getTime() - daysFromMon * 86_400_000);
+    const sun = new Date(mon.getTime() + 6 * 86_400_000);
+    return {
+      start: mon.toISOString().slice(0, 10),
+      end: sun.toISOString().slice(0, 10),
+    };
+  }
+
+  // month
+  const monthKey = date.slice(0, 7);
+  return { start: monthStartDate(monthKey), end: monthEndDate(monthKey) };
+}
+
+async function fetchAssignmentWithDeal(assignmentId: number): Promise<{
+  id: number;
+  agencyStreamerId: number;
+  dealId: number;
+  deal: DealParams;
+} | null> {
+  const result = await pool.query(
+    `
+    SELECT
+      asa.id,
+      asa.agency_streamer_id,
+      asa.deal_id,
+      d.cpa_amount,
+      d.cpa_agency_cut,
+      d.ers_agency_percent
+    FROM agency_streamer_assignments asa
+    LEFT JOIN agency_deals d ON d.id = asa.deal_id
+    WHERE asa.id = $1
+    LIMIT 1
+    `,
+    [assignmentId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    agencyStreamerId: Number(row.agency_streamer_id),
+    dealId: Number(row.deal_id),
+    deal: {
+      cpaAmount: row.cpa_amount == null ? null : Number(row.cpa_amount),
+      cpaAgencyCut: row.cpa_agency_cut == null ? null : Number(row.cpa_agency_cut),
+      ersAgencyPercent: row.ers_agency_percent == null ? null : Number(row.ers_agency_percent),
+    },
+  };
+}
+
+function mapSnapshotRow(row: any): SnapshotRaw {
+  return {
+    id: Number(row.id),
+    capturedAt: row.captured_at instanceof Date ? row.captured_at.toISOString() : String(row.captured_at),
+    signups: row.signups == null ? null : Number(row.signups),
+    ftdCount: row.ftd_count == null ? null : Number(row.ftd_count),
+    ftdSumDep: row.ftd_sum_dep == null ? null : Number(row.ftd_sum_dep),
+    totalDeposits: row.total_deposits == null ? null : Number(row.total_deposits),
+    rsAmount: row.rs_amount == null ? null : Number(row.rs_amount),
+    bonusAmount: Number(row.bonus_amount ?? 0),
+    bonusCpaSplit: Number(row.bonus_cpa_split ?? 0),
+    bonusRsSplit: Number(row.bonus_rs_split ?? 0),
+    bonusFtdRemoved: Number(row.bonus_ftd_removed ?? 0),
+    note: row.note == null ? null : String(row.note),
+  };
+}
+
+function serializeSnapshot(row: any, extra?: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    assignmentId: Number(row.assignment_id),
+    capturedAt: toIso(row.captured_at),
+    signups: row.signups == null ? null : Number(row.signups),
+    ftdCount: row.ftd_count == null ? null : Number(row.ftd_count),
+    ftdSumDep: row.ftd_sum_dep == null ? null : Number(row.ftd_sum_dep),
+    totalDeposits: row.total_deposits == null ? null : Number(row.total_deposits),
+    rsAmount: row.rs_amount == null ? null : Number(row.rs_amount),
+    bonusAmount: Number(row.bonus_amount ?? 0),
+    bonusCpaSplit: Number(row.bonus_cpa_split ?? 0),
+    bonusRsSplit: Number(row.bonus_rs_split ?? 0),
+    bonusFtdRemoved: Number(row.bonus_ftd_removed ?? 0),
+    note: row.note == null ? null : String(row.note),
+    createdByUserId: row.created_by_user_id == null ? null : Number(row.created_by_user_id),
+    createdAt: toIso(row.created_at),
+    updatedAt: toIso(row.updated_at),
+    ...extra,
+  };
+}
+
+async function getSnapshotsForPeriod(
+  assignmentId: number,
+  bounds: { start: string; end: string }
+): Promise<{ inPeriod: SnapshotRaw[]; baseline: SnapshotRaw | null }> {
+  // Snapshots dans la période
+  const inPeriodResult = await pool.query(
+    `
+    SELECT *
+    FROM agency_stat_snapshots
+    WHERE assignment_id = $1
+      AND captured_at >= $2::timestamptz
+      AND captured_at <= ($3::date + interval '1 day')::timestamptz
+    ORDER BY captured_at ASC, id ASC
+    `,
+    [assignmentId, bounds.start, bounds.end]
+  );
+
+  // Dernier snapshot AVANT la période (baseline)
+  const baselineResult = await pool.query(
+    `
+    SELECT *
+    FROM agency_stat_snapshots
+    WHERE assignment_id = $1
+      AND captured_at < $2::timestamptz
+    ORDER BY captured_at DESC, id DESC
+    LIMIT 1
+    `,
+    [assignmentId, bounds.start]
+  );
+
+  return {
+    inPeriod: inPeriodResult.rows.map(mapSnapshotRow),
+    baseline: baselineResult.rows[0] ? mapSnapshotRow(baselineResult.rows[0]) : null,
+  };
+}
+
+// ── Endpoints snapshot v2 ─────────────────────────────────────────────────────
+
+// POST /api/fsb/agency/assignments/:id/snapshots
+agencyRouter.post(
+  "/fsb/agency/assignments/:id/snapshots",
+  a(async (req, res) => {
+    const id = idParamSchema.safeParse((req as any).params?.id);
+    if (!id.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const parsed = snapshotBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message || "invalid_payload" });
+    }
+
+    const assignment = await fetchAssignmentWithDeal(id.data);
+    if (!assignment) return res.status(404).json({ ok: false, error: "assignment_not_found" });
+
+    const payload = parsed.data;
+    const capturedAt = payload.capturedAt || new Date().toISOString();
+
+    // Récupère le snapshot précédent pour calculer le delta
+    const prevResult = await pool.query(
+      `
+      SELECT *
+      FROM agency_stat_snapshots
+      WHERE assignment_id = $1
+        AND captured_at < $2::timestamptz
+      ORDER BY captured_at DESC, id DESC
+      LIMIT 1
+      `,
+      [id.data, capturedAt]
+    );
+    const prevSnap = prevResult.rows[0] ? mapSnapshotRow(prevResult.rows[0]) : null;
+
+    const delta = {
+      signups: Math.max(0, Number(payload.signups ?? 0) - Number(prevSnap?.signups ?? 0)),
+      ftd: Math.max(0, Number(payload.ftdCount ?? 0) - Number(prevSnap?.ftdCount ?? 0)),
+      sumDep: Math.max(0, Number(payload.ftdSumDep ?? 0) - Number(prevSnap?.ftdSumDep ?? 0)),
+      totalDeposits: Math.max(0, Number(payload.totalDeposits ?? 0) - Number(prevSnap?.totalDeposits ?? 0)),
+      rsAmount: Math.max(0, Number(payload.rsAmount ?? 0) - Number(prevSnap?.rsAmount ?? 0)),
+    };
+
+    const cpaUnit = Math.max(
+      Number(assignment.deal.cpaAmount ?? 0) - Number(assignment.deal.cpaAgencyCut ?? 0),
+      0
+    );
+    const rsPct = Math.max(0, 100 - Number(assignment.deal.ersAgencyPercent ?? 0));
+
+    const bonusSplit = computeBonusSplit({
+      bonusAmount: payload.bonusAmount,
+      deltaFtd: delta.ftd,
+      deltaSumDep: delta.sumDep,
+      deltaTotalDeposits: delta.totalDeposits,
+      deltaRsAmount: delta.rsAmount,
+      cpaStreamerUnit: cpaUnit,
+      rsStreamerPct: rsPct,
+      manualCpaSplit: payload.manualCpaSplit,
+      manualRsSplit: payload.manualRsSplit,
+    });
+
+    if (bonusSplit.error) {
+      return res.status(400).json({ ok: false, error: bonusSplit.error });
+    }
+
+    const insertResult = await pool.query(
+      `
+      INSERT INTO agency_stat_snapshots (
+        assignment_id,
+        captured_at,
+        signups,
+        ftd_count,
+        ftd_sum_dep,
+        total_deposits,
+        rs_amount,
+        bonus_amount,
+        bonus_cpa_split,
+        bonus_rs_split,
+        bonus_ftd_removed,
+        note,
+        created_by_user_id
+      )
+      VALUES ($1, $2::timestamptz, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+      `,
+      [
+        id.data,
+        capturedAt,
+        payload.signups,
+        payload.ftdCount,
+        payload.ftdSumDep == null ? null : roundMoney(payload.ftdSumDep),
+        payload.totalDeposits == null ? null : roundMoney(payload.totalDeposits),
+        payload.rsAmount == null ? null : roundMoney(payload.rsAmount),
+        roundMoney(payload.bonusAmount),
+        roundMoney(bonusSplit.bonusCpaSplit),
+        roundMoney(bonusSplit.bonusRsSplit),
+        bonusSplit.ftdRemoved,
+        payload.note,
+        (req as any).user?.id ?? null,
+      ]
+    );
+
+    const created = insertResult.rows[0];
+    const adjustedDelta = applyBonusToDelta(delta, bonusSplit);
+
+    return res.status(201).json({
+      ok: true,
+      snapshot: serializeSnapshot(created, { delta, adjustedDelta, bonusSplit }),
+    });
+  })
+);
+
+// GET /api/fsb/agency/assignments/:id/snapshots
+agencyRouter.get(
+  "/fsb/agency/assignments/:id/snapshots",
+  a(async (req, res) => {
+    const id = idParamSchema.safeParse((req as any).params?.id);
+    if (!id.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const assignment = await fetchAssignmentWithDeal(id.data);
+    if (!assignment) return res.status(404).json({ ok: false, error: "assignment_not_found" });
+
+    const { period, date } = readPeriodParams(req);
+    const bounds = periodBounds(period, date);
+
+    const { inPeriod, baseline } = await getSnapshotsForPeriod(id.data, bounds);
+
+    const aggregate = aggregateSnapshotsForPeriod(inPeriod, baseline, assignment.deal);
+
+    // Fetch raw DB rows for full serialization
+    const rawResult = await pool.query(
+      `
+      SELECT *
+      FROM agency_stat_snapshots
+      WHERE assignment_id = $1
+        AND captured_at >= $2::timestamptz
+        AND captured_at <= ($3::date + interval '1 day')::timestamptz
+      ORDER BY captured_at ASC, id ASC
+      `,
+      [id.data, bounds.start, bounds.end]
+    );
+
+    const baselineRaw = baseline
+      ? await pool.query(
+          `SELECT * FROM agency_stat_snapshots WHERE id = $1 LIMIT 1`,
+          [baseline.id]
+        )
+      : null;
+
+    return res.json({
+      ok: true,
+      period,
+      date,
+      bounds,
+      snapshots: rawResult.rows.map((r) => serializeSnapshot(r)),
+      baseline: baselineRaw?.rows[0] ? serializeSnapshot(baselineRaw.rows[0]) : null,
+      aggregate,
+    });
+  })
+);
+
+// PUT /api/fsb/agency/snapshots/:snapshotId
+agencyRouter.put(
+  "/fsb/agency/snapshots/:snapshotId",
+  a(async (req, res) => {
+    const snapshotId = idParamSchema.safeParse((req as any).params?.snapshotId);
+    if (!snapshotId.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const parsed = snapshotBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message || "invalid_payload" });
+    }
+
+    // Vérifie existence + récupère assignment
+    const existingResult = await pool.query(
+      `SELECT * FROM agency_stat_snapshots WHERE id = $1 LIMIT 1`,
+      [snapshotId.data]
+    );
+    const existing = existingResult.rows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const assignment = await fetchAssignmentWithDeal(Number(existing.assignment_id));
+    if (!assignment) return res.status(404).json({ ok: false, error: "assignment_not_found" });
+
+    const payload = parsed.data;
+    const capturedAt = payload.capturedAt || toIso(existing.captured_at) || new Date().toISOString();
+
+    // Snapshot précédent (exclu lui-même)
+    const prevResult = await pool.query(
+      `
+      SELECT *
+      FROM agency_stat_snapshots
+      WHERE assignment_id = $1
+        AND captured_at < $2::timestamptz
+        AND id != $3
+      ORDER BY captured_at DESC, id DESC
+      LIMIT 1
+      `,
+      [assignment.id, capturedAt, snapshotId.data]
+    );
+    const prevSnap = prevResult.rows[0] ? mapSnapshotRow(prevResult.rows[0]) : null;
+
+    const delta = {
+      signups: Math.max(0, Number(payload.signups ?? 0) - Number(prevSnap?.signups ?? 0)),
+      ftd: Math.max(0, Number(payload.ftdCount ?? 0) - Number(prevSnap?.ftdCount ?? 0)),
+      sumDep: Math.max(0, Number(payload.ftdSumDep ?? 0) - Number(prevSnap?.ftdSumDep ?? 0)),
+      totalDeposits: Math.max(0, Number(payload.totalDeposits ?? 0) - Number(prevSnap?.totalDeposits ?? 0)),
+      rsAmount: Math.max(0, Number(payload.rsAmount ?? 0) - Number(prevSnap?.rsAmount ?? 0)),
+    };
+
+    const cpaUnit = Math.max(
+      Number(assignment.deal.cpaAmount ?? 0) - Number(assignment.deal.cpaAgencyCut ?? 0),
+      0
+    );
+    const rsPct = Math.max(0, 100 - Number(assignment.deal.ersAgencyPercent ?? 0));
+
+    const bonusSplit = computeBonusSplit({
+      bonusAmount: payload.bonusAmount,
+      deltaFtd: delta.ftd,
+      deltaSumDep: delta.sumDep,
+      deltaTotalDeposits: delta.totalDeposits,
+      deltaRsAmount: delta.rsAmount,
+      cpaStreamerUnit: cpaUnit,
+      rsStreamerPct: rsPct,
+      manualCpaSplit: payload.manualCpaSplit,
+      manualRsSplit: payload.manualRsSplit,
+    });
+
+    if (bonusSplit.error) {
+      return res.status(400).json({ ok: false, error: bonusSplit.error });
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE agency_stat_snapshots
+      SET
+        captured_at = $2::timestamptz,
+        signups = $3,
+        ftd_count = $4,
+        ftd_sum_dep = $5,
+        total_deposits = $6,
+        rs_amount = $7,
+        bonus_amount = $8,
+        bonus_cpa_split = $9,
+        bonus_rs_split = $10,
+        bonus_ftd_removed = $11,
+        note = $12,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [
+        snapshotId.data,
+        capturedAt,
+        payload.signups,
+        payload.ftdCount,
+        payload.ftdSumDep == null ? null : roundMoney(payload.ftdSumDep),
+        payload.totalDeposits == null ? null : roundMoney(payload.totalDeposits),
+        payload.rsAmount == null ? null : roundMoney(payload.rsAmount),
+        roundMoney(payload.bonusAmount),
+        roundMoney(bonusSplit.bonusCpaSplit),
+        roundMoney(bonusSplit.bonusRsSplit),
+        bonusSplit.ftdRemoved,
+        payload.note,
+      ]
+    );
+
+    const updated = updateResult.rows[0];
+    const adjustedDelta = applyBonusToDelta(delta, bonusSplit);
+
+    return res.json({
+      ok: true,
+      snapshot: serializeSnapshot(updated, { delta, adjustedDelta, bonusSplit }),
+    });
+  })
+);
+
+// DELETE /api/fsb/agency/snapshots/:snapshotId
+agencyRouter.delete(
+  "/fsb/agency/snapshots/:snapshotId",
+  a(async (req, res) => {
+    const snapshotId = idParamSchema.safeParse((req as any).params?.snapshotId);
+    if (!snapshotId.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const result = await pool.query(
+      `DELETE FROM agency_stat_snapshots WHERE id = $1 RETURNING id`,
+      [snapshotId.data]
+    );
+    if (!result.rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true });
+  })
+);
+
+// GET /api/fsb/agency/assignments/:id/preview-bonus
+agencyRouter.get(
+  "/fsb/agency/assignments/:id/preview-bonus",
+  a(async (req, res) => {
+    const id = idParamSchema.safeParse((req as any).params?.id);
+    if (!id.success) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const assignment = await fetchAssignmentWithDeal(id.data);
+    if (!assignment) return res.status(404).json({ ok: false, error: "assignment_not_found" });
+
+    // Parse query params as body
+    const bodyLike = {
+      bonusAmount: req.query.bonusAmount,
+      capturedAt: req.query.capturedAt,
+      signups: req.query.signups,
+      ftdCount: req.query.ftdCount,
+      ftdSumDep: req.query.ftdSumDep,
+      totalDeposits: req.query.totalDeposits,
+      rsAmount: req.query.rsAmount,
+      manualCpaSplit: req.query.manualCpaSplit,
+      manualRsSplit: req.query.manualRsSplit,
+    };
+
+    const parsed = snapshotBodySchema.safeParse(bodyLike);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message || "invalid_payload" });
+    }
+
+    const payload = parsed.data;
+    const capturedAt = payload.capturedAt || new Date().toISOString();
+
+    // Snapshot précédent pour calculer le delta
+    const prevResult = await pool.query(
+      `
+      SELECT *
+      FROM agency_stat_snapshots
+      WHERE assignment_id = $1
+        AND captured_at < $2::timestamptz
+      ORDER BY captured_at DESC, id DESC
+      LIMIT 1
+      `,
+      [id.data, capturedAt]
+    );
+    const prevSnap = prevResult.rows[0] ? mapSnapshotRow(prevResult.rows[0]) : null;
+
+    const delta = {
+      signups: Math.max(0, Number(payload.signups ?? 0) - Number(prevSnap?.signups ?? 0)),
+      ftd: Math.max(0, Number(payload.ftdCount ?? 0) - Number(prevSnap?.ftdCount ?? 0)),
+      sumDep: Math.max(0, Number(payload.ftdSumDep ?? 0) - Number(prevSnap?.ftdSumDep ?? 0)),
+      totalDeposits: Math.max(0, Number(payload.totalDeposits ?? 0) - Number(prevSnap?.totalDeposits ?? 0)),
+      rsAmount: Math.max(0, Number(payload.rsAmount ?? 0) - Number(prevSnap?.rsAmount ?? 0)),
+    };
+
+    const cpaUnit = Math.max(
+      Number(assignment.deal.cpaAmount ?? 0) - Number(assignment.deal.cpaAgencyCut ?? 0),
+      0
+    );
+    const rsPct = Math.max(0, 100 - Number(assignment.deal.ersAgencyPercent ?? 0));
+
+    const bonusSplit = computeBonusSplit({
+      bonusAmount: payload.bonusAmount,
+      deltaFtd: delta.ftd,
+      deltaSumDep: delta.sumDep,
+      deltaTotalDeposits: delta.totalDeposits,
+      deltaRsAmount: delta.rsAmount,
+      cpaStreamerUnit: cpaUnit,
+      rsStreamerPct: rsPct,
+      manualCpaSplit: payload.manualCpaSplit,
+      manualRsSplit: payload.manualRsSplit,
+    });
+
+    const adjustedDelta = applyBonusToDelta(delta, bonusSplit);
+
+    return res.json({
+      ok: true,
+      delta,
+      bonusSplit,
+      adjustedDelta,
+      deal: {
+        cpaStreamerUnit: cpaUnit,
+        rsStreamerPct: rsPct,
+      },
+    });
+  })
+);
+
+// POST /api/fsb/agency/streamers/from-tiktok
+agencyRouter.post(
+  "/fsb/agency/streamers/from-tiktok",
+  a(async (req, res) => {
+    const fromTiktokSchema = z.object({
+      tiktokInfluencerId: z.coerce.number().int().positive(),
+      displayName: z.string().trim().min(1).max(160).optional(),
+      notes: textOrNull(4000).optional().default(null),
+      publicNote: textOrNull(4000).optional().default(null),
+    });
+
+    const parsed = fromTiktokSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message || "invalid_payload" });
+    }
+
+    const payload = parsed.data;
+
+    // Vérifie que l'influenceur TikTok existe
+    const tiktokResult = await pool.query(
+      `SELECT id, handle, display_name FROM tiktok_influencers WHERE id = $1 LIMIT 1`,
+      [payload.tiktokInfluencerId]
+    );
+    const tiktokRow = tiktokResult.rows[0];
+    if (!tiktokRow) {
+      return res.status(404).json({ ok: false, error: "tiktok_influencer_not_found" });
+    }
+
+    // Vérifie qu'il n'est pas déjà lié
+    const alreadyLinked = await pool.query(
+      `SELECT id FROM agency_streamers WHERE tiktok_influencer_id = $1 LIMIT 1`,
+      [payload.tiktokInfluencerId]
+    );
+    if (alreadyLinked.rows[0]) {
+      return res.status(409).json({ ok: false, error: "tiktok_influencer_already_linked" });
+    }
+
+    const displayName =
+      payload.displayName ||
+      String(tiktokRow.display_name || tiktokRow.handle || "Influenceur TikTok");
+
+    const client = await pool.connect();
+    let generatedAccess: { id: number; username: string; password: string } | null = null;
+
+    try {
+      await client.query("BEGIN");
+      generatedAccess = await createAgencyAccessUser(client, displayName, req.ip);
+
+      await client.query(
+        `
+        INSERT INTO agency_streamers (
+          display_name,
+          tiktok_influencer_id,
+          access_user_id,
+          access_code_plain,
+          public_note,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [
+          displayName,
+          payload.tiktokInfluencerId,
+          generatedAccess.id,
+          generatedAccess.password,
+          payload.publicNote,
+          payload.notes,
+        ]
+      );
+
+      await client.query("COMMIT");
+    } catch (error: any) {
+      await client.query("ROLLBACK");
+      const message = String(error?.message || "");
+      if (message.includes("agency_streamers_tiktok_uq")) {
+        return res.status(409).json({ ok: false, error: "tiktok_influencer_already_linked" });
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const dashboard = await getAgencyDashboardPayload(readMonthKey(req));
+    return res.status(201).json({
+      ok: true,
+      ...dashboard,
+      generatedAccess: generatedAccess
+        ? {
+            username: generatedAccess.username,
+            password: generatedAccess.password,
+            loginPath: "/agency",
+          }
+        : null,
+    });
+  })
+);
+
 agencyRouter.get(
   "/agency/me",
   requireAuth,
   a(async (req, res) => {
     const monthKey = readMonthKey(req);
+    const { period, date } = readPeriodParams(req);
     const agency = await getAgencyStreamerForUser(req.user!.id, monthKey);
-    if (!agency) return res.json({ ok: true, monthKey, agency: null });
+    if (!agency) return res.json({ ok: true, monthKey, period, agency: null });
+
+    // Enrichit les assignments avec les snapshots v2 (bonus appliqués)
+    await enrichAssignmentsWithSnapshots(agency.streamer.assignments, monthKey);
+
+    const bounds = periodBounds(period, date || `${monthKey}-01`);
+
+    // Pour chaque assignment, récupère les snapshots de la période sélectionnée
+    // et remplace periodAggregate avec la bonne période
+    if (period !== "month") {
+      for (const assignment of agency.streamer.assignments) {
+        const { inPeriod, baseline } = await getSnapshotsForPeriod(Number(assignment.id), bounds);
+        const deal: DealParams = {
+          cpaAmount: assignment.deal.cpaAmount,
+          cpaAgencyCut: assignment.deal.cpaAgencyCut,
+          ersAgencyPercent: assignment.deal.ersAgencyPercent,
+        };
+        (assignment as any).periodAggregate =
+          inPeriod.length > 0
+            ? aggregateSnapshotsForPeriod(inPeriod, baseline, deal)
+            : null;
+      }
+    }
 
     return res.json({
       ok: true,
       monthKey,
+      period,
       agency: serializeAgencyPortalPayload(agency),
     });
   })

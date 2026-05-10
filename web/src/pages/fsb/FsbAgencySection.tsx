@@ -4,21 +4,31 @@ import {
   createAgencyCasino,
   createAgencyDeal,
   createAgencyStreamer,
+  createAgencySnapshot,
   deleteAgencyAssignment,
   deleteAgencyCasino,
   deleteAgencyDeal,
+  deleteAgencySnapshot,
   deleteAgencyStreamer,
+  getAgencySnapshots,
   getFsbAgencyDashboard,
+  previewAgencyBonus,
   resetAgencyStreamerAccess,
   updateAgencyAssignment,
   updateAgencyCasino,
   updateAgencyDeal,
+  updateAgencySnapshot,
   updateAgencyStats,
   updateAgencyStreamer,
   type AgencyAssignment,
   type AgencyDashboardResponse,
   type AgencyDeal,
   type AgencyGeneratedAccess,
+  type AgencyPerSnapshotAgg,
+  type AgencyPreviewBonusResponse,
+  type AgencySnapshot,
+  type AgencySnapshotInput,
+  type AgencySnapshotsListResponse,
   type AgencyStreamer,
 } from "../../lib/api_agency";
 
@@ -167,6 +177,8 @@ export function FsbAgencySection() {
   const [activeTab, setActiveTab] = React.useState<TabKey>("overview");
   const [gestionStep, setGestionStep] = React.useState<"streamer" | "assignment">("streamer");
   const [expandedStatsId, setExpandedStatsId] = React.useState<number | null>(null);
+  // "snapshots" = nouveau panneau saisie, "legacy" = ancien formulaire mensuel
+  const [statsMode, setStatsMode] = React.useState<"snapshots" | "legacy">("snapshots");
 
   const [casinoForm, setCasinoForm] = React.useState<CasinoFormState>(EMPTY_CASINO_FORM);
   const [dealForm, setDealForm] = React.useState<DealFormState>(EMPTY_DEAL_FORM);
@@ -962,90 +974,140 @@ export function FsbAgencySection() {
                               </div>
                             </div>
 
-                            {/* ── Inline stats form ── */}
+                            {/* ── Stats panel (snapshots + legacy) ── */}
                             {isExpanded && (
-                              <div style={{ margin: "0 18px 14px", background: "rgba(255,178,107,.05)", border: "1px solid rgba(255,178,107,.18)", borderRadius: 14, padding: 16 }}>
-                                <div className="fsb-muted" style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>
-                                  Stats — {assignment.deal.casinoName} / {assignment.deal.name} — {monthLabel(monthKey)}
+                              <div style={{ margin: "0 18px 14px", background: "rgba(255,178,107,.04)", border: "1px solid rgba(255,178,107,.15)", borderRadius: 14, overflow: "hidden" }}>
+                                {/* Mode tabs */}
+                                <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,.07)", background: "rgba(0,0,0,.12)" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setStatsMode("snapshots")}
+                                    style={{
+                                      padding: "9px 18px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer",
+                                      background: statsMode === "snapshots" ? "rgba(255,178,107,.15)" : "transparent",
+                                      color: statsMode === "snapshots" ? "rgba(255,178,107,1)" : "rgba(214,225,242,.5)",
+                                      borderBottom: statsMode === "snapshots" ? "2px solid rgba(255,178,107,.8)" : "2px solid transparent",
+                                    }}
+                                  >
+                                    Saisies v2
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setStatsMode("legacy")}
+                                    style={{
+                                      padding: "9px 18px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer",
+                                      background: statsMode === "legacy" ? "rgba(255,255,255,.05)" : "transparent",
+                                      color: statsMode === "legacy" ? "rgba(214,225,242,.8)" : "rgba(214,225,242,.4)",
+                                      borderBottom: statsMode === "legacy" ? "2px solid rgba(214,225,242,.4)" : "2px solid transparent",
+                                    }}
+                                  >
+                                    Mode legacy
+                                  </button>
+                                  <div style={{ flex: 1 }} />
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedStatsId(null)}
+                                    style={{ padding: "9px 14px", fontSize: 12, fontWeight: 700, border: "none", cursor: "pointer", background: "transparent", color: "rgba(214,225,242,.4)" }}
+                                  >
+                                    ✕
+                                  </button>
                                 </div>
-                                <form onSubmit={saveStats}>
-                                  <div className="fsb-grid">
-                                    <div className="fsb-field">
-                                      <label>Inscrits</label>
-                                      <input className="fsb-input" type="number" min="0" step="1" value={statsSignups} onChange={(e) => setStatsSignups(e.target.value)} />
+
+                                {/* ── Snapshot panel ── */}
+                                {statsMode === "snapshots" && (
+                                  <SnapshotPanel
+                                    assignment={assignment}
+                                    monthKey={monthKey}
+                                    onRefresh={() => void load(monthKey)}
+                                  />
+                                )}
+
+                                {/* ── Legacy form ── */}
+                                {statsMode === "legacy" && (
+                                  <div style={{ padding: 16 }}>
+                                    <div className="fsb-muted" style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>
+                                      Stats legacy — {assignment.deal.casinoName} / {assignment.deal.name} — {monthLabel(monthKey)}
                                     </div>
-                                    <div className="fsb-field">
-                                      <label>FTD total</label>
-                                      <input className="fsb-input" type="number" min="0" step="1" value={statsFtdCount} onChange={(e) => setStatsFtdCount(e.target.value)} />
-                                    </div>
-                                    <div className="fsb-field">
-                                      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <input
-                                          type="checkbox"
-                                          checked={enableFullBenef}
-                                          onChange={(e) => {
-                                            setEnableFullBenef(e.target.checked);
-                                            if (!e.target.checked) setStatsFtdFullBenef("");
-                                          }}
-                                        />
-                                        Full bénef (FTD agence)
-                                      </label>
-                                      {enableFullBenef && (
-                                        <>
-                                          <input
-                                            className="fsb-input"
-                                            type="number"
-                                            min="0"
-                                            step="1"
-                                            max={statsFtdCount || undefined}
-                                            value={statsFtdFullBenef}
-                                            onChange={(e) => setStatsFtdFullBenef(e.target.value)}
-                                            placeholder="Nb FTD full bénef"
-                                          />
-                                          {statsFtdCount && statsFtdFullBenef && (
-                                            <div className="fsb-hint" style={{ marginTop: 4 }}>
-                                              Affilié voit : {Math.max(Number(statsFtdCount) - Number(statsFtdFullBenef), 0)} FTD · Agence full bénef : {statsFtdFullBenef}
-                                            </div>
+                                    <form onSubmit={saveStats}>
+                                      <div className="fsb-grid">
+                                        <div className="fsb-field">
+                                          <label>Inscrits</label>
+                                          <input className="fsb-input" type="number" min="0" step="1" value={statsSignups} onChange={(e) => setStatsSignups(e.target.value)} />
+                                        </div>
+                                        <div className="fsb-field">
+                                          <label>FTD total</label>
+                                          <input className="fsb-input" type="number" min="0" step="1" value={statsFtdCount} onChange={(e) => setStatsFtdCount(e.target.value)} />
+                                        </div>
+                                        <div className="fsb-field">
+                                          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={enableFullBenef}
+                                              onChange={(e) => {
+                                                setEnableFullBenef(e.target.checked);
+                                                if (!e.target.checked) setStatsFtdFullBenef("");
+                                              }}
+                                            />
+                                            Full bénef (FTD agence)
+                                          </label>
+                                          {enableFullBenef && (
+                                            <>
+                                              <input
+                                                className="fsb-input"
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                max={statsFtdCount || undefined}
+                                                value={statsFtdFullBenef}
+                                                onChange={(e) => setStatsFtdFullBenef(e.target.value)}
+                                                placeholder="Nb FTD full bénef"
+                                              />
+                                              {statsFtdCount && statsFtdFullBenef && (
+                                                <div className="fsb-hint" style={{ marginTop: 4 }}>
+                                                  Affilié voit : {Math.max(Number(statsFtdCount) - Number(statsFtdFullBenef), 0)} FTD · Agence full bénef : {statsFtdFullBenef}
+                                                </div>
+                                              )}
+                                            </>
                                           )}
-                                        </>
-                                      )}
-                                    </div>
-                                    <div className="fsb-field">
-                                      <label>Nb dépôts</label>
-                                      <input className="fsb-input" type="number" min="0" step="1" value={statsDepositCount} onChange={(e) => setStatsDepositCount(e.target.value)} />
-                                    </div>
-                                    <div className="fsb-field">
-                                      <label>Volume dépôts (€)</label>
-                                      <input className="fsb-input" type="number" min="0" step="0.01" value={statsDeposits} onChange={(e) => setStatsDeposits(e.target.value)} />
-                                    </div>
-                                    <div className="fsb-field">
-                                      <label>RS net affilié (€)</label>
-                                      <input className="fsb-input" type="number" step="0.01" value={statsRsValue} onChange={(e) => setStatsRsValue(e.target.value)} />
-                                    </div>
-                                    <div className="fsb-field" style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "flex-end" }}>
-                                      <label className="fsb-check">
-                                        <input type="checkbox" checked={!showCpaToStreamer} onChange={(e) => setShowCpaToStreamer(!e.target.checked)} />
-                                        Masquer CPA au streamer
-                                      </label>
-                                      <label className="fsb-check">
-                                        <input type="checkbox" checked={!showRsToStreamer} onChange={(e) => setShowRsToStreamer(!e.target.checked)} />
-                                        Masquer RS au streamer
-                                      </label>
-                                    </div>
+                                        </div>
+                                        <div className="fsb-field">
+                                          <label>Nb dépôts</label>
+                                          <input className="fsb-input" type="number" min="0" step="1" value={statsDepositCount} onChange={(e) => setStatsDepositCount(e.target.value)} />
+                                        </div>
+                                        <div className="fsb-field">
+                                          <label>Volume dépôts (€)</label>
+                                          <input className="fsb-input" type="number" min="0" step="0.01" value={statsDeposits} onChange={(e) => setStatsDeposits(e.target.value)} />
+                                        </div>
+                                        <div className="fsb-field">
+                                          <label>RS net affilié (€)</label>
+                                          <input className="fsb-input" type="number" step="0.01" value={statsRsValue} onChange={(e) => setStatsRsValue(e.target.value)} />
+                                        </div>
+                                        <div className="fsb-field" style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "flex-end" }}>
+                                          <label className="fsb-check">
+                                            <input type="checkbox" checked={!showCpaToStreamer} onChange={(e) => setShowCpaToStreamer(!e.target.checked)} />
+                                            Masquer CPA au streamer
+                                          </label>
+                                          <label className="fsb-check">
+                                            <input type="checkbox" checked={!showRsToStreamer} onChange={(e) => setShowRsToStreamer(!e.target.checked)} />
+                                            Masquer RS au streamer
+                                          </label>
+                                        </div>
+                                      </div>
+                                      {/* Computed preview */}
+                                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", margin: "12px 0", fontSize: 13 }}>
+                                        <StatChip label="CPA calculé" value={eur(Number(statsFtdCount || 0) * Number(assignment.deal.cpaAmount || 0) * (1 - Number(assignment.deal.cpaAgencyCut || 0) / Number(assignment.deal.cpaAmount || 1)))} />
+                                        <StatChip label="CPA total brut" value={eur(Number(statsFtdCount || 0) * Number(assignment.deal.cpaAmount || 0))} />
+                                        <StatChip label="RS affilié" value={statsRsValue ? eur(Number(statsRsValue)) : "-"} accent />
+                                      </div>
+                                      <div className="fsb-modal-actions" style={{ marginTop: 8, paddingTop: 0 }}>
+                                        <button className="fsb-btn" type="button" onClick={() => setExpandedStatsId(null)}>Annuler</button>
+                                        <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "stats"}>
+                                          {saving === "stats" ? "Enregistrement..." : "Valider les stats"}
+                                        </button>
+                                      </div>
+                                    </form>
                                   </div>
-                                  {/* Computed preview */}
-                                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap", margin: "12px 0", fontSize: 13 }}>
-                                    <StatChip label="CPA calculé" value={eur(Number(statsFtdCount || 0) * Number(assignment.deal.cpaAmount || 0) * (1 - Number(assignment.deal.cpaAgencyCut || 0) / Number(assignment.deal.cpaAmount || 1)))} />
-                                    <StatChip label="CPA total brut" value={eur(Number(statsFtdCount || 0) * Number(assignment.deal.cpaAmount || 0))} />
-                                    <StatChip label="RS affilié" value={statsRsValue ? eur(Number(statsRsValue)) : "-"} accent />
-                                  </div>
-                                  <div className="fsb-modal-actions" style={{ marginTop: 8, paddingTop: 0 }}>
-                                    <button className="fsb-btn" type="button" onClick={() => setExpandedStatsId(null)}>Annuler</button>
-                                    <button className="fsb-btn fsb-btn-primary" type="submit" disabled={saving === "stats"}>
-                                      {saving === "stats" ? "Enregistrement..." : "Valider les stats"}
-                                    </button>
-                                  </div>
-                                </form>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1515,5 +1577,631 @@ function StatChip({ label, value, accent }: { label: string; value: string; acce
       <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: ".06em", color: "rgba(214,225,242,.55)", fontWeight: 800 }}>{label}</span>
       <span style={{ fontWeight: 700, fontSize: 14, color: accent ? "rgba(255,178,107,1)" : undefined }}>{value}</span>
     </span>
+  );
+}
+
+// ─── SnapshotPanel ────────────────────────────────────────────────────────────
+
+type SnapshotPeriod = "week" | "month" | "all";
+
+type SnapshotFormState = {
+  capturedAt: string;
+  signups: string;
+  ftdCount: string;
+  ftdSumDep: string;
+  totalDeposits: string;
+  rsAmount: string;
+  bonusAmount: string;
+  manualCpaSplit: string;
+  manualRsSplit: string;
+  note: string;
+  showManualOverride: boolean;
+};
+
+const EMPTY_SNAPSHOT_FORM: SnapshotFormState = {
+  capturedAt: "",
+  signups: "",
+  ftdCount: "",
+  ftdSumDep: "",
+  totalDeposits: "",
+  rsAmount: "",
+  bonusAmount: "0",
+  manualCpaSplit: "",
+  manualRsSplit: "",
+  note: "",
+  showManualOverride: false,
+};
+
+function nowLocalDatetime() {
+  const d = new Date();
+  // Format: YYYY-MM-DDTHH:mm (compatible datetime-local input)
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function snapshotFormToInput(form: SnapshotFormState): AgencySnapshotInput {
+  return {
+    capturedAt: form.capturedAt ? new Date(form.capturedAt).toISOString() : null,
+    signups: toSnapshotNum(form.signups),
+    ftdCount: toSnapshotNum(form.ftdCount),
+    ftdSumDep: toSnapshotNum(form.ftdSumDep),
+    totalDeposits: toSnapshotNum(form.totalDeposits),
+    rsAmount: toSnapshotNum(form.rsAmount),
+    bonusAmount: toSnapshotNum(form.bonusAmount) ?? 0,
+    manualCpaSplit: toSnapshotNum(form.manualCpaSplit),
+    manualRsSplit: toSnapshotNum(form.manualRsSplit),
+    note: form.note.trim() || null,
+  };
+}
+
+function toSnapshotNum(v: string): number | null {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function snapshotFromSnapshot(snap: AgencySnapshot): SnapshotFormState {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  function toLocalDatetime(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return {
+    capturedAt: toLocalDatetime(snap.capturedAt),
+    signups: snap.signups == null ? "" : String(snap.signups),
+    ftdCount: snap.ftdCount == null ? "" : String(snap.ftdCount),
+    ftdSumDep: snap.ftdSumDep == null ? "" : String(snap.ftdSumDep),
+    totalDeposits: snap.totalDeposits == null ? "" : String(snap.totalDeposits),
+    rsAmount: snap.rsAmount == null ? "" : String(snap.rsAmount),
+    bonusAmount: String(snap.bonusAmount ?? 0),
+    manualCpaSplit: snap.bonusCpaSplit ? String(snap.bonusCpaSplit) : "",
+    manualRsSplit: snap.bonusRsSplit ? String(snap.bonusRsSplit) : "",
+    note: snap.note || "",
+    showManualOverride: false,
+  };
+}
+
+function SnapshotPanel({
+  assignment,
+  monthKey,
+  onRefresh,
+}: {
+  assignment: AgencyAssignment;
+  monthKey: string;
+  onRefresh: () => void;
+}) {
+  const [period, setPeriod] = React.useState<SnapshotPeriod>("month");
+  const [listData, setListData] = React.useState<AgencySnapshotsListResponse | null>(null);
+  const [listLoading, setListLoading] = React.useState(false);
+  const [listError, setListError] = React.useState<string | null>(null);
+
+  // Form modal state: null = closed, "new" = new snapshot, number = editing snapshotId
+  const [formMode, setFormMode] = React.useState<null | "new" | number>(null);
+  const [form, setForm] = React.useState<SnapshotFormState>(EMPTY_SNAPSHOT_FORM);
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [formSaving, setFormSaving] = React.useState(false);
+
+  // Live preview
+  const [preview, setPreview] = React.useState<AgencyPreviewBonusResponse | null>(null);
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const previewTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Delete confirm
+  const [deletingId, setDeletingId] = React.useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+
+  const loadSnapshots = React.useCallback(async (p: SnapshotPeriod) => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const res = await getAgencySnapshots(assignment.id, { period: p, date: monthKey + "-15" });
+      setListData(res);
+    } catch (err: unknown) {
+      setListError(String((err as { message?: string })?.message || "Chargement impossible."));
+    } finally {
+      setListLoading(false);
+    }
+  }, [assignment.id, monthKey]);
+
+  React.useEffect(() => { void loadSnapshots(period); }, [loadSnapshots, period]);
+
+  // Debounced preview
+  React.useEffect(() => {
+    if (formMode === null) { setPreview(null); return; }
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = setTimeout(async () => {
+      try {
+        const input = snapshotFormToInput(form);
+        const res = await previewAgencyBonus(assignment.id, input);
+        setPreview(res);
+        setPreviewError(null);
+      } catch {
+        setPreviewError("Prévisualisation indisponible.");
+        setPreview(null);
+      }
+    }, 400);
+    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, assignment.id, formMode]);
+
+  function openNewForm() {
+    setForm({ ...EMPTY_SNAPSHOT_FORM, capturedAt: nowLocalDatetime() });
+    setFormMode("new");
+    setFormError(null);
+    setPreview(null);
+  }
+
+  function openEditForm(snap: AgencySnapshot) {
+    setForm(snapshotFromSnapshot(snap));
+    setFormMode(snap.id);
+    setFormError(null);
+    setPreview(null);
+  }
+
+  function closeForm() {
+    setFormMode(null);
+    setFormError(null);
+    setPreview(null);
+  }
+
+  async function submitForm(e: React.FormEvent) {
+    e.preventDefault();
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      const input = snapshotFormToInput(form);
+      if (formMode === "new") {
+        await createAgencySnapshot(assignment.id, input);
+      } else if (typeof formMode === "number") {
+        await updateAgencySnapshot(formMode, input);
+      }
+      closeForm();
+      await loadSnapshots(period);
+      onRefresh();
+    } catch (err: unknown) {
+      setFormError(String((err as { message?: string })?.message || "Erreur lors de la sauvegarde."));
+    } finally {
+      setFormSaving(false);
+    }
+  }
+
+  function confirmDelete(snapshotId: number) {
+    setDeletingId(snapshotId);
+  }
+
+  async function executeDelete() {
+    if (deletingId == null) return;
+    setDeleteLoading(true);
+    try {
+      await deleteAgencySnapshot(deletingId);
+      setDeletingId(null);
+      await loadSnapshots(period);
+      onRefresh();
+    } catch (err: unknown) {
+      setListError(String((err as { message?: string })?.message || "Suppression impossible."));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  const deal = assignment.deal;
+  const agg = listData?.aggregate ?? null;
+  const snapshots = listData?.snapshots ?? [];
+
+  // Find per-snapshot agg by id for bonus display
+  const aggBySnap = React.useMemo(() => {
+    const map = new Map<number, AgencyPerSnapshotAgg>();
+    for (const s of agg?.perSnapshot ?? []) map.set(s.snapshotId, s);
+    return map;
+  }, [agg]);
+
+  const hasBonusInForm = (toSnapshotNum(form.bonusAmount) ?? 0) !== 0;
+
+  return (
+    <div style={{ padding: 16 }}>
+      {/* ── Deal reminder header ── */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14, padding: "10px 14px", background: "rgba(255,255,255,.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,.06)" }}>
+        <div style={{ fontWeight: 700, fontSize: 13 }}>{deal.casinoName}</div>
+        <div className="fsb-muted" style={{ fontSize: 12 }}>— {deal.name}</div>
+        {deal.cpaAmount != null && (
+          <span className="fsb-badge" style={{ fontSize: 11 }}>
+            CPA {eur(deal.cpaAmount)}/FTD
+            {deal.cpaAgencyCut != null ? ` (affilié ${eur(deal.cpaAmount - deal.cpaAgencyCut)})` : ""}
+          </span>
+        )}
+        {deal.ersPercent != null && (
+          <span className="fsb-badge" style={{ fontSize: 11 }}>
+            RS {pct(deal.ersPercent)}
+            {deal.ersAgencyPercent != null ? ` (affilié ${pct(deal.ersPercent - deal.ersAgencyPercent)})` : ""}
+          </span>
+        )}
+      </div>
+
+      {/* ── Period selector ── */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+        {(["week", "month", "all"] as SnapshotPeriod[]).map((p) => (
+          <button
+            key={p}
+            type="button"
+            className={`fsb-navbtn ${period === p ? "fsb-navbtn-active" : ""}`}
+            onClick={() => { setPeriod(p); }}
+            style={{ fontSize: 11 }}
+          >
+            {p === "week" ? "Cette semaine" : p === "month" ? "Ce mois" : "Tout"}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="fsb-btn"
+          onClick={() => void loadSnapshots(period)}
+          style={{ marginLeft: "auto", fontSize: 11 }}
+          disabled={listLoading}
+        >
+          {listLoading ? "..." : "↻ Actualiser"}
+        </button>
+        <button type="button" className="fsb-btn fsb-btn-primary" style={{ fontSize: 11 }} onClick={openNewForm}>
+          + Nouvelle saisie
+        </button>
+      </div>
+
+      {listError ? <div className="fsb-alert" style={{ marginBottom: 12 }}>{listError}</div> : null}
+
+      {/* ── Period aggregate ── */}
+      {agg != null && (
+        <div style={{ marginBottom: 14, padding: "10px 14px", background: "rgba(99,102,241,.07)", border: "1px solid rgba(99,102,241,.2)", borderRadius: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(167,139,250,.8)", marginBottom: 10 }}>
+            Agrégat période — {snapshots.length} saisie{snapshots.length !== 1 ? "s" : ""}
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13 }}>
+            <StatChip label="Signups" value={num(agg.adjustedTotals.signups)} />
+            <StatChip label="FTD (ajusté)" value={num(agg.adjustedTotals.ftd)} />
+            <StatChip label="Volume dépôts" value={eur(agg.adjustedTotals.totalDeposits)} />
+            <StatChip label="Affilié CPA" value={eur(agg.adjustedTotals.cpaEarnings)} accent />
+            <StatChip label="Affilié RS" value={eur(agg.adjustedTotals.rsEarnings)} accent />
+            <StatChip label="Total affilié" value={eur(agg.adjustedTotals.totalEarnings)} accent />
+            <StatChip label="Marge agence" value={eur(agg.agencyTotals.total)} />
+            {agg.agencyTotals.bonusTotal !== 0 && (
+              <StatChip label="Bonus total" value={eur(agg.agencyTotals.bonusTotal)} />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Snapshot form modal (inline) ── */}
+      {formMode !== null && (
+        <div style={{ marginBottom: 16, padding: 16, background: "rgba(0,0,0,.25)", border: "1px solid rgba(255,178,107,.25)", borderRadius: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 14 }}>
+            {formMode === "new" ? "Nouvelle saisie" : "Modifier la saisie"}
+          </div>
+
+          <form onSubmit={(e) => { void submitForm(e); }}>
+            <div className="fsb-grid">
+              {/* Date/heure */}
+              <div className="fsb-field">
+                <label>Date et heure de capture</label>
+                <input
+                  className="fsb-input"
+                  type="datetime-local"
+                  value={form.capturedAt}
+                  onChange={(e) => setForm((p) => ({ ...p, capturedAt: e.target.value }))}
+                />
+              </div>
+
+              {/* Signups */}
+              <div className="fsb-field">
+                <label>Inscrits</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.signups}
+                  onChange={(e) => setForm((p) => ({ ...p, signups: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
+
+              {/* FTD count */}
+              <div className="fsb-field">
+                <label>FTD (total cumulatif)</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.ftdCount}
+                  onChange={(e) => setForm((p) => ({ ...p, ftdCount: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
+
+              {/* FTD sum dep */}
+              <div className="fsb-field">
+                <label>Somme dépôts FTD (€)</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.ftdSumDep}
+                  onChange={(e) => setForm((p) => ({ ...p, ftdSumDep: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Total deposits */}
+              <div className="fsb-field">
+                <label>Volume total dépôts (€)</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.totalDeposits}
+                  onChange={(e) => setForm((p) => ({ ...p, totalDeposits: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* RS amount */}
+              <div className="fsb-field">
+                <label>Montant RS brut (€)</label>
+                <input
+                  className="fsb-input"
+                  type="number"
+                  step="0.01"
+                  value={form.rsAmount}
+                  onChange={(e) => setForm((p) => ({ ...p, rsAmount: e.target.value }))}
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Note */}
+              <div className="fsb-field fsb-field-full">
+                <label>Note (optionnelle)</label>
+                <input
+                  className="fsb-input"
+                  value={form.note}
+                  onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
+                  placeholder="Ex : données du rapport PDF semaine 2"
+                />
+              </div>
+            </div>
+
+            {/* Bonus section */}
+            <div style={{
+              marginTop: 14, padding: 14, borderRadius: 10,
+              background: hasBonusInForm ? "rgba(251,191,36,.08)" : "rgba(255,255,255,.03)",
+              border: hasBonusInForm ? "1px solid rgba(251,191,36,.3)" : "1px solid rgba(255,255,255,.06)",
+              transition: "all .2s",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <span style={{ fontWeight: 700, fontSize: 12, color: hasBonusInForm ? "rgba(251,191,36,.9)" : "rgba(214,225,242,.6)" }}>
+                  Petit bonus ?
+                </span>
+                <span style={{ fontSize: 11, color: "rgba(214,225,242,.4)" }}>
+                  (positif = agence prend plus · négatif = agence donne plus à l'affilié)
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+                <div className="fsb-field" style={{ flex: 1, margin: 0 }}>
+                  <label style={{ fontSize: 11 }}>Bonus €</label>
+                  <input
+                    className="fsb-input"
+                    type="number"
+                    step="0.01"
+                    value={form.bonusAmount}
+                    onChange={(e) => setForm((p) => ({ ...p, bonusAmount: e.target.value }))}
+                    style={{ borderColor: hasBonusInForm ? "rgba(251,191,36,.4)" : undefined }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="fsb-btn"
+                  style={{ fontSize: 11, marginBottom: 0 }}
+                  onClick={() => setForm((p) => ({ ...p, showManualOverride: !p.showManualOverride }))}
+                >
+                  {form.showManualOverride ? "Masquer répartition manuelle" : "Répartition manuelle"}
+                </button>
+              </div>
+              {form.showManualOverride && (
+                <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                  <div className="fsb-field" style={{ flex: 1, margin: 0 }}>
+                    <label style={{ fontSize: 11 }}>Split CPA (€)</label>
+                    <input
+                      className="fsb-input"
+                      type="number"
+                      step="0.01"
+                      value={form.manualCpaSplit}
+                      onChange={(e) => setForm((p) => ({ ...p, manualCpaSplit: e.target.value }))}
+                      placeholder="Auto"
+                    />
+                  </div>
+                  <div className="fsb-field" style={{ flex: 1, margin: 0 }}>
+                    <label style={{ fontSize: 11 }}>Split RS (€)</label>
+                    <input
+                      className="fsb-input"
+                      type="number"
+                      step="0.01"
+                      value={form.manualRsSplit}
+                      onChange={(e) => setForm((p) => ({ ...p, manualRsSplit: e.target.value }))}
+                      placeholder="Auto"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Live preview */}
+            {preview != null && (
+              <div style={{ marginTop: 14, padding: 12, background: "rgba(16,185,129,.07)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 10, fontSize: 13 }}>
+                <div style={{ fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", color: "rgba(110,231,183,.7)", marginBottom: 8 }}>
+                  Prévisualisation calculs
+                </div>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <StatChip
+                    label="Affilié CPA"
+                    value={(() => {
+                      const ftd = toSnapshotNum(form.ftdCount) ?? 0;
+                      const ftdAdj = Math.max(0, ftd - (preview.bonusSplit.ftdRemoved ?? 0));
+                      const cpaUnit = preview.deal.cpaStreamerUnit;
+                      return eur(ftdAdj * cpaUnit);
+                    })()}
+                    accent
+                  />
+                  <StatChip
+                    label="Affilié RS"
+                    value={eur((toSnapshotNum(form.rsAmount) ?? 0) * (preview.deal.rsStreamerPct / 100))}
+                    accent
+                  />
+                  <StatChip
+                    label="Total affilié"
+                    value={(() => {
+                      const ftd = toSnapshotNum(form.ftdCount) ?? 0;
+                      const ftdAdj = Math.max(0, ftd - (preview.bonusSplit.ftdRemoved ?? 0));
+                      const cpa = ftdAdj * preview.deal.cpaStreamerUnit;
+                      const rs = (toSnapshotNum(form.rsAmount) ?? 0) * (preview.deal.rsStreamerPct / 100);
+                      return eur(cpa + rs);
+                    })()}
+                    accent
+                  />
+                  {hasBonusInForm && (
+                    <StatChip label="Ajustement bonus" value={eur(toSnapshotNum(form.bonusAmount) ?? 0)} />
+                  )}
+                </div>
+                {(preview.bonusSplit.error) ? (
+                  <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,150,100,.8)" }}>{preview.bonusSplit.error}</div>
+                ) : null}
+              </div>
+            )}
+            {previewError ? (
+              <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,150,100,.7)" }}>{previewError}</div>
+            ) : null}
+
+            {formError ? <div className="fsb-alert" style={{ marginTop: 12 }}>{formError}</div> : null}
+
+            <div className="fsb-modal-actions" style={{ marginTop: 14, paddingTop: 0 }}>
+              <button type="button" className="fsb-btn" onClick={closeForm}>Annuler</button>
+              <button type="submit" className="fsb-btn fsb-btn-primary" disabled={formSaving}>
+                {formSaving ? "Enregistrement..." : formMode === "new" ? "Créer la saisie" : "Mettre à jour"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── Confirm delete modal ── */}
+      {deletingId != null && (
+        <div style={{ marginBottom: 14, padding: 14, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.3)", borderRadius: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: "rgba(252,165,165,.9)" }}>
+            Supprimer cette saisie ?
+          </div>
+          <div className="fsb-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            Cette action est irréversible. Le calcul des totaux sera recalculé sans cette saisie.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="fsb-btn" onClick={() => setDeletingId(null)} disabled={deleteLoading}>Annuler</button>
+            <button
+              type="button"
+              className="fsb-btn"
+              style={{ color: "rgba(252,165,165,.9)", borderColor: "rgba(239,68,68,.4)" }}
+              onClick={() => void executeDelete()}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? "Suppression..." : "Supprimer définitivement"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Snapshot list ── */}
+      {listLoading && snapshots.length === 0 ? (
+        <div className="fsb-emptyblock">Chargement...</div>
+      ) : snapshots.length === 0 && !listLoading ? (
+        <div className="fsb-emptyblock" style={{ padding: "18px 0" }}>
+          Aucune saisie sur cette période. Cliquez sur « + Nouvelle saisie » pour commencer.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {snapshots.map((snap) => {
+            const snapAgg = aggBySnap.get(snap.id);
+            const hasBonus = snap.bonusAmount !== 0;
+            return (
+              <div
+                key={snap.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  padding: "10px 14px",
+                  background: "rgba(255,255,255,.03)",
+                  border: "1px solid rgba(255,255,255,.06)",
+                  borderRadius: 10,
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(214,225,242,.8)" }}>
+                      {dateTime(snap.capturedAt)}
+                    </span>
+                    {hasBonus && (
+                      <span
+                        className="fsb-badge"
+                        style={{
+                          fontSize: 10,
+                          background: snap.bonusAmount > 0 ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)",
+                          color: snap.bonusAmount > 0 ? "rgba(252,165,165,.9)" : "rgba(110,231,183,.9)",
+                          borderColor: snap.bonusAmount > 0 ? "rgba(239,68,68,.3)" : "rgba(16,185,129,.3)",
+                        }}
+                      >
+                        bonus {snap.bonusAmount > 0 ? "+" : ""}{eur(snap.bonusAmount)}
+                      </span>
+                    )}
+                    {snap.note ? (
+                      <span className="fsb-muted" style={{ fontSize: 11, fontStyle: "italic" }}>{snap.note}</span>
+                    ) : null}
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
+                    <StatChip label="Inscrits" value={snap.signups == null ? "-" : num(snap.signups)} />
+                    <StatChip label="FTD" value={snap.ftdCount == null ? "-" : num(snap.ftdCount)} />
+                    <StatChip label="Volume" value={snap.totalDeposits == null ? "-" : eur(snap.totalDeposits)} />
+                    <StatChip label="RS" value={snap.rsAmount == null ? "-" : eur(snap.rsAmount)} />
+                    {snapAgg != null && (
+                      <>
+                        <StatChip label="Delta FTD" value={num(snapAgg.rawDelta.ftd)} />
+                        {hasBonus && <StatChip label="FTD ajusté" value={num(snapAgg.adjustedDelta.ftd)} />}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, alignSelf: "flex-start" }}>
+                  <button
+                    type="button"
+                    className="fsb-btn"
+                    style={{ fontSize: 11 }}
+                    onClick={() => openEditForm(snap)}
+                    disabled={formMode !== null}
+                  >
+                    Modifier
+                  </button>
+                  <button
+                    type="button"
+                    className="fsb-btn"
+                    style={{ fontSize: 11, color: "rgba(255,120,100,.8)" }}
+                    onClick={() => confirmDelete(snap.id)}
+                    disabled={deletingId != null}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

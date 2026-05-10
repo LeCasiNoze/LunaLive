@@ -17,13 +17,16 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, } from "discord.js";
 import { pool } from "../db.js";
 import { refreshAgencyFeesBoard } from "../agency_fees_board.js";
+import { buildV3PageFromQuickInputs } from "../lib/affi_v3_quick_builder.js";
+import { loadUnpaidOccurrences, markExpensePaid } from "../lib/expenses_unpaid.js";
 const LOG = "[admin-cmd]";
 const ALLOWED_USER_IDS = new Set([
     "682472610868887567", // LeCasiNoze
     "406965568755728395", // Fabiozsis
+    "992099046472831066", // Samyzsis (eowite22)
 ]);
 const QG_CHANNEL_ID = "1501890674620891268";
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
 // ─────────────────────────────────────────────────────────────────────────────
 // Garde-fou : user + salon
@@ -47,7 +50,8 @@ async function handleFraisAjouter(interaction) {
     if (!await checkAccess(interaction))
         return;
     const modal = new ModalBuilder().setCustomId(MODAL_FRAIS_AJOUTER).setTitle("Ajouter un frais");
-    modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("description").setLabel("Description").setStyle(TextInputStyle.Short).setMaxLength(160).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("category").setLabel("Catégorie (giveaway/offres/parrainage/abonnement/personnalise)")
+    modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("description").setLabel("Description").setStyle(TextInputStyle.Short).setMaxLength(160).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("category").setLabel("Catégorie")
+        .setPlaceholder("giveaway / offres / parrainage / abonnement / personnalise")
         .setStyle(TextInputStyle.Short).setMaxLength(20).setRequired(true).setValue("personnalise")), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("amount").setLabel("Montant en € (ex: 145.50)").setStyle(TextInputStyle.Short).setMaxLength(12).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("date").setLabel("Date YYYY-MM-DD (laisser vide = aujourd'hui)").setStyle(TextInputStyle.Short).setMaxLength(10).setRequired(false)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("notes").setLabel("Notes (optionnel)").setStyle(TextInputStyle.Paragraph).setMaxLength(500).setRequired(false)));
     await interaction.showModal(modal);
 }
@@ -180,26 +184,35 @@ async function handleLandingCreerSubmit(interaction) {
             throw new Error("Dépôt invalide");
         if (bonusAmount !== null && !isFinite(bonusAmount))
             throw new Error("Bonus invalide");
-        // Slug auto à partir du pseudo
-        const baseSlug = pseudo.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-        const slug = await resolveUniqueSlug(baseSlug || "landing");
-        // V3 stocke ses inputs dans config.__v3Inputs ; quand le user ouvre le V3
-        // dashboard et clique sur la page, le wizard se pré-remplit. Le user
-        // clique "Save" pour finaliser le rendu V2.
-        const v3Inputs = {
+        // Construit les V3QuickInputs (defaults pour ce qui n'est pas dans le modal)
+        const inputs = {
             modelKind: "M1",
             pseudo,
             affiLink,
             depositAmount,
             bonusAmount,
             profileImageUrl: profile,
-            card1Image: { kind: "penalty", url: "" },
-            card2Image: { kind: "mines", url: "" },
-            cardAspect: "16/9",
+            // Cartes : présets penalty + mines (mêmes URLs que defaultV3QuickInputs)
+            card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
+            card2Image: { kind: "mines", url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
+            cardAspect: "1/1",
             cardObjectFit: "cover",
+            pseudoStyle: { font: "Inter", color: "#FFD700", size: "m", weight: "black", glow: true },
+            depositLineStyle: { font: "Inter", color: "#ffffff", size: "l", weight: "black" },
+            bonusLineStyle: { font: "Inter", color: "#FFD700", size: "l", weight: "black", glow: true },
         };
-        const config = { __v3: true, __v3Inputs: v3Inputs };
+        // Build complet de la V2Page comme le ferait l'éditeur V3 côté front.
+        const v2Page = buildV3PageFromQuickInputs(inputs);
+        // Slug : si le builder a déduit un slug depuis affiLink, on l'utilise ;
+        // sinon fallback sur slugify(pseudo). Puis garantit unicité.
+        const builderSlug = String(v2Page.slug || "").trim();
+        const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+        const slug = await resolveUniqueSlug(baseSlug || "landing");
+        v2Page.slug = slug;
+        // Marqueurs V3 dans le config pour qu'à la ré-ouverture, le wizard
+        // puisse pré-remplir ses inputs (cohérent avec le save côté EditorV3Page).
+        const config = { ...v2Page, __v3: true, __v3Inputs: inputs };
         const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
         const r = await pool.query(`
       INSERT INTO affi_landing_pages
@@ -215,9 +228,9 @@ async function handleLandingCreerSubmit(interaction) {
             .setColor(0x9D4BFF)
             .setTitle(`🌐 Landing V3 créée`)
             .setURL(publicUrl)
-            .setDescription(`Page **${pseudo}** créée (#${id}, slug \`${finalSlug}\`).\n\n` +
-            `⚠️ Les **inputs V3 sont enregistrés** mais le rendu V2 n'est pas encore généré. ` +
-            `Ouvre l'éditeur V3, clique sur la page dans le dashboard, ajuste si besoin et clique **Sauver** pour publier.`)
+            .setDescription(`Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`).\n\n` +
+            `🎯 La page est **directement live** — pseudo, lien d'affi, dépôt et bonus sont déjà appliqués. ` +
+            `Ouvre l'éditeur V3 pour ajuster les images, polices, couleurs ou ajouter une photo de profil si besoin.`)
             .addFields({ name: "🔗 URL publique", value: publicUrl, inline: false }, { name: "✏️  Éditeur V3", value: editorUrl, inline: false });
         const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("🌐 Voir la page").setURL(publicUrl), new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("✏️  Modifier (V3)").setURL(editorUrl));
         await interaction.editReply({ embeds: [embed], components: [row] });
@@ -279,31 +292,25 @@ async function handleDette(interaction) {
         return;
     await interaction.deferReply({ ephemeral: true });
     try {
-        const r = await pool.query(`
-      SELECT
-        COUNT(*)::int AS cnt,
-        COALESCE(SUM(amount), 0)::float AS sum_total,
-        COUNT(*) FILTER (WHERE date < CURRENT_DATE)::int AS overdue_cnt,
-        COALESCE(SUM(amount) FILTER (WHERE date < CURRENT_DATE), 0)::float AS overdue_sum,
-        MIN(date) FILTER (WHERE date >= CURRENT_DATE) AS next_due
-      FROM expenses
-      WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
-      `);
-        const t = r.rows[0];
-        const cnt = Number(t.cnt);
-        if (cnt === 0) {
-            await interaction.editReply({ content: "✅ Aucun frais d'agence impayé. Profite." });
+        const todayParis = new Intl.DateTimeFormat("fr-CA", {
+            timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date());
+        const fees = await loadUnpaidOccurrences(todayParis, 365, 15);
+        if (fees.length === 0) {
+            await interaction.editReply({ content: "✅ Aucun frais impayé. Profite." });
             return;
         }
-        const next = t.next_due
-            ? new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "long" }).format(new Date(t.next_due))
+        const total = fees.reduce((s, f) => s + f.amount, 0);
+        const overdue = fees.filter(f => f.days_until < 0);
+        const overdueSum = overdue.reduce((s, f) => s + f.amount, 0);
+        const next = fees.find(f => f.days_until >= 0);
+        const nextStr = next
+            ? new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "long" }).format(new Date(next.due_date + "T12:00:00Z"))
             : "—";
         await interaction.editReply({
-            content: `💰 **${cnt}** impayé${cnt > 1 ? "s" : ""} • Total : **${eur(Number(t.sum_total))}**` +
-                (Number(t.overdue_cnt) > 0
-                    ? ` • 🚨 **${t.overdue_cnt} en retard** : ${eur(Number(t.overdue_sum))}`
-                    : "") +
-                ` • Prochaine échéance : ${next}`,
+            content: `💰 **${fees.length}** impayé${fees.length > 1 ? "s" : ""} • Total : **${eur(total)}**` +
+                (overdue.length > 0 ? ` • 🚨 **${overdue.length} en retard** : ${eur(overdueSum)}` : "") +
+                ` • Prochaine échéance : ${nextStr}`,
         });
     }
     catch (e) {
@@ -360,6 +367,64 @@ async function handleTiktokInfluenceurAdd(interaction) {
     }
 }
 // ─────────────────────────────────────────────────────────────────────────────
+// /purge X — supprime les X derniers messages du salon
+// ─────────────────────────────────────────────────────────────────────────────
+async function handlePurge(interaction) {
+    if (!await checkAccess(interaction))
+        return;
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const x = interaction.options.getInteger("x", true);
+        const channel = interaction.channel;
+        if (!channel || !("bulkDelete" in channel)) {
+            await interaction.editReply({ content: "❌ Salon non textuel ou bulkDelete indisponible." });
+            return;
+        }
+        // Discord bulkDelete : max 100 messages, < 14 jours
+        const deleted = await channel.bulkDelete(Math.min(Math.max(1, x), 100), true);
+        const count = deleted?.size ?? 0;
+        await interaction.editReply({
+            content: `🗑️ ${count} message${count > 1 ? "s" : ""} supprimé${count > 1 ? "s" : ""}.` +
+                (count < x ? ` (Discord ne peut pas supprimer les messages > 14 jours)` : ""),
+        });
+    }
+    catch (e) {
+        await interaction.editReply({ content: `❌ ${e?.message || e}` });
+    }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+// /todo <message> [fichier]
+// ─────────────────────────────────────────────────────────────────────────────
+async function handleTodo(interaction) {
+    if (!await checkAccess(interaction))
+        return;
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const message = interaction.options.getString("message", true).trim();
+        const file = interaction.options.getAttachment("fichier");
+        if (!message)
+            throw new Error("Message requis");
+        const r = await pool.query(`INSERT INTO fsb_todos (message, attachment_url, attachment_name, created_by_user_id, created_by_name)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`, [
+            message,
+            file?.url || null,
+            file?.name || null,
+            interaction.user.id,
+            interaction.user.username || interaction.user.globalName || null,
+        ]);
+        const id = Number(r.rows[0].id);
+        const fileNote = file ? ` 📎 ${file.name}` : "";
+        await interaction.editReply({
+            content: `✅ Todo **#${id}** ajouté : _${message.slice(0, 200)}_${fileNote}\n` +
+                `Visible sur le [FSB Board](${PUBLIC_WEB_BASE}/FSB_Board).`,
+        });
+    }
+    catch (e) {
+        await interaction.editReply({ content: `❌ ${e?.message || e}` });
+    }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 // Mark-paid : bouton sur le board frais → select menu → marque payés
 // ─────────────────────────────────────────────────────────────────────────────
 export const FEES_BOARD_MARK_PAID_OPEN_CID = "agency_fees_board:mark_paid_open";
@@ -372,31 +437,29 @@ async function handleMarkPaidOpen(interaction) {
         return;
     }
     try {
-        const r = await pool.query(`
-      SELECT id::text AS id, description, amount::float AS amount,
-             to_char(date, 'YYYY-MM-DD') AS due_date,
-             (date - CURRENT_DATE) AS days_until
-      FROM expenses
-      WHERE source_type = 'agency_streamer_payout' AND paid_at IS NULL
-      ORDER BY date ASC
-      LIMIT 25
-      `);
-        if (r.rowCount === 0) {
+        const todayParis = new Intl.DateTimeFormat("fr-CA", {
+            timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date());
+        const fees = await loadUnpaidOccurrences(todayParis, 365, 15);
+        if (fees.length === 0) {
             await interaction.reply({ ephemeral: true, content: "_Aucun frais impayé._" });
             return;
         }
+        const items = fees.slice(0, 25); // Discord StringSelect max 25 options
         const { StringSelectMenuBuilder } = await import("discord.js");
         const select = new StringSelectMenuBuilder()
             .setCustomId(FEES_BOARD_MARK_PAID_SELECT_CID)
             .setPlaceholder("Sélectionner un ou plusieurs frais à marquer payés")
             .setMinValues(1)
-            .setMaxValues(Math.min(r.rowCount ?? r.rows.length, 25))
-            .addOptions(r.rows.map((row) => {
-            const lateMark = Number(row.days_until) < 0 ? "⚠️ " : "";
+            .setMaxValues(items.length)
+            .addOptions(items.map((f) => {
+            const lateMark = f.days_until < 0 ? "⚠️ " : "";
+            const recMark = f.is_recurring ? " (mensuel)" : "";
             return {
-                label: `${lateMark}${eur(Number(row.amount))} — ${String(row.description).slice(0, 80)}`.slice(0, 100),
-                description: `Échéance ${row.due_date}`.slice(0, 100),
-                value: String(row.id),
+                label: `${lateMark}${eur(f.amount)} — ${f.description}${recMark}`.slice(0, 100),
+                description: `Échéance ${f.due_date}`.slice(0, 100),
+                // Format value : "<expense_id>:<occurrence_date|>"  — vide si non-récurrent
+                value: `${f.expense_id}:${f.occurrence_date ?? ""}`.slice(0, 100),
             };
         }));
         await interaction.reply({
@@ -416,17 +479,36 @@ async function handleMarkPaidSelect(interaction) {
     }
     await interaction.deferUpdate();
     try {
-        const ids = interaction.values.map(v => Number(v)).filter(n => Number.isFinite(n));
-        if (ids.length === 0)
+        const values = interaction.values;
+        if (!values?.length)
             return;
-        const r = await pool.query(`UPDATE expenses SET paid_at = NOW() WHERE id = ANY($1::bigint[]) AND paid_at IS NULL
-       RETURNING id, amount::float AS amount, description`, [ids]);
-        const sum = r.rows.reduce((s, row) => s + Number(row.amount), 0);
+        // Charge les détails (montants) pour le résumé
+        const todayParis = new Intl.DateTimeFormat("fr-CA", {
+            timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date());
+        const allUnpaid = await loadUnpaidOccurrences(todayParis, 365, 15);
+        const byKey = new Map(allUnpaid.map(f => [`${f.expense_id}:${f.occurrence_date ?? ""}`, f]));
+        let count = 0;
+        let sum = 0;
+        for (const v of values) {
+            const idx = v.indexOf(":");
+            if (idx < 0)
+                continue;
+            const expenseId = Number(v.slice(0, idx));
+            const occ = v.slice(idx + 1) || null;
+            if (!Number.isFinite(expenseId))
+                continue;
+            await markExpensePaid(expenseId, occ);
+            const f = byKey.get(v);
+            if (f) {
+                count++;
+                sum += f.amount;
+            }
+        }
         await interaction.editReply({
-            content: `✅ ${r.rowCount} frais marqué${r.rowCount > 1 ? "s" : ""} payé${r.rowCount > 1 ? "s" : ""} • ${eur(sum)} • Tableau actualisé.`,
+            content: `✅ ${count} frais marqué${count > 1 ? "s" : ""} payé${count > 1 ? "s" : ""} • ${eur(sum)} • Tableau actualisé.`,
             components: [],
         });
-        // Refresh du board en arrière-plan
         void refreshAgencyFeesBoard();
     }
     catch (e) {
@@ -471,6 +553,14 @@ export async function routeAdminInteraction(interaction) {
             }
             if (commandName === "tiktok" && sub === "influenceur-add") {
                 await handleTiktokInfluenceurAdd(interaction);
+                return true;
+            }
+            if (commandName === "purge") {
+                await handlePurge(interaction);
+                return true;
+            }
+            if (commandName === "todo") {
+                await handleTodo(interaction);
                 return true;
             }
         }

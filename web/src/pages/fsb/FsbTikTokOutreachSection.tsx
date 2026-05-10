@@ -1,5 +1,8 @@
 import * as React from "react";
 import {
+  recruitAgencyStreamerFromTiktok,
+} from "../../lib/api_agency";
+import {
   addTikTokSeed,
   cancelRun,
   clearRuns,
@@ -365,6 +368,15 @@ export function FsbTikTokOutreachSection() {
   const [detailMessages, setDetailMessages] = React.useState<TikTokOutreachMessage[]>([]);
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
+
+  // Recruit for agency state
+  const [recruitTarget, setRecruitTarget] = React.useState<TikTokInfluencer | null>(null);
+  const [recruitDisplayName, setRecruitDisplayName] = React.useState("");
+  const [recruitPublicNote, setRecruitPublicNote] = React.useState("");
+  const [recruitNotes, setRecruitNotes] = React.useState("");
+  const [recruitSending, setRecruitSending] = React.useState(false);
+  const [recruitError, setRecruitError] = React.useState<string | null>(null);
+  const [recruitedIds, setRecruitedIds] = React.useState<Set<string>>(new Set());
 
   // Discovery state
   const [discHashtags, setDiscHashtags] = React.useState<string[]>(DEFAULT_HASHTAGS);
@@ -1653,6 +1665,40 @@ export function FsbTikTokOutreachSection() {
       // silent
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const openRecruit = (inf: TikTokInfluencer) => {
+    setRecruitTarget(inf);
+    setRecruitDisplayName(inf.displayName || inf.handle || "");
+    setRecruitPublicNote("");
+    setRecruitNotes("");
+    setRecruitError(null);
+  };
+
+  const handleRecruit = async () => {
+    if (!recruitTarget || recruitSending) return;
+    setRecruitSending(true);
+    setRecruitError(null);
+    try {
+      await recruitAgencyStreamerFromTiktok({
+        tiktokInfluencerId: Number(recruitTarget.id),
+        displayName: recruitDisplayName.trim() || undefined,
+        notes: recruitNotes.trim() || null,
+        publicNote: recruitPublicNote.trim() || null,
+      });
+      const targetId = recruitTarget.id;
+      setRecruitedIds((prev) => new Set<string>([...prev, targetId]));
+      setRecruitTarget(null);
+    } catch (err: any) {
+      const raw = String(err?.message || err);
+      const friendly =
+        raw === "already_linked"
+          ? "Cet influenceur est déjà lié à un streamer agence."
+          : raw;
+      setRecruitError(friendly);
+    } finally {
+      setRecruitSending(false);
     }
   };
 
@@ -3830,6 +3876,30 @@ export function FsbTikTokOutreachSection() {
                   <button className="fsb-btn" onClick={() => onDelete(inf)} title="Supprimer">
                     🗑
                   </button>
+                  {recruitedIds.has(inf.id) ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#a78bfa",
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "8px 4px",
+                      }}
+                    >
+                      ★ Recruté
+                    </span>
+                  ) : (
+                    <button
+                      className="fsb-btn"
+                      style={{ borderColor: "#6d28d9", color: "#a78bfa" }}
+                      onClick={() => openRecruit(inf)}
+                      title="Recruter pour l'agence"
+                    >
+                      ★ Agence
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -3950,6 +4020,81 @@ export function FsbTikTokOutreachSection() {
                 disabled={!replyText.trim()}
               >
                 ✓ Intéressé
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {recruitTarget ? (
+        <div className="tk-modal-back" onClick={() => !recruitSending && setRecruitTarget(null)}>
+          <div className="tk-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Recruter @{recruitTarget.handle} pour l'agence</h3>
+            <p className="tk-modal-sub">
+              Un profil streamer agence sera créé et lié à cet influenceur TikTok.
+            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label className="fsb-field" style={{ display: "block" }}>
+                  <span style={{ fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 800 }}>
+                    Nom affiché
+                  </span>
+                  <input
+                    className="tk-input"
+                    style={{ marginTop: 6 }}
+                    value={recruitDisplayName}
+                    onChange={(e) => setRecruitDisplayName(e.target.value)}
+                    placeholder="Nom public du streamer"
+                  />
+                </label>
+              </div>
+              <div>
+                <label className="fsb-field" style={{ display: "block" }}>
+                  <span style={{ fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 800 }}>
+                    Note publique (visible streamer)
+                  </span>
+                  <input
+                    className="tk-input"
+                    style={{ marginTop: 6 }}
+                    value={recruitPublicNote}
+                    onChange={(e) => setRecruitPublicNote(e.target.value)}
+                    placeholder="Ex : Bienvenue dans l'agence LunaLive"
+                  />
+                </label>
+              </div>
+              <div>
+                <label className="fsb-field" style={{ display: "block" }}>
+                  <span style={{ fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 800 }}>
+                    Notes internes
+                  </span>
+                  <input
+                    className="tk-input"
+                    style={{ marginTop: 6 }}
+                    value={recruitNotes}
+                    onChange={(e) => setRecruitNotes(e.target.value)}
+                    placeholder="Notes privées (non visibles par le streamer)"
+                  />
+                </label>
+              </div>
+            </div>
+            {recruitError ? (
+              <div className="fsb-alert" style={{ marginTop: 12 }}>{recruitError}</div>
+            ) : null}
+            <div className="tk-modal-actions">
+              <button
+                className="fsb-btn"
+                onClick={() => setRecruitTarget(null)}
+                disabled={recruitSending}
+              >
+                Annuler
+              </button>
+              <button
+                className="fsb-btn"
+                style={{ borderColor: "#6d28d9", color: "#a78bfa" }}
+                onClick={handleRecruit}
+                disabled={recruitSending || !recruitDisplayName.trim()}
+              >
+                {recruitSending ? <span className="tk-spin" /> : "★ Recruter pour l'agence"}
               </button>
             </div>
           </div>

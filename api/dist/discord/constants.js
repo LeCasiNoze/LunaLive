@@ -127,7 +127,6 @@ export const SLASH_COMMANDS = [
     {
         name: "frais",
         description: "Frais d'agence",
-        default_member_permissions: "0",
         options: [
             { name: "ajouter", description: "Ajouter un frais (modal)", type: 1 },
         ],
@@ -135,7 +134,6 @@ export const SLASH_COMMANDS = [
     {
         name: "agence",
         description: "Outils agence",
-        default_member_permissions: "0",
         options: [
             { name: "recap", description: "Récap mensuel agence", type: 1, options: [
                     { name: "mois", description: "YYYY-MM (défaut: mois courant)", type: 3, required: false },
@@ -145,7 +143,6 @@ export const SLASH_COMMANDS = [
     {
         name: "landing",
         description: "Landing pages affiliées",
-        default_member_permissions: "0",
         options: [
             { name: "creer", description: "Créer une landing rapide (V3)", type: 1 },
             { name: "list", description: "Lister mes landings avec URLs", type: 1 },
@@ -154,16 +151,29 @@ export const SLASH_COMMANDS = [
     {
         name: "dette",
         description: "Snapshot rapide des frais d'agence impayés",
-        default_member_permissions: "0",
     },
     {
         name: "tiktok",
         description: "TikTok outreach",
-        default_member_permissions: "0",
         options: [
             { name: "influenceur-add", description: "Ajouter un influenceur au réseau", type: 1, options: [
                     { name: "lien", description: "Lien TikTok ou handle (@xxx)", type: 3, required: true },
                 ] },
+        ],
+    },
+    {
+        name: "purge",
+        description: "Supprimer les X derniers messages du salon",
+        options: [
+            { name: "x", description: "Nombre de messages (1-100)", type: 4, required: true, min_value: 1, max_value: 100 },
+        ],
+    },
+    {
+        name: "todo",
+        description: "Ajouter un todo (apparaît sur le FSB Board)",
+        options: [
+            { name: "message", description: "Description du todo", type: 3, required: true },
+            { name: "fichier", description: "Pièce jointe (optionnel)", type: 11, required: false },
         ],
     },
 ];

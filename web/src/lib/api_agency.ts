@@ -90,6 +90,8 @@ export type AgencyAssignment = {
     ersAgencyPercent: number | null;
   };
   payouts: AgencyAssignmentPayouts;
+  latestSnapshot?: AgencySnapshot | null;
+  periodAggregate?: AgencyPeriodAggregate | null;
 };
 
 export type AgencyStreamer = {
@@ -205,6 +207,7 @@ export type AgencyStatsInput = {
 export type MyAgencyStatsResponse = {
   ok: true;
   monthKey: string;
+  period?: "week" | "month" | "all";
   agency: null | {
     streamer: {
       id: number;
@@ -246,6 +249,8 @@ export type MyAgencyStatsResponse = {
         visibleTotal: number;
       };
       updatedAt: string | null;
+      latestSnapshot?: AgencySnapshot | null;
+      periodAggregate?: AgencyPeriodAggregate | null;
     }>;
     summary: {
       signups: number;
@@ -270,6 +275,130 @@ export type MyAgencyStatsResponse = {
 
 export type AgencyPreviewResponse = MyAgencyStatsResponse & {
   preview?: boolean;
+};
+
+// ── Types snapshot v2 ─────────────────────────────────────────────────────────
+
+export type AgencySnapshot = {
+  id: number;
+  assignmentId: number;
+  capturedAt: string | null;
+  signups: number | null;
+  ftdCount: number | null;
+  ftdSumDep: number | null;
+  totalDeposits: number | null;
+  rsAmount: number | null;
+  bonusAmount: number;
+  bonusCpaSplit: number;
+  bonusRsSplit: number;
+  bonusFtdRemoved: number;
+  note: string | null;
+  createdByUserId: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type AgencyBonusSplit = {
+  bonusCpaSplit: number;
+  bonusRsSplit: number;
+  ftdRemoved: number;
+  error?: string;
+};
+
+export type AgencyRawDelta = {
+  signups: number;
+  ftd: number;
+  sumDep: number;
+  totalDeposits: number;
+  rsAmount: number;
+};
+
+export type AgencyAdjustedDelta = AgencyRawDelta;
+
+export type AgencyPeriodTotals = {
+  signups: number;
+  ftd: number;
+  sumDep: number;
+  totalDeposits: number;
+  rsAmount: number;
+  cpaEarnings: number;
+  rsEarnings: number;
+  totalEarnings: number;
+  agencyEarnings: number;
+  bonusTotal: number;
+};
+
+export type AgencyPerSnapshotAgg = {
+  snapshotId: number;
+  capturedAt: string;
+  rawDelta: AgencyRawDelta;
+  bonusAmount: number;
+  bonusCpaSplit: number;
+  bonusRsSplit: number;
+  ftdRemoved: number;
+  adjustedDelta: AgencyAdjustedDelta;
+};
+
+export type AgencyPeriodAggregate = {
+  rawTotals: AgencyPeriodTotals;
+  adjustedTotals: AgencyPeriodTotals;
+  agencyTotals: {
+    agencyBaseCpa: number;
+    agencyBaseRs: number;
+    bonusTotal: number;
+    total: number;
+  };
+  perSnapshot: AgencyPerSnapshotAgg[];
+};
+
+export type AgencySnapshotInput = {
+  capturedAt?: string | null;
+  signups?: number | null;
+  ftdCount?: number | null;
+  ftdSumDep?: number | null;
+  totalDeposits?: number | null;
+  rsAmount?: number | null;
+  bonusAmount?: number;
+  manualCpaSplit?: number | null;
+  manualRsSplit?: number | null;
+  note?: string | null;
+};
+
+export type AgencySnapshotResponse = {
+  ok: true;
+  snapshot: AgencySnapshot & {
+    delta?: AgencyRawDelta;
+    adjustedDelta?: AgencyAdjustedDelta;
+    bonusSplit?: AgencyBonusSplit;
+  };
+};
+
+export type AgencySnapshotsListResponse = {
+  ok: true;
+  period: "week" | "month" | "all";
+  date: string;
+  bounds: { start: string; end: string };
+  snapshots: AgencySnapshot[];
+  baseline: AgencySnapshot | null;
+  aggregate: AgencyPeriodAggregate | null;
+};
+
+export type AgencyPreviewBonusResponse = {
+  ok: true;
+  delta: AgencyRawDelta;
+  bonusSplit: AgencyBonusSplit;
+  adjustedDelta: AgencyAdjustedDelta;
+  deal: {
+    cpaStreamerUnit: number;
+    rsStreamerPct: number;
+  };
+};
+
+export type AgencyRecruitFromTiktokInput = {
+  tiktokInfluencerId: number;
+  displayName?: string;
+  notes?: string | null;
+  publicNote?: string | null;
 };
 
 const BASE = (
@@ -452,4 +581,78 @@ export function getFsbAgencyStreamerPreview(id: number, monthKey?: string | null
   return request<AgencyPreviewResponse>(
     withMonth(`/api/fsb/agency/streamers/${encodeURIComponent(String(id))}/preview`, monthKey)
   );
+}
+
+// ── API snapshot v2 ───────────────────────────────────────────────────────────
+
+export function createAgencySnapshot(assignmentId: number, payload: AgencySnapshotInput) {
+  return request<AgencySnapshotResponse>(
+    `/api/fsb/agency/assignments/${encodeURIComponent(String(assignmentId))}/snapshots`,
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+export function updateAgencySnapshot(snapshotId: number, payload: AgencySnapshotInput) {
+  return request<AgencySnapshotResponse>(
+    `/api/fsb/agency/snapshots/${encodeURIComponent(String(snapshotId))}`,
+    { method: "PUT", body: JSON.stringify(payload) }
+  );
+}
+
+export function deleteAgencySnapshot(snapshotId: number) {
+  return request<{ ok: true }>(
+    `/api/fsb/agency/snapshots/${encodeURIComponent(String(snapshotId))}`,
+    { method: "DELETE" }
+  );
+}
+
+export function getAgencySnapshots(
+  assignmentId: number,
+  params?: { period?: "week" | "month" | "all"; date?: string }
+) {
+  const search = new URLSearchParams();
+  if (params?.period) search.set("period", params.period);
+  if (params?.date) search.set("date", params.date);
+  const qs = search.toString();
+  const path = `/api/fsb/agency/assignments/${encodeURIComponent(String(assignmentId))}/snapshots${qs ? `?${qs}` : ""}`;
+  return request<AgencySnapshotsListResponse>(path);
+}
+
+export function previewAgencyBonus(
+  assignmentId: number,
+  params: AgencySnapshotInput & { capturedAt?: string | null }
+) {
+  const search = new URLSearchParams();
+  const entries: Array<[string, string | null | undefined]> = [
+    ["bonusAmount", params.bonusAmount != null ? String(params.bonusAmount) : undefined],
+    ["capturedAt", params.capturedAt ?? undefined],
+    ["signups", params.signups != null ? String(params.signups) : undefined],
+    ["ftdCount", params.ftdCount != null ? String(params.ftdCount) : undefined],
+    ["ftdSumDep", params.ftdSumDep != null ? String(params.ftdSumDep) : undefined],
+    ["totalDeposits", params.totalDeposits != null ? String(params.totalDeposits) : undefined],
+    ["rsAmount", params.rsAmount != null ? String(params.rsAmount) : undefined],
+    ["manualCpaSplit", params.manualCpaSplit != null ? String(params.manualCpaSplit) : undefined],
+    ["manualRsSplit", params.manualRsSplit != null ? String(params.manualRsSplit) : undefined],
+  ];
+  for (const [k, v] of entries) {
+    if (v != null) search.set(k, v);
+  }
+  const path = `/api/fsb/agency/assignments/${encodeURIComponent(String(assignmentId))}/preview-bonus?${search.toString()}`;
+  return request<AgencyPreviewBonusResponse>(path);
+}
+
+export function recruitAgencyStreamerFromTiktok(payload: AgencyRecruitFromTiktokInput, monthKey?: string | null) {
+  return request<AgencyDashboardResponse>(
+    withMonth("/api/fsb/agency/streamers/from-tiktok", monthKey),
+    { method: "POST", body: JSON.stringify(payload) }
+  );
+}
+
+export function getMyAgencyStatsPeriod(period?: "week" | "month", monthKey?: string | null, date?: string | null) {
+  const search = new URLSearchParams();
+  if (monthKey) search.set("month", monthKey);
+  if (period) search.set("period", period);
+  if (date) search.set("date", date);
+  const qs = search.toString();
+  return request<MyAgencyStatsResponse>(`/api/agency/me${qs ? `?${qs}` : ""}`);
 }

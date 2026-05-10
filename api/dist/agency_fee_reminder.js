@@ -33,12 +33,12 @@ const LOG = "[agency-fee-reminder]";
 // auto-actualisé vit dans un autre salon (cf. agency_fees_board.ts).
 const FEES_CHANNEL_ID = "1501890674620891268";
 // Mention au-dessus de l'embed pour déclencher la notification Discord.
-// Samyzsis sera ajouté ici dès qu'il rejoint le serveur (TODO).
 const PING_USER_IDS = [
     "682472610868887567", // LeCasiNoze
     "406965568755728395", // Fabiozsis
+    "992099046472831066", // Samyzsis (eowite22)
 ];
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.fr").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 const TICK_INTERVAL_MS = 30 * 60_000; // 30 min
 const SEND_HOUR_PARIS = 9;
@@ -72,25 +72,15 @@ function parisNow() {
     return { date, hour };
 }
 const ACTIONABLE_DAYS = new Set([0, 2, 7]); // déclencheurs (en plus du retard)
+import { loadUnpaidOccurrences } from "./lib/expenses_unpaid.js";
 async function loadAllUnpaidFees(todayParis) {
-    const r = await pool.query(`
-    SELECT
-      id::text                    AS id,
-      description,
-      amount::float               AS amount,
-      to_char(date, 'YYYY-MM-DD') AS due_date,
-      (date - $1::date)           AS days_until
-    FROM expenses
-    WHERE source_type = 'agency_streamer_payout'
-      AND paid_at IS NULL
-    ORDER BY date ASC, id ASC
-    `, [todayParis]);
-    return r.rows.map((row) => ({
-        id: Number(row.id),
-        description: String(row.description || ""),
-        amount: Number(row.amount || 0),
-        due_date: String(row.due_date),
-        days_until: Number(row.days_until),
+    const rows = await loadUnpaidOccurrences(todayParis, 365, 15);
+    return rows.map((r) => ({
+        id: r.expense_id,
+        description: r.description + (r.is_recurring ? " (mensuel)" : ""),
+        amount: r.amount,
+        due_date: r.due_date,
+        days_until: r.days_until,
     }));
 }
 function shouldTrigger(fees) {

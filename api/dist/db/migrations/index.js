@@ -114,6 +114,13 @@ import { mig109_agency_fee_reminder_runs } from "./mig109_agency_fee_reminder_ru
 import { mig110_agency_fees_board } from "./mig110_agency_fees_board.js";
 import { mig111_rumble_vods_youtube } from "./mig111_rumble_vods_youtube.js";
 import { mig112_instagram_agenda_board } from "./mig112_instagram_agenda_board.js";
+import { mig113_tiktok_dismissed_candidates } from "./mig113_tiktok_dismissed_candidates.js";
+import { mig114_tiktok_follow_graph } from "./mig114_tiktok_follow_graph.js";
+import { mig116_tiktok_default_affil_patterns } from "./mig116_tiktok_default_affil_patterns.js";
+import { mig115_fix_recurring_paid_at } from "./mig115_fix_recurring_paid_at.js";
+import { mig116_todos } from "./mig116_todos.js";
+import { mig117_affi_landing_events } from "./mig117_affi_landing_events.js";
+import { mig118_agency_v2 } from "./mig118_agency_v2.js";
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
 import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
@@ -233,6 +240,13 @@ export async function migrateAll(pool) {
     await mig110_agency_fees_board(pool);
     await mig111_rumble_vods_youtube(pool);
     await mig112_instagram_agenda_board(pool);
+    await mig113_tiktok_dismissed_candidates(pool);
+    await mig114_tiktok_follow_graph(pool);
+    await mig115_fix_recurring_paid_at(pool);
+    await mig116_todos(pool);
+    await mig117_affi_landing_events(pool);
+    await mig116_tiktok_default_affil_patterns(pool);
+    await mig118_agency_v2(pool);
     // Rumble migrations
     await mig040_rumble_info(pool);
     await mig041_rumble_accounts(pool);
