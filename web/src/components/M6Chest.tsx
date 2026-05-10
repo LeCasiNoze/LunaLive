@@ -27,21 +27,10 @@ export type M6ChestProps = {
 
 type CellState = "closed" | "diamond" | "bomb";
 
-// Diamond CSS-only (pas de SVG → pas de problème d'ID gradient en cas
-// de multiples instances). Forme via clip-path polygon, gradient linéaire
-// pour le facettage.
-const DiamondIcon = () => (
-  <div className="m6-gem">
-    <div className="m6-gem-shine" />
-  </div>
-);
-
-const BombIcon = () => (
-  <div className="m6-bomb">
-    <div className="m6-bomb-fuse" />
-    <div className="m6-bomb-shine" />
-  </div>
-);
+// Emojis natifs (rendus par le système → reconnaissables instantanément,
+// rendu cohérent toutes plateformes). Styling minimal via wrapper.
+const DiamondIcon = () => <span className="m6-emoji m6-emoji-diamond">💎</span>;
+const BombIcon = () => <span className="m6-emoji m6-emoji-bomb">💣</span>;
 
 export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M6ChestProps) {
   const T = {
@@ -181,16 +170,10 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-face-back{transform:rotateY(180deg);background:linear-gradient(180deg,#0a070f,#15101a);border:1px solid #0ea5e966}
         .m6-face-back.bomb{background:linear-gradient(180deg,#1a0808,#0a0404);border-color:#ef4444;animation:m6-bomb-shake .4s ease-in-out}
 
-        /* Diamant CSS pure */
-        .m6-gem{position:relative;width:42%;aspect-ratio:1/1;background:linear-gradient(180deg,#7dd3fc 0%,#38bdf8 35%,#0ea5e9 65%,#0369a1 100%);clip-path:polygon(50% 0%,100% 35%,50% 100%,0% 35%);filter:drop-shadow(0 2px 6px rgba(14,165,233,.5))}
-        .m6-gem-shine{position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,.15) 35%,transparent 50%);clip-path:polygon(50% 0%,100% 35%,50% 100%,0% 35%)}
-
-        /* Bombe CSS pure */
-        .m6-bomb{position:relative;width:48%;aspect-ratio:1/1}
-        .m6-bomb::before{content:"";position:absolute;left:8%;right:8%;bottom:0;top:18%;border-radius:50%;background:radial-gradient(circle at 32% 30%,#52525b,#1a1a1d 50%,#0a0a0a);box-shadow:inset 0 -3px 6px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.6)}
-        .m6-bomb-shine{position:absolute;width:18%;height:14%;left:24%;top:38%;border-radius:50%;background:rgba(255,255,255,.35);filter:blur(1px)}
-        .m6-bomb-fuse{position:absolute;left:54%;top:0;width:8%;height:24%;background:linear-gradient(180deg,#52525b,#27272a);border-radius:1px;transform:rotate(8deg);transform-origin:bottom}
-        .m6-bomb-fuse::before{content:"";position:absolute;top:-22%;left:50%;width:10px;height:10px;border-radius:50%;background:radial-gradient(circle,#fef08a 0%,#f97316 40%,#dc2626 80%);box-shadow:0 0 8px #f97316,0 0 14px #fbbf24;transform:translateX(-50%);animation:m6-fuse-flicker .3s ease-in-out infinite alternate}
+        /* Emojis natifs avec drop-shadow subtil pour ressortir sur fond sombre */
+        .m6-emoji{font-size:2.5rem;line-height:1;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+        .m6-emoji-diamond{filter:drop-shadow(0 2px 8px rgba(14,165,233,.4))}
+        .m6-emoji-bomb{filter:drop-shadow(0 2px 8px rgba(239,68,68,.4));animation:m6-bomb-pulse .6s ease-in-out infinite alternate}
 
         .m6-cta{display:block;width:min(94vw,360px);padding:16px 24px;background:${T.accent};color:#0e0a05;font-weight:700;text-transform:uppercase;letter-spacing:.16em;font-size:.92rem;border:none;border-radius:4px;cursor:pointer;box-shadow:0 4px 0 ${T.accentDark},0 6px 20px rgba(0,0,0,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease;position:relative;z-index:2}
         .m6-cta:not(:disabled):hover{background:${T.accentLight};transform:translateY(1px);box-shadow:0 3px 0 ${T.accentDark}}
@@ -212,7 +195,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m6-popup .m6-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
 
         @keyframes m6-bomb-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-3px)}75%{transform:rotateY(180deg) translateX(3px)}}
-        @keyframes m6-fuse-flicker{from{opacity:.85;transform:translateX(-50%) scale(.9)}to{opacity:1;transform:translateX(-50%) scale(1.15)}}
+        @keyframes m6-bomb-pulse{from{transform:scale(1)}to{transform:scale(1.08)}}
         @keyframes m6-fade{from{opacity:0}to{opacity:1}}
         @keyframes m6-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
       `}</style>
