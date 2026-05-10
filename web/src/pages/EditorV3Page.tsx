@@ -801,13 +801,11 @@ function WizardQuickView({
               border: `1px solid ${T.border}`,
               borderRadius: isMobilePreview ? 24 : 8,
               overflow: "hidden",
-              background: inputs.modelKind === "M1" ? (page?.globals?.bgPage || "#080212") : "#0f0d14",
+              background: inputs.modelKind === "M2" ? "#0f0d14" : (page?.globals?.bgPage || "#080212"),
               // M2 (iframe) a besoin d'une hauteur fixe pour scroller à l'intérieur.
               height: inputs.modelKind === "M2" ? (isMobilePreview ? 920 : 1100) : undefined,
             }}>
-              {inputs.modelKind === "M1" ? (
-                page ? <RenderV2Page page={page} isMobile={isMobilePreview} editCtx={editCtx as any} /> : null
-              ) : (
+              {inputs.modelKind === "M2" ? (
                 <M5V1Preview
                   cfg={{
                     affiLink: inputs.affiLink,
@@ -823,7 +821,6 @@ function WizardQuickView({
                   variant={inputs.m5Variant || "gold"}
                   isMobile={isMobilePreview}
                   onElementClick={(key) => {
-                    // Map des clés iframe → sections wizard pour focus + scroll
                     if (key === "pseudo") setOpenSection("pseudo");
                     else if (key === "profile") setOpenSection("profile");
                     else if (key === "amounts") setOpenSection("amounts");
@@ -831,7 +828,10 @@ function WizardQuickView({
                     else if (key === "background") setOpenSection("background");
                   }}
                 />
-              )}
+              ) : page ? (
+                // M1, M3, M4, M5, M6 : tous rendus via V2 (RenderV2Page)
+                <RenderV2Page page={page} isMobile={isMobilePreview} editCtx={editCtx as any} />
+              ) : null}
             </div>
           </div>
         </div>
