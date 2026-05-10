@@ -27,7 +27,10 @@ export function FsbTodoWidget({ token }: Props) {
   const [newMessage, setNewMessage] = React.useState("");
   const [showDone, setShowDone] = React.useState(false);
 
-  const auth = React.useMemo(() => token ? { Authorization: `Bearer ${token}` } : {}, [token]);
+  const auth = React.useMemo<Record<string, string>>(
+    () => token ? { Authorization: `Bearer ${token}` } : {},
+    [token]
+  );
 
   const reload = React.useCallback(async () => {
     if (!token) return;
