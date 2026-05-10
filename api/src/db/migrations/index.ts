@@ -124,6 +124,7 @@ import { mig114_tiktok_follow_graph } from "./mig114_tiktok_follow_graph.js";
 import { mig116_tiktok_default_affil_patterns } from "./mig116_tiktok_default_affil_patterns.js";
 import { mig115_fix_recurring_paid_at } from "./mig115_fix_recurring_paid_at.js";
 import { mig116_todos } from "./mig116_todos.js";
+import { mig117_affi_landing_events } from "./mig117_affi_landing_events.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -266,6 +267,7 @@ export async function migrateAll(pool: Pool) {
   await mig114_tiktok_follow_graph(pool);
   await mig115_fix_recurring_paid_at(pool);
   await mig116_todos(pool);
+  await mig117_affi_landing_events(pool);
   await mig116_tiktok_default_affil_patterns(pool);
 
   // Rumble migrations

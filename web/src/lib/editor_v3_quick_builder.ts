@@ -110,8 +110,14 @@ export type V3ObjectFit = "cover" | "contain";
 // ─── Inputs du wizard rapide ────────────────────────────────────────────────
 
 export interface V3QuickInputs {
-  /** Modèle utilisé : M1 = duplication M4 V1 / M2 = duplication M5 V1 (variants). */
-  modelKind: "M1" | "M2";
+  /** Modèle utilisé :
+   *   - M1 = duplication M4 V1 (cards + reviews)
+   *   - M2 = duplication M5 V1 (golden chance, 8 variants)
+   *   - M3 = Spinning Wheel (mini-jeu interactif)
+   *   - M4 = Scratch Card (gratter pour révéler)
+   *   - M5 = Slot Machine (3 reels jackpot)
+   *   - M6 = Treasure Chest (déverrouillage progressif) */
+  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6";
   /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
   m5Variant?: M5V1Variant;
   /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
@@ -401,4 +407,78 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   };
 
   return page;
+}
+
+// ─── Builder M3-M6 — pages mini-jeux ────────────────────────────────────────
+//
+// Pour M3-M6, la page = un seul bloc preset full-page (V2V3GameModelBlock)
+// qui rend l'intégralité de la landing (hero + mini-jeu + CTA). Architecture
+// très simple : un V2Page minimaliste avec une seule zone (cards) contenant
+// ce bloc.
+export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
+  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6";
+  const useTheme = inputs.m1UseTheme !== false;
+  const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
+  const themeColors = theme ? {
+    accent: theme.accent,
+    accentLight: theme.accentLight,
+    accentGlow: theme.accentGlow,
+    accentSoft: theme.accentSoft,
+    accentBorder: theme.accentBorder,
+    bgPage: inputs.m1CustomBgPage?.trim() || theme.bgPage,
+    bgCard: theme.bgCard,
+    borderColor: theme.borderColor,
+  } : (inputs.m1CustomBgPage?.trim() ? { bgPage: inputs.m1CustomBgPage.trim() } : undefined);
+
+  // V2Page minimal : zones quasi vides, juste un bloc full-page dans `cards`.
+  const page: V2Page = {
+    modelKind: "M4V2",  // pour le typing renderer; ne sert qu'au routing zone
+    affiCode: "",
+    affiLink: inputs.affiLink,
+    casinoName: inputs.pseudo?.trim() || kind,
+    slug: "",
+    pageTitle: inputs.pseudo?.trim() || kind,
+    compactSpacing: true,
+    zones: {
+      aboveCards: [],
+      cards: [
+        {
+          id: makeV2BlockId("v3GameModel"),
+          type: "v3GameModel",
+          gameKind: kind,
+          pseudo: inputs.pseudo,
+          profileImageUrl: inputs.profileImageUrl,
+          depositAmount: inputs.depositAmount,
+          bonusAmount: inputs.bonusAmount,
+          affiLink: inputs.affiLink,
+          theme: themeColors,
+        } as any,
+      ],
+      belowCards: [],
+      reviews: [],
+      faq: [],
+      footer: [],
+    },
+    globals: {
+      bgPage: inputs.m1CustomBgPage?.trim() || theme?.bgPage || "#080212",
+      brandGold: theme?.accent || "#FFD700",
+    },
+  };
+
+  // Slug
+  try {
+    const u = new URL(inputs.affiLink);
+    const last = u.pathname.split("/").filter(Boolean).pop() || "";
+    page.affiCode = last.replace(/[^A-Za-z0-9_-]/g, "");
+  } catch { page.affiCode = ""; }
+  page.slug = page.affiCode ? `${page.affiCode}V3` : "";
+
+  return page;
+}
+
+/** Dispatch principal : route vers le bon builder selon modelKind. */
+export function buildV3PageDispatch(inputs: V3QuickInputs): V2Page | null {
+  if (inputs.modelKind === "M1") return buildV3PageFromQuickInputs(inputs);
+  if (inputs.modelKind === "M2") return null;  // M2 utilise V1 pipeline (pas V2Page)
+  return buildV3GameModelPage(inputs);
 }

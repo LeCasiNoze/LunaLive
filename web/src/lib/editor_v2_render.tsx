@@ -16,6 +16,7 @@ import type {
   V2DividerBlock,
   V2FsnCardM4Block,
   V2M4V1LowerSectionsBlock,
+  V2V3GameModelBlock,
   V2CommonStyle,
   V2Effects,
   V2TextStyle,
@@ -25,6 +26,10 @@ import type {
 import { v2ZonesForModel } from "./editor_v2_types";
 import { M4V1Card } from "../components/M4V1Card";
 import { M4V1LowerSections } from "../components/M4V1LowerSections";
+import { M3Wheel } from "../components/M3Wheel";
+import { M4Scratch } from "../components/M4Scratch";
+import { M5Slot } from "../components/M5Slot";
+import { M6Chest } from "../components/M6Chest";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -361,6 +366,23 @@ function RenderM4V1LowerSections({ b, previewMode }: { b: V2M4V1LowerSectionsBlo
   return <M4V1LowerSections affiLink={b.affiLink} brandName={b.brandName} previewMode={previewMode} theme={b.theme} />;
 }
 
+function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
+  const props = {
+    pseudo: b.pseudo,
+    profileImageUrl: b.profileImageUrl,
+    depositAmount: b.depositAmount,
+    bonusAmount: b.bonusAmount,
+    affiLink: b.affiLink,
+    theme: b.theme,
+  };
+  switch (b.gameKind) {
+    case "M3": return <M3Wheel {...props} />;
+    case "M4": return <M4Scratch {...props} />;
+    case "M5": return <M5Slot {...props} />;
+    case "M6": return <M6Chest {...props} />;
+  }
+}
+
 function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }) {
   return (
     <hr className="v2-block v2-divider" style={{
@@ -388,6 +410,7 @@ export function RenderBlock({ b, isMobile, zone, indices }: { b: V2Block; isMobi
     case "divider":   inner = <RenderDivider b={b} isMobile={isMobile} />; break;
     case "fsnCardM4": inner = <RenderFsnCardM4 b={b} isMobile={isMobile} />; break;
     case "m4V1LowerSections": inner = <RenderM4V1LowerSections b={b} previewMode={previewMode} />; break;
+    case "v3GameModel": inner = <RenderV3GameModel b={b} />; break;
   }
   // Mode preview publique : aucun overlay, comportement standard
   if (!ctx || !zone || !indices) return <>{inner}</>;

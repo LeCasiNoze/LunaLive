@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import crypto from "node:crypto";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth } from "../auth.js";
@@ -8,6 +9,16 @@ import { requireFsbAccess } from "./fsb_guard.js";
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
 fsbAffiPagesRouter.use("/fsb/affi-pages", requireAuth, requireFsbAccess);
+
+// Hash IP avec un salt côté serveur pour dédoublonnage anonyme RGPD-friendly.
+const IP_SALT = process.env.AFFI_EVENTS_IP_SALT || "lunalive-affi-events-v1";
+function hashIp(ip: string): string {
+  return crypto.createHash("sha256").update(IP_SALT + ip).digest("hex").slice(0, 32);
+}
+function clientIp(req: any): string {
+  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return fwd || req.ip || req.socket?.remoteAddress || "unknown";
+}
 
 const optionalTrimmedString = (max: number) =>
   z.preprocess((value) => {
@@ -268,5 +279,125 @@ fsbAffiPagesRouter.delete(
     const { rowCount } = await pool.query(`DELETE FROM affi_landing_pages WHERE id = $1`, [id]);
     if (!rowCount) return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true });
+  })
+);
+
+// ─── V3 Analytics : tracking events ─────────────────────────────────────────
+
+const eventInputSchema = z.object({
+  slug: z.string().min(1).max(160),
+  event: z.enum(["view", "click_cta"]),
+  referrer: z.string().max(2000).optional().nullable(),
+  utmSource: z.string().max(160).optional().nullable(),
+  utmMedium: z.string().max(160).optional().nullable(),
+  utmCampaign: z.string().max(160).optional().nullable(),
+});
+
+publicAffiPagesRouter.post(
+  "/public/affi-events",
+  a(async (req, res) => {
+    const input = eventInputSchema.safeParse(req.body || {});
+    if (!input.success) return res.status(400).json({ ok: false, error: "bad_input" });
+
+    const slug = normalizeSlug(input.data.slug);
+    const ip = clientIp(req);
+    const ua = String(req.headers["user-agent"] || "").slice(0, 500);
+
+    // Résolution du page_id (best-effort, on tracke même si la page est inconnue)
+    const { rows: pageRows } = await pool.query(
+      `SELECT id FROM affi_landing_pages WHERE lower(slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const pageId = pageRows[0]?.id ?? null;
+
+    await pool.query(
+      `INSERT INTO affi_landing_events
+         (page_id, slug, event, ip_hash, user_agent, referrer, utm_source, utm_medium, utm_campaign)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        pageId,
+        slug,
+        input.data.event,
+        hashIp(ip),
+        ua,
+        input.data.referrer || null,
+        input.data.utmSource || null,
+        input.data.utmMedium || null,
+        input.data.utmCampaign || null,
+      ]
+    );
+    return res.json({ ok: true });
+  })
+);
+
+// Stats par page (FSB only)
+fsbAffiPagesRouter.get(
+  "/fsb/affi-pages/:id/stats",
+  a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "bad_id" });
+    const days = Math.min(365, Math.max(1, Number(req.query.days || 30)));
+
+    const { rows } = await pool.query(
+      `WITH ev AS (
+         SELECT event, ip_hash, created_at
+           FROM affi_landing_events
+          WHERE page_id = $1 AND created_at >= NOW() - ($2 || ' days')::interval
+       )
+       SELECT
+         COUNT(*) FILTER (WHERE event='view')                                AS views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')                 AS unique_views,
+         COUNT(*) FILTER (WHERE event='click_cta')                           AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta')            AS unique_clicks
+       FROM ev`,
+      [id, String(days)]
+    );
+
+    const r: any = rows[0] || {};
+    const views = Number(r.views || 0);
+    const uniqueViews = Number(r.unique_views || 0);
+    const clicks = Number(r.clicks || 0);
+    const uniqueClicks = Number(r.unique_clicks || 0);
+    const ctr = views > 0 ? clicks / views : 0;
+    const uniqueCtr = uniqueViews > 0 ? uniqueClicks / uniqueViews : 0;
+
+    return res.json({
+      ok: true,
+      stats: { views, uniqueViews, clicks, uniqueClicks, ctr, uniqueCtr, periodDays: days },
+    });
+  })
+);
+
+// Stats agrégées toutes les pages (pour le dashboard V3 ranking)
+fsbAffiPagesRouter.get(
+  "/fsb/affi-pages/stats-summary",
+  a(async (req, res) => {
+    const days = Math.min(365, Math.max(1, Number(req.query.days || 30)));
+    const { rows } = await pool.query(
+      `SELECT
+         page_id,
+         COUNT(*) FILTER (WHERE event='view')                       AS views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')        AS unique_views,
+         COUNT(*) FILTER (WHERE event='click_cta')                  AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta')   AS unique_clicks
+       FROM affi_landing_events
+       WHERE page_id IS NOT NULL
+         AND created_at >= NOW() - ($1 || ' days')::interval
+       GROUP BY page_id`,
+      [String(days)]
+    );
+    const byPage: Record<string, any> = {};
+    for (const r of rows as any[]) {
+      const views = Number(r.views || 0);
+      const clicks = Number(r.clicks || 0);
+      byPage[String(r.page_id)] = {
+        views,
+        uniqueViews: Number(r.unique_views || 0),
+        clicks,
+        uniqueClicks: Number(r.unique_clicks || 0),
+        ctr: views > 0 ? clicks / views : 0,
+      };
+    }
+    return res.json({ ok: true, byPage, periodDays: days });
   })
 );

@@ -820,6 +820,35 @@ const RenderV2Page = React.lazy(() =>
   import("../lib/editor_v2_render").then((m) => ({ default: m.RenderV2Page }))
 );
 
+// V3 analytics : POST best-effort vers /api/public/affi-events.
+// Utilise sendBeacon si dispo (survit au unload de la page lors d'un click_cta).
+function trackAffiEvent(slug: string, event: "view" | "click_cta") {
+  if (!slug) return;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const body = JSON.stringify({
+      slug,
+      event,
+      referrer: document.referrer || null,
+      utmSource: params.get("utm_source") || null,
+      utmMedium: params.get("utm_medium") || null,
+      utmCampaign: params.get("utm_campaign") || null,
+    });
+    const url = "/api/public/affi-events";
+    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon(url, blob);
+    } else {
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch { /* noop */ }
+}
+
 export default function ReferralLandingPage() {
   const navigate = useNavigate();
   const { slug } = useParams();
@@ -830,6 +859,52 @@ export default function ReferralLandingPage() {
   const [v2Page, setV2Page] = React.useState<any | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const buttonsRef = React.useRef<{ mobile: ReturnType<typeof parseAffiButtons>; desktop: ReturnType<typeof parseAffiButtons> }>({ mobile: [], desktop: [] });
+
+  // V3 analytics : log "view" dès que la page est ready (une fois par mount).
+  const viewLoggedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (status !== "ready") return;
+    const safeSlug = String(slug || "").trim();
+    if (!safeSlug || viewLoggedRef.current === safeSlug) return;
+    viewLoggedRef.current = safeSlug;
+    trackAffiEvent(safeSlug, "view");
+  }, [status, slug]);
+
+  // V3 analytics : intercepte les clics sur CTA d'affi en délégation globale
+  // (via capture). Détection : <a> avec href externe OU class incluant
+  // btn-jouer / sticky-cta / chest-link / final-chest-link / cta-final-btn.
+  React.useEffect(() => {
+    const safeSlug = String(slug || "").trim();
+    if (!safeSlug) return;
+    const isCta = (a: HTMLAnchorElement) => {
+      const cls = a.className || "";
+      if (typeof cls === "string" && /\b(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)\b/.test(cls)) return true;
+      const href = a.getAttribute("href") || "";
+      if (!href || href.startsWith("#") || href.startsWith("/")) return false;
+      try {
+        const u = new URL(href, window.location.origin);
+        return u.origin !== window.location.origin;
+      } catch { return false; }
+    };
+    const handler = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const a = target.closest && (target.closest("a") as HTMLAnchorElement | null);
+      if (!a) return;
+      if (isCta(a)) trackAffiEvent(safeSlug, "click_cta");
+    };
+    document.addEventListener("click", handler, true);
+    // postMessage venant de l'iframe (V1/M2) → tracker click_cta côté parent
+    const msgHandler = (ev: MessageEvent) => {
+      const data: any = ev.data;
+      if (data && data.type === "v3-cta-click") trackAffiEvent(safeSlug, "click_cta");
+    };
+    window.addEventListener("message", msgHandler);
+    return () => {
+      document.removeEventListener("click", handler, true);
+      window.removeEventListener("message", msgHandler);
+    };
+  }, [slug]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -863,10 +938,17 @@ export default function ReferralLandingPage() {
         if (!templateResponse.ok) throw new Error(`template_${model}_missing`);
         const template = await templateResponse.text();
 
-        const html = applyConfig(template, cfg, model, variant).replace(
+        let html = applyConfig(template, cfg, model, variant).replace(
           "<head>",
           `<head>\n  <base href="${window.location.origin}/">`
         );
+        // V3 analytics : injecte un script qui détecte les clics CTA dans
+        // l'iframe et postMessage au parent → trackAffiEvent("click_cta").
+        const trackingScript = `<script data-affi-v3-track>(function(){
+          function isCta(a){var c=a.className||"";if(typeof c==="string"&&/(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)/.test(c))return true;var h=a.getAttribute("href")||"";if(!h||h[0]==="#")return false;try{var u=new URL(h,location.origin);return u.origin!==location.origin}catch(_){return false}}
+          document.addEventListener("click",function(e){var t=e.target;if(!t)return;var a=t.closest&&t.closest("a");if(!a||!isCta(a))return;try{window.parent.postMessage({type:"v3-cta-click"},"*")}catch(_){}},true);
+        })();</script>`;
+        html = html.replace(/<\/body>/, trackingScript + "\n</body>");
 
         if (cancelled) return;
         buttonsRef.current = {

@@ -83,3 +83,28 @@ export function deleteFsbAffiPage(token: string, id: number) {
 export function getPublicAffiPage(slug: string) {
   return request<{ ok: true; page: FsbAffiPage }>(`/api/public/affi-pages/${encodeURIComponent(slug)}`);
 }
+
+// V3 analytics
+export type AffiPageStats = {
+  views: number;
+  uniqueViews: number;
+  clicks: number;
+  uniqueClicks: number;
+  ctr: number;
+  uniqueCtr: number;
+  periodDays: number;
+};
+
+export function getFsbAffiPageStats(token: string, id: number, days = 30) {
+  return request<{ ok: true; stats: AffiPageStats }>(
+    `/api/fsb/affi-pages/${encodeURIComponent(String(id))}/stats?days=${days}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+export function getFsbAffiStatsSummary(token: string, days = 30) {
+  return request<{ ok: true; byPage: Record<string, AffiPageStats>; periodDays: number }>(
+    `/api/fsb/affi-pages/stats-summary?days=${days}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}

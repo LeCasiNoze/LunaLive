@@ -15,7 +15,7 @@ import * as React from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { RenderV2Page } from "../lib/editor_v2_render";
 import {
-  buildV3PageFromQuickInputs,
+  buildV3PageDispatch,
   defaultV3QuickInputs,
   V3_FONT_PRESETS,
   V3_COLOR_PRESETS,
@@ -29,7 +29,8 @@ import {
 } from "../lib/editor_v3_quick_builder";
 import {
   listFsbAffiPages, createFsbAffiPage, updateFsbAffiPage, deleteFsbAffiPage,
-  type FsbAffiPage,
+  getFsbAffiStatsSummary,
+  type FsbAffiPage, type AffiPageStats,
 } from "../lib/api_affi_pages";
 import {
   buildM5V1ConfigForSave,
@@ -350,7 +351,7 @@ function WizardQuickView({
 
   // Page V2 (uniquement M1). Pour M2 on saute la construction.
   const page = React.useMemo(
-    () => inputs.modelKind === "M1" ? buildV3PageFromQuickInputs(inputs) : null,
+    () => inputs.modelKind === "M2" ? null : buildV3PageDispatch(inputs),
     [inputs]
   );
 
@@ -412,8 +413,8 @@ function WizardQuickView({
     setSaving(true); setError(null);
     try {
       let payload;
-      if (inputs.modelKind === "M1" && page) {
-        // M1 : sauvegarde V2 (zones + blocks) avec marqueurs V3
+      if (inputs.modelKind !== "M2" && page) {
+        // M1 + M3-M6 : sauvegarde V2 (zones + blocks) avec marqueurs V3
         const cfg: any = { ...page, [V3_MARKER]: true, [V3_INPUTS_KEY]: inputs };
         payload = {
           slug: computedSlug,
@@ -508,14 +509,18 @@ function WizardQuickView({
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
-            <div style={{ display: "flex", gap: 6 }}>
-              <Chip active={inputs.modelKind === "M1"} onClick={() => update({ modelKind: "M1" })}>M1</Chip>
-              <Chip active={inputs.modelKind === "M2"} onClick={() => update({ modelKind: "M2" })}>M2</Chip>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(["M1", "M2", "M3", "M4", "M5", "M6"] as const).map((k) => (
+                <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
+              ))}
             </div>
             <div style={{ fontSize: 11, color: T.textDim, marginTop: 6 }}>
-              {inputs.modelKind === "M1"
-                ? "M1 = M4 V1 (offre VIP doublée + cards)"
-                : "M2 = M5 V1 (golden chance, 8 variants colorés)"}
+              {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards)"}
+              {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants)"}
+              {inputs.modelKind === "M3" && "M3 = Roue à tourner — gagne toujours 100% bonus"}
+              {inputs.modelKind === "M4" && "M4 = Carte à gratter — révèle ton bonus"}
+              {inputs.modelKind === "M5" && "M5 = Machine à sous 3 reels — jackpot garanti"}
+              {inputs.modelKind === "M6" && "M6 = Coffre légendaire — 3 cadenas à ouvrir"}
             </div>
           </div>
 
@@ -604,27 +609,31 @@ function WizardQuickView({
             ) : null}
           </Accordion>
 
-          {inputs.modelKind === "M1" ? (
+          {inputs.modelKind !== "M2" ? (
             <>
-              <Accordion
-                sectionRef={(el) => { sectionRefs.current.card1 = el; }}
-                label="Image — Carte 1"
-                hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card1Image.kind)?.label || "Custom"}
-                open={openSection === "card1"} onToggle={() => toggleSection("card1")}
-              >
-                <GameImagePicker value={inputs.card1Image} onChange={(v) => update({ card1Image: v })} />
-                <CardImageFormatControls inputs={inputs} update={update} />
-              </Accordion>
+              {inputs.modelKind === "M1" ? (
+                <>
+                  <Accordion
+                    sectionRef={(el) => { sectionRefs.current.card1 = el; }}
+                    label="Image — Carte 1"
+                    hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card1Image.kind)?.label || "Custom"}
+                    open={openSection === "card1"} onToggle={() => toggleSection("card1")}
+                  >
+                    <GameImagePicker value={inputs.card1Image} onChange={(v) => update({ card1Image: v })} />
+                    <CardImageFormatControls inputs={inputs} update={update} />
+                  </Accordion>
 
-              <Accordion
-                sectionRef={(el) => { sectionRefs.current.card2 = el; }}
-                label="Image — Carte 2"
-                hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card2Image.kind)?.label || "Custom"}
-                open={openSection === "card2"} onToggle={() => toggleSection("card2")}
-              >
-                <GameImagePicker value={inputs.card2Image} onChange={(v) => update({ card2Image: v })} />
-                <CardImageFormatControls inputs={inputs} update={update} />
-              </Accordion>
+                  <Accordion
+                    sectionRef={(el) => { sectionRefs.current.card2 = el; }}
+                    label="Image — Carte 2"
+                    hint={V3_GAME_IMAGES.find((g) => g.key === inputs.card2Image.kind)?.label || "Custom"}
+                    open={openSection === "card2"} onToggle={() => toggleSection("card2")}
+                  >
+                    <GameImagePicker value={inputs.card2Image} onChange={(v) => update({ card2Image: v })} />
+                    <CardImageFormatControls inputs={inputs} update={update} />
+                  </Accordion>
+                </>
+              ) : null}
 
               <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Couleur & thème</h3>
 
@@ -689,31 +698,35 @@ function WizardQuickView({
                 </div>
               </Accordion>
 
-              <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
+              {inputs.modelKind === "M1" ? (
+                <>
+                  <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
 
-              {inputs.pseudo ? (
-                <Accordion
-                  sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
-                  label="Pseudo"
-                  open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
-                >
-                  <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
-                </Accordion>
+                  {inputs.pseudo ? (
+                    <Accordion
+                      sectionRef={(el) => { sectionRefs.current.pseudo = el; }}
+                      label="Pseudo"
+                      open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
+                    >
+                      <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
+                    </Accordion>
+                  ) : null}
+                  <Accordion
+                    sectionRef={(el) => { sectionRefs.current.deposit = el; }}
+                    label="« Déposez X€ »"
+                    open={openSection === "deposit"} onToggle={() => toggleSection("deposit")}
+                  >
+                    <LineStylePicker label="" value={inputs.depositLineStyle} onChange={(s) => update({ depositLineStyle: s })} />
+                  </Accordion>
+                  <Accordion
+                    sectionRef={(el) => { sectionRefs.current.bonus = el; }}
+                    label="« Recevez Y€ »"
+                    open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
+                  >
+                    <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} hideColor={inputs.m1UseTheme !== false} />
+                  </Accordion>
+                </>
               ) : null}
-              <Accordion
-                sectionRef={(el) => { sectionRefs.current.deposit = el; }}
-                label="« Déposez X€ »"
-                open={openSection === "deposit"} onToggle={() => toggleSection("deposit")}
-              >
-                <LineStylePicker label="" value={inputs.depositLineStyle} onChange={(s) => update({ depositLineStyle: s })} />
-              </Accordion>
-              <Accordion
-                sectionRef={(el) => { sectionRefs.current.bonus = el; }}
-                label="« Recevez Y€ »"
-                open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
-              >
-                <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} hideColor={inputs.m1UseTheme !== false} />
-              </Accordion>
             </>
           ) : null}
 
@@ -836,7 +849,7 @@ function isV3Page(p: FsbAffiPage): boolean {
 }
 
 function DashboardView({
-  pages, loading, onCreateQuick, onOpen, onDelete, onRefresh,
+  pages, loading, onCreateQuick, onOpen, onDelete, onRefresh, statsByPage,
 }: {
   pages: FsbAffiPage[];
   loading: boolean;
@@ -844,6 +857,7 @@ function DashboardView({
   onOpen: (p: FsbAffiPage) => void;
   onDelete: (p: FsbAffiPage) => void;
   onRefresh: () => void;
+  statsByPage: Record<string, AffiPageStats>;
 }) {
   const v3Pages = pages.filter(isV3Page);
 
@@ -891,7 +905,9 @@ function DashboardView({
               } else if (rawInputs && typeof rawInputs === "object") {
                 inputs = rawInputs as V3QuickInputs;
               }
-              const modelLabel = inputs?.modelKind === "M2" ? "M2" : "M1";
+              const modelLabel = (inputs?.modelKind || "M1");
+              const stats = statsByPage[String(p.id)];
+              const ctrPct = stats && stats.views > 0 ? Math.round(stats.ctr * 1000) / 10 : null;
               return (
                 <div key={p.id} style={{
                   background: T.bgPanel, border: `1px solid ${T.border}`, borderRadius: 12,
@@ -911,9 +927,29 @@ function DashboardView({
                     <div style={{ fontSize: 12, color: T.textMute }}>
                       {inputs.depositAmount != null ? `Déposez ${inputs.depositAmount}€` : ""}
                       {inputs.depositAmount != null && inputs.bonusAmount != null ? " → " : ""}
-                      {inputs.bonusAmount != null ? `Jouer à ${inputs.bonusAmount}€` : ""}
+                      {inputs.bonusAmount != null ? `Recevez ${inputs.bonusAmount}€` : ""}
                     </div>
                   ) : null}
+                  {stats ? (
+                    <div style={{
+                      display: "flex", gap: 6, alignItems: "center",
+                      fontSize: 11, color: T.textMute,
+                      paddingTop: 4, borderTop: `1px solid ${T.border}`,
+                    }}>
+                      <span>👁 <strong style={{ color: T.text }}>{stats.views}</strong> vues</span>
+                      <span>·</span>
+                      <span>🎯 <strong style={{ color: T.text }}>{stats.clicks}</strong> clics</span>
+                      {ctrPct !== null ? (
+                        <span style={{ marginLeft: "auto", color: ctrPct >= 10 ? T.ok : ctrPct >= 5 ? T.gold : T.textMute, fontWeight: 700 }}>
+                          {ctrPct}% CTR
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: T.textDim, paddingTop: 4, borderTop: `1px solid ${T.border}` }}>
+                      Pas encore de stats (30j)
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button onClick={() => onOpen(p)} style={{ ...btnGhost, flex: 1 }}>Modifier</button>
                     <a href={`/r/${p.slug}`} target="_blank" rel="noreferrer" style={{ ...btnGhost, textDecoration: "none", textAlign: "center" }}>↗</a>
@@ -989,6 +1025,7 @@ export default function EditorV3Page() {
   const [wizardInputs, setWizardInputs] = React.useState<V3QuickInputs>(defaultV3QuickInputs());
   const [wizardPageId, setWizardPageId] = React.useState<number | null>(null);
   const [wizardSavedSlug, setWizardSavedSlug] = React.useState<string | null>(null);
+  const [statsByPage, setStatsByPage] = React.useState<Record<string, AffiPageStats>>({});
 
   const refreshList = React.useCallback(async () => {
     if (!token) return;
@@ -996,6 +1033,11 @@ export default function EditorV3Page() {
     try {
       const r = await listFsbAffiPages(token);
       setPages(r.items);
+      // En parallèle : charge les stats agrégées (30j) pour le ranking
+      try {
+        const s = await getFsbAffiStatsSummary(token, 30);
+        setStatsByPage(s.byPage || {});
+      } catch { /* noop */ }
     } catch { /* noop */ } finally { setLoadingList(false); }
   }, [token]);
 
@@ -1070,6 +1112,7 @@ export default function EditorV3Page() {
         onOpen={handleOpen}
         onDelete={handleDelete}
         onRefresh={refreshList}
+        statsByPage={statsByPage}
       />
       {showCreateChoice ? (
         <CreateChoiceModal

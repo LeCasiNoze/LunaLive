@@ -15,7 +15,8 @@ export type V2BlockType =
   | "spacer"
   | "divider"
   | "fsnCardM4"
-  | "m4V1LowerSections";
+  | "m4V1LowerSections"
+  | "v3GameModel";
 
 export interface V2BaseBlock {
   id: string;
@@ -221,6 +222,24 @@ export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
   theme?: M4ThemeColors;
 }
 
+// ─── V3 Game Models (M3-M6) — preset interactif pleine page ──────────────────
+
+export type V3GameModelKind = "M3" | "M4" | "M5" | "M6";
+
+/** Bloc preset full-page pour les modèles V3 interactifs (roue, scratch, slot,
+ *  coffre). Ce bloc rend l'intégralité de la landing : hero pseudo + profil,
+ *  mini-jeu, CTA. Pas de composition fine. */
+export interface V2V3GameModelBlock extends V2BaseBlock {
+  type: "v3GameModel";
+  gameKind: V3GameModelKind;
+  pseudo?: string;
+  profileImageUrl?: string;
+  depositAmount?: number | null;
+  bonusAmount?: number | null;
+  affiLink: string;
+  theme?: M4ThemeColors;
+}
+
 // ─── Union ───────────────────────────────────────────────────────────────────
 
 export type V2Block =
@@ -231,7 +250,8 @@ export type V2Block =
   | V2SpacerBlock
   | V2DividerBlock
   | V2FsnCardM4Block
-  | V2M4V1LowerSectionsBlock;
+  | V2M4V1LowerSectionsBlock
+  | V2V3GameModelBlock;
 
 // ─── Page complète ───────────────────────────────────────────────────────────
 
@@ -369,5 +389,7 @@ export function newBlockOfType(type: V2BlockType): V2Block {
     case "fsnCardM4": return newFsnCardM4Block();
     case "m4V1LowerSections":
       return { id: makeV2BlockId("m4V1LowerSections"), type: "m4V1LowerSections", affiLink: "" };
+    case "v3GameModel":
+      return { id: makeV2BlockId("v3GameModel"), type: "v3GameModel", gameKind: "M3", affiLink: "" };
   }
 }
