@@ -193,6 +193,19 @@ export interface V2FsnCardM4Block extends V2BaseBlock, V2CommonStyle {
   imageAspectRatio?: string;
   /** V3 override : `cover` (remplit la zone, peut cropper) ou `contain` (V1 default). */
   imageObjectFit?: "cover" | "contain";
+  /** V3 theme : remplace les couleurs gold V1 (accent, glow, bg, border…). */
+  theme?: M4ThemeColors;
+}
+
+export interface M4ThemeColors {
+  accent?: string;
+  accentLight?: string;
+  accentGlow?: string;
+  accentSoft?: string;
+  accentBorder?: string;
+  bgPage?: string;
+  bgCard?: string;
+  borderColor?: string;
 }
 
 // ─── M4 V1 Lower Sections (preset 1:1 du bas de model4.html) ────────────────
@@ -204,6 +217,8 @@ export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
   type: "m4V1LowerSections";
   affiLink: string;
   brandName?: string;
+  /** V3 theme : remplace les couleurs gold V1 dans reviews/FAQ/footer/sticky. */
+  theme?: M4ThemeColors;
 }
 
 // ─── Union ───────────────────────────────────────────────────────────────────

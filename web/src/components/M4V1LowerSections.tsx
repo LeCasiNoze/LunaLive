@@ -16,6 +16,18 @@ export type M4V1LowerSectionsProps = {
   /** En mode preview (éditeur) : le sticky CTA s'affiche en bloc inline en bas
    *  des sections au lieu de `position:fixed` qui s'étend hors du cadre preview. */
   previewMode?: boolean;
+  /** Theme override : tous les `var(--m4l-accent)`, `var(--m4l-bg-card)`, `var(--m4l-bg-page)`, `var(--m4l-border)` sont
+   *  remplacés par les valeurs du thème via CSS variables. Default = palette V1. */
+  theme?: {
+    accent?: string;
+    accentLight?: string;
+    accentGlow?: string;
+    accentSoft?: string;
+    accentBorder?: string;
+    bgPage?: string;
+    bgCard?: string;
+    borderColor?: string;
+  };
 };
 
 const REVIEWS = [
@@ -54,7 +66,7 @@ const FAQ = [
   },
 ];
 
-export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1LowerSectionsProps) {
+export function M4V1LowerSections({ affiLink, brandName, previewMode, theme }: M4V1LowerSectionsProps) {
   const [activeFaq, setActiveFaq] = React.useState<number | null>(0);
   const safeAffi = affiLink || "#";
   const year = new Date().getFullYear();
@@ -71,8 +83,20 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
     document.head.appendChild(link);
   }, []);
 
+  // CSS variables : valeurs theme avec fallback sur palette V1.
+  const wrapperVars: React.CSSProperties = {
+    ["--m4l-accent" as any]:        theme?.accent        || "var(--m4l-accent)",
+    ["--m4l-accent-light" as any]:  theme?.accentLight   || "var(--m4l-accent-light)",
+    ["--m4l-accent-glow" as any]:   theme?.accentGlow    || "rgba(255, 214, 0, 0.4)",
+    ["--m4l-accent-soft" as any]:   theme?.accentSoft    || "rgba(255, 214, 0, 0.08)",
+    ["--m4l-accent-border" as any]: theme?.accentBorder  || "rgba(255, 214, 0, 0.35)",
+    ["--m4l-bg-page" as any]:       theme?.bgPage        || "var(--m4l-bg-page)",
+    ["--m4l-bg-card" as any]:       theme?.bgCard        || "var(--m4l-bg-card)",
+    ["--m4l-border" as any]:        theme?.borderColor   || "var(--m4l-border)",
+  };
+
   return (
-    <div className="m4v1-lower">
+    <div className="m4v1-lower" style={wrapperVars}>
       <style>{`
         .m4v1-lower, .m4v1-lower * {
           box-sizing: border-box;
@@ -83,17 +107,17 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
         .m4v1-lower .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
 
         @keyframes m4v1l-pulseGold {
-          0%   { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
-          50%  { box-shadow: 0 0 28px 8px rgba(255, 214, 0, 0.7); }
-          100% { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
+          0%   { box-shadow: 0 0 10px 2px var(--m4l-accent-glow); }
+          50%  { box-shadow: 0 0 28px 8px var(--m4l-accent-glow); }
+          100% { box-shadow: 0 0 10px 2px var(--m4l-accent-glow); }
         }
 
         /* REVIEWS */
         .m4v1-lower .reviews-section {
           padding: 100px 0;
-          background-color: #150821;
-          border-top: 1px solid #331A47;
-          border-bottom: 1px solid #331A47;
+          background-color: var(--m4l-bg-card);
+          border-top: 1px solid var(--m4l-border);
+          border-bottom: 1px solid var(--m4l-border);
           color: #fff;
         }
         .m4v1-lower .section-header { text-align: center; margin-bottom: 60px; }
@@ -102,7 +126,7 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
           letter-spacing: -1px; text-transform: uppercase; line-height: 1.1;
         }
         .m4v1-lower .section-header h2 span {
-          color: #FFD700; text-shadow: 0 0 10px #FFD700;
+          color: var(--m4l-accent); text-shadow: 0 0 10px var(--m4l-accent);
         }
         .m4v1-lower .section-header p { color: #AAA4B0; margin-top: 10px; }
         .m4v1-lower .reviews-grid {
@@ -111,16 +135,16 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
           gap: 24px;
         }
         .m4v1-lower .review-card {
-          background: #080212;
+          background: var(--m4l-bg-page);
           padding: 32px;
           border-radius: 12px;
-          border: 1px solid #331A47;
+          border: 1px solid var(--m4l-border);
           transition: transform 0.3s ease, border-color 0.3s ease;
         }
         .m4v1-lower .review-card:hover {
           transform: translateY(-5px);
-          border-color: #FFD700;
-          box-shadow: 0 10px 30px rgba(255, 214, 0, 0.1);
+          border-color: var(--m4l-accent);
+          box-shadow: 0 10px 30px var(--m4l-accent-glow);
         }
         .m4v1-lower .review-top {
           display: flex; justify-content: space-between;
@@ -129,9 +153,9 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
         .m4v1-lower .reviewer-info { display: flex; align-items: center; gap: 15px; }
         .m4v1-lower .avatar {
           width: 44px; height: 44px; border-radius: 50%;
-          background: #150821; border: 1px solid #331A47;
+          background: var(--m4l-bg-card); border: 1px solid var(--m4l-border);
           display: flex; align-items: center; justify-content: center;
-          font-weight: 800; font-size: 1.2rem; color: #FFD700;
+          font-weight: 800; font-size: 1.2rem; color: var(--m4l-accent);
           flex-shrink: 0;
         }
         .m4v1-lower .reviewer-details { display: flex; flex-direction: column; }
@@ -141,14 +165,14 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
           display: flex; align-items: center; gap: 4px; margin-top: 2px;
         }
         .m4v1-lower .verified svg { width: 12px; height: 12px; }
-        .m4v1-lower .stars { color: #FFD700; font-size: 1.2rem; letter-spacing: 2px; flex-shrink: 0; }
+        .m4v1-lower .stars { color: var(--m4l-accent); font-size: 1.2rem; letter-spacing: 2px; flex-shrink: 0; }
         .m4v1-lower .review-text { color: #AAA4B0; font-size: 0.95rem; line-height: 1.7; margin: 0; }
 
         /* FAQ */
-        .m4v1-lower .faq-section { padding: 100px 0; background-color: #080212; }
+        .m4v1-lower .faq-section { padding: 100px 0; background-color: var(--m4l-bg-page); }
         .m4v1-lower .faq-container { max-width: 800px; margin: 0 auto; padding: 0 24px; }
         .m4v1-lower .faq-item {
-          background: #150821; border: 1px solid #331A47;
+          background: var(--m4l-bg-card); border: 1px solid var(--m4l-border);
           margin-bottom: 16px; border-radius: 8px; overflow: hidden;
           transition: all 0.3s;
         }
@@ -159,30 +183,30 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
           transition: background 0.2s;
           user-select: none;
         }
-        .m4v1-lower .faq-question:hover { background: rgba(255,255,255,0.02); color: #FFD700; }
+        .m4v1-lower .faq-question:hover { background: rgba(255,255,255,0.02); color: var(--m4l-accent); }
         .m4v1-lower .faq-answer {
           max-height: 0; overflow: hidden;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           color: #AAA4B0; padding: 0 24px;
           font-size: 0.95rem; line-height: 1.6;
         }
-        .m4v1-lower .faq-item.active { border-color: #FFD700; background: rgba(255, 214, 0, 0.03); }
+        .m4v1-lower .faq-item.active { border-color: var(--m4l-accent); background: var(--m4l-accent-soft); }
         .m4v1-lower .faq-item.active .faq-answer {
           padding-bottom: 24px; max-height: 300px; margin-top: 8px;
         }
         .m4v1-lower .faq-icon {
-          color: #FFD700; font-size: 1.5rem; font-weight: 400;
+          color: var(--m4l-accent); font-size: 1.5rem; font-weight: 400;
           transition: transform 0.3s; flex-shrink: 0; margin-left: 12px;
         }
         .m4v1-lower .faq-item.active .faq-icon { transform: rotate(45deg); }
 
         /* FOOTER */
         .m4v1-lower footer {
-          border-top: 1px solid #331A47; padding: 50px 0;
+          border-top: 1px solid var(--m4l-border); padding: 50px 0;
           text-align: center; color: #555; font-size: 0.85rem; background: #000;
         }
         .m4v1-lower .disclaimer {
-          border: 1px solid #331A47; padding: 24px;
+          border: 1px solid var(--m4l-border); padding: 24px;
           border-radius: 8px; margin-bottom: 30px;
           text-align: left; background: #050505;
         }
@@ -203,12 +227,12 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
         /* STICKY CTA — fixed sur la page publique, inline en preview */
         .m4v1-lower .sticky-cta {
           padding: 14px 20px;
-          background: linear-gradient(135deg, #FFD700, #FFC200);
+          background: linear-gradient(135deg, var(--m4l-accent), var(--m4l-accent-light));
           color: #000; text-align: center;
           font-size: 1.1rem; font-weight: 800;
           text-transform: uppercase; letter-spacing: 1px;
           cursor: pointer;
-          box-shadow: 0 -4px 20px rgba(255, 214, 0, 0.5);
+          box-shadow: 0 -4px 20px var(--m4l-accent-glow);
           animation: m4v1l-pulseGold 3s infinite;
           text-decoration: none; display: block;
         }
@@ -219,7 +243,7 @@ export function M4V1LowerSections({ affiLink, brandName, previewMode }: M4V1Lowe
           position: relative; margin: 0;
         }
         .m4v1-lower .sticky-cta:hover {
-          background: linear-gradient(135deg, #FFE552, #FFC200);
+          background: linear-gradient(135deg, var(--m4l-accent-light), var(--m4l-accent-light));
         }
 
         /* RESPONSIVE */

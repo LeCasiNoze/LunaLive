@@ -351,13 +351,14 @@ function RenderFsnCardM4({ b, isMobile }: { b: V2FsnCardM4Block; isMobile: boole
         isMobile={isMobile}
         imageAspectRatio={b.imageAspectRatio}
         imageObjectFit={b.imageObjectFit}
+        theme={b.theme}
       />
     </div>
   );
 }
 
 function RenderM4V1LowerSections({ b, previewMode }: { b: V2M4V1LowerSectionsBlock; previewMode?: boolean }) {
-  return <M4V1LowerSections affiLink={b.affiLink} brandName={b.brandName} previewMode={previewMode} />;
+  return <M4V1LowerSections affiLink={b.affiLink} brandName={b.brandName} previewMode={previewMode} theme={b.theme} />;
 }
 
 function RenderDivider({ b, isMobile }: { b: V2DividerBlock; isMobile: boolean }) {

@@ -20,6 +20,8 @@ import {
 } from "./editor_v2_types";
 import { buildM4V2Starter } from "./editor_v2_starters";
 import type { M5V1Variant } from "./m5_v1_apply";
+import type { M1ThemeKey } from "./m1_themes";
+import { getM1Theme } from "./m1_themes";
 
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
@@ -120,6 +122,15 @@ export interface V3QuickInputs {
   m5VisualMode?: "chest" | "jeux" | "none";
   /** Background hero custom (M2). */
   m5BackgroundUrl?: string;
+  /** M1 — applique un thème global (default true). Quand actif, la couleur
+   *  individuelle de chaque ligne (pseudo / Recevez Y€) est IGNORÉE et
+   *  remplacée par la couleur accent du thème. La graisse / la taille / la
+   *  police restent éditables. Décocher → re-active la color picker par ligne. */
+  m1UseTheme?: boolean;
+  /** Thème M1 sélectionné (parmi 8 variants). */
+  m1Theme?: M1ThemeKey;
+  /** Override custom pour le bg-page (toujours appliqué, indépendant du thème). */
+  m1CustomBgPage?: string;
   pseudo?: string;                 // optionnel
   affiLink: string;                // requis
   /** X (en €) — null = champ vidé : on cache la ligne « Déposez X€ ». */
@@ -160,6 +171,10 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     m5ChestUrl: "",
     m5JeuxUrl: "",
     m5BackgroundUrl: "",
+    // M1 theme defaults
+    m1UseTheme: true,
+    m1Theme: "gold",
+    m1CustomBgPage: "",
   };
 }
 
@@ -187,6 +202,23 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   // 1) Partir du starter M4V2 fidèle V1 (cards/reviews/faq/footer déjà OK).
   const page = buildM4V2Starter();
 
+  // Résolution du theme M1 : si m1UseTheme=true on construit un objet theme
+  // qui sera propagé sur toutes les blocs M4V1Card + le bloc lower sections,
+  // ET utilisé pour overrider les couleurs de pseudo / Recevez Y€ ainsi que
+  // le pseudoBox bg/border et le profile image border.
+  const useTheme = inputs.m1UseTheme !== false;  // default true
+  const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
+  const themeColors = theme ? {
+    accent: theme.accent,
+    accentLight: theme.accentLight,
+    accentGlow: theme.accentGlow,
+    accentSoft: theme.accentSoft,
+    accentBorder: theme.accentBorder,
+    bgPage: theme.bgPage,
+    bgCard: theme.bgCard,
+    borderColor: theme.borderColor,
+  } : undefined;
+
   // 2) Hero zone : remplacer les 3 blocs par défaut par notre composition V3.
   const aboveCards: V2Page["zones"]["aboveCards"] = [];
 
@@ -202,9 +234,9 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       height: "120px",
       objectFit: "cover",
       borderRadius: "50%",
-      border: "3px solid #FFD700",
+      border: `3px solid ${theme?.accent || "#FFD700"}`,
       shadow: "0 8px 24px rgba(0,0,0,.45)",
-      glow: "rgba(255,215,0,.45)",
+      glow: theme?.accentGlow || "rgba(255,215,0,.45)",
       align: "center",
       marginTop: "0",
       marginBottom: "8px",
@@ -225,7 +257,11 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 
   // 2b) Pseudo encadré (si fourni)
   if (inputs.pseudo && inputs.pseudo.trim()) {
-    const pseudoStyle = lineStyleToV2(inputs.pseudoStyle, "#FFD700");
+    // Si theme actif → on force la couleur sur theme.accent (override style)
+    const baseStyle = useTheme && theme
+      ? { ...inputs.pseudoStyle, color: theme.accent, glow: true }
+      : inputs.pseudoStyle;
+    const pseudoStyle = lineStyleToV2(baseStyle, theme?.accent || "#FFD700");
     const pseudoText: V2TextBlock = {
       id: makeV2BlockId("text"),
       type: "text",
@@ -243,8 +279,8 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       children: [pseudoText],
       justify: "center",
       itemsAlign: "center",
-      bg: "rgba(255,214,0,.08)",
-      border: "1px solid rgba(255,214,0,.35)",
+      bg: theme?.accentSoft || "rgba(255,214,0,.08)",
+      border: `1px solid ${theme?.accentBorder || "rgba(255,214,0,.35)"}`,
       borderRadius: "999px",
       paddingX: "18px",
       paddingTop: "6px",
@@ -270,8 +306,11 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
     });
   }
 
-  // 2d) "Recevez Y€" — caché si Y null
+  // 2d) "Recevez Y€" — caché si Y null. Theme actif → couleur = theme.accent.
   if (inputs.bonusAmount != null) {
+    const baseStyle = useTheme && theme
+      ? { ...inputs.bonusLineStyle, color: theme.accent, glow: true }
+      : inputs.bonusLineStyle;
     aboveCards.push({
       id: makeV2BlockId("text"),
       type: "text",
@@ -279,7 +318,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       tag: "h1",
       content: `Recevez ${inputs.bonusAmount}€`,
       align: "center",
-      style: lineStyleToV2(inputs.bonusLineStyle, "#FFD700"),
+      style: lineStyleToV2(baseStyle, theme?.accent || "#FFD700"),
       // marginBottom set below par règle "dernier visible".
     });
   }
@@ -305,6 +344,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       type: "m4V1LowerSections",
       affiLink: inputs.affiLink,
       brandName: inputs.pseudo?.trim() || "",
+      theme: themeColors,
     } as any,
   ];
 
@@ -323,6 +363,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       c1.href = inputs.affiLink;
       c1.imageAspectRatio = inputs.cardAspect;
       c1.imageObjectFit = inputs.cardObjectFit;
+      c1.theme = themeColors;
     }
     if (c2 && c2.type === "fsnCardM4") {
       c2.imgSrc = inputs.card2Image.url || c2.imgSrc;
@@ -332,6 +373,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
       c2.href = inputs.affiLink;
       c2.imageAspectRatio = inputs.cardAspect;
       c2.imageObjectFit = inputs.cardObjectFit;
+      c2.theme = themeColors;
     }
   }
 
@@ -348,6 +390,15 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
   page.slug = page.affiCode ? `${page.affiCode}V3` : "";
   page.casinoName = inputs.pseudo?.trim() || page.affiCode || "Page V3";
   page.pageTitle = page.casinoName;
+
+  // 5) Globals : bg-page (theme ou override custom), accent, etc.
+  page.globals = {
+    ...page.globals,
+    bgPage: inputs.m1CustomBgPage?.trim() || theme?.bgPage || page.globals.bgPage,
+    bgCard: theme?.bgCard || page.globals.bgCard,
+    brandGold: theme?.accent || page.globals.brandGold,
+    borderColor: theme?.borderColor || page.globals.borderColor,
+  };
 
   return page;
 }

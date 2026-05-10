@@ -35,6 +35,7 @@ import {
   buildM5V1ConfigForSave,
   M5V1_VARIANTS,
 } from "../lib/m5_v1_apply";
+import { M1_THEMES } from "../lib/m1_themes";
 import { M5V1Preview } from "../components/M5V1Preview";
 
 const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
@@ -173,10 +174,14 @@ function LineStylePicker({
   label,
   value,
   onChange,
+  hideColor,
 }: {
   label: string;
   value: V3LineStyle | undefined;
   onChange: (s: V3LineStyle) => void;
+  /** Quand true (theme global actif) : la couleur est imposée par le thème,
+   *  on cache la sous-section "Couleur" pour éviter la confusion. */
+  hideColor?: boolean;
 }) {
   const v: V3LineStyle = value || {};
   const [customColor, setCustomColor] = React.useState(v.color || "");
@@ -196,26 +201,28 @@ function LineStylePicker({
         </div>
       </div>
 
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ ...labelStyle, marginBottom: 4 }}>Couleur</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-          {V3_COLOR_PRESETS.map((c) => (
-            <Chip key={c.key} active={v.color === c.value} color={c.value} onClick={() => onChange({ ...v, color: c.value })}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.value, display: "inline-block" }} />
-                {c.label}
-              </span>
-            </Chip>
-          ))}
-          <input
-            type="color"
-            value={customColor || "#ffffff"}
-            onChange={(e) => { setCustomColor(e.target.value); onChange({ ...v, color: e.target.value }); }}
-            style={{ width: 30, height: 30, border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
-            title="Couleur personnalisée"
-          />
+      {hideColor ? null : (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ ...labelStyle, marginBottom: 4 }}>Couleur</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            {V3_COLOR_PRESETS.map((c) => (
+              <Chip key={c.key} active={v.color === c.value} color={c.value} onClick={() => onChange({ ...v, color: c.value })}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: c.value, display: "inline-block" }} />
+                  {c.label}
+                </span>
+              </Chip>
+            ))}
+            <input
+              type="color"
+              value={customColor || "#ffffff"}
+              onChange={(e) => { setCustomColor(e.target.value); onChange({ ...v, color: e.target.value }); }}
+              style={{ width: 30, height: 30, border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
+              title="Couleur personnalisée"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
@@ -316,7 +323,7 @@ function GameImagePicker({
 
 // ─── Wizard view ────────────────────────────────────────────────────────────
 
-type SectionKey = "profile" | "pseudo" | "deposit" | "bonus" | "card1" | "card2" | "amounts" | "visual" | "background";
+type SectionKey = "profile" | "pseudo" | "deposit" | "bonus" | "card1" | "card2" | "amounts" | "visual" | "background" | "color";
 
 function WizardQuickView({
   initialInputs,
@@ -619,6 +626,69 @@ function WizardQuickView({
                 <CardImageFormatControls inputs={inputs} update={update} />
               </Accordion>
 
+              <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Couleur & thème</h3>
+
+              <Accordion
+                sectionRef={(el) => { sectionRefs.current.color = el; }}
+                label="Couleur du site"
+                hint={inputs.m1UseTheme !== false
+                  ? (M1_THEMES.find((t) => t.key === (inputs.m1Theme || "gold"))?.label || "Or")
+                  : "Custom (par texte)"}
+                open={openSection === "color"} onToggle={() => toggleSection("color")}
+              >
+                <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13, color: T.text, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={inputs.m1UseTheme !== false}
+                    onChange={(e) => update({ m1UseTheme: e.target.checked })}
+                  />
+                  <span><strong>Thématique</strong> — applique une palette globale (pseudo, Recevez Y€, JOUER, accent reviews/FAQ).</span>
+                </label>
+
+                {inputs.m1UseTheme !== false ? (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ ...labelStyle, marginBottom: 6 }}>Variant</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {M1_THEMES.map((th) => (
+                        <Chip
+                          key={th.key}
+                          active={(inputs.m1Theme || "gold") === th.key}
+                          color={th.accent}
+                          onClick={() => update({ m1Theme: th.key })}
+                        >
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: th.accent, display: "inline-block" }} />
+                            {th.label}
+                          </span>
+                        </Chip>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <div style={{ ...labelStyle, marginBottom: 6 }}>Fond du site</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="color"
+                      value={inputs.m1CustomBgPage || "#080212"}
+                      onChange={(e) => update({ m1CustomBgPage: e.target.value })}
+                      style={{ width: 40, height: 32, border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
+                    />
+                    <input
+                      type="text"
+                      value={inputs.m1CustomBgPage || ""}
+                      onChange={(e) => update({ m1CustomBgPage: e.target.value })}
+                      placeholder="vide = couleur du thème"
+                      style={{ ...inputStyle, flex: 1, fontFamily: "monospace" }}
+                    />
+                    {inputs.m1CustomBgPage ? (
+                      <button onClick={() => update({ m1CustomBgPage: "" })} style={btnGhost}>Reset</button>
+                    ) : null}
+                  </div>
+                </div>
+              </Accordion>
+
               <h3 style={{ margin: "20px 0 10px", fontSize: 14, color: T.textMute, textTransform: "uppercase", letterSpacing: ".5px" }}>Style des textes</h3>
 
               {inputs.pseudo ? (
@@ -627,7 +697,7 @@ function WizardQuickView({
                   label="Pseudo"
                   open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
                 >
-                  <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} />
+                  <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
                 </Accordion>
               ) : null}
               <Accordion
@@ -642,7 +712,7 @@ function WizardQuickView({
                 label="« Recevez Y€ »"
                 open={openSection === "bonus"} onToggle={() => toggleSection("bonus")}
               >
-                <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} />
+                <LineStylePicker label="" value={inputs.bonusLineStyle} onChange={(s) => update({ bonusLineStyle: s })} hideColor={inputs.m1UseTheme !== false} />
               </Accordion>
             </>
           ) : null}

@@ -25,6 +25,18 @@ export type M4V1CardProps = {
   imageAspectRatio?: string;
   /** Override object-fit. Default V1 = "contain". */
   imageObjectFit?: "cover" | "contain";
+  /** Theme override : remplace l'accent gold V1 par une autre couleur. Affecte
+   *  l'icone gift, l'info-title svg, "Recevez X€", le bouton JOUER (gradient
+   *  + box-shadow + animation). bgCard et borderColor aussi parameterizables. */
+  theme?: {
+    accent?: string;
+    accentLight?: string;
+    accentGlow?: string;
+    accentSoft?: string;
+    accentBorder?: string;
+    bgCard?: string;
+    borderColor?: string;
+  };
 };
 
 const V1 = {
@@ -52,14 +64,25 @@ export function M4V1Card({
   isMobile = false,
   imageAspectRatio,
   imageObjectFit,
+  theme,
 }: M4V1CardProps) {
+  // Résolution theme avec fallback sur palette V1.
+  const T = {
+    accent:        theme?.accent        || V1.brandGold,
+    accentLight:   theme?.accentLight   || "#FFC200",
+    accentGlow:    theme?.accentGlow    || V1.goldGlow,
+    accentSoft:    theme?.accentSoft    || "rgba(255, 214, 0, 0.1)",
+    accentBorder:  theme?.accentBorder  || "rgba(255,214,0,0.2)",
+    bgCard:        theme?.bgCard        || V1.bgCard,
+    borderColor:   theme?.borderColor   || V1.borderColor,
+  };
   // .promo-card
   const card: React.CSSProperties = {
-    background: V1.bgCard,
+    background: T.bgCard,
     borderRadius: V1.radius,
     overflow: "hidden",
     boxShadow: "0 30px 60px rgba(0, 0, 0, 0.9)",
-    border: `2px solid ${V1.borderColor}`,
+    border: `2px solid ${T.borderColor}`,
     transition: "transform 0.3s ease, border-color 0.3s ease",
     animation: "m4v1-float 6s ease-in-out infinite",
     animationDelay,
@@ -73,7 +96,7 @@ export function M4V1Card({
     width: "100%",
     backgroundColor: "#000",
     overflow: "hidden",
-    borderBottom: `2px solid ${V1.borderColor}`,
+    borderBottom: `2px solid ${T.borderColor}`,
     aspectRatio: imageAspectRatio || (isMobile ? "21 / 9" : "16 / 9"),
     display: "flex",
     alignItems: "center",
@@ -104,11 +127,11 @@ export function M4V1Card({
     width: "36px",
     height: "36px",
     borderRadius: "50%",
-    backgroundColor: "rgba(255, 214, 0, 0.1)",
+    backgroundColor: T.accentSoft,
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    border: "1px solid rgba(255,214,0,0.2)",
+    border: `1px solid ${T.accentBorder}`,
     flexShrink: 0,
   };
 
@@ -137,7 +160,7 @@ export function M4V1Card({
     borderRadius: "8px",
     padding: isMobile ? "12px" : "16px",
     marginBottom: isMobile ? "12px" : "20px",
-    border: `1px solid ${V1.borderColor}`,
+    border: `1px solid ${T.borderColor}`,
   };
 
   // .info-title
@@ -167,7 +190,7 @@ export function M4V1Card({
   const btnJouer: React.CSSProperties = {
     display: "block",
     width: "100%",
-    background: "linear-gradient(135deg, #FFD700, #FFC200)",
+    background: `linear-gradient(135deg, ${T.accent}, ${T.accentLight})`,
     color: "#000",
     textAlign: "center",
     fontSize: isMobile ? "1rem" : "1.1rem",
@@ -177,24 +200,31 @@ export function M4V1Card({
     transition: "all 0.2s ease",
     cursor: "pointer",
     textTransform: "uppercase",
-    boxShadow: "0 8px 15px rgba(255, 214, 0, 0.4)",
+    boxShadow: `0 8px 15px ${T.accentGlow}`,
     border: "none",
-    animation: "m4v1-pulseGold 3s infinite",
+    animation: "m4v1-pulse-themed 3s infinite",
     textDecoration: "none",
     boxSizing: "border-box",
     fontFamily: V1.font,
     letterSpacing: 0,
   };
 
+  // CSS vars utilisées par les keyframes pour les pulses
+  const cardWithVars: React.CSSProperties = {
+    ...card,
+    ["--m4-accent-glow" as any]: T.accentGlow,
+    ["--m4-accent-glow-strong" as any]: T.accentGlow.replace(/[\d.]+\)$/, "0.7)"),
+  };
+
   return (
-    <div style={card} className="m4v1-card">
+    <div style={cardWithVars} className="m4v1-card">
       {/* Keyframes scopées (idempotent : si déjà injectées par une autre card,
           le navigateur déduplique sans erreur). */}
       <style>{`
-        @keyframes m4v1-pulseGold {
-          0%   { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
-          50%  { box-shadow: 0 0 28px 8px rgba(255, 214, 0, 0.7); }
-          100% { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
+        @keyframes m4v1-pulse-themed {
+          0%   { box-shadow: 0 0 10px 2px var(--m4-accent-glow, rgba(255, 214, 0, 0.4)); }
+          50%  { box-shadow: 0 0 28px 8px var(--m4-accent-glow-strong, rgba(255, 214, 0, 0.7)); }
+          100% { box-shadow: 0 0 10px 2px var(--m4-accent-glow, rgba(255, 214, 0, 0.4)); }
         }
         @keyframes m4v1-float {
           0%   { transform: translateY(0px); }
@@ -217,7 +247,7 @@ export function M4V1Card({
       <div style={body}>
         <div style={offerHeader}>
           <div style={iconCircle}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={V1.brandGold} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={T.accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
               <rect x="3" y="8" width="18" height="4" rx="1"></rect>
               <path d="M12 8v13"></path>
               <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
@@ -241,7 +271,7 @@ export function M4V1Card({
         {(depositAmount && depositAmount.trim()) || (bonusAmount && bonusAmount.trim()) ? (
           <div style={infoBox}>
             <div style={infoTitle}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={V1.brandGold} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={T.accent} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ display: "block" }}>
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="12" y1="16" x2="12" y2="12"></line>
                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -256,7 +286,7 @@ export function M4V1Card({
                 <span style={{ color: "#fff", fontSize: "1.1rem" }}>→</span>
               ) : null}
               {bonusAmount && bonusAmount.trim() ? (
-                <span style={{ color: V1.brandGold, textShadow: `0 0 10px ${V1.brandGold}` }}>
+                <span style={{ color: T.accent, textShadow: `0 0 10px ${T.accent}` }}>
                   Recevez {bonusAmount}
                 </span>
               ) : null}
