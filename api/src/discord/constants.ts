@@ -190,4 +190,19 @@ export const SLASH_COMMANDS: any[] = [
       ]},
     ],
   },
+  {
+    name: "purge",
+    description: "Supprimer les X derniers messages du salon",
+    options: [
+      { name: "x", description: "Nombre de messages (1-100)", type: 4, required: true, min_value: 1, max_value: 100 },
+    ],
+  },
+  {
+    name: "todo",
+    description: "Ajouter un todo (apparaît sur le FSB Board)",
+    options: [
+      { name: "message", description: "Description du todo", type: 3, required: true },
+      { name: "fichier", description: "Pièce jointe (optionnel)", type: 11, required: false },
+    ],
+  },
 ];

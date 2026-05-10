@@ -493,6 +493,67 @@ async function handleTiktokInfluenceurAdd(interaction: ChatInputCommandInteracti
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// /purge X — supprime les X derniers messages du salon
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handlePurge(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!await checkAccess(interaction)) return;
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const x = interaction.options.getInteger("x", true);
+    const channel = interaction.channel;
+    if (!channel || !("bulkDelete" in channel)) {
+      await interaction.editReply({ content: "❌ Salon non textuel ou bulkDelete indisponible." });
+      return;
+    }
+    // Discord bulkDelete : max 100 messages, < 14 jours
+    const deleted = await (channel as any).bulkDelete(Math.min(Math.max(1, x), 100), true);
+    const count = deleted?.size ?? 0;
+    await interaction.editReply({
+      content: `🗑️ ${count} message${count > 1 ? "s" : ""} supprimé${count > 1 ? "s" : ""}.` +
+        (count < x ? ` (Discord ne peut pas supprimer les messages > 14 jours)` : ""),
+    });
+  } catch (e: any) {
+    await interaction.editReply({ content: `❌ ${e?.message || e}` });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// /todo <message> [fichier]
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handleTodo(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!await checkAccess(interaction)) return;
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const message = interaction.options.getString("message", true).trim();
+    const file = interaction.options.getAttachment("fichier");
+    if (!message) throw new Error("Message requis");
+
+    const r = await pool.query(
+      `INSERT INTO fsb_todos (message, attachment_url, attachment_name, created_by_user_id, created_by_name)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        message,
+        file?.url || null,
+        file?.name || null,
+        interaction.user.id,
+        interaction.user.username || interaction.user.globalName || null,
+      ]
+    );
+    const id = Number(r.rows[0].id);
+    const fileNote = file ? ` 📎 ${file.name}` : "";
+    await interaction.editReply({
+      content: `✅ Todo **#${id}** ajouté : _${message.slice(0, 200)}_${fileNote}\n`+
+               `Visible sur le [FSB Board](${PUBLIC_WEB_BASE}/FSB_Board).`,
+    });
+  } catch (e: any) {
+    await interaction.editReply({ content: `❌ ${e?.message || e}` });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Mark-paid : bouton sur le board frais → select menu → marque payés
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -607,6 +668,8 @@ export async function routeAdminInteraction(interaction: Interaction): Promise<b
       if (commandName === "landing" && sub === "list")     { await handleLandingList(interaction);     return true; }
       if (commandName === "dette")                          { await handleDette(interaction);          return true; }
       if (commandName === "tiktok" && sub === "influenceur-add") { await handleTiktokInfluenceurAdd(interaction); return true; }
+      if (commandName === "purge")                                 { await handlePurge(interaction);              return true; }
+      if (commandName === "todo")                                  { await handleTodo(interaction);               return true; }
     }
     if (interaction.isModalSubmit()) {
       if (interaction.customId === MODAL_FRAIS_AJOUTER)  { await handleFraisAjouterSubmit(interaction);  return true; }

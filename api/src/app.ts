@@ -92,6 +92,7 @@ import { adminContentRouter } from "./routes/admin_content.js";
 import { publicContentRouter } from "./routes/public_content.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
+import { fsbTodosRouter } from "./routes/fsb_todos.js";
 import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
 import { questsRouter } from "./routes/quests.js";
 import { seedAllPeriodsIfNeeded } from "./services/quests.js";
@@ -199,6 +200,7 @@ export function createApp() {
   app.use("/api", fsbAffiPagesRouter);
   app.use("/api", expensesRouter);
   app.use("/api", fsbDashboardRouter);
+  app.use("/api", fsbTodosRouter);
   app.use("/api", tiktokOutreachRouter);
   app.post("/api/inbound/tiktok-reply", handleInboundReply);
   app.use("/api", questsRouter);

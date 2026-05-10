@@ -288,11 +288,11 @@ export async function refreshAgencyFeesBoard(): Promise<void> {
     const today = parisToday();
     const [unpaid, paid] = await Promise.all([loadUnpaid(today), loadPaidRecent()]);
 
-    const logoBuf = getLogoBuffer();
-    const embed = buildBoardEmbed(unpaid, paid, !!logoBuf);
+    // Pas de logo joint : Discord l'affichait comme image séparée au-dessus
+    // du message → bruit visuel inutile. On garde l'embed pur.
+    const embed = buildBoardEmbed(unpaid, paid, false);
     const row = buildButtons();
     const files: AttachmentBuilder[] = [];
-    if (logoBuf) files.push(new AttachmentBuilder(logoBuf, { name: "logo.png" }));
 
     // Récupère message_id existant
     const stored = await pool.query(

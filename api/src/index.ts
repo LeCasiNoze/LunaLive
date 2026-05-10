@@ -180,7 +180,7 @@ function setupGracefulShutdown(server: http.Server) {
   startClipsMp4Cleanup();
   startInstagramScheduler();
   startIgCommentScheduler();
-  startAgencyFeeReminder();
+  // startAgencyFeeReminder(); // désactivé : le board #frais est suffisant
   startAgencyFeesBoard();
   startInstagramAgendaBoard();
 

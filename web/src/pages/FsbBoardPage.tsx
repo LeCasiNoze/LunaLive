@@ -22,6 +22,7 @@ import { canAccessFsbBoard } from "../lib/fsb_access";
 import { FsbAgencySection } from "./fsb/FsbAgencySection";
 import { OverlayDesignerSection } from "./fsb/OverlayDesignerSection";
 import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
+import { FsbTodoWidget } from "../components/FsbTodoWidget";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -1560,6 +1561,10 @@ export default function FsbBoardPage() {
                   </div>
                 </div>
               </div>
+            </section>
+
+            <section className="fsb-grid-3" style={{ marginTop: 16 }}>
+              <FsbTodoWidget token={token} />
             </section>
           </>
         ) : null}
