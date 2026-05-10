@@ -169,30 +169,24 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         //   8    : "JACKPOT en vue"
         let mini: string;
         let main: React.ReactNode;
-        let icon: string = "✦";
         if (winType) {
           mini = "✦ Bonus débloqué ✦";
           main = <>Récupère ton <span className="accent">{winType === "all" ? "JACKPOT" : "bonus"}</span></>;
-          icon = "🎁";
         } else if (diamondCount === 0) {
           mini = "✦ Démineur · 1 bombe cachée ✦";
           main = <>Trouve <span className="accent">3 diamants</span> · gagne ton bonus</>;
         } else if (diamondCount < 3) {
           mini = `✦ Plus que ${3 - diamondCount} diamant${3 - diamondCount > 1 ? "s" : ""} ✦`;
           main = <>Tu approches du <span className="accent">bonus</span></>;
-          icon = "🎯";
         } else if (diamondCount < 6) {
           mini = "✦ Bonus débloqué · continue ! ✦";
           main = <>Encore <span className="accent">{6 - diamondCount}</span> pour le SUPER BONUS</>;
-          icon = "🎁";
         } else if (diamondCount < 8) {
           mini = "✦ SUPER BONUS débloqué ! ✦";
           main = <>Encore <span className="accent">{8 - diamondCount}</span> pour le JACKPOT</>;
-          icon = "⭐";
         } else {
           mini = "✦ JACKPOT en vue ✦";
           main = <><span className="accent">Une dernière case</span>… ose-tu ?</>;
-          icon = "💎";
         }
         return (
           <div className="m6c-offer">
