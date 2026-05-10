@@ -395,7 +395,8 @@ export type AgencyPreviewBonusResponse = {
 };
 
 export type AgencyRecruitFromTiktokInput = {
-  tiktokInfluencerId: number;
+  tiktokInfluencerId?: number;
+  tiktokHandle?: string;
   displayName?: string;
   notes?: string | null;
   publicNote?: string | null;

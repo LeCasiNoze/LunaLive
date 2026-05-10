@@ -2230,12 +2230,23 @@ agencyRouter.get(
 agencyRouter.post(
   "/fsb/agency/streamers/from-tiktok",
   a(async (req, res) => {
-    const fromTiktokSchema = z.object({
-      tiktokInfluencerId: z.coerce.number().int().positive(),
-      displayName: z.string().trim().min(1).max(160).optional(),
-      notes: textOrNull(4000).optional().default(null),
-      publicNote: textOrNull(4000).optional().default(null),
-    });
+    const fromTiktokSchema = z
+      .object({
+        tiktokInfluencerId: z.coerce.number().int().positive().optional(),
+        tiktokHandle: z.string().trim().min(1).max(160).optional(),
+        displayName: z.string().trim().min(1).max(160).optional(),
+        notes: textOrNull(4000).optional().default(null),
+        publicNote: textOrNull(4000).optional().default(null),
+      })
+      .superRefine((value, ctx) => {
+        if (!value.tiktokInfluencerId && !value.tiktokHandle) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["tiktokInfluencerId"],
+            message: "id_or_handle_required",
+          });
+        }
+      });
 
     const parsed = fromTiktokSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -2244,28 +2255,69 @@ agencyRouter.post(
 
     const payload = parsed.data;
 
-    // Vérifie que l'influenceur TikTok existe
-    const tiktokResult = await pool.query(
-      `SELECT id, handle, display_name FROM tiktok_influencers WHERE id = $1 LIMIT 1`,
-      [payload.tiktokInfluencerId]
-    );
-    const tiktokRow = tiktokResult.rows[0];
-    if (!tiktokRow) {
-      return res.status(404).json({ ok: false, error: "tiktok_influencer_not_found" });
+    // Résout l'influenceur TikTok par id ou par handle (cherche dans tiktok_influencers,
+    // puis fallback sur tiktok_seed_network si pas trouvé — les seeds ne sont pas
+    // forcément dans tiktok_influencers).
+    let tiktokInfluencerId: number | null = null;
+    let resolvedHandle: string | null = null;
+    let resolvedDisplayName: string | null = null;
+
+    if (payload.tiktokInfluencerId) {
+      const tiktokResult = await pool.query(
+        `SELECT id, handle, display_name FROM tiktok_influencers WHERE id = $1 LIMIT 1`,
+        [payload.tiktokInfluencerId]
+      );
+      const tiktokRow = tiktokResult.rows[0];
+      if (!tiktokRow) {
+        return res.status(404).json({ ok: false, error: "tiktok_influencer_not_found" });
+      }
+      tiktokInfluencerId = Number(tiktokRow.id);
+      resolvedHandle = String(tiktokRow.handle || "");
+      resolvedDisplayName = tiktokRow.display_name == null ? null : String(tiktokRow.display_name);
+    } else if (payload.tiktokHandle) {
+      const cleanHandle = payload.tiktokHandle.replace(/^@/, "").trim();
+      const byHandle = await pool.query(
+        `SELECT id, handle, display_name FROM tiktok_influencers WHERE lower(handle) = lower($1) LIMIT 1`,
+        [cleanHandle]
+      );
+      if (byHandle.rows[0]) {
+        tiktokInfluencerId = Number(byHandle.rows[0].id);
+        resolvedHandle = String(byHandle.rows[0].handle || cleanHandle);
+        resolvedDisplayName =
+          byHandle.rows[0].display_name == null ? null : String(byHandle.rows[0].display_name);
+      } else {
+        // Fallback: cherche dans les seeds
+        const bySeed = await pool.query(
+          `SELECT handle, display_name FROM tiktok_seed_accounts WHERE lower(handle) = lower($1) LIMIT 1`,
+          [cleanHandle]
+        );
+        if (bySeed.rows[0]) {
+          resolvedHandle = String(bySeed.rows[0].handle || cleanHandle);
+          resolvedDisplayName =
+            bySeed.rows[0].display_name == null ? null : String(bySeed.rows[0].display_name);
+        } else {
+          // Aucune trace : on accepte quand même, juste avec le handle fourni
+          resolvedHandle = cleanHandle;
+        }
+      }
     }
 
-    // Vérifie qu'il n'est pas déjà lié
-    const alreadyLinked = await pool.query(
-      `SELECT id FROM agency_streamers WHERE tiktok_influencer_id = $1 LIMIT 1`,
-      [payload.tiktokInfluencerId]
-    );
-    if (alreadyLinked.rows[0]) {
-      return res.status(409).json({ ok: false, error: "tiktok_influencer_already_linked" });
+    // Vérifie qu'il n'est pas déjà lié (uniquement si on a un id)
+    if (tiktokInfluencerId != null) {
+      const alreadyLinked = await pool.query(
+        `SELECT id FROM agency_streamers WHERE tiktok_influencer_id = $1 LIMIT 1`,
+        [tiktokInfluencerId]
+      );
+      if (alreadyLinked.rows[0]) {
+        return res.status(409).json({ ok: false, error: "tiktok_influencer_already_linked" });
+      }
     }
 
     const displayName =
       payload.displayName ||
-      String(tiktokRow.display_name || tiktokRow.handle || "Influenceur TikTok");
+      resolvedDisplayName ||
+      resolvedHandle ||
+      "Influenceur TikTok";
 
     const client = await pool.connect();
     let generatedAccess: { id: number; username: string; password: string } | null = null;
@@ -2288,7 +2340,7 @@ agencyRouter.post(
         `,
         [
           displayName,
-          payload.tiktokInfluencerId,
+          tiktokInfluencerId,
           generatedAccess.id,
           generatedAccess.password,
           payload.publicNote,

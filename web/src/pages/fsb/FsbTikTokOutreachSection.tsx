@@ -369,14 +369,21 @@ export function FsbTikTokOutreachSection() {
   const [detailLoading, setDetailLoading] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
 
-  // Recruit for agency state
-  const [recruitTarget, setRecruitTarget] = React.useState<TikTokInfluencer | null>(null);
+  // Recruit for agency state — accepte influencer (id numérique) OU seed (handle uniquement)
+  type RecruitTarget = {
+    kind: "influencer" | "seed";
+    influencerId?: number;
+    handle: string;
+    displayName: string | null;
+  };
+  const [recruitTarget, setRecruitTarget] = React.useState<RecruitTarget | null>(null);
   const [recruitDisplayName, setRecruitDisplayName] = React.useState("");
   const [recruitPublicNote, setRecruitPublicNote] = React.useState("");
   const [recruitNotes, setRecruitNotes] = React.useState("");
   const [recruitSending, setRecruitSending] = React.useState(false);
   const [recruitError, setRecruitError] = React.useState<string | null>(null);
-  const [recruitedIds, setRecruitedIds] = React.useState<Set<string>>(new Set());
+  // Set de handles (lowercased) déjà recrutés cette session — uniforme pour influencers et seeds
+  const [recruitedHandles, setRecruitedHandles] = React.useState<Set<string>>(new Set());
 
   // Discovery state
   const [discHashtags, setDiscHashtags] = React.useState<string[]>(DEFAULT_HASHTAGS);
@@ -1669,8 +1676,25 @@ export function FsbTikTokOutreachSection() {
   };
 
   const openRecruit = (inf: TikTokInfluencer) => {
-    setRecruitTarget(inf);
+    setRecruitTarget({
+      kind: "influencer",
+      influencerId: Number(inf.id),
+      handle: inf.handle,
+      displayName: inf.displayName,
+    });
     setRecruitDisplayName(inf.displayName || inf.handle || "");
+    setRecruitPublicNote("");
+    setRecruitNotes("");
+    setRecruitError(null);
+  };
+
+  const openRecruitSeed = (seed: TikTokSeed) => {
+    setRecruitTarget({
+      kind: "seed",
+      handle: seed.handle,
+      displayName: seed.displayName,
+    });
+    setRecruitDisplayName(seed.displayName || seed.handle || "");
     setRecruitPublicNote("");
     setRecruitNotes("");
     setRecruitError(null);
@@ -1682,18 +1706,19 @@ export function FsbTikTokOutreachSection() {
     setRecruitError(null);
     try {
       await recruitAgencyStreamerFromTiktok({
-        tiktokInfluencerId: Number(recruitTarget.id),
+        tiktokInfluencerId: recruitTarget.influencerId,
+        tiktokHandle: recruitTarget.influencerId ? undefined : recruitTarget.handle,
         displayName: recruitDisplayName.trim() || undefined,
         notes: recruitNotes.trim() || null,
         publicNote: recruitPublicNote.trim() || null,
       });
-      const targetId = recruitTarget.id;
-      setRecruitedIds((prev) => new Set<string>([...prev, targetId]));
+      const handleLc = recruitTarget.handle.toLowerCase();
+      setRecruitedHandles((prev) => new Set<string>([...prev, handleLc]));
       setRecruitTarget(null);
     } catch (err: any) {
       const raw = String(err?.message || err);
       const friendly =
-        raw === "already_linked"
+        raw === "tiktok_influencer_already_linked" || raw === "already_linked"
           ? "Cet influenceur est déjà lié à un streamer agence."
           : raw;
       setRecruitError(friendly);
@@ -2667,6 +2692,29 @@ export function FsbTikTokOutreachSection() {
                   >
                     ↗
                   </a>
+                  {recruitedHandles.has(seed.handle.toLowerCase()) ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "#a78bfa",
+                        fontWeight: 700,
+                        padding: "6px 8px",
+                      }}
+                      title="Déjà recruté pour l'agence"
+                    >
+                      ★
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="fsb-btn"
+                      style={{ borderColor: "#6d28d9", color: "#a78bfa" }}
+                      onClick={() => openRecruitSeed(seed)}
+                      title="Recruter pour l'agence"
+                    >
+                      ★
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="fsb-btn"
@@ -3876,7 +3924,7 @@ export function FsbTikTokOutreachSection() {
                   <button className="fsb-btn" onClick={() => onDelete(inf)} title="Supprimer">
                     🗑
                   </button>
-                  {recruitedIds.has(inf.id) ? (
+                  {recruitedHandles.has(inf.handle.toLowerCase()) ? (
                     <span
                       style={{
                         fontSize: 11,
