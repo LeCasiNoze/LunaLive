@@ -400,6 +400,23 @@ export type AgencyRecruitFromTiktokInput = {
   displayName?: string;
   notes?: string | null;
   publicNote?: string | null;
+  /** Deal + assignment optionnels — créés atomiquement avec le streamer si fournis */
+  deal?: {
+    /** Si fourni, réutilise un deal existant (ignore les autres champs deal) */
+    existingDealId?: number | null;
+    /** Si pas d'existingDealId : casino existant par id... */
+    casinoId?: number | null;
+    /** ...ou nouveau casino par nom (créé s'il n'existe pas) */
+    casinoName?: string;
+    /** Nom du deal (requis si pas d'existingDealId) */
+    name?: string;
+    cpaAmount?: number | null;
+    cpaAgencyCut?: number | null;
+    ersPercent?: number | null;
+    ersAgencyPercent?: number | null;
+    startDate?: string | null;
+    paymentFrequency?: "monthly" | "biweekly";
+  };
 };
 
 const BASE = (

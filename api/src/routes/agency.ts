@@ -2230,6 +2230,63 @@ agencyRouter.get(
 agencyRouter.post(
   "/fsb/agency/streamers/from-tiktok",
   a(async (req, res) => {
+    const dealBlockSchema = z
+      .object({
+        casinoId: z.coerce.number().int().positive().nullable().optional(),
+        casinoName: z.string().trim().min(1).max(160).optional(),
+        existingDealId: z.coerce.number().int().positive().nullable().optional(),
+        name: z.string().trim().min(1).max(160).optional(),
+        cpaAmount: moneyOrNull.optional().default(null),
+        cpaAgencyCut: moneyOrNull.optional().default(null),
+        ersPercent: percentOrNull.optional().default(null),
+        ersAgencyPercent: percentOrNull.optional().default(null),
+        startDate: dateOnlyOrNull.optional().default(null),
+        paymentFrequency: z.preprocess(
+          (v) => (v == null || v === "" ? "monthly" : String(v).trim()),
+          z.enum(["monthly", "biweekly"]).default("monthly")
+        ),
+      })
+      .superRefine((value, ctx) => {
+        // Doit avoir soit existingDealId, soit (casinoId|casinoName) + name + cpaAmount
+        if (value.existingDealId) return;
+        if (!value.casinoId && !value.casinoName) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["casinoId"],
+            message: "casino_required",
+          });
+        }
+        if (!value.name) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["name"],
+            message: "deal_name_required",
+          });
+        }
+        if (
+          value.cpaAmount != null &&
+          value.cpaAgencyCut != null &&
+          value.cpaAgencyCut > value.cpaAmount
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["cpaAgencyCut"],
+            message: "agency_cut_gt_cpa",
+          });
+        }
+        if (
+          value.ersPercent != null &&
+          value.ersAgencyPercent != null &&
+          value.ersAgencyPercent > value.ersPercent
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["ersAgencyPercent"],
+            message: "agency_cut_gt_ers",
+          });
+        }
+      });
+
     const fromTiktokSchema = z
       .object({
         tiktokInfluencerId: z.coerce.number().int().positive().optional(),
@@ -2237,6 +2294,7 @@ agencyRouter.post(
         displayName: z.string().trim().min(1).max(160).optional(),
         notes: textOrNull(4000).optional().default(null),
         publicNote: textOrNull(4000).optional().default(null),
+        deal: dealBlockSchema.optional(),
       })
       .superRefine((value, ctx) => {
         if (!value.tiktokInfluencerId && !value.tiktokHandle) {
@@ -2326,7 +2384,7 @@ agencyRouter.post(
       await client.query("BEGIN");
       generatedAccess = await createAgencyAccessUser(client, displayName, req.ip);
 
-      await client.query(
+      const insertStreamer = await client.query(
         `
         INSERT INTO agency_streamers (
           display_name,
@@ -2337,6 +2395,7 @@ agencyRouter.post(
           notes
         )
         VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
         `,
         [
           displayName,
@@ -2348,12 +2407,92 @@ agencyRouter.post(
         ]
       );
 
+      const newAgencyStreamerId = Number(insertStreamer.rows[0].id);
+
+      // Deal + assignment optionnels — si fournis, on les crée/résout dans la même transaction
+      if (payload.deal) {
+        const deal = payload.deal;
+        let resolvedDealId: number | null = deal.existingDealId ?? null;
+
+        if (!resolvedDealId) {
+          // Résout le casino : id existant ou nom à créer
+          let resolvedCasinoId: number | null = deal.casinoId ?? null;
+
+          if (!resolvedCasinoId && deal.casinoName) {
+            const existingCasino = await client.query(
+              `SELECT id FROM agency_casinos WHERE lower(name) = lower($1) LIMIT 1`,
+              [deal.casinoName.trim()]
+            );
+            if (existingCasino.rows[0]) {
+              resolvedCasinoId = Number(existingCasino.rows[0].id);
+            } else {
+              const newCasino = await client.query(
+                `INSERT INTO agency_casinos (name) VALUES ($1) RETURNING id`,
+                [deal.casinoName.trim()]
+              );
+              resolvedCasinoId = Number(newCasino.rows[0].id);
+            }
+          }
+
+          if (!resolvedCasinoId) {
+            throw new Error("casino_not_resolved");
+          }
+
+          // Cherche un deal existant avec ce nom dans ce casino, sinon le crée
+          const existingDeal = await client.query(
+            `SELECT id FROM agency_deals WHERE casino_id = $1 AND lower(name) = lower($2) LIMIT 1`,
+            [resolvedCasinoId, (deal.name || "").trim()]
+          );
+          if (existingDeal.rows[0]) {
+            resolvedDealId = Number(existingDeal.rows[0].id);
+          } else {
+            const newDeal = await client.query(
+              `
+              INSERT INTO agency_deals (
+                casino_id, name, cpa_amount, cpa_agency_cut, ers_percent, ers_agency_percent
+              )
+              VALUES ($1, $2, $3, $4, $5, $6)
+              RETURNING id
+              `,
+              [
+                resolvedCasinoId,
+                (deal.name || "").trim(),
+                deal.cpaAmount == null ? null : roundMoney(deal.cpaAmount),
+                deal.cpaAgencyCut == null ? null : roundMoney(deal.cpaAgencyCut),
+                deal.ersPercent == null ? null : roundMoney(deal.ersPercent),
+                deal.ersAgencyPercent == null ? null : roundMoney(deal.ersAgencyPercent),
+              ]
+            );
+            resolvedDealId = Number(newDeal.rows[0].id);
+          }
+        }
+
+        // Crée l'assignation
+        const startDate = deal.startDate || currentParisDateKey();
+        await client.query(
+          `
+          INSERT INTO agency_streamer_assignments (
+            agency_streamer_id,
+            deal_id,
+            start_date,
+            payment_date,
+            payment_frequency
+          )
+          VALUES ($1, $2, $3, $3, $4)
+          `,
+          [newAgencyStreamerId, resolvedDealId, startDate, deal.paymentFrequency || "monthly"]
+        );
+      }
+
       await client.query("COMMIT");
     } catch (error: any) {
       await client.query("ROLLBACK");
       const message = String(error?.message || "");
       if (message.includes("agency_streamers_tiktok_uq")) {
         return res.status(409).json({ ok: false, error: "tiktok_influencer_already_linked" });
+      }
+      if (String(error?.message || "") === "casino_not_resolved") {
+        return res.status(400).json({ ok: false, error: "casino_required" });
       }
       throw error;
     } finally {

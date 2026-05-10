@@ -1,6 +1,7 @@
 import * as React from "react";
 import {
   recruitAgencyStreamerFromTiktok,
+  type AgencyRecruitFromTiktokInput,
 } from "../../lib/api_agency";
 import {
   addTikTokSeed,
@@ -384,6 +385,22 @@ export function FsbTikTokOutreachSection() {
   const [recruitError, setRecruitError] = React.useState<string | null>(null);
   // Set de handles (lowercased) déjà recrutés cette session — uniforme pour influencers et seeds
   const [recruitedHandles, setRecruitedHandles] = React.useState<Set<string>>(new Set());
+  // Deal + assignment dans le modal
+  const [recruitDealMode, setRecruitDealMode] = React.useState<"existing" | "new" | "skip">("new");
+  const [recruitExistingDealId, setRecruitExistingDealId] = React.useState<string>("");
+  const [recruitCasinoId, setRecruitCasinoId] = React.useState<string>("");
+  const [recruitCasinoName, setRecruitCasinoName] = React.useState("");
+  const [recruitDealName, setRecruitDealName] = React.useState("");
+  const [recruitCpaAmount, setRecruitCpaAmount] = React.useState("");
+  const [recruitCpaAgencyCut, setRecruitCpaAgencyCut] = React.useState("");
+  const [recruitErsPercent, setRecruitErsPercent] = React.useState("");
+  const [recruitErsAgencyPercent, setRecruitErsAgencyPercent] = React.useState("");
+  const [recruitStartDate, setRecruitStartDate] = React.useState<string>("");
+  const [recruitAgencyData, setRecruitAgencyData] = React.useState<{
+    casinos: Array<{ id: number; name: string }>;
+    deals: Array<{ id: number; casinoId: number; casinoName: string; name: string }>;
+  } | null>(null);
+  const [recruitAgencyLoading, setRecruitAgencyLoading] = React.useState(false);
 
   // Discovery state
   const [discHashtags, setDiscHashtags] = React.useState<string[]>(DEFAULT_HASHTAGS);
@@ -1675,6 +1692,41 @@ export function FsbTikTokOutreachSection() {
     }
   };
 
+  const resetRecruitDealFields = () => {
+    setRecruitDealMode("new");
+    setRecruitExistingDealId("");
+    setRecruitCasinoId("");
+    setRecruitCasinoName("");
+    setRecruitDealName("");
+    setRecruitCpaAmount("");
+    setRecruitCpaAgencyCut("");
+    setRecruitErsPercent("");
+    setRecruitErsAgencyPercent("");
+    setRecruitStartDate("");
+  };
+
+  const fetchRecruitAgencyData = async () => {
+    if (recruitAgencyData || recruitAgencyLoading) return;
+    setRecruitAgencyLoading(true);
+    try {
+      const { getFsbAgencyDashboard } = await import("../../lib/api_agency");
+      const dash = await getFsbAgencyDashboard();
+      setRecruitAgencyData({
+        casinos: dash.casinos.map((c) => ({ id: c.id, name: c.name })),
+        deals: dash.deals.map((d) => ({
+          id: d.id,
+          casinoId: d.casinoId,
+          casinoName: d.casinoName,
+          name: d.name,
+        })),
+      });
+    } catch {
+      // silent
+    } finally {
+      setRecruitAgencyLoading(false);
+    }
+  };
+
   const openRecruit = (inf: TikTokInfluencer) => {
     setRecruitTarget({
       kind: "influencer",
@@ -1686,6 +1738,8 @@ export function FsbTikTokOutreachSection() {
     setRecruitPublicNote("");
     setRecruitNotes("");
     setRecruitError(null);
+    resetRecruitDealFields();
+    void fetchRecruitAgencyData();
   };
 
   const openRecruitSeed = (seed: TikTokSeed) => {
@@ -1698,12 +1752,62 @@ export function FsbTikTokOutreachSection() {
     setRecruitPublicNote("");
     setRecruitNotes("");
     setRecruitError(null);
+    resetRecruitDealFields();
+    void fetchRecruitAgencyData();
   };
 
   const handleRecruit = async () => {
     if (!recruitTarget || recruitSending) return;
     setRecruitSending(true);
     setRecruitError(null);
+
+    // Construit le bloc deal selon le mode choisi
+    let dealBlock: AgencyRecruitFromTiktokInput["deal"] | undefined;
+    const num = (s: string) => {
+      const v = s.trim();
+      if (!v) return null;
+      const n = Number(v.replace(",", "."));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    if (recruitDealMode === "existing") {
+      const id = Number(recruitExistingDealId);
+      if (!Number.isFinite(id) || id <= 0) {
+        setRecruitError("Sélectionne un deal existant.");
+        setRecruitSending(false);
+        return;
+      }
+      dealBlock = {
+        existingDealId: id,
+        startDate: recruitStartDate || null,
+        paymentFrequency: "monthly",
+      };
+    } else if (recruitDealMode === "new") {
+      const casinoIdNum = recruitCasinoId ? Number(recruitCasinoId) : null;
+      const casinoNameTrim = recruitCasinoName.trim();
+      if (!casinoIdNum && !casinoNameTrim) {
+        setRecruitError("Choisis un casino existant ou saisis un nouveau nom.");
+        setRecruitSending(false);
+        return;
+      }
+      if (!recruitDealName.trim()) {
+        setRecruitError("Le nom du deal est requis.");
+        setRecruitSending(false);
+        return;
+      }
+      dealBlock = {
+        casinoId: casinoIdNum,
+        casinoName: casinoNameTrim || undefined,
+        name: recruitDealName.trim(),
+        cpaAmount: num(recruitCpaAmount),
+        cpaAgencyCut: num(recruitCpaAgencyCut),
+        ersPercent: num(recruitErsPercent),
+        ersAgencyPercent: num(recruitErsAgencyPercent),
+        startDate: recruitStartDate || null,
+        paymentFrequency: "monthly",
+      };
+    }
+
     try {
       await recruitAgencyStreamerFromTiktok({
         tiktokInfluencerId: recruitTarget.influencerId,
@@ -1711,6 +1815,7 @@ export function FsbTikTokOutreachSection() {
         displayName: recruitDisplayName.trim() || undefined,
         notes: recruitNotes.trim() || null,
         publicNote: recruitPublicNote.trim() || null,
+        deal: dealBlock,
       });
       const handleLc = recruitTarget.handle.toLowerCase();
       setRecruitedHandles((prev) => new Set<string>([...prev, handleLc]));
@@ -1720,7 +1825,15 @@ export function FsbTikTokOutreachSection() {
       const friendly =
         raw === "tiktok_influencer_already_linked" || raw === "already_linked"
           ? "Cet influenceur est déjà lié à un streamer agence."
-          : raw;
+          : raw === "casino_required"
+            ? "Casino requis (existant ou nouveau)."
+            : raw === "deal_name_required"
+              ? "Nom du deal requis."
+              : raw === "agency_cut_gt_cpa"
+                ? "Notre part CPA ne peut pas dépasser le CPA total."
+                : raw === "agency_cut_gt_ers"
+                  ? "Notre part RS ne peut pas dépasser le RS total."
+                  : raw;
       setRecruitError(friendly);
     } finally {
       setRecruitSending(false);
@@ -4123,6 +4236,191 @@ export function FsbTikTokOutreachSection() {
                     placeholder="Notes privées (non visibles par le streamer)"
                   />
                 </label>
+              </div>
+
+              {/* ─── Bloc Deal ─────────────────────────────────────── */}
+              <div
+                style={{
+                  marginTop: 6,
+                  padding: 12,
+                  border: "1px solid #6d28d955",
+                  borderRadius: 8,
+                  background: "#1a0f2a40",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#a78bfa", marginBottom: 10, letterSpacing: ".04em" }}>
+                  ⚡ DEAL & ASSIGNATION
+                </div>
+
+                <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                  {(["new", "existing", "skip"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className="fsb-btn"
+                      style={{
+                        fontSize: 11,
+                        padding: "5px 10px",
+                        borderColor: recruitDealMode === mode ? "#6d28d9" : undefined,
+                        color: recruitDealMode === mode ? "#a78bfa" : undefined,
+                        fontWeight: recruitDealMode === mode ? 800 : 600,
+                      }}
+                      onClick={() => setRecruitDealMode(mode)}
+                    >
+                      {mode === "new" ? "Nouveau deal" : mode === "existing" ? "Deal existant" : "Plus tard"}
+                    </button>
+                  ))}
+                </div>
+
+                {recruitDealMode === "existing" ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <label className="fsb-field" style={{ display: "block" }}>
+                      <span style={{ fontSize: 11, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)", fontWeight: 800 }}>
+                        Deal {recruitAgencyLoading ? "(chargement…)" : ""}
+                      </span>
+                      <select
+                        className="tk-input"
+                        style={{ marginTop: 6 }}
+                        value={recruitExistingDealId}
+                        onChange={(e) => setRecruitExistingDealId(e.target.value)}
+                      >
+                        <option value="">— Sélectionner —</option>
+                        {(recruitAgencyData?.deals || []).map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.casinoName} · {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                ) : recruitDealMode === "new" ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Casino existant</span>
+                        <select
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          value={recruitCasinoId}
+                          onChange={(e) => {
+                            setRecruitCasinoId(e.target.value);
+                            if (e.target.value) setRecruitCasinoName("");
+                          }}
+                        >
+                          <option value="">— ou nouveau ↓</option>
+                          {(recruitAgencyData?.casinos || []).map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Ou nouveau casino</span>
+                        <input
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          value={recruitCasinoName}
+                          onChange={(e) => {
+                            setRecruitCasinoName(e.target.value);
+                            if (e.target.value) setRecruitCasinoId("");
+                          }}
+                          placeholder="Nom"
+                        />
+                      </label>
+                    </div>
+                    <label className="fsb-field" style={{ display: "block" }}>
+                      <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Nom du deal</span>
+                      <input
+                        className="tk-input"
+                        style={{ marginTop: 4 }}
+                        value={recruitDealName}
+                        onChange={(e) => setRecruitDealName(e.target.value)}
+                        placeholder="Ex: standard, exclu novembre…"
+                      />
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>CPA réel (€/FTD)</span>
+                        <input
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          inputMode="decimal"
+                          value={recruitCpaAmount}
+                          onChange={(e) => setRecruitCpaAmount(e.target.value)}
+                          placeholder="150"
+                        />
+                      </label>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Notre part CPA (€)</span>
+                        <input
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          inputMode="decimal"
+                          value={recruitCpaAgencyCut}
+                          onChange={(e) => setRecruitCpaAgencyCut(e.target.value)}
+                          placeholder="50"
+                        />
+                      </label>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>RS réel (%)</span>
+                        <input
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          inputMode="decimal"
+                          value={recruitErsPercent}
+                          onChange={(e) => setRecruitErsPercent(e.target.value)}
+                          placeholder="30"
+                        />
+                      </label>
+                      <label className="fsb-field" style={{ display: "block" }}>
+                        <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Notre part RS (%)</span>
+                        <input
+                          className="tk-input"
+                          style={{ marginTop: 4 }}
+                          inputMode="decimal"
+                          value={recruitErsAgencyPercent}
+                          onChange={(e) => setRecruitErsAgencyPercent(e.target.value)}
+                          placeholder="7.5"
+                        />
+                      </label>
+                    </div>
+                    {(() => {
+                      const cpa = Number(recruitCpaAmount.replace(",", "."));
+                      const cpaCut = Number(recruitCpaAgencyCut.replace(",", "."));
+                      const rs = Number(recruitErsPercent.replace(",", "."));
+                      const rsCut = Number(recruitErsAgencyPercent.replace(",", "."));
+                      const cpaStreamer = Number.isFinite(cpa) && Number.isFinite(cpaCut) ? Math.max(cpa - cpaCut, 0) : null;
+                      const rsStreamer = Number.isFinite(rs) && Number.isFinite(rsCut) ? Math.max(rs - rsCut, 0) : null;
+                      if (cpaStreamer == null && rsStreamer == null) return null;
+                      return (
+                        <div style={{ fontSize: 11, color: "var(--muted)", padding: "6px 8px", background: "#0d1322", borderRadius: 4 }}>
+                          → Streamer touchera{" "}
+                          {cpaStreamer != null ? <strong style={{ color: "#a7f3d0" }}>{cpaStreamer.toFixed(2)} €/FTD</strong> : "—"}
+                          {" · "}
+                          {rsStreamer != null ? <strong style={{ color: "#a7f3d0" }}>{rsStreamer.toFixed(2)}% RS</strong> : "—"}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--muted)", fontStyle: "italic" }}>
+                    Le deal sera ajouté plus tard depuis la section Agence.
+                  </div>
+                )}
+
+                {recruitDealMode !== "skip" ? (
+                  <label className="fsb-field" style={{ display: "block", marginTop: 10 }}>
+                    <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700 }}>Date début (vide = aujourd'hui)</span>
+                    <input
+                      type="date"
+                      className="tk-input"
+                      style={{ marginTop: 4 }}
+                      value={recruitStartDate}
+                      onChange={(e) => setRecruitStartDate(e.target.value)}
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
             {recruitError ? (
