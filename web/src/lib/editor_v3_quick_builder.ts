@@ -81,12 +81,12 @@ export const V3_GAME_IMAGES = [
   {
     key: "tower",
     label: "Tower",
-    url: "", // pas d'image disponible — l'utilisateur fournira un URL custom
+    url: "https://cdn.phototourl.com/member/2026-04-10-ec62e857-165d-4a93-9cec-a314c7636d9c.jpg",
   },
   {
     key: "chicken",
     label: "Chicken",
-    url: "",
+    url: "https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png",
   },
 ] as const;
 
