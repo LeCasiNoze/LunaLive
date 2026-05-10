@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M4 — Scratch tickets : 4 cartes (3 "presque gagnantes" + 1 BONUS 100%).
+// M4 — Mystery Boxes : 3 coffres, l'user en choisit un, il contient TOUJOURS
+// le bonus 100%. Les 2 autres se révèlent ensuite avec des prix moindres
+// (frustration sociale "j'ai eu de la chance").
 //
-// L'user gratte chaque ticket. Tickets 1-3 révèlent 20% / 0% / 0% (frustration
-// montante) puis le 4ème ticket (BONUS) devient brillant. Une fois gratté,
-// "Wow tu as gagné 100%" → popup CTA.
+// (Le fichier garde le nom M4Scratch pour ne pas casser les imports/saves.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -24,130 +24,22 @@ export type M4ScratchProps = {
   };
 };
 
-type Ticket = {
-  id: number;
-  reveal: string;        // texte révélé
-  bonus: boolean;        // true = ticket gagnant
-  msg: string;           // sous-texte
+type BoxSpec = {
+  label: string;        // texte sur le coffre fermé
+  prize: string;        // contenu révélé
+  win: boolean;         // true = box gagnante (toujours celle choisie)
+  emoji: string;        // emoji de récompense
 };
 
-const TICKETS: Ticket[] = [
-  { id: 0, reveal: "20%", bonus: false, msg: "Pas mal…" },
-  { id: 1, reveal: "0%",  bonus: false, msg: "Aïe, raté." },
-  { id: 2, reveal: "0%",  bonus: false, msg: "Pas de chance." },
-  { id: 3, reveal: "100%", bonus: true,  msg: "🎉 BONUS LÉGENDAIRE" },
+// Les 3 coffres sont visuellement identiques tant qu'ils sont fermés. La box
+// choisie par l'user devient automatiquement la "win" — on prepare 2 prix
+// moindres pour les 2 autres.
+const FILLER_PRIZES: Array<{ prize: string; emoji: string }> = [
+  { prize: "0%",  emoji: "💨" },
+  { prize: "20%", emoji: "🥈" },
+  { prize: "0%",  emoji: "💨" },
+  { prize: "10%", emoji: "🥉" },
 ];
-
-function ScratchTicket({
-  ticket, locked, scratched, onScratched, accent, accentLight,
-}: {
-  ticket: Ticket;
-  locked: boolean;
-  scratched: boolean;
-  onScratched: () => void;
-  accent: string;
-  accentLight: string;
-}) {
-  const canvasRef = React.useRef<HTMLCanvasElement>(null);
-  const isDrawing = React.useRef(false);
-  const [progress, setProgress] = React.useState(0);
-
-  React.useEffect(() => {
-    const c = canvasRef.current;
-    if (!c || scratched) return;
-    const w = c.clientWidth, h = c.clientHeight;
-    c.width = w * 2; c.height = h * 2;
-    const ctx = c.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(2, 2);
-    // Foil doré pour les non-bonus, rainbow gold animé pour le bonus
-    const grad = ctx.createLinearGradient(0, 0, w, h);
-    if (ticket.bonus) {
-      grad.addColorStop(0, accentLight);
-      grad.addColorStop(.4, accent);
-      grad.addColorStop(.7, "#fff7c2");
-      grad.addColorStop(1, accent);
-    } else {
-      grad.addColorStop(0, "#a8a39a");
-      grad.addColorStop(.5, "#bdb6ab");
-      grad.addColorStop(1, "#8a847a");
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    // Texture pailletée
-    ctx.fillStyle = "rgba(255,255,255,.22)";
-    for (let i = 0; i < 50; i++) {
-      ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
-    }
-    ctx.fillStyle = "rgba(0,0,0,.55)";
-    ctx.font = "900 14px Poppins, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(ticket.bonus ? "✦ TICKET BONUS ✦" : "GRATTE ICI", w / 2, h / 2 - 4);
-    ctx.font = "700 10px Poppins, sans-serif";
-    ctx.fillText("Tente ta chance", w / 2, h / 2 + 14);
-  }, [ticket.bonus, accent, accentLight, scratched]);
-
-  const computeProgress = () => {
-    const c = canvasRef.current;
-    if (!c) return 0;
-    const ctx = c.getContext("2d"); if (!ctx) return 0;
-    const data = ctx.getImageData(0, 0, c.width, c.height).data;
-    let cleared = 0;
-    const sample = 400;
-    for (let i = 0; i < sample; i++) {
-      const px = Math.floor(Math.random() * (data.length / 4)) * 4;
-      if (data[px + 3] < 32) cleared++;
-    }
-    return cleared / sample;
-  };
-
-  const scratch = (clientX: number, clientY: number) => {
-    const c = canvasRef.current;
-    if (!c || scratched || locked) return;
-    const ctx = c.getContext("2d"); if (!ctx) return;
-    const rect = c.getBoundingClientRect();
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.beginPath();
-    ctx.arc(clientX - rect.left, clientY - rect.top, 16, 0, Math.PI * 2);
-    ctx.fill();
-  };
-  const onPointerDown = (e: React.PointerEvent) => { if (!locked) { isDrawing.current = true; scratch(e.clientX, e.clientY); } };
-  const onPointerMove = (e: React.PointerEvent) => { if (isDrawing.current) scratch(e.clientX, e.clientY); };
-  const onPointerUp = () => {
-    isDrawing.current = false;
-    const p = computeProgress();
-    setProgress(p);
-    if (p > 0.30 && !scratched) {
-      const c = canvasRef.current;
-      if (c) c.getContext("2d")?.clearRect(0, 0, c.width, c.height);
-      onScratched();
-    }
-  };
-
-  return (
-    <div className={`m4t-card ${ticket.bonus ? "bonus" : ""} ${scratched ? "done" : ""} ${locked ? "locked" : ""}`}>
-      <div className="m4t-prize">
-        <div className={`m4t-pct ${ticket.bonus ? "bonus" : "loser"}`}>{ticket.reveal}</div>
-        <div className="m4t-msg">{ticket.msg}</div>
-      </div>
-      {!scratched ? (
-        <canvas
-          ref={canvasRef}
-          className="m4t-canvas"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          style={{ pointerEvents: locked ? "none" : "auto" }}
-        />
-      ) : null}
-      {!scratched && progress > 0 && progress < 0.30 ? (
-        <div className="m4t-progress">{Math.round(progress * 100)}%</div>
-      ) : null}
-      {locked ? <div className="m4t-locked-badge">🔒</div> : null}
-    </div>
-  );
-}
 
 export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme }: M4ScratchProps) {
   const T = {
@@ -158,135 +50,196 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
     bgCard:      theme?.bgCard      || "#150821",
     border:      theme?.borderColor || "#331A47",
   };
-  const [scratched, setScratched] = React.useState<boolean[]>([false, false, false, false]);
+
+  // L'index choisi par l'user (-1 si pas encore choisi)
+  const [picked, setPicked] = React.useState<number>(-1);
+  const [revealedOthers, setRevealedOthers] = React.useState<boolean>(false);
   const [popupOpen, setPopupOpen] = React.useState(false);
+
+  // Au mount, on tire 2 prix loosers aléatoires pour les 2 boxes non choisies.
+  const [losers] = React.useState<BoxSpec[]>(() => {
+    const shuffled = [...FILLER_PRIZES].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 2).map((p) => ({
+      label: "Coffre",
+      prize: p.prize,
+      win: false,
+      emoji: p.emoji,
+    }));
+  });
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
 
-  const losersDone = scratched[0] && scratched[1] && scratched[2];
-  const bonusDone = scratched[3];
+  // Construit l'array final de boxes selon le pick
+  const boxes: BoxSpec[] = React.useMemo(() => {
+    const winBox: BoxSpec = { label: "Coffre", prize: "100%", win: true, emoji: "💎" };
+    const arr: BoxSpec[] = [];
+    let loserIdx = 0;
+    for (let i = 0; i < 3; i++) {
+      if (i === picked) arr.push(winBox);
+      else arr.push(losers[loserIdx++] || losers[0]);
+    }
+    return arr;
+  }, [picked, losers]);
 
-  const markScratched = (i: number) => {
-    setScratched((s) => {
-      const next = [...s];
-      next[i] = true;
-      return next;
-    });
-    if (i === 3) setTimeout(() => setPopupOpen(true), 600);
+  const pick = (i: number) => {
+    if (picked !== -1) return;
+    setPicked(i);
+    // Animation : on attend que le coffre choisi s'ouvre, puis on ouvre les 2 autres
+    setTimeout(() => setRevealedOthers(true), 1200);
+    setTimeout(() => setPopupOpen(true), 2400);
+  };
+
+  const reset = () => {
+    setPicked(-1);
+    setRevealedOthers(false);
+    setPopupOpen(false);
   };
 
   return (
-    <div className="m4s-root" style={{ background: T.bgPage, color: "#fff" }}>
+    <div className="m4mb-root" style={{ background: T.bgPage, color: "#fff" }}>
       <style>{`
-        .m4s-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
-        .m4s-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(ellipse at 50% 0%,${T.accentGlow},transparent 55%);pointer-events:none;opacity:.5}
-        .m4s-root::after{content:"";position:absolute;inset:0;background-image:linear-gradient(45deg,${T.accent}06 25%,transparent 25%,transparent 75%,${T.accent}06 75%),linear-gradient(45deg,${T.accent}06 25%,transparent 25%,transparent 75%,${T.accent}06 75%);background-size:24px 24px;background-position:0 0,12px 12px;pointer-events:none;opacity:.5}
+        .m4mb-root{min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:24px 16px 100px;font-family:'Poppins',sans-serif;position:relative;overflow:hidden}
+        .m4mb-root::before{content:"";position:absolute;inset:-20%;background:radial-gradient(ellipse at 50% 30%,${T.accentGlow},transparent 55%);pointer-events:none;opacity:.55}
+        .m4mb-root::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 20% 20%,${T.accent}10 1.5px,transparent 1.5px),radial-gradient(circle at 80% 70%,${T.accent}10 1.5px,transparent 1.5px);background-size:50px 50px,70px 70px;pointer-events:none;opacity:.4}
 
-        .m4s-header{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:16px;position:relative;z-index:2}
-        .m4s-avatar{width:78px;height:78px;border-radius:50%;border:3px solid ${T.accent};box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 4px ${T.accentGlow};overflow:hidden}
-        .m4s-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m4s-pseudo{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:700;color:#fff;text-shadow:0 0 16px ${T.accentGlow};margin-top:6px}
+        .m4mb-header{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:14px;position:relative;z-index:2}
+        .m4mb-avatar{width:78px;height:78px;border-radius:50%;border:3px solid ${T.accent};box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 0 4px ${T.accentGlow};overflow:hidden}
+        .m4mb-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+        .m4mb-pseudo{font-family:'Playfair Display',serif;font-size:1.6rem;font-weight:700;color:#fff;text-shadow:0 0 16px ${T.accentGlow};margin-top:6px}
 
-        .m4s-offer{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 24px;margin-bottom:18px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));border:1px solid ${T.accent}55;border-radius:14px;backdrop-filter:blur(8px);box-shadow:0 0 30px ${T.accentGlow}40}
-        .m4s-offer-mini{font-size:.72rem;font-weight:700;letter-spacing:.18em;color:${T.accent};text-transform:uppercase}
-        .m4s-offer-main{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:#fff;text-align:center;line-height:1.1}
-        .m4s-offer-main .accent{color:${T.accent};text-shadow:0 0 14px ${T.accentGlow}}
+        .m4mb-offer{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 24px;margin-bottom:14px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));border:1px solid ${T.accent}55;border-radius:14px;backdrop-filter:blur(8px);box-shadow:0 0 30px ${T.accentGlow}40}
+        .m4mb-offer-mini{font-size:.72rem;font-weight:700;letter-spacing:.18em;color:${T.accent};text-transform:uppercase}
+        .m4mb-offer-main{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:#fff;text-align:center;line-height:1.1}
+        .m4mb-offer-main .accent{color:${T.accent};text-shadow:0 0 14px ${T.accentGlow}}
 
-        .m4s-step{font-size:.85rem;color:rgba(255,255,255,.7);margin-bottom:18px;letter-spacing:.04em;position:relative;z-index:2;text-align:center}
-        .m4s-step strong{color:${T.accent}}
+        .m4mb-step{font-size:.85rem;color:rgba(255,255,255,.7);margin-bottom:18px;letter-spacing:.04em;position:relative;z-index:2;text-align:center}
+        .m4mb-step strong{color:${T.accent}}
 
-        .m4s-grid{position:relative;z-index:2;display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(94vw,460px);margin-bottom:24px}
+        .m4mb-grid{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:min(94vw,420px);margin-bottom:24px}
 
-        .m4t-card{position:relative;aspect-ratio:1.05/1;background:${T.bgCard};border:2px solid ${T.border};border-radius:16px;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,.5)}
-        .m4t-card.bonus{border-color:${T.accent};box-shadow:0 0 32px ${T.accentGlow},0 12px 32px rgba(0,0,0,.5);animation:m4t-glow 2.4s ease-in-out infinite}
-        .m4t-card.locked{opacity:.55;filter:saturate(.5)}
-        .m4t-card.done.bonus{animation:m4t-celebrate .9s ease-out}
+        .m4mb-box{position:relative;aspect-ratio:.85/1;perspective:1200px;cursor:pointer;transition:transform .2s ease}
+        .m4mb-box.idle:hover{transform:translateY(-6px) scale(1.02)}
+        .m4mb-box.disabled{cursor:default}
+        .m4mb-box.dim{opacity:.6;filter:saturate(.7)}
+        .m4mb-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .8s cubic-bezier(.4,1.6,.6,1)}
+        .m4mb-box.opened .m4mb-inner{transform:rotateY(180deg)}
+        .m4mb-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;text-align:center;box-shadow:0 8px 16px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08)}
 
-        .m4t-prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;text-align:center}
-        .m4t-pct{font-family:'Playfair Display',serif;font-size:2.4rem;font-weight:900;line-height:1}
-        .m4t-pct.loser{color:rgba(255,255,255,.55)}
-        .m4t-pct.bonus{color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
-        .m4t-msg{font-size:.78rem;font-weight:600;color:rgba(255,255,255,.65);margin-top:8px;letter-spacing:.04em}
-        .m4t-card.bonus .m4t-msg{color:${T.accent}}
+        /* Face fermée : coffre stylé */
+        .m4mb-face-front{background:linear-gradient(180deg,#5a3a1a,#3a2410);border:2px solid #8a6020;color:#fff}
+        .m4mb-box.idle .m4mb-face-front{box-shadow:0 8px 24px ${T.accentGlow}40,inset 0 1px 0 rgba(255,255,255,.1)}
+        .m4mb-chest{position:relative;width:62%;aspect-ratio:1.2/1;background:linear-gradient(180deg,#7a4f25,#4a2e14);border:2px solid #2a1808;border-radius:8px 8px 12px 12px;box-shadow:inset 0 -6px 8px rgba(0,0,0,.4)}
+        .m4mb-chest::before{content:"";position:absolute;left:0;right:0;top:30%;height:8px;background:linear-gradient(180deg,${T.accentLight},${T.accent});border-top:1px solid rgba(255,255,255,.2);border-bottom:1px solid rgba(0,0,0,.3)}
+        .m4mb-chest::after{content:"🔒";position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);font-size:1rem;background:radial-gradient(circle,#aaa,#666);width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+        .m4mb-front-label{font-family:'Playfair Display',serif;font-size:.92rem;font-weight:700;letter-spacing:.05em;margin-top:8px;color:${T.accent}}
+        .m4mb-front-num{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:.7rem;font-weight:900;color:rgba(255,255,255,.5);letter-spacing:.1em}
 
-        .m4t-canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
-        .m4t-canvas:active{cursor:grabbing}
-        .m4t-progress{position:absolute;bottom:8px;right:8px;font-size:11px;font-weight:700;color:#000;background:rgba(255,255,255,.85);padding:2px 6px;border-radius:6px;pointer-events:none}
-        .m4t-locked-badge{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.7);color:#fff;padding:4px 8px;border-radius:8px;font-size:11px;pointer-events:none}
+        /* Face ouverte : prix révélé */
+        .m4mb-face-back{transform:rotateY(180deg);background:linear-gradient(180deg,#1a0d2a,${T.bgCard});border:2px solid ${T.border};color:#fff}
+        .m4mb-face-back.win{background:linear-gradient(180deg,${T.accent},${T.accentLight});border-color:#fff;box-shadow:0 0 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.6);color:#000}
+        .m4mb-face-back.win .m4mb-back-prize{text-shadow:0 0 20px rgba(255,255,255,.4)}
+        .m4mb-back-emoji{font-size:1.8rem;line-height:1;margin-bottom:4px}
+        .m4mb-back-prize{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;line-height:1}
+        .m4mb-back-label{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;opacity:.85}
 
-        .m4s-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:min(94vw,460px);padding:18px 24px;background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:1.08rem;border:none;border-radius:14px;cursor:pointer;box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15);text-decoration:none;position:relative;z-index:2}
-        .m4s-cta-pulse{animation:m4t-pulse 2s ease-in-out infinite}
+        /* Glow ring on hover */
+        .m4mb-box.idle::after{content:"";position:absolute;inset:-4px;border-radius:18px;border:2px solid transparent;transition:border-color .2s ease;pointer-events:none}
+        .m4mb-box.idle:hover::after{border-color:${T.accent}}
 
-        .m4s-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m4t-fade .3s ease-out}
-        .m4s-popup{position:relative;background:linear-gradient(180deg,${T.bgCard},${T.bgPage});border:2px solid ${T.accent};border-radius:22px;padding:36px 28px 28px;text-align:center;max-width:420px;width:100%;box-shadow:0 0 80px ${T.accentGlow};animation:m4t-pop .4s cubic-bezier(.17,.84,.34,1.27)}
-        .m4s-popup-close{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .m4s-popup-close:hover{background:rgba(255,255,255,.18)}
-        .m4s-popup-icon{font-size:2.4rem;margin-bottom:6px}
-        .m4s-popup h2{font-family:'Playfair Display',serif;font-size:2.1rem;font-weight:900;margin:0 0 10px;color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
-        .m4s-popup p{color:rgba(255,255,255,.85);margin:0 0 8px;font-size:.96rem;line-height:1.5}
-        .m4s-popup .amounts{display:inline-flex;align-items:center;gap:10px;font-size:.95rem;color:rgba(255,255,255,.7);background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;padding:10px 16px;border-radius:10px;margin:14px 0 22px}
-        .m4s-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1.1rem;text-shadow:0 0 10px ${T.accentGlow}}
+        .m4mb-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:min(94vw,420px);padding:18px 24px;background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:1.08rem;border:none;border-radius:14px;cursor:pointer;box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15);text-decoration:none;position:relative;z-index:2}
+        .m4mb-cta:disabled{opacity:.5;cursor:not-allowed;animation:none}
+        .m4mb-cta-pulse{animation:m4mb-pulse 2s ease-in-out infinite}
+        .m4mb-cta.ghost{background:transparent;color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.2);box-shadow:none;font-size:.85rem;padding:10px 18px;width:auto;letter-spacing:.06em;margin-top:10px}
 
-        @keyframes m4t-glow{0%,100%{box-shadow:0 0 32px ${T.accentGlow},0 12px 32px rgba(0,0,0,.5)}50%{box-shadow:0 0 50px ${T.accentGlow},0 0 0 6px ${T.accent}25,0 12px 32px rgba(0,0,0,.5)}}
-        @keyframes m4t-pulse{0%,100%{box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}50%{box-shadow:0 14px 40px ${T.accentGlow},0 0 0 6px ${T.accent}25,inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}}
-        @keyframes m4t-celebrate{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
-        @keyframes m4t-fade{from{opacity:0}to{opacity:1}}
-        @keyframes m4t-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
+        .m4mb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m4mb-fade .3s ease-out}
+        .m4mb-popup{position:relative;background:linear-gradient(180deg,${T.bgCard},${T.bgPage});border:2px solid ${T.accent};border-radius:22px;padding:30px 22px 22px;text-align:center;max-width:380px;width:100%;box-shadow:0 0 80px ${T.accentGlow};animation:m4mb-pop .4s cubic-bezier(.17,.84,.34,1.27);box-sizing:border-box}
+        .m4mb-popup-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+        .m4mb-popup-close:hover{background:rgba(255,255,255,.18)}
+        .m4mb-popup-icon{font-size:2.2rem;margin-bottom:4px}
+        .m4mb-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:900;margin:0 0 8px;color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
+        .m4mb-popup p{color:rgba(255,255,255,.85);margin:0 0 6px;font-size:.92rem;line-height:1.5}
+        .m4mb-popup .amounts{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;color:rgba(255,255,255,.7);background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;padding:8px 12px;border-radius:10px;margin:12px 0 18px;flex-wrap:wrap;justify-content:center}
+        .m4mb-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1rem;text-shadow:0 0 10px ${T.accentGlow}}
+        .m4mb-popup .m4mb-cta{width:100%;font-size:.95rem;padding:14px 18px;letter-spacing:.08em}
+
+        @keyframes m4mb-pulse{0%,100%{box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}50%{box-shadow:0 14px 40px ${T.accentGlow},0 0 0 6px ${T.accent}25,inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15)}}
+        @keyframes m4mb-fade{from{opacity:0}to{opacity:1}}
+        @keyframes m4mb-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
       `}</style>
 
-      <div className="m4s-header">
-        {profileImageUrl ? <div className="m4s-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? <div className="m4s-pseudo">{pseudo}</div> : null}
+      <div className="m4mb-header">
+        {profileImageUrl ? <div className="m4mb-avatar"><img src={profileImageUrl} alt="" /></div> : null}
+        {pseudo ? <div className="m4mb-pseudo">{pseudo}</div> : null}
       </div>
 
-      <div className="m4s-offer">
-        <div className="m4s-offer-mini">✦ Offre exclusive ✦</div>
-        <div className="m4s-offer-main">
+      <div className="m4mb-offer">
+        <div className="m4mb-offer-mini">✦ Mystery Boxes ✦</div>
+        <div className="m4mb-offer-main">
           {dep ? <>Dépose <span className="accent">{dep}</span> · </> : null}
           {bon ? <>Reçois <span className="accent">{bon}</span></> : "Bonus 100% garanti"}
         </div>
       </div>
 
-      <div className="m4s-step">
-        {bonusDone ? <strong>🎉 Ticket bonus gratté</strong>
-          : losersDone ? <strong>Gratte le dernier ticket pour débloquer ton bonus</strong>
-          : <>Gratte les 4 tickets · {scratched.filter(Boolean).length}/4</>}
+      <div className="m4mb-step">
+        {picked === -1
+          ? <>Choisis <strong>1 coffre parmi les 3</strong></>
+          : !revealedOthers
+            ? <strong>✨ Tu as trouvé le bon coffre !</strong>
+            : <strong>🎁 Tu débloques 100% de bonus</strong>}
       </div>
 
-      <div className="m4s-grid">
-        {TICKETS.map((t, i) => (
-          <ScratchTicket
-            key={t.id}
-            ticket={t}
-            locked={t.bonus && !losersDone}
-            scratched={scratched[i]}
-            onScratched={() => markScratched(i)}
-            accent={T.accent}
-            accentLight={T.accentLight}
-          />
-        ))}
+      <div className="m4mb-grid">
+        {boxes.map((b, i) => {
+          const isOpened = picked === i || (revealedOthers && picked !== -1);
+          const isPicked = picked === i;
+          const isDimmed = picked !== -1 && !isPicked && !revealedOthers;
+          return (
+            <div
+              key={i}
+              className={`m4mb-box ${picked === -1 ? "idle" : "disabled"} ${isOpened ? "opened" : ""} ${isDimmed ? "dim" : ""}`}
+              onClick={() => pick(i)}
+            >
+              <div className="m4mb-inner">
+                <div className="m4mb-face m4mb-face-front">
+                  <span className="m4mb-front-num">N°{i + 1}</span>
+                  <div className="m4mb-chest" />
+                  <div className="m4mb-front-label">{b.label}</div>
+                </div>
+                <div className={`m4mb-face m4mb-face-back ${b.win ? "win" : ""}`}>
+                  <div className="m4mb-back-emoji">{b.emoji}</div>
+                  <div className="m4mb-back-prize">{b.prize}</div>
+                  <div className="m4mb-back-label">{b.win ? "MEGA BONUS" : "Pas cette fois"}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {bonusDone ? (
-        <a href={safeAffi} target="_blank" rel="noreferrer" className="m4s-cta m4s-cta-pulse v3-cta">
+      {picked === -1 ? (
+        <button className="m4mb-cta" disabled>👆 Choisis un coffre</button>
+      ) : !revealedOthers ? (
+        <button className="m4mb-cta" disabled>🔓 Ouverture…</button>
+      ) : (
+        <a href={safeAffi} target="_blank" rel="noreferrer" className="m4mb-cta m4mb-cta-pulse v3-cta">
           🎁 Récupérer mon bonus 100%
         </a>
-      ) : (
-        <button className="m4s-cta" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
-          {losersDone ? "👆 Gratte le ticket bonus" : "Continue à gratter…"}
-        </button>
       )}
 
-      {bonusDone && popupOpen ? (
-        <div className="m4s-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m4s-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m4s-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m4s-popup-icon">🎉</div>
-            <h2>WOW, INCROYABLE !</h2>
-            <p>Tu as débloqué le ticket BONUS exclusif.</p>
-            <p><strong style={{ color: T.accent }}>100% offert</strong> sur ton premier dépôt en créant ton compte.</p>
+      {revealedOthers ? (
+        <button className="m4mb-cta ghost" onClick={reset}>↻ Rejouer</button>
+      ) : null}
+
+      {popupOpen && revealedOthers ? (
+        <div className="m4mb-overlay" onClick={() => setPopupOpen(false)}>
+          <div className="m4mb-popup" onClick={(e) => e.stopPropagation()}>
+            <button className="m4mb-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
+            <div className="m4mb-popup-icon">💎</div>
+            <h2>BIEN CHOISI !</h2>
+            <p>Tu as ouvert le bon coffre.</p>
+            <p><strong style={{ color: T.accent }}>100% offert</strong> sur ton premier dépôt.</p>
             {(dep || bon) ? (
               <div className="amounts">
                 {dep ? <span>Dépose <strong>{dep}</strong></span> : null}
@@ -294,7 +247,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
                 {bon ? <span>Reçois <strong>{bon}</strong></span> : null}
               </div>
             ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m4s-cta v3-cta">
+            <a href={safeAffi} target="_blank" rel="noreferrer" className="m4mb-cta v3-cta">
               🎁 Récupérer mon bonus
             </a>
           </div>

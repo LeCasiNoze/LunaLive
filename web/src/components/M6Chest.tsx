@@ -154,10 +154,9 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       </div>
 
       <div className="m6c-offer">
-        <div className="m6c-offer-mini">✦ Mines · 1 bombe cachée ✦</div>
+        <div className="m6c-offer-mini">✦ Démineur · gain mystère ✦</div>
         <div className="m6c-offer-main">
-          {dep ? <>Dépose <span className="accent">{dep}</span> · </> : null}
-          {bon ? <>Reçois <span className="accent">{bon}</span></> : "Bonus 100% garanti"}
+          Trouve <span className="accent">3 diamants</span> · gagne ton bonus
         </div>
       </div>
 

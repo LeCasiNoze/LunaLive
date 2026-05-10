@@ -430,7 +430,9 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
     borderColor: theme.borderColor,
   } : (inputs.m1CustomBgPage?.trim() ? { bgPage: inputs.m1CustomBgPage.trim() } : undefined);
 
-  // V2Page minimal : zones quasi vides, juste un bloc full-page dans `cards`.
+  // V2Page minimal : zones quasi vides, juste un bloc full-page dans `cards`
+  // + le bloc preset M4V1LowerSections en footer pour les sections reviews/
+  // FAQ/footer/sticky CTA (identique à M1, conversion-driver important).
   const page: V2Page = {
     modelKind: "M4V2",  // pour le typing renderer; ne sert qu'au routing zone
     affiCode: "",
@@ -457,7 +459,15 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
       belowCards: [],
       reviews: [],
       faq: [],
-      footer: [],
+      footer: [
+        {
+          id: makeV2BlockId("m4V1LowerSections"),
+          type: "m4V1LowerSections",
+          affiLink: inputs.affiLink,
+          brandName: inputs.pseudo?.trim() || "",
+          theme: themeColors,
+        } as any,
+      ],
     },
     globals: {
       bgPage: inputs.m1CustomBgPage?.trim() || theme?.bgPage || "#080212",

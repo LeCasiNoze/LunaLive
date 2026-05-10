@@ -94,8 +94,7 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-offer-main{font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:900;color:#fff;text-align:center;line-height:1.1}
         .m5s-offer-main .accent{color:${T.accent};text-shadow:0 0 14px ${T.accentGlow}}
 
-        .m5s-board{position:relative;z-index:2;display:grid;grid-template-columns:1fr 200px;gap:16px;width:min(96vw,640px);align-items:start;margin-bottom:24px}
-        @media(max-width:580px){.m5s-board{grid-template-columns:1fr}}
+        .m5s-board{position:relative;z-index:2;display:flex;flex-direction:column;gap:14px;width:min(94vw,440px);margin-bottom:22px}
 
         .m5s-machine{position:relative;background:linear-gradient(180deg,${T.bgCard},#0a0612);border:4px solid ${T.accent};border-radius:24px;padding:20px 16px 18px;box-shadow:0 0 50px ${T.accentGlow},0 14px 40px rgba(0,0,0,.7),inset 0 0 24px rgba(0,0,0,.3)}
         .m5s-machine-leds{position:absolute;top:8px;left:0;right:0;display:flex;justify-content:space-around;padding:0 18px;pointer-events:none}
@@ -112,12 +111,13 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-bar{display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,.5);border:1px solid ${T.border};border-radius:8px;padding:8px 14px;font-size:.85rem;color:rgba(255,255,255,.75)}
         .m5s-bar strong{color:${T.accent};font-weight:900;text-shadow:0 0 8px ${T.accentGlow}}
 
-        .m5s-paytable{background:${T.bgCard};border:1px solid ${T.border};border-radius:14px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-        .m5s-paytable h3{font-family:'Playfair Display',serif;font-size:1rem;color:${T.accent};margin:0 0 10px;text-align:center;letter-spacing:.05em;text-transform:uppercase}
-        .m5s-pt-row{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;font-size:.85rem;color:rgba(255,255,255,.85);transition:background .2s ease}
-        .m5s-pt-row.jackpot{background:${T.accent}15;color:${T.accent};font-weight:900;border:1px solid ${T.accent}55}
-        .m5s-pt-syms{font-size:1.2rem;letter-spacing:-2px}
-        .m5s-pt-pct{font-weight:900}
+        .m5s-paytable{background:${T.bgCard};border:1px solid ${T.border};border-radius:12px;padding:12px 14px;box-shadow:0 8px 20px rgba(0,0,0,.4)}
+        .m5s-paytable h3{font-family:'Playfair Display',serif;font-size:.9rem;color:${T.accent};margin:0 0 8px;text-align:center;letter-spacing:.06em;text-transform:uppercase}
+        .m5s-pt-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+        .m5s-pt-row{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:6px;font-size:.78rem;color:rgba(255,255,255,.85);gap:6px}
+        .m5s-pt-row.jackpot{background:${T.accent}15;color:${T.accent};font-weight:900;border:1px solid ${T.accent}55;grid-column:1/-1}
+        .m5s-pt-syms{font-size:1rem;letter-spacing:-2px;flex-shrink:0}
+        .m5s-pt-pct{font-weight:900;flex-shrink:0}
         .m5s-pt-row.jackpot .m5s-pt-pct{text-shadow:0 0 8px ${T.accentGlow}}
 
         .m5s-cta{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:min(96vw,460px);padding:18px 24px;background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:1.08rem;border:none;border-radius:14px;cursor:pointer;box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.15);text-decoration:none;position:relative;z-index:2}
@@ -126,14 +126,15 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
         .m5s-cta-pulse{animation:m5s-pulse 2s ease-in-out infinite}
 
         .m5s-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m5s-fade .3s ease-out}
-        .m5s-popup{position:relative;background:linear-gradient(180deg,${T.bgCard},${T.bgPage});border:2px solid ${T.accent};border-radius:22px;padding:36px 28px 28px;text-align:center;max-width:420px;width:100%;box-shadow:0 0 80px ${T.accentGlow};animation:m5s-pop .4s cubic-bezier(.17,.84,.34,1.27)}
-        .m5s-popup-close{position:absolute;top:14px;right:14px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+        .m5s-popup{position:relative;background:linear-gradient(180deg,${T.bgCard},${T.bgPage});border:2px solid ${T.accent};border-radius:22px;padding:30px 22px 22px;text-align:center;max-width:380px;width:100%;box-shadow:0 0 80px ${T.accentGlow};animation:m5s-pop .4s cubic-bezier(.17,.84,.34,1.27);box-sizing:border-box}
+        .m5s-popup-close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
         .m5s-popup-close:hover{background:rgba(255,255,255,.18)}
-        .m5s-popup-icon{font-size:2.4rem;margin-bottom:6px}
-        .m5s-popup h2{font-family:'Playfair Display',serif;font-size:2.1rem;font-weight:900;margin:0 0 10px;color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
-        .m5s-popup p{color:rgba(255,255,255,.85);margin:0 0 8px;font-size:.96rem;line-height:1.5}
-        .m5s-popup .amounts{display:inline-flex;align-items:center;gap:10px;font-size:.95rem;color:rgba(255,255,255,.7);background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;padding:10px 16px;border-radius:10px;margin:14px 0 22px}
-        .m5s-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1.1rem;text-shadow:0 0 10px ${T.accentGlow}}
+        .m5s-popup-icon{font-size:2rem;margin-bottom:4px}
+        .m5s-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:900;margin:0 0 8px;color:${T.accent};text-shadow:0 0 20px ${T.accentGlow}}
+        .m5s-popup p{color:rgba(255,255,255,.85);margin:0 0 6px;font-size:.92rem;line-height:1.5}
+        .m5s-popup .amounts{display:inline-flex;align-items:center;gap:8px;font-size:.85rem;color:rgba(255,255,255,.7);background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;padding:8px 12px;border-radius:10px;margin:12px 0 18px;flex-wrap:wrap;justify-content:center}
+        .m5s-popup .amounts strong{color:${T.accent};font-weight:900;font-size:1rem;text-shadow:0 0 10px ${T.accentGlow}}
+        .m5s-popup .m5s-cta{width:100%;font-size:.95rem;padding:14px 18px;letter-spacing:.08em}
 
         @keyframes m5s-spin{0%{transform:translateY(0)}100%{transform:translateY(-108px)}}
         @keyframes m5s-pop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
@@ -175,15 +176,20 @@ export function M5Slot({ pseudo, profileImageUrl, depositAmount, bonusAmount, af
 
         <div className="m5s-paytable">
           <h3>Tableau des gains</h3>
-          {PAYTABLE.map((p, i) => (
-            <div key={i} className={`m5s-pt-row ${p.jackpot ? "jackpot" : ""}`}>
-              <span className="m5s-pt-syms">{p.sym}{p.sym}{p.sym}</span>
-              <span style={{ flex: 1, marginLeft: 8, fontSize: ".75rem", opacity: .8 }}>{p.label}</span>
-              <span className="m5s-pt-pct">{p.pct}</span>
-            </div>
-          ))}
-          <div style={{ marginTop: 10, fontSize: ".7rem", color: "rgba(255,255,255,.5)", textAlign: "center", letterSpacing: ".05em" }}>
-            🎯 Vise les 💎💎💎
+          <div className="m5s-pt-grid">
+            {PAYTABLE.filter((p) => !p.jackpot).map((p, i) => (
+              <div key={i} className="m5s-pt-row">
+                <span className="m5s-pt-syms">{p.sym}{p.sym}{p.sym}</span>
+                <span className="m5s-pt-pct">{p.pct}</span>
+              </div>
+            ))}
+            {PAYTABLE.filter((p) => p.jackpot).map((p, i) => (
+              <div key={`j${i}`} className="m5s-pt-row jackpot">
+                <span className="m5s-pt-syms">{p.sym}{p.sym}{p.sym}</span>
+                <span style={{ flex: 1, fontSize: ".7rem" }}>JACKPOT</span>
+                <span className="m5s-pt-pct">{p.pct}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
