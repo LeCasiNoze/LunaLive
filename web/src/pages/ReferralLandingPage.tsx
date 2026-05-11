@@ -820,8 +820,10 @@ const RenderV2Page = React.lazy(() =>
   import("../lib/editor_v2_render").then((m) => ({ default: m.RenderV2Page }))
 );
 
-// V3 analytics : POST best-effort vers /api/public/affi-events.
-// Utilise sendBeacon si dispo (survit au unload de la page lors d'un click_cta).
+// V3 analytics : POST best-effort vers l'API distante.
+// L'URL DOIT être absolue (le static site et l'API sont sur des domaines
+// différents — lunalive.onrender.com vs lunalive-api.onrender.com).
+const ANALYTICS_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 function trackAffiEvent(slug: string, event: "view" | "click_cta") {
   if (!slug) return;
   try {
@@ -834,7 +836,7 @@ function trackAffiEvent(slug: string, event: "view" | "click_cta") {
       utmMedium: params.get("utm_medium") || null,
       utmCampaign: params.get("utm_campaign") || null,
     });
-    const url = "/api/public/affi-events";
+    const url = `${ANALYTICS_BASE}/api/public/affi-events`;
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       const blob = new Blob([body], { type: "application/json" });
       navigator.sendBeacon(url, blob);
