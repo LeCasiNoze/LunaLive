@@ -290,8 +290,8 @@ function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVaria
     const custom = String(cfg.goldenGameImageUrl || "").trim();
     if (custom) return [custom];
     return [
-      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.png`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.webp`,
+      `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.png`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpg`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpeg`,
     ];
@@ -300,8 +300,8 @@ function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVaria
   const custom = String(cfg.goldenChestUrl || "").trim();
   if (custom) return [custom];
   return [
-    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.webp`,
+    `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpg`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpeg`,
   ];
