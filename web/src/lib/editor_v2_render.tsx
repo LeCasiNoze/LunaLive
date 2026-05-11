@@ -30,6 +30,8 @@ import { M3Wheel } from "../components/M3Wheel";
 import { M4Scratch } from "../components/M4Scratch";
 import { M5Slot } from "../components/M5Slot";
 import { M6Chest } from "../components/M6Chest";
+import { M7Plinko } from "../components/M7Plinko";
+import { M8Penalty } from "../components/M8Penalty";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -381,6 +383,8 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     case "M4": return <M4Scratch {...props} />;
     case "M5": return <M5Slot {...props} />;
     case "M6": return <M6Chest {...props} />;
+    case "M7": return <M7Plinko {...props} />;
+    case "M8": return <M8Penalty {...props} />;
   }
 }
 

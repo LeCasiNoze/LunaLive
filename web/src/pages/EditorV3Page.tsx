@@ -510,7 +510,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -518,9 +518,11 @@ function WizardQuickView({
               {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards)"}
               {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants)"}
               {inputs.modelKind === "M3" && "M3 = Roue à tourner — gagne toujours 100% bonus"}
-              {inputs.modelKind === "M4" && "M4 = Carte à gratter — révèle ton bonus"}
+              {inputs.modelKind === "M4" && "M4 = Mystery Boxes — choisis 1 coffre parmi 3"}
               {inputs.modelKind === "M5" && "M5 = Machine à sous 3 reels — jackpot garanti"}
               {inputs.modelKind === "M6" && "M6 = Mines — grille 3x3 sans bombe"}
+              {inputs.modelKind === "M7" && "M7 = Plinko — bille qui rebondit sur les pegs"}
+              {inputs.modelKind === "M8" && "M8 = Penalty — tire au but, marque toujours"}
             </div>
           </div>
 
