@@ -853,6 +853,267 @@ function isV3Page(p: FsbAffiPage): boolean {
   return !!(p.config && (p.config as any)[V3_MARKER]);
 }
 
+// ─── Stats & Classement section ────────────────────────────────────────────
+
+type RankingSort = "views" | "clicks" | "ctr";
+
+function getPageMeta(p: FsbAffiPage): { modelLabel: string; isV3: boolean } {
+  const cfg = p.config as any;
+  const isV3 = !!(cfg && cfg[V3_MARKER]);
+  if (isV3) {
+    const raw = cfg[V3_INPUTS_KEY];
+    let inputs: V3QuickInputs | null = null;
+    if (typeof raw === "string") {
+      try { inputs = JSON.parse(raw); } catch { /* noop */ }
+    } else if (raw && typeof raw === "object") {
+      inputs = raw as V3QuickInputs;
+    }
+    return { modelLabel: `V3·${inputs?.modelKind || "M1"}`, isV3: true };
+  }
+  if (p.editorVersion === 2) return { modelLabel: "V2", isV3: false };
+  return { modelLabel: `V1·M${p.model || "?"}`, isV3: false };
+}
+
+function StatsRankingSection({
+  pages, statsByPage,
+}: {
+  pages: FsbAffiPage[];
+  statsByPage: Record<string, AffiPageStats>;
+}) {
+  const [sortBy, setSortBy] = React.useState<RankingSort>("views");
+  const [filterScope, setFilterScope] = React.useState<"all" | "v3" | "v1v2">("all");
+  const [expanded, setExpanded] = React.useState(false);
+
+  // Tableau enrichi avec stats + meta, filtré + trié
+  const ranked = React.useMemo(() => {
+    const rows = pages.map((p) => {
+      const stats = statsByPage[String(p.id)] || { views: 0, uniqueViews: 0, clicks: 0, uniqueClicks: 0, ctr: 0, uniqueCtr: 0, periodDays: 30 };
+      const meta = getPageMeta(p);
+      return { page: p, stats, meta };
+    });
+    // Filter scope
+    const filtered = rows.filter((r) => {
+      if (filterScope === "v3") return r.meta.isV3;
+      if (filterScope === "v1v2") return !r.meta.isV3;
+      return true;
+    });
+    // Sort
+    filtered.sort((a, b) => {
+      if (sortBy === "views") return b.stats.views - a.stats.views;
+      if (sortBy === "clicks") return b.stats.clicks - a.stats.clicks;
+      // CTR : on filtre les pages sans vue pour ne pas avoir des 0/0 en tête
+      const ctrA = a.stats.views > 0 ? a.stats.ctr : -1;
+      const ctrB = b.stats.views > 0 ? b.stats.ctr : -1;
+      return ctrB - ctrA;
+    });
+    return filtered;
+  }, [pages, statsByPage, sortBy, filterScope]);
+
+  // Agrégats globaux
+  const totals = React.useMemo(() => {
+    const v = ranked.reduce((sum, r) => sum + r.stats.views, 0);
+    const c = ranked.reduce((sum, r) => sum + r.stats.clicks, 0);
+    const uv = ranked.reduce((sum, r) => sum + r.stats.uniqueViews, 0);
+    const uc = ranked.reduce((sum, r) => sum + r.stats.uniqueClicks, 0);
+    const pagesWithTraffic = ranked.filter((r) => r.stats.views > 0).length;
+    const avgCtr = v > 0 ? (c / v) * 100 : 0;
+    return { v, c, uv, uc, pagesWithTraffic, avgCtr };
+  }, [ranked]);
+
+  const rowsToShow = expanded ? ranked : ranked.slice(0, 10);
+
+  const sortBtn = (key: RankingSort, label: string) => (
+    <button
+      onClick={() => setSortBy(key)}
+      style={{
+        background: sortBy === key ? T.primary + "33" : "transparent",
+        color: sortBy === key ? T.primary : T.textMute,
+        border: `1px solid ${sortBy === key ? T.primary : T.border}`,
+        borderRadius: 999,
+        padding: "5px 12px",
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: "pointer",
+        letterSpacing: ".04em",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  const scopeBtn = (key: "all" | "v3" | "v1v2", label: string) => (
+    <button
+      onClick={() => setFilterScope(key)}
+      style={{
+        background: filterScope === key ? T.gold + "22" : "transparent",
+        color: filterScope === key ? T.gold : T.textMute,
+        border: `1px solid ${filterScope === key ? T.gold : T.border}`,
+        borderRadius: 999,
+        padding: "5px 12px",
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: "pointer",
+        letterSpacing: ".04em",
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <div style={{
+      background: T.bgPanel,
+      border: `1px solid ${T.border}`,
+      borderRadius: 12,
+      padding: 20,
+      marginBottom: 28,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+        <h2 style={{ fontSize: 17, fontWeight: 800, margin: 0 }}>
+          📊 Stats & Classement <span style={{ fontSize: 12, color: T.textMute, fontWeight: 500 }}>· 30 derniers jours</span>
+        </h2>
+        <div style={{ display: "flex", gap: 6 }}>
+          {scopeBtn("all", "Toutes")}
+          {scopeBtn("v3", "V3 only")}
+          {scopeBtn("v1v2", "V1/V2 only")}
+        </div>
+      </div>
+
+      {/* KPIs globaux */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
+        <div style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: T.textMute, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 }}>Total vues</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>{totals.v}</div>
+          <div style={{ fontSize: 10, color: T.textDim }}>{totals.uv} uniques</div>
+        </div>
+        <div style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: T.textMute, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 }}>Total clics CTA</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>{totals.c}</div>
+          <div style={{ fontSize: 10, color: T.textDim }}>{totals.uc} uniques</div>
+        </div>
+        <div style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: T.textMute, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 }}>CTR moyen</div>
+          <div style={{
+            fontSize: 22, fontWeight: 800,
+            color: totals.avgCtr >= 30 ? T.ok : totals.avgCtr >= 10 ? T.gold : T.text,
+          }}>{totals.avgCtr.toFixed(1)}%</div>
+          <div style={{ fontSize: 10, color: T.textDim }}>clics/vues</div>
+        </div>
+        <div style={{ background: T.bgInput, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px" }}>
+          <div style={{ fontSize: 10, color: T.textMute, letterSpacing: ".1em", textTransform: "uppercase", marginBottom: 4 }}>Pages actives</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: T.text }}>{totals.pagesWithTraffic}</div>
+          <div style={{ fontSize: 10, color: T.textDim }}>sur {ranked.length}</div>
+        </div>
+      </div>
+
+      {/* Tri + classement */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, color: T.textMute, fontWeight: 600, letterSpacing: ".05em" }}>Trier par :</span>
+        {sortBtn("views", "👁 Vues")}
+        {sortBtn("clicks", "🎯 Clics")}
+        {sortBtn("ctr", "% CTR")}
+      </div>
+
+      {ranked.length === 0 ? (
+        <div style={{ color: T.textDim, padding: 24, textAlign: "center", fontSize: 13 }}>
+          Aucune page dans ce filtre
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto", marginLeft: -8, marginRight: -8 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: T.textMute, fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", textAlign: "left" }}>
+                <th style={{ padding: "8px", fontWeight: 600 }}>#</th>
+                <th style={{ padding: "8px", fontWeight: 600 }}>Page</th>
+                <th style={{ padding: "8px", fontWeight: 600 }}>Modèle</th>
+                <th style={{ padding: "8px", fontWeight: 600, textAlign: "right" }}>Vues</th>
+                <th style={{ padding: "8px", fontWeight: 600, textAlign: "right" }}>Clics</th>
+                <th style={{ padding: "8px", fontWeight: 600, textAlign: "right" }}>CTR</th>
+                <th style={{ padding: "8px", fontWeight: 600, textAlign: "right" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rowsToShow.map((r, i) => {
+                const ctr = r.stats.views > 0 ? r.stats.ctr * 100 : null;
+                const isTop = i < 3 && r.stats.views > 0;
+                return (
+                  <tr
+                    key={r.page.id}
+                    style={{
+                      borderTop: `1px solid ${T.border}`,
+                      color: T.text,
+                    }}
+                  >
+                    <td style={{ padding: "10px 8px", fontWeight: 700, color: isTop ? T.gold : T.textMute, width: 32 }}>
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                    </td>
+                    <td style={{ padding: "10px 8px", maxWidth: 240 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.page.brandName || r.page.slug}
+                      </div>
+                      <div style={{ fontSize: 10, color: T.textDim, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        /r/{r.page.slug}
+                      </div>
+                    </td>
+                    <td style={{ padding: "10px 8px" }}>
+                      <span style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        background: r.meta.isV3 ? T.gold + "22" : T.bgInput,
+                        color: r.meta.isV3 ? T.gold : T.textMute,
+                      }}>
+                        {r.meta.modelLabel}
+                      </span>
+                    </td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <div style={{ fontWeight: 700 }}>{r.stats.views}</div>
+                      <div style={{ fontSize: 10, color: T.textDim }}>{r.stats.uniqueViews} uniq</div>
+                    </td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <div style={{ fontWeight: 700 }}>{r.stats.clicks}</div>
+                      <div style={{ fontSize: 10, color: T.textDim }}>{r.stats.uniqueClicks} uniq</div>
+                    </td>
+                    <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      {ctr === null ? (
+                        <span style={{ color: T.textDim }}>—</span>
+                      ) : (
+                        <span style={{
+                          fontWeight: 800,
+                          color: ctr >= 50 ? T.ok : ctr >= 20 ? T.gold : ctr >= 5 ? T.text : T.textMute,
+                        }}>
+                          {ctr.toFixed(1)}%
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                      <a href={`/r/${r.page.slug}`} target="_blank" rel="noreferrer" style={{ color: T.textMute, textDecoration: "none", fontSize: 14 }} title="Ouvrir">↗</a>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {ranked.length > 10 ? (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          style={{
+            marginTop: 14, background: "transparent", border: `1px solid ${T.border}`,
+            color: T.textMute, padding: "8px 14px", borderRadius: 6, fontSize: 12, fontWeight: 600,
+            cursor: "pointer", width: "100%",
+          }}
+        >
+          {expanded ? "Réduire" : `Voir tout (${ranked.length} pages)`}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function DashboardView({
   pages, loading, onCreateQuick, onOpen, onDelete, onRefresh, statsByPage,
 }: {
@@ -884,6 +1145,9 @@ function DashboardView({
       </div>
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
+        {/* Section Stats & Classement (toutes pages confondues, pas seulement V3) */}
+        <StatsRankingSection pages={pages} statsByPage={statsByPage} />
+
         <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
           Mes pages V3 <span style={{ fontSize: 14, color: T.textMute, fontWeight: 500 }}>· {v3Pages.length}</span>
         </h2>
