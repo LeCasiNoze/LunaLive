@@ -1114,8 +1114,56 @@ function StatsRankingSection({
   );
 }
 
+// ─── Topbar partagée (dashboard + stats) ──────────────────────────────────
+function V3Topbar({
+  activeView, onSwitchView, onCreateQuick, onRefresh,
+}: {
+  activeView: "dashboard" | "stats";
+  onSwitchView: (v: "dashboard" | "stats") => void;
+  onCreateQuick: () => void;
+  onRefresh: () => void;
+}) {
+  const tabBtn = (key: "dashboard" | "stats", label: string, icon: string) => (
+    <button
+      onClick={() => onSwitchView(key)}
+      style={{
+        background: activeView === key ? T.bgPanel2 : "transparent",
+        color: activeView === key ? T.text : T.textMute,
+        border: "none",
+        borderBottom: `2px solid ${activeView === key ? T.primary : "transparent"}`,
+        padding: "12px 16px",
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: "pointer",
+        letterSpacing: ".02em",
+        transition: "color .15s ease",
+      }}
+    >
+      {icon} {label}
+    </button>
+  );
+  return (
+    <div style={{ background: T.bgPanel, borderBottom: `1px solid ${T.border}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px 0", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 17 }}>FSN Editor — V3</div>
+          <div style={{ fontSize: 11, color: T.textMute }}>Pages d'affiliation + analytics</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onRefresh} style={btnGhost}>↻ Rafraîchir</button>
+          <button onClick={onCreateQuick} style={btnPrimary}>+ Créer une page</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 0, padding: "0 24px", marginTop: 12, alignItems: "flex-end" }}>
+        {tabBtn("dashboard", "Mes pages", "📁")}
+        {tabBtn("stats", "Stats & Classement", "📊")}
+      </div>
+    </div>
+  );
+}
+
 function DashboardView({
-  pages, loading, onCreateQuick, onOpen, onDelete, onRefresh, statsByPage,
+  pages, loading, onCreateQuick, onOpen, onDelete, onRefresh, statsByPage, onSwitchView,
 }: {
   pages: FsbAffiPage[];
   loading: boolean;
@@ -1124,30 +1172,15 @@ function DashboardView({
   onDelete: (p: FsbAffiPage) => void;
   onRefresh: () => void;
   statsByPage: Record<string, AffiPageStats>;
+  onSwitchView: (v: "dashboard" | "stats") => void;
 }) {
   const v3Pages = pages.filter(isV3Page);
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      {/* Topbar */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "16px 24px", background: T.bgPanel, borderBottom: `1px solid ${T.border}`,
-      }}>
-        <div>
-          <div style={{ fontWeight: 800, fontSize: 18 }}>FSN Editor — V3</div>
-          <div style={{ fontSize: 12, color: T.textMute }}>Pages d'affiliation rapides (M1 = M4 V1)</div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onRefresh} style={btnGhost}>↻ Rafraîchir</button>
-          <button onClick={onCreateQuick} style={btnPrimary}>+ Créer une page</button>
-        </div>
-      </div>
+      <V3Topbar activeView="dashboard" onSwitchView={onSwitchView} onCreateQuick={onCreateQuick} onRefresh={onRefresh} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
-        {/* Section Stats & Classement (toutes pages confondues, pas seulement V3) */}
-        <StatsRankingSection pages={pages} statsByPage={statsByPage} />
-
         <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
           Mes pages V3 <span style={{ fontSize: 14, color: T.textMute, fontWeight: 500 }}>· {v3Pages.length}</span>
         </h2>
@@ -1234,6 +1267,50 @@ function DashboardView({
   );
 }
 
+// ─── Vue Stats dédiée ───────────────────────────────────────────────────────
+
+function StatsView({
+  pages, loading, statsByPage, onCreateQuick, onRefresh, onSwitchView,
+}: {
+  pages: FsbAffiPage[];
+  loading: boolean;
+  statsByPage: Record<string, AffiPageStats>;
+  onCreateQuick: () => void;
+  onRefresh: () => void;
+  onSwitchView: (v: "dashboard" | "stats") => void;
+}) {
+  return (
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      <V3Topbar activeView="stats" onSwitchView={onSwitchView} onCreateQuick={onCreateQuick} onRefresh={onRefresh} />
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
+        <div style={{ marginBottom: 20 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>📊 Analytics globales</h2>
+          <div style={{ fontSize: 13, color: T.textMute }}>
+            Vue d'ensemble du trafic et des conversions sur l'ensemble de tes landings (V1, V2, V3 confondus).
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ color: T.textMute, padding: 24, textAlign: "center" }}>Chargement des stats…</div>
+        ) : pages.length === 0 ? (
+          <div style={{
+            textAlign: "center", padding: "60px 20px",
+            border: `1px dashed ${T.borderHi}`, borderRadius: 12, color: T.textMute,
+          }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
+            <div style={{ fontWeight: 700, color: T.text, marginBottom: 4 }}>Aucune page d'affiliation</div>
+            <div style={{ fontSize: 13, marginBottom: 16 }}>Crée ta première page pour démarrer le tracking.</div>
+            <button onClick={onCreateQuick} style={btnPrimary}>+ Créer une page</button>
+          </div>
+        ) : (
+          <StatsRankingSection pages={pages} statsByPage={statsByPage} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Creation choice modal ──────────────────────────────────────────────────
 
 function CreateChoiceModal({ onChoose, onCancel }: { onChoose: (mode: "quick" | "custom") => void; onCancel: () => void }) {
@@ -1286,7 +1363,7 @@ export default function EditorV3Page() {
   const { user, token } = useAuth();
   const allowed = !!user && FSB_ALLOWED_IDS.has(user.id);
 
-  const [view, setView] = React.useState<"dashboard" | "wizard">("dashboard");
+  const [view, setView] = React.useState<"dashboard" | "stats" | "wizard">("dashboard");
   const [pages, setPages] = React.useState<FsbAffiPage[]>([]);
   const [loadingList, setLoadingList] = React.useState(true);
   const [showCreateChoice, setShowCreateChoice] = React.useState(false);
@@ -1372,17 +1449,31 @@ export default function EditorV3Page() {
     );
   }
 
+  const switchView = (v: "dashboard" | "stats") => setView(v);
+
   return (
     <>
-      <DashboardView
-        pages={pages}
-        loading={loadingList}
-        onCreateQuick={() => setShowCreateChoice(true)}
-        onOpen={handleOpen}
-        onDelete={handleDelete}
-        onRefresh={refreshList}
-        statsByPage={statsByPage}
-      />
+      {view === "stats" ? (
+        <StatsView
+          pages={pages}
+          loading={loadingList}
+          statsByPage={statsByPage}
+          onCreateQuick={() => setShowCreateChoice(true)}
+          onRefresh={refreshList}
+          onSwitchView={switchView}
+        />
+      ) : (
+        <DashboardView
+          pages={pages}
+          loading={loadingList}
+          onCreateQuick={() => setShowCreateChoice(true)}
+          onOpen={handleOpen}
+          onDelete={handleDelete}
+          onRefresh={refreshList}
+          statsByPage={statsByPage}
+          onSwitchView={switchView}
+        />
+      )}
       {showCreateChoice ? (
         <CreateChoiceModal
           onChoose={(mode) => {
