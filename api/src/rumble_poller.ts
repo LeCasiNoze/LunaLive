@@ -336,6 +336,26 @@ async function pollAll(io?: IOServer) {
 const RADIO_STREAMER_ID = 32;
 const RADIO_SLUG = "lunalive";
 
+function buildRadioProbeOrder(usernames: string[], currentUsername: string | null): string[] {
+  if (!currentUsername) return [...usernames];
+  const idx = usernames.findIndex((u) => u.toLowerCase() === currentUsername.toLowerCase());
+  if (idx < 0) return [...usernames];
+  return [...usernames.slice(idx), ...usernames.slice(0, idx)];
+}
+
+async function findLiveRadioSource(usernames: string[], currentUsername: string | null) {
+  const ordered = buildRadioProbeOrder(usernames, currentUsername);
+  for (const username of ordered) {
+    try {
+      const info = await fetchRumbleLiveInfoFromUsername(username);
+      if (info.isLive) return { username, info };
+    } catch (e: any) {
+      console.warn(`[rumble-poller] radio probe failed for ${username}`, e?.message || e);
+    }
+  }
+  return null;
+}
+
 /**
  * Si la radio (id=32, slug=lunalive) est en mode platform=rumble,
  * - Si la radio est elle-même live (sa source est toujours en stream) → keep
@@ -387,6 +407,36 @@ async function rotateRadioTarget(io?: IOServer) {
   );
   if (sources.rows.length === 0) return;
   const usernames: string[] = sources.rows.map((r: any) => String(r.username));
+
+  // Fast path: probe la liste curated et saute directement sur une vraie source live.
+  // On garde la rotation séquentielle ci-dessous uniquement comme fallback quand
+  // la détection directe ne trouve rien (ex: worker bloqué, relay local en secours).
+  const liveSource = await findLiveRadioSource(usernames, currentUsername);
+  if (liveSource) {
+    if (liveSource.username.toLowerCase() !== (currentUsername || "").toLowerCase()) {
+      await pool.query(
+        `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
+        [liveSource.username, RADIO_STREAMER_ID]
+      );
+      console.log(`[rumble-poller] radio live pick: ${currentUsername || "(aucun)"} -> ${liveSource.username}`);
+    }
+
+    await updateRumbleInfo(
+      RADIO_STREAMER_ID,
+      RADIO_SLUG,
+      liveSource.info.isLive,
+      liveSource.info.title,
+      liveSource.info.viewersCount,
+      liveSource.info.hlsUrl,
+      liveSource.info.videoUrl,
+      liveSource.info.thumbnailUrl,
+      liveSource.info.videoId,
+      liveSource.info.videoIdNumeric,
+      io,
+      liveSource.info.createdAt
+    );
+    return;
+  }
 
   let nextIndex = 0;
   if (currentUsername) {

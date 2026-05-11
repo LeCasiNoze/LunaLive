@@ -21,7 +21,7 @@
 
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dir, "..");
@@ -49,6 +49,13 @@ const API_BASE = (process.env.API_BASE || "https://lunalive-api.onrender.com").r
 const ADMIN_KEY = process.env.ADMIN_KEY || process.env.LUNALIVE_ADMIN_KEY;
 const POLL_INTERVAL_MS = Number(process.env.RUMBLE_RELAY_INTERVAL_MS || 60_000);
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const RADIO_STREAMER_ID = 32;
+
+const pgUrl = pathToFileURL(resolve(root, "api/node_modules/pg/lib/index.js")).href;
+const { default: pg } = await import(pgUrl).catch(async () => import("pg"));
+const dbPool = process.env.DATABASE_URL
+  ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
 
 if (!ADMIN_KEY) {
   console.error("[relay] ADMIN_KEY manquant — défini-le dans .env ou api/.env");
@@ -350,6 +357,64 @@ async function pushLiveVideo(slug, vSlug, viewers) {
   return true;
 }
 
+function buildProbeOrder(usernames, currentUsername) {
+  if (!currentUsername) return [...usernames];
+  const idx = usernames.findIndex((u) => String(u).toLowerCase() === String(currentUsername).toLowerCase());
+  if (idx < 0) return [...usernames];
+  return [...usernames.slice(idx), ...usernames.slice(0, idx)];
+}
+
+async function fetchActiveRadioSources() {
+  if (!dbPool) return [];
+  const { rows } = await dbPool.query(
+    `SELECT username FROM rumble_radio_sources WHERE active = TRUE ORDER BY id ASC`
+  );
+  return rows.map((r) => String(r.username || "").trim()).filter(Boolean);
+}
+
+async function fetchCurrentRadioUsername() {
+  if (!dbPool) return null;
+  const { rows } = await dbPool.query(
+    `SELECT rumble_username FROM streamers WHERE id = $1 LIMIT 1`,
+    [RADIO_STREAMER_ID]
+  );
+  return rows[0]?.rumble_username ? String(rows[0].rumble_username) : null;
+}
+
+async function setRadioLiveSource(username, live) {
+  if (!dbPool || !username || !live?.vSlug) return false;
+  const viewers = (typeof live?.viewers === "number" && Number.isFinite(live.viewers) && live.viewers >= 0)
+    ? Math.floor(live.viewers)
+    : null;
+
+  await dbPool.query(
+    `UPDATE streamers
+        SET rumble_username = $1,
+            is_live = TRUE,
+            title = 'Live sur Rumble',
+            viewers = COALESCE($2, viewers),
+            updated_at = NOW()
+      WHERE id = $3`,
+    [username, viewers, RADIO_STREAMER_ID]
+  );
+
+  await dbPool.query(
+    `INSERT INTO streamer_rumble_info (
+       streamer_id, is_live, live_id, live_video_id_numeric, viewers_count, updated_at
+     )
+     VALUES ($1, TRUE, $2, $3, $4, NOW())
+     ON CONFLICT (streamer_id) DO UPDATE SET
+       is_live = TRUE,
+       live_id = EXCLUDED.live_id,
+       live_video_id_numeric = EXCLUDED.live_video_id_numeric,
+       viewers_count = COALESCE(EXCLUDED.viewers_count, streamer_rumble_info.viewers_count),
+       updated_at = NOW()`,
+    [RADIO_STREAMER_ID, live.vSlug, live.vidNumeric || null, viewers]
+  );
+
+  return true;
+}
+
 /**
  * Fetch /user/{name}/live et extrait le slug du live courant depuis le player
  * init JS (`Rumble("play", {..., "video":"vXXXXXX", ...})`). C'est l'unique
@@ -431,7 +496,38 @@ async function findCurrentLiveSlug(username) {
   return { vSlug, vidNumeric, viewers };
 }
 
+async function tickRadio() {
+  try {
+    const sources = await fetchActiveRadioSources();
+    if (!sources.length) {
+      console.log("[relay-radio] aucune source radio active");
+      return;
+    }
+
+    const current = await fetchCurrentRadioUsername();
+    const ordered = buildProbeOrder(sources, current);
+    console.log(`[relay-radio] scan ${ordered.length} source(s) actives`);
+
+    for (const username of ordered) {
+      const live = await findCurrentLiveSlug(username);
+      if (!live) continue;
+
+      const ok = await setRadioLiveSource(username, live);
+      if (ok) {
+        console.log(`[relay-radio] source live retenue: ${username} -> ${live.vSlug} viewers=${live.viewers ?? "?"}`);
+      }
+      return;
+    }
+
+    console.log("[relay-radio] aucune source radio live détectée");
+  } catch (e) {
+    console.warn("[relay-radio] tick failed", e?.message || e);
+  }
+}
+
 async function tick() {
+  await tickRadio();
+
   // On utilise list-all : couvre tout le monde (pseudo-only + api_key).
   // La slug discovery sera skip pour les api_key (le poller Render le fait
   // déjà via api_key direct) — on les détecte via le champ `source`.
