@@ -5,6 +5,9 @@ import { parseAffiButtons, injectButtonsIntoIframe, parseFaqItems } from "./Affi
 
 const REF_KEY = "ref_slug";
 
+// R2 public bucket pour les assets de landing affiliees (bandwidth = 0 sur Render)
+const R2_AFFI_BASE = "https://pub-8163baf5847b4f8999b7c2c6af9c0350.r2.dev/static";
+
 type GoldenChanceVariant = "gold" | "ruby" | "emerald" | "sapphire";
 
 type Config = {
@@ -290,6 +293,7 @@ function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVaria
     const custom = String(cfg.goldenGameImageUrl || "").trim();
     if (custom) return [custom];
     return [
+      `${R2_AFFI_BASE}/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.webp`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.webp`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.png`,
       `/affi_templates/golden_chance_chest/variants/${goldenVariant}/jeux.jpg`,
@@ -300,6 +304,7 @@ function getGoldenVisualCandidates(cfg: Config, goldenVariant: GoldenChanceVaria
   const custom = String(cfg.goldenChestUrl || "").trim();
   if (custom) return [custom];
   return [
+    `${R2_AFFI_BASE}/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.webp`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.webp`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.png`,
     `/affi_templates/golden_chance_chest/variants/${goldenVariant}/chest.jpg`,
