@@ -47,18 +47,20 @@ console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 /* cache + fallback                                               */
 /* ───────────────────────────────────────────────────────────── */
 
-const CACHE_MS = 300_000; // 5 min
+const LIVE_CACHE_MS = 60_000; // 1 min
+const LIVE_CACHE_SECONDS = Math.max(1, Math.floor(LIVE_CACHE_MS / 1000));
 const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
+const inFlight = new Map<string, Promise<{ exp: number; buf: Buffer; contentType: string } | null>>();
 
 function sendCached(res: ExResponse, hit: { buf: Buffer; contentType: string }) {
   res.set("Content-Type", hit.contentType);
-  res.set("Cache-Control", "public, max-age=300");
+  res.set("Cache-Control", `public, max-age=${LIVE_CACHE_SECONDS}`);
   return res.end(hit.buf);
 }
 
 function sendSvg(res: ExResponse, svg: string) {
   res.set("Content-Type", "image/svg+xml; charset=utf-8");
-  res.set("Cache-Control", "public, max-age=300");
+  res.set("Cache-Control", `public, max-age=${LIVE_CACHE_SECONDS}`);
   return res.end(svg);
 }
 
@@ -117,7 +119,10 @@ function normalizeUrl(u: any): string {
   return s;
 }
 
-async function fetchImageToBuffer(url: string): Promise<{ ok: boolean; buf: Buffer; ct: string; status: number }> {
+async function fetchImageToBuffer(
+  url: string,
+  opts?: { referer?: string; origin?: string }
+): Promise<{ ok: boolean; buf: Buffer; ct: string; status: number }> {
   const u = normalizeUrl(url);
   if (!u) return { ok: false, buf: Buffer.alloc(0), ct: "", status: 0 };
 
@@ -132,8 +137,8 @@ async function fetchImageToBuffer(url: string): Promise<{ ok: boolean; buf: Buff
       headers: {
         accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
         "user-agent": "Mozilla/5.0",
-        referer: "https://dlive.tv/",
-        origin: "https://dlive.tv",
+        ...(opts?.referer ? { referer: opts.referer } : {}),
+        ...(opts?.origin ? { origin: opts.origin } : {}),
       },
     });
 
@@ -189,6 +194,116 @@ async function resolveDliveDisplaynameFromSlug(slug: string): Promise<string> {
   }
 }
 
+async function resolveThumbMetaFromSlug(slug: string): Promise<{
+  platform: string;
+  fallbackThumbUrl: string | null;
+  rumbleIsLive: boolean;
+  rumbleHlsUrl: string | null;
+}> {
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        COALESCE(LOWER(s.platform), '') AS platform,
+        COALESCE(ri.thumbnail_url, s.thumb_url) AS fallback_thumb_url,
+        COALESCE(ri.is_live, FALSE) AS rumble_is_live,
+        ri.hls_url AS rumble_hls_url
+      FROM streamers s
+      LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+      WHERE s.slug = $1
+      LIMIT 1
+      `,
+      [slug]
+    );
+
+    const row = rows?.[0];
+    return {
+      platform: String(row?.platform || "").trim().toLowerCase(),
+      fallbackThumbUrl: row?.fallback_thumb_url ? String(row.fallback_thumb_url) : null,
+      rumbleIsLive: row?.rumble_is_live === true,
+      rumbleHlsUrl: row?.rumble_hls_url ? String(row.rumble_hls_url) : null,
+    };
+  } catch {
+    return {
+      platform: "",
+      fallbackThumbUrl: null,
+      rumbleIsLive: false,
+      rumbleHlsUrl: null,
+    };
+  }
+}
+
+async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
+  if (!FFMPEG_OK) return null;
+
+  return await new Promise<Buffer | null>((resolve) => {
+    const args = [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-live_start_index", "-2",
+      "-rw_timeout", "12000000",
+      "-i", hlsUrl,
+      "-an",
+      "-frames:v", "1",
+      "-q:v", "3",
+      "-f", "image2pipe",
+      "-vcodec", "mjpeg",
+      "pipe:1",
+    ];
+
+    const proc = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const out: Buffer[] = [];
+    let stderr = "";
+    const timer = setTimeout(() => {
+      try { proc.kill("SIGKILL"); } catch {}
+    }, 15_000);
+
+    proc.stdout.on("data", (chunk) => out.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    proc.stderr.on("data", (chunk) => {
+      stderr += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+    });
+    proc.on("error", () => {
+      clearTimeout(timer);
+      resolve(null);
+    });
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      const buf = Buffer.concat(out);
+      if (code === 0 && isJpeg(buf)) return resolve(buf);
+      if (stderr.trim()) {
+        console.warn(`[thumbs] live frame ffmpeg failed code=${code} url=${hlsUrl} err=${stderr.trim().slice(0, 280)}`);
+      }
+      resolve(null);
+    });
+  });
+}
+
+async function getOrCreateLiveThumb(
+  key: string,
+  producer: () => Promise<{ buf: Buffer; contentType: string } | null>
+) {
+  const hit = cache.get(key);
+  if (hit && hit.exp > Date.now()) return hit;
+
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const task = (async () => {
+    try {
+      const made = await producer();
+      if (!made) return null;
+      const cached = { exp: Date.now() + LIVE_CACHE_MS, buf: made.buf, contentType: made.contentType };
+      cache.set(key, cached);
+      return cached;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+
+  inFlight.set(key, task);
+  return task;
+}
+
 /* ───────────────────────────────────────────────────────────── */
 /* route LIVE : utilise thumbnailUrl (robuste)                    */
 /* ───────────────────────────────────────────────────────────── */
@@ -202,38 +317,60 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return sendCached(res, hit);
 
+  const meta = await resolveThumbMetaFromSlug(slug);
+
+  if (meta.platform === "rumble") {
+    const liveThumb = await getOrCreateLiveThumb(key, async () => {
+      if (meta.rumbleIsLive && meta.rumbleHlsUrl) {
+        const frame = await captureLiveFrameFromHls(meta.rumbleHlsUrl);
+        if (frame) return { buf: frame, contentType: "image/jpeg" };
+      }
+
+      const fallbackUrl = normalizeUrl(meta.fallbackThumbUrl);
+      if (!fallbackUrl) return null;
+
+      const img = await fetchImageToBuffer(fallbackUrl);
+      if (!img.ok) {
+        console.warn(`[thumbs] rumble fallback fetch failed slug=${slug} status=${img.status} ct=${img.ct} url=${fallbackUrl}`);
+        return null;
+      }
+      return { buf: img.buf, contentType: img.ct || "image/jpeg" };
+    });
+
+    if (liveThumb) return sendCached(res, liveThumb);
+    return sendSvg(res, svgFallback(slug));
+  }
+
   const displayname = await resolveDliveDisplaynameFromSlug(slug);
 
-  let info: any = null;
-  try {
-    info = await fetchDliveLiveInfo(displayname);
-  } catch (e: any) {
-    console.warn(`[thumbs] dlive fetch failed slug=${slug} displayname=${displayname}`, String(e?.message || e));
-    return sendSvg(res, svgFallback(slug));
-  }
+  const liveThumb = await getOrCreateLiveThumb(key, async () => {
+    let info: any = null;
+    try {
+      info = await fetchDliveLiveInfo(displayname);
+    } catch (e: any) {
+      console.warn(`[thumbs] dlive fetch failed slug=${slug} displayname=${displayname}`, String(e?.message || e));
+      return null;
+    }
 
-  const thumbUrl = normalizeUrl(info?.thumbnailUrl);
+    const thumbUrl = normalizeUrl(info?.thumbnailUrl);
+    if (!thumbUrl) return null;
 
-  // si pas live ou pas de thumb => fallback SVG
-  if (!thumbUrl) {
-    // (optionnel) log léger
-    // console.log(`[thumbs] no thumbnailUrl slug=${slug} displayname=${displayname} live=${!!info?.isLive}`);
-    return sendSvg(res, svgFallback(slug));
-  }
+    const img = await fetchImageToBuffer(thumbUrl, {
+      referer: "https://dlive.tv/",
+      origin: "https://dlive.tv",
+    });
 
-  // récupère l'image DLive
-  const img = await fetchImageToBuffer(thumbUrl);
+    if (!img.ok) {
+      console.warn(
+        `[thumbs] thumbnail fetch failed slug=${slug} displayname=${displayname} status=${img.status} ct=${img.ct} url=${thumbUrl}`
+      );
+      return null;
+    }
 
-  if (img.ok) {
-    cache.set(key, { exp: Date.now() + CACHE_MS, buf: img.buf, contentType: img.ct || "image/jpeg" });
-    res.set("Content-Type", img.ct || "image/jpeg");
-    res.set("Cache-Control", "public, max-age=300");
-    return res.end(img.buf);
-  }
+    return { buf: img.buf, contentType: img.ct || "image/jpeg" };
+  });
 
-  console.warn(
-    `[thumbs] thumbnail fetch failed slug=${slug} displayname=${displayname} status=${img.status} ct=${img.ct} url=${thumbUrl}`
-  );
+  if (liveThumb) return sendCached(res, liveThumb);
   return sendSvg(res, svgFallback(slug));
 });
 

@@ -63,6 +63,7 @@ WITH live_streamers AS (
   SELECT
     s.id,
     s.slug,
+    s.platform,
     s.display_name AS "displayName",
     s.title,
     -- thumb_url Rumble en priorité (live actuel), fallback sur s.thumb_url
@@ -93,6 +94,7 @@ live_viewers AS (
 SELECT
   ls.id::text AS id,
   ls.slug,
+  ls.platform,
   ls."displayName",
   ls.title,
   COALESCE(v.viewers, 0)::int AS viewers,
@@ -111,6 +113,7 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       rows.map((r: any) => {
         const slug = String(r.slug || "").trim();
         const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+        const platform = String(r.platform || "").trim().toLowerCase();
 
         return {
           id: String(r.id),
@@ -119,7 +122,9 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
           title: String(r.title || ""),
           viewers: Number(r.viewers || 0),
           liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
-          thumbUrl: r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb,
+          thumbUrl: platform === "rumble"
+            ? (apiThumb || (r.thumbUrlDb ? String(r.thumbUrlDb) : null))
+            : (r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb),
           avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
         };
       })
