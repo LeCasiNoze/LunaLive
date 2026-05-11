@@ -106,11 +106,38 @@ const SECURITY_HEADERS = {
   "Permissions-Policy":        "camera=(), microphone=(), geolocation=()",
 };
 
-function serveFile(res, filePath, extraHeaders = {}) {
+function cacheControlForPath(pathname, ext) {
+  // Fingerprinted assets (Vite hash) → 1 an immuable
+  if (pathname.startsWith("/assets/")) {
+    return "public, max-age=31536000, immutable";
+  }
+  // Landing templates affiliées (assets stables, gros consommateurs bandwidth)
+  if (pathname.startsWith("/affi_templates/") && ext !== ".html") {
+    return "public, max-age=31536000, immutable";
+  }
+  // Avatars (PNG/WebP stables)
+  if (pathname.startsWith("/Avatar/")) {
+    return "public, max-age=31536000, immutable";
+  }
+  // Images / fonts au niveau racine → 30 jours
+  if ([".png", ".webp", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf"].includes(ext)) {
+    return "public, max-age=2592000";
+  }
+  // HTML / JSON / XML → court (revalidation rapide pour les MAJ de contenu)
+  return "public, max-age=300, must-revalidate";
+}
+
+function serveFile(res, filePath, extraHeaders = {}, pathname = "") {
   if (!existsSync(filePath)) return false;
   const ext = extname(filePath).toLowerCase();
   const ct = MIME[ext] || "application/octet-stream";
-  res.writeHead(200, { "Content-Type": ct, ...SECURITY_HEADERS, ...extraHeaders });
+  const cc = cacheControlForPath(pathname, ext);
+  res.writeHead(200, {
+    "Content-Type": ct,
+    "Cache-Control": cc,
+    ...SECURITY_HEADERS,
+    ...extraHeaders,
+  });
   createReadStream(filePath).pipe(res);
   return true;
 }
@@ -146,16 +173,16 @@ createServer((req, res) => {
 
   // 2. Pre-rendered HTML rewrites
   const rewrite = HTML_REWRITES[pathname];
-  if (rewrite && serveFile(res, join(DIST, rewrite))) return;
+  if (rewrite && serveFile(res, join(DIST, rewrite), {}, pathname)) return;
 
   // 3. Exact file match
-  if (serveFile(res, join(DIST, pathname))) return;
+  if (serveFile(res, join(DIST, pathname), {}, pathname)) return;
 
   // 4. Try with .html extension (e.g. /casinos → casinos.html)
-  if (serveFile(res, join(DIST, pathname + ".html"))) return;
+  if (serveFile(res, join(DIST, pathname + ".html"), {}, pathname)) return;
 
   // 5. SPA fallback
-  serveFile(res, join(DIST, "index.html"));
+  serveFile(res, join(DIST, "index.html"), {}, pathname);
 
 }).listen(PORT, () => {
   console.log(`lunalive serve: port ${PORT}, dist: ${DIST}`);
