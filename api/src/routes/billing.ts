@@ -21,11 +21,21 @@ if (!STRIPE_WEBHOOK_SECRET) console.warn("[billing] STRIPE_WEBHOOK_SECRET missin
 if (!PRICE_VIEWER) console.warn("[billing] STRIPE_PRICE_VIEWER missing");
 if (!PRICE_STREAMER) console.warn("[billing] STRIPE_PRICE_STREAMER missing");
 
-// note: tu peux mettre "2025-12-15.clover" si ton compte est sur cette version.
-// Le SDK accepte une string.
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-12-15.clover" as any,
-});
+let stripeInstance: Stripe | null = null;
+
+function getStripe(): Stripe {
+  if (!STRIPE_SECRET_KEY) {
+    throw new Error("stripe_not_configured");
+  }
+  if (!stripeInstance) {
+    // note: tu peux mettre "2025-12-15.clover" si ton compte est sur cette version.
+    // Le SDK accepte une string.
+    stripeInstance = new Stripe(STRIPE_SECRET_KEY, {
+      apiVersion: "2025-12-15.clover" as any,
+    });
+  }
+  return stripeInstance;
+}
 
 type PlanCode = "viewer" | "streamer";
 function isPlan(x: any): x is PlanCode {
@@ -51,7 +61,7 @@ async function getOrCreateCustomerId(u: AuthUser): Promise<string> {
   const existing = (r.rows[0]?.stripe_customer_id as string | null) || null;
   if (existing) return existing;
 
-  const customer = await stripe.customers.create({
+  const customer = await getStripe().customers.create({
     metadata: { user_id: String(u.id) },
   });
 
@@ -173,7 +183,7 @@ billingRouter.post(
 
     const customerId = await getOrCreateCustomerId(u);
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
@@ -199,7 +209,7 @@ billingRouter.post(
     const u = req.user as AuthUser;
     const customerId = await getOrCreateCustomerId(u);
 
-    const portal = await stripe.billingPortal.sessions.create({
+    const portal = await getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${FRONT_URL}/shop?tab=subs`,
     });
@@ -213,11 +223,15 @@ billingRouter.post(
   "/webhook",
   express.raw({ type: "application/json" }),
   a(async (req: any, res) => {
+    if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
+      return res.status(503).json({ ok: false, error: "billing_not_configured" });
+    }
+
     const sig = String(req.headers["stripe-signature"] || "");
     let event: Stripe.Event;
 
     try {
-      event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+      event = getStripe().webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
     } catch (err: any) {
       return res.status(400).send(`Webhook Error: ${err?.message || "invalid_signature"}`);
     }
@@ -229,7 +243,7 @@ billingRouter.post(
         const subId = typeof s.subscription === "string" ? s.subscription : (s.subscription as any)?.id || "";
         if (!subId) return res.json({ received: true });
 
-        const sub = await stripe.subscriptions.retrieve(subId);
+        const sub = await getStripe().subscriptions.retrieve(subId);
         const plan = (sub.metadata?.plan || s.metadata?.plan || "") as PlanCode;
         const userId = Number(sub.metadata?.user_id || s.metadata?.user_id || 0);
 
@@ -256,7 +270,7 @@ billingRouter.post(
         const once = await markOnce(`invoice.paid:${inv.id}`);
         if (!once) return res.json({ received: true });
 
-        const sub = await stripe.subscriptions.retrieve(subId);
+        const sub = await getStripe().subscriptions.retrieve(subId);
         const plan = (sub.metadata?.plan || "") as PlanCode;
         const userId = Number(sub.metadata?.user_id || 0);
 
