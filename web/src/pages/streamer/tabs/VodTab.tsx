@@ -6,11 +6,12 @@ import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
 const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-const HLS_BASE = ((import.meta as any).env?.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
+// HLS proxy : Cloudflare Worker (offload Render, évite OOM sur Starter 512 MB).
+const HLS_BASE = ((import.meta as any).env?.VITE_HLS_BASE ?? "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
 function toProxied(url: string): string {
   if (!url) return url;
-  // Proxify les URLs Rumble via notre backend HLS (CF Worker en prod via VITE_HLS_BASE,
-  // fallback API Render). Évite la consommation bande passante Render.
+  // Proxify les URLs Rumble via notre backend HLS (CF Worker via VITE_HLS_BASE,
+  // fallback hardcodé sur le Worker pour ne jamais retomber sur Render).
   if (/rumble\.com|1a-1791\.com/i.test(url)) {
     return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
   }

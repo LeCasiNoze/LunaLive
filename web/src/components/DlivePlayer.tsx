@@ -2,7 +2,9 @@ import * as React from "react";
 import Hls from "hls.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? API_BASE).replace(/\/$/, "");
+// HLS proxy : Cloudflare Worker en prod (offload Render, évite OOM sur Starter 512 MB).
+// Fallback explicite vers le Worker, jamais vers l'API Render qui bufferise mal sous charge.
+const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
 
 function isIOS(): boolean {
   if (typeof navigator === "undefined") return false;
