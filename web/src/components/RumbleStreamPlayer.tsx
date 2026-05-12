@@ -2,8 +2,10 @@
 import * as React from "react";
 import Hls from "hls.js";
 
-// HLS proxy : Cloudflare Worker (offload Render, évite OOM sur Starter 512 MB).
-const HLS_BASE = (import.meta.env.VITE_HLS_BASE ?? "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
+// HLS proxy : toujours via Cloudflare Worker (Render Starter 512 MB OOM).
+const HLS_WORKER_URL = "https://lunalive-hls.lunalive.workers.dev";
+const _envHls = (import.meta.env.VITE_HLS_BASE as string | undefined);
+const HLS_BASE = (_envHls && _envHls.length > 0 ? _envHls : HLS_WORKER_URL).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
   // 1a-1791.com est le CDN Rumble avec CORS * — pas besoin de proxy

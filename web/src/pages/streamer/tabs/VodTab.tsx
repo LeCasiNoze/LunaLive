@@ -5,8 +5,10 @@ import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
-// HLS proxy : Cloudflare Worker (offload Render, évite OOM sur Starter 512 MB).
-const HLS_BASE = ((import.meta as any).env?.VITE_HLS_BASE ?? "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
+// HLS proxy : toujours via Cloudflare Worker (Render Starter 512 MB OOM).
+const HLS_WORKER_URL = "https://lunalive-hls.lunalive.workers.dev";
+const _envHls = ((import.meta as any).env?.VITE_HLS_BASE as string | undefined);
+const HLS_BASE = (_envHls && _envHls.length > 0 ? _envHls : HLS_WORKER_URL).replace(/\/$/, "");
 function toProxied(url: string): string {
   if (!url) return url;
   // Proxify les URLs Rumble via notre backend HLS (CF Worker via VITE_HLS_BASE,
