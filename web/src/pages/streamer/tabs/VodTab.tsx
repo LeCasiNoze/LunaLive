@@ -5,7 +5,6 @@ import { createPortal } from "react-dom";
 import Hls from "hls.js";
 import { getStreamerVods, type ApiVod } from "../../../lib/api_streamer_tabs";
 
-const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 // HLS proxy : Cloudflare Worker (offload Render, évite OOM sur Starter 512 MB).
 const HLS_BASE = ((import.meta as any).env?.VITE_HLS_BASE ?? "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
 function toProxied(url: string): string {
