@@ -46,6 +46,8 @@ export class InstagramNotifier {
   private timer: NodeJS.Timeout | null = null;
   private lastReelId: string | null = null;
   private isPolling = false; // Protection contre les polls chevauchants
+  private consecutiveHttpErrors = 0;
+  private autoDisabled = false;
 
   constructor(
     private pool: Pool,
@@ -61,6 +63,11 @@ export class InstagramNotifier {
 
   start() {
     if (this.timer) return;
+
+    if (String(process.env.IG_NOTIFIER_DISABLED || "").trim() === "1") {
+      console.log("[bot] instagram notifier disabled via IG_NOTIFIER_DISABLED=1");
+      return;
+    }
 
     console.log("[bot] instagram notifier start", {
       username: INSTAGRAM_USERNAME,
@@ -231,9 +238,19 @@ export class InstagramNotifier {
       });
 
       if (!response.ok) {
-        console.log("[bot] instagram graphql HTTP error:", response.status, response.statusText);
+        this.consecutiveHttpErrors++;
+        // Auto-disable apres 10 erreurs consecutives (~30 min de spam) → session expiree
+        if (this.consecutiveHttpErrors === 1 || this.consecutiveHttpErrors === 10) {
+          console.log("[bot] instagram graphql HTTP error:", response.status, response.statusText, "consecutive=", this.consecutiveHttpErrors);
+        }
+        if (this.consecutiveHttpErrors >= 10 && !this.autoDisabled) {
+          this.autoDisabled = true;
+          console.warn("[bot] instagram notifier auto-disabled after 10 consecutive HTTP errors. Session likely expired. Refresh INSTAGRAM_SESSION and redeploy or set IG_NOTIFIER_DISABLED=1.");
+          if (this.timer) { clearInterval(this.timer); this.timer = null; }
+        }
         return [];
       }
+      this.consecutiveHttpErrors = 0;
 
       const jsonResponse: any = await response.json();
       
