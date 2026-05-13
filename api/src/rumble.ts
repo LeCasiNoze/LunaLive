@@ -42,6 +42,10 @@ function buildRumbleHlsUrl(rawId: string): string {
   return `https://rumble.com/live-hls-dvr/${id}/playlist.m3u8`;
 }
 
+function isRumbleMasterPlaylistUrl(url: string): boolean {
+  return /https:\/\/rumble\.com\/live-hls(?:-dvr)?\//i.test(String(url || ""));
+}
+
 /**
  * Suit la redirection de live-hls-dvr côté serveur pour obtenir l'URL CDN réelle (1a-1791.com).
  * Le Worker Cloudflare est bloqué par Rumble's Cloudflare WAF avant la redirection.
@@ -97,7 +101,7 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
     if (!r.ok) return null;
 
     // Si on a été redirigé vers le CDN (pas rumble.com), c'est notre URL
-    if (finalUrl && !finalUrl.includes("rumble.com/live-hls-dvr")) {
+    if (finalUrl && !isRumbleMasterPlaylistUrl(finalUrl)) {
       return finalUrl;
     }
 
@@ -238,7 +242,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
 
       // 2. Si live-hls-dvr : suivre la redirection côté serveur (Render) pour obtenir l'URL CDN
       //    Le Worker CF est bloqué par Cloudflare WAF sur rumble.com, Render (AWS) ne l'est pas
-      if (rawHls.includes("live-hls-dvr")) {
+      if (isRumbleMasterPlaylistUrl(rawHls)) {
         const cdnHls = await resolveRedirectToCdn(rawHls);
         hlsUrl = cdnHls || rawHls;
       } else {
@@ -500,7 +504,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     }
 
     let finalHls: string | null = hlsCandidate;
-    if (finalHls && finalHls.includes("live-hls-dvr")) {
+    if (finalHls && isRumbleMasterPlaylistUrl(finalHls)) {
       const cdnHls = await resolveRedirectToCdn(finalHls);
       finalHls = cdnHls || finalHls;
     }
