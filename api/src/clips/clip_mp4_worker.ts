@@ -386,8 +386,8 @@ async function renderAndUploadClip(clip: BotClipRow) {
     } catch {}
 
     const HLS_HEADERS =
-      "Origin: https://dlive.tv\r\n" +
-      "Referer: https://dlive.tv/\r\n" +
+      "Origin: https://rumble.com\r\n" +
+      "Referer: https://rumble.com/\r\n" +
       "User-Agent: Mozilla/5.0\r\n";
 
     // -headers / -user_agent ne sont valides qu'en mode HTTP. Avec une m3u8

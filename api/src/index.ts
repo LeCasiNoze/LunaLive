@@ -7,13 +7,13 @@ import { Server as IOServer } from "socket.io";
 import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { attachChat } from "./chat_socket.js";
-import { startDlivePoller } from "./dlive_poller.js";
+// import { startDlivePoller } from "./dlive_poller.js"; // DLive shut down
 import { startRumblePoller } from "./rumble_poller.js";
 import { startRumbleYtRedirectPoller } from "./rumble_yt_redirect_poller.js";
 import { startChestJobs } from "./chest_jobs.js";
 
 import { ensureBotClips } from "./bot_clips/store.js";
-import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
+// import { startClipsVodLinker } from "./bot_clips/vod_linker.js"; // VOD linker base sur DLive — desactive
 
 import { ensureCallsSchema } from "./calls/schema.js";
 import { runSlotsUpdate } from "./calls/updater.js";
@@ -170,12 +170,12 @@ function setupGracefulShutdown(server: http.Server) {
   // ✅ Démarre les pollers (ils utilisent la DB, donc si DB down ça loguera, mais ne bloque pas le deploy)
   startStatsCleanup();
   startEventsEnginePoller(60_000);
-  startDlivePoller(io);
+  // startDlivePoller(io); // DLive shut down — poller desactive (DNS/CDN morts)
   startRumblePoller(io);
   startRumbleYtRedirectPoller();
   startChestJobs(io);
   startAgendaNotifPoller(30_000);
-  startClipsVodLinker();
+  // startClipsVodLinker(); // VOD linker base sur DLive GraphQL — desactive (DLive shut down)
   startClipsMp4Renderer();
   startClipsMp4Cleanup();
   startInstagramScheduler();
