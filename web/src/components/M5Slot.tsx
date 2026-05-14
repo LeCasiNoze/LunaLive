@@ -41,12 +41,24 @@ const ROW_RESULTS: ReadonlyArray<readonly [string, string, string]> = [
 type RowKind = "loss" | "bait" | "win";
 const ROW_KINDS: ReadonlyArray<RowKind> = ["loss", "bait", "win"];
 
-// Timing : chaque cellule cycle des symboles pdt CELL_SPIN_MS puis se verrouille
-const CELL_SPIN_MS = 600;
-const CELL_GAP_MS = 220;          // intervalle entre 2 lock dans la meme ligne
-const ROW_GAP_MS = 460;           // pause entre fin d'une ligne et debut de la suivante
+// Timing : chaque cellule cycle des symboles avant de se verrouiller.
+// Cellules 6 (dernier de L2) et 9 (dernier de L3) ont un suspense en plus.
 const CELL_TICK_MS = 65;          // vitesse de cycle des symboles pendant le spin
-const POPUP_DELAY_MS = 700;       // delai apres derniere cellule revealee avant popup
+const POPUP_DELAY_MS = 900;       // delai apres derniere cellule avant popup
+
+// Delai (ms) AVANT chaque verrouillage (indexe 1..9 pour les 9 cellules)
+const CELL_REVEAL_AT_MS = [
+  0,    // padding
+  600,  // L1 cell 1
+  820,  // L1 cell 2
+  1040, // L1 cell 3
+  1500, // L2 cell 1 (apres pause inter-ligne)
+  1720, // L2 cell 2
+  2580, // L2 cell 3 = 7/7/💎 (bait) — SUSPENSE 860ms
+  3050, // L3 cell 1
+  3270, // L3 cell 2
+  4400, // L3 cell 3 = 💎 (win) — SUSPENSE 1130ms
+];
 
 const POPUP_STEPS = [
   "Verification de la ligne gagnante",
@@ -101,32 +113,29 @@ export function M5Slot({
     setRevealedCount(0);
     setPhase("playing");
 
-    // Schedule des 9 verrouillages
-    let cumul = 0;
-    for (let rowIdx = 0; rowIdx < 3; rowIdx++) {
-      for (let colIdx = 0; colIdx < 3; colIdx++) {
-        const cellGlobalIdx = rowIdx * 3 + colIdx + 1; // 1..9
-        cumul += CELL_GAP_MS;
-        // ajout du spin initial seulement avant la 1ere cellule
-        if (rowIdx === 0 && colIdx === 0) cumul = CELL_SPIN_MS;
-        // pause supplementaire entre lignes
-        if (colIdx === 0 && rowIdx > 0) cumul += ROW_GAP_MS;
-        const at = cumul;
-        const isLastOfRow = colIdx === 2;
-        const rowKind = ROW_KINDS[rowIdx];
-        window.setTimeout(() => {
-          setRevealedCount(cellGlobalIdx);
-          sfx.reelStop();
-          if (isLastOfRow) {
-            if (rowKind === "win") sfx.win();
-            else if (rowKind === "bait") sfx.tension(400);
-            else sfx.loss();
-          }
-        }, at);
-      }
+    // Tension SFX avant cellules 6 et 9 (suspense)
+    window.setTimeout(() => sfx.tension(700), CELL_REVEAL_AT_MS[6] - 700);
+    window.setTimeout(() => sfx.tension(1000), CELL_REVEAL_AT_MS[9] - 1000);
+
+    for (let cellIdx = 1; cellIdx <= 9; cellIdx++) {
+      const rowIdx = Math.floor((cellIdx - 1) / 3);
+      const colIdx = (cellIdx - 1) % 3;
+      const isLastOfRow = colIdx === 2;
+      const rowKind = ROW_KINDS[rowIdx];
+      const at = CELL_REVEAL_AT_MS[cellIdx];
+      const currentCell = cellIdx;
+      window.setTimeout(() => {
+        setRevealedCount(currentCell);
+        sfx.reelStop();
+        if (isLastOfRow) {
+          if (rowKind === "win") sfx.win();
+          else if (rowKind === "bait") sfx.loss();
+          else sfx.loss();
+        }
+      }, at);
     }
-    // Apres derniere cellule
-    const totalDuration = cumul + POPUP_DELAY_MS;
+
+    const totalDuration = CELL_REVEAL_AT_MS[9] + POPUP_DELAY_MS;
     window.setTimeout(() => {
       setPhase("won");
       setPopupOpen(true);
@@ -190,6 +199,19 @@ export function M5Slot({
         .m5-cell.locked{animation:m5-cell-lock .4s cubic-bezier(.34,1.56,.64,1)}
         .m5-cell.win.locked{box-shadow:inset 0 0 0 1px ${T.accent},0 0 18px ${T.accentGlow}}
         .m5-cell.bait.locked{box-shadow:inset 0 0 0 1px rgba(251,146,60,.55),0 0 14px rgba(251,146,60,.3)}
+        /* Derniere cellule de L2 (cell 6) en attente = suspense pulse orange */
+        .m5-cell.suspense{filter:blur(2.5px) brightness(1.2);opacity:.7;box-shadow:inset 0 0 0 1px rgba(251,146,60,.6),0 0 28px rgba(251,146,60,.5);animation:m5-cell-suspense .6s ease-in-out infinite alternate}
+        /* Derniere cellule de L3 (cell 9) en attente = suspense pulse or */
+        .m5-cell.suspense-win{filter:blur(2.5px) brightness(1.4);opacity:.85;box-shadow:inset 0 0 0 1px ${T.accentLight},0 0 36px ${T.accentGlow},0 0 56px ${T.accent};animation:m5-cell-suspense-win .5s ease-in-out infinite alternate}
+        /* Animation WIN sur la derniere cellule de L3 quand verrouillee */
+        .m5-cell.win-celebrate{animation:m5-cell-celebrate 1.4s cubic-bezier(.34,1.56,.64,1)}
+        .m5-cell.win-celebrate::after{content:"";position:absolute;inset:-8px;border-radius:18px;background:radial-gradient(circle,${T.accentGlow} 0%,transparent 70%);animation:m5-cell-burst 1s ease-out;pointer-events:none}
+
+        /* Sparkles confetti sur L3 win */
+        .m5-row.revealed.win.celebrating::before,
+        .m5-row.revealed.win.celebrating::after{content:"✨";position:absolute;font-size:1.4rem;animation:m5-sparkle 1.6s ease-out infinite;pointer-events:none}
+        .m5-row.revealed.win.celebrating::before{top:-12px;left:14%;animation-delay:0s}
+        .m5-row.revealed.win.celebrating::after{bottom:-12px;right:14%;animation-delay:.4s}
 
         .m5-row-status{font-size:.68rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;text-align:right;min-width:60px}
         .m5-row.idle .m5-row-status,.m5-row.spinning .m5-row-status{color:rgba(226,232,240,.4)}
@@ -205,6 +227,11 @@ export function M5Slot({
         @keyframes m5-mesh{0%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-30px,20px) rotate(8deg)}100%{transform:translate(20px,-15px) rotate(-6deg)}}
         @keyframes m5-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
         @keyframes m5-cell-lock{0%{transform:scale(.7);opacity:.4}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+        @keyframes m5-cell-celebrate{0%{transform:scale(.4) rotate(-180deg);opacity:0}40%{transform:scale(1.4) rotate(20deg)}70%{transform:scale(.92) rotate(-8deg)}100%{transform:scale(1) rotate(0)}}
+        @keyframes m5-cell-burst{0%{opacity:0;transform:scale(.5)}50%{opacity:1;transform:scale(1.3)}100%{opacity:0;transform:scale(1.6)}}
+        @keyframes m5-cell-suspense{from{filter:blur(2.5px) brightness(1.2)}to{filter:blur(1px) brightness(1.6)}}
+        @keyframes m5-cell-suspense-win{from{filter:blur(2.5px) brightness(1.4);transform:scale(1)}to{filter:blur(.5px) brightness(1.8);transform:scale(1.06)}}
+        @keyframes m5-sparkle{0%{opacity:0;transform:translateY(0) scale(.6) rotate(0)}30%{opacity:1}100%{opacity:0;transform:translateY(-22px) scale(1.3) rotate(120deg)}}
         @keyframes m5-row-win-pulse{0%,100%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55}50%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 44px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}88}}
         @keyframes m5-bait-flash{0%,100%{opacity:1}50%{opacity:.55}}
         @keyframes m5-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}}
@@ -224,7 +251,7 @@ export function M5Slot({
       </div>
 
       <div className="m5-promo">
-        Slot · <strong>3 tirages indépendants</strong>
+        1 chance · <strong>💎💎💎 = 100%</strong> · <strong>7️⃣7️⃣7️⃣ = 500%</strong>
       </div>
 
       <div className="m5-rows">
@@ -232,17 +259,29 @@ export function M5Slot({
           const state = rowState(rowIdx);
           const revealed = state === "revealed";
           const label = revealed ? ROW_LABELS[rowIdx].revealed(kind) : ROW_LABELS[rowIdx].idle;
+          // Anim "celebrating" sur L3 (kind===win) au moment du reveal final
+          const celebrating = kind === "win" && revealed && revealedCount === 9;
           return (
-            <div key={rowIdx} className={`m5-row ${state} ${revealed ? kind : ""}`}>
+            <div key={rowIdx} className={`m5-row ${state} ${revealed ? kind : ""} ${celebrating ? "celebrating" : ""}`}>
               <div className="m5-row-num">L{rowIdx + 1}</div>
               <div className="m5-cells">
                 {[0, 1, 2].map((colIdx) => {
                   const globalIdx = rowIdx * 3 + colIdx + 1;
                   const locked = revealedCount >= globalIdx;
+                  // Suspense visuel sur la 3e cellule de L2 (idx 6) et L3 (idx 9)
+                  // quand toutes les autres cellules de la ligne sont lockees mais
+                  // celle-ci ne l'est pas encore.
+                  const isSuspenseCandidate = colIdx === 2 && !locked
+                    && revealedCount >= globalIdx - 2;  // 2 premieres de la ligne lockees
+                  const suspenseClass = isSuspenseCandidate
+                    ? (kind === "win" ? "suspense-win" : kind === "bait" ? "suspense" : "")
+                    : "";
+                  // Anim celebrate sur la cellule WIN finale
+                  const celebrateClass = (kind === "win" && colIdx === 2 && locked && revealedCount === 9) ? "win-celebrate" : "";
                   return (
                     <div
                       key={colIdx}
-                      className={`m5-cell ${locked ? "locked" : "spinning"} ${locked ? kind : ""}`}
+                      className={`m5-cell ${locked ? "locked" : "spinning"} ${locked ? kind : ""} ${suspenseClass} ${celebrateClass}`}
                     >
                       {cellSymbol(rowIdx, colIdx)}
                     </div>

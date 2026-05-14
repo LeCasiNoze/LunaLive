@@ -1,9 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M9 — Crossy Road : route horizontale type Stake. Poulet a gauche dans une
-// zone verte (depart), avance d'une plaque d'egout (multiplicateur) a l'autre.
-// Voitures decoratives traversent verticalement entre les plaques.
-// Palier 4 = checkpoint 100% SAFE. Avancer plus loin = risque de mort
-// (le poulet a deja securise son 100%, le bonus reste garanti).
+// M9 — Crossy Road horizontal type Stake.
+// Route en lignes verticales (voies). Poulet a gauche dans une zone verte.
+// 6 plaques avec multiplicateurs : 10 / 20 / 50 / 100 / 200 / 500 %
+// Palier 4 (100%) = checkpoint SAFE max. Au-dela = mort assuree.
+// A chaque "Avancer" : le poulet saute en avancant (1 arc), une voiture
+// descend la voie de destination. Si plaque safe → une barriere 🚧 sort
+// du sol et stoppe la voiture. Si plaque danger → pas de barriere, la
+// voiture ecrase le poulet.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -29,20 +32,21 @@ export type M9CrossyProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-// 0 = depart (zone verte). 1..7 = plaques.
-// Palier 4 = checkpoint 100% safe.
-const PALIERS = [
-  { label: "Départ", mult: "1.00x", safe: true,  checkpoint: false },
-  { label: "+25%",   mult: "1.25x", safe: true,  checkpoint: false },
-  { label: "+50%",   mult: "1.50x", safe: true,  checkpoint: false },
-  { label: "+75%",   mult: "1.75x", safe: true,  checkpoint: false },
-  { label: "+100%",  mult: "2.00x", safe: true,  checkpoint: true  },
-  { label: "+150%",  mult: "2.50x", safe: false, checkpoint: false },
-  { label: "+200%",  mult: "3.00x", safe: false, checkpoint: false },
-  { label: "+500%",  mult: "6.00x", safe: false, checkpoint: true  },
+// Plaques (index 1..6). Index 0 = depart (zone verte).
+const PALIERS: Array<{ label: string; pct: number; safe: boolean; checkpoint: boolean }> = [
+  { label: "Départ", pct: 0,   safe: true,  checkpoint: false },
+  { label: "10%",    pct: 10,  safe: true,  checkpoint: false },
+  { label: "20%",    pct: 20,  safe: true,  checkpoint: false },
+  { label: "50%",    pct: 50,  safe: true,  checkpoint: false },
+  { label: "100%",   pct: 100, safe: true,  checkpoint: true  },
+  { label: "200%",   pct: 200, safe: false, checkpoint: false },
+  { label: "500%",   pct: 500, safe: false, checkpoint: false },
 ];
 
-const SAFE_PALIER = 4;
+const SAFE_PALIER = 4; // 100%
+
+const MOVE_DURATION_MS = 620;  // duree du saut + avance
+const CAR_ARRIVAL_MS = 420;    // delai apres saut avant que la voiture arrive
 
 export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M9CrossyProps) {
   const T = {
@@ -58,6 +62,9 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   const [step, setStep] = React.useState(0);
   const [phase, setPhase] = React.useState<"idle" | "moving" | "dead" | "collected">("idle");
   const [popupOpen, setPopupOpen] = React.useState(false);
+  // incomingCar : voiture qui approche la plaque destination apres un saut
+  // mode "stop" = bloquee par la barriere (safe), "hit" = ecrase le poulet (danger)
+  const [incomingCar, setIncomingCar] = React.useState<{ lane: number; mode: "stop" | "hit"; key: number } | null>(null);
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -69,37 +76,46 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     "Lien d'accès prêt",
   ], []);
 
-  const currentMult = PALIERS[Math.min(step, PALIERS.length - 1)]?.mult || "1.00x";
+  // Pct du palier courant + gain calcule depuis le depot
+  const currentPct = PALIERS[Math.min(step, PALIERS.length - 1)]?.pct ?? 0;
+  const computedGain = (depositAmount != null && depositAmount > 0)
+    ? Math.round(depositAmount * (1 + currentPct / 100))
+    : null;
 
   const advance = () => {
     if (phase === "moving" || phase === "dead" || phase === "collected") return;
-    sfx.click();
-    setPhase("moving");
     const nextStep = step + 1;
     const nextPalier = PALIERS[nextStep];
+    if (!nextPalier) return;
 
+    sfx.click();
+    setPhase("moving");
+    // Le poulet avance immediatement (transition CSS de left + animation hop)
+    setStep(nextStep);
+
+    // Apres le saut, la voiture arrive
     window.setTimeout(() => {
-      setStep(nextStep);
-      if (!nextPalier) {
-        setPhase("idle");
-        return;
-      }
-      if (nextPalier.checkpoint && nextPalier.safe) {
-        sfx.coin();
-        sfx.win();
-        setPhase("idle");
-      } else if (nextPalier.safe) {
-        sfx.reveal();
-        setPhase("idle");
+      const carMode: "stop" | "hit" = nextPalier.safe ? "stop" : "hit";
+      setIncomingCar({ lane: nextStep, mode: carMode, key: Date.now() });
+      if (carMode === "stop") {
+        // Voiture stoppee par barriere → safe
+        sfx.reelStop();
+        window.setTimeout(() => {
+          if (nextPalier.checkpoint) { sfx.coin(); sfx.win(); }
+          else sfx.reveal();
+          setIncomingCar(null);
+          setPhase("idle");
+        }, 900);
       } else {
+        // Voiture percute le poulet → mort
         sfx.boom();
-        setTimeout(() => {
-          sfx.tension(500);
+        window.setTimeout(() => {
           setPhase("dead");
-          setTimeout(() => { sfx.win(); setPopupOpen(true); }, 1100);
-        }, 300);
+          sfx.tension(500);
+          window.setTimeout(() => { sfx.win(); setPopupOpen(true); }, 1200);
+        }, 460);
       }
-    }, 480);
+    }, CAR_ARRIVAL_MS);
   };
 
   const collect = () => {
@@ -113,14 +129,14 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   const reset = () => {
     setStep(0);
     setPhase("idle");
+    setIncomingCar(null);
     setPopupOpen(false);
   };
 
-  // Position du poulet : 0 = zone depart (gauche), 1..7 = plaques sur la route
-  // Layout horizontal: depart prend 22% a gauche, route 78% repartie sur 7 cases
-  const DEPART_WIDTH_PCT = 22;
+  // Layout : depart 20%, route 80% repartie sur 6 plaques
+  const DEPART_WIDTH_PCT = 20;
   const ROAD_WIDTH_PCT = 100 - DEPART_WIDTH_PCT;
-  const SLOTS = PALIERS.length - 1; // 7 plaques
+  const SLOTS = PALIERS.length - 1; // 6 plaques
   const slotWidth = ROAD_WIDTH_PCT / SLOTS;
 
   const positionXPct = step === 0
@@ -147,54 +163,60 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         .m9-promo{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;margin-bottom:14px;background:rgba(8,15,22,.85);border:1px solid ${T.borderColor};border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(241,245,249,.92);box-shadow:0 0 18px ${T.accentGlow}}
         .m9-promo-dot{width:8px;height:8px;border-radius:50%;background:${T.accent};box-shadow:0 0 12px ${T.accentGlow};animation:m9-pulse 1.6s ease-in-out infinite}
 
-        .m9-hud{display:flex;width:min(94vw,520px);gap:8px;margin-bottom:14px}
+        .m9-hud{display:flex;width:min(96vw,580px);gap:8px;margin-bottom:14px}
         .m9-hud-card{flex:1;padding:10px 14px;background:rgba(8,15,22,.7);border:1px solid rgba(134,239,172,.18);border-radius:12px;text-align:center;backdrop-filter:blur(6px)}
         .m9-hud-lbl{font-size:.6rem;color:rgba(241,245,249,.55);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
-        .m9-hud-val{font-size:1.05rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
+        .m9-hud-val{font-size:1.1rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
         .m9-hud-val.win{color:${T.accentLight};text-shadow:0 0 14px ${T.accentGlow}}
 
-        /* Stage horizontal */
-        .m9-stage{position:relative;width:min(94vw,520px);height:200px;background:#3f3a48;border:1px solid ${T.borderColor};border-radius:18px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.06);margin-bottom:14px}
+        /* Stage horizontal — plus grand */
+        .m9-stage{position:relative;width:min(96vw,580px);height:280px;background:#3f3a48;border:1px solid ${T.borderColor};border-radius:20px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.06);margin-bottom:14px}
 
-        /* Zone DEPART (gauche, verte avec ferme) */
+        /* Zone DEPART */
         .m9-depart{position:absolute;top:0;bottom:0;left:0;width:${DEPART_WIDTH_PCT}%;background:
           linear-gradient(180deg,#a3e635 0%,#65a30d 100%);
-          border-right:3px solid #422006;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:2;box-shadow:inset -6px 0 12px rgba(0,0,0,.18)}
-        .m9-depart-tree{font-size:1.4rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
-        .m9-depart-barn{font-size:1.6rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
-        .m9-depart-label{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:.55rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
+          border-right:3px solid #422006;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;z-index:2;box-shadow:inset -6px 0 12px rgba(0,0,0,.22)}
+        .m9-depart-tree{font-size:1.8rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+        .m9-depart-barn{font-size:2rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+        .m9-depart-label{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);padding:3px 10px;border-radius:6px;background:rgba(0,0,0,.6);color:#fff;font-size:.58rem;font-weight:900;letter-spacing:.16em;text-transform:uppercase}
 
-        /* Route principale (zone droite) */
-        .m9-road{position:absolute;top:0;bottom:0;left:${DEPART_WIDTH_PCT}%;right:0;background:
-          repeating-linear-gradient(180deg,transparent 0,transparent 18px,rgba(255,255,255,.7) 18px,rgba(255,255,255,.7) 26px,transparent 26px,transparent 60px),
-          linear-gradient(180deg,#5b5564,#3f3a48);
-        }
-        /* Lanes verticales (lignes blanches pointillees entre les plaques) */
-        .m9-lane-divider{position:absolute;top:0;bottom:0;width:1px;background:repeating-linear-gradient(180deg,rgba(255,255,255,.85) 0,rgba(255,255,255,.85) 8px,transparent 8px,transparent 18px)}
+        /* Route asphalt */
+        .m9-road{position:absolute;top:0;bottom:0;left:${DEPART_WIDTH_PCT}%;right:0;background:linear-gradient(180deg,#5b5564,#3f3a48)}
+        /* Lignes pointillees blanches verticales ENTRE les voies (entre les plaques) */
+        .m9-lane-divider{position:absolute;top:0;bottom:0;width:2px;background:repeating-linear-gradient(180deg,rgba(255,255,255,.9) 0,rgba(255,255,255,.9) 10px,transparent 10px,transparent 22px);z-index:1}
 
-        /* Plaques (manholes / multiplier circles) */
-        .m9-plaque{position:absolute;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border-radius:50%;background:
+        /* Plaques (cible : centre de chaque voie) */
+        .m9-plaque{position:absolute;top:55%;transform:translate(-50%,-50%);width:66px;height:66px;border-radius:50%;background:
           radial-gradient(circle at 35% 30%,#5b5564,#1a1820 60%,#0a0810);
-          border:2px solid #2a262e;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.02em;box-shadow:inset 0 -3px 4px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.1),0 6px 14px rgba(0,0,0,.55);z-index:3;text-shadow:0 1px 2px rgba(0,0,0,.7)}
-        .m9-plaque::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px dashed rgba(255,255,255,.18);pointer-events:none}
+          border:2px solid #2a262e;display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.02em;box-shadow:inset 0 -3px 4px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.1),0 6px 14px rgba(0,0,0,.55);z-index:3;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+        .m9-plaque::before{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(255,255,255,.18);pointer-events:none}
         .m9-plaque.reached{background:radial-gradient(circle at 35% 30%,${T.accentLight},${T.accent} 50%,${T.accentDark});border-color:${T.accentDark};color:#0a1014;text-shadow:none;box-shadow:inset 0 -3px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.4),0 8px 18px ${T.accentGlow},0 0 22px ${T.accentGlow}}
-        .m9-plaque.danger{background:radial-gradient(circle at 35% 30%,#7f1d1d,#450a0a 60%,#1a0606);border-color:#7f1d1d;color:#fecaca}
-        .m9-plaque.checkpoint::after{content:"🏁";position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:.95rem;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+        /* Plaques DANGER en rouge DES LE DEPART */
+        .m9-plaque.danger{background:radial-gradient(circle at 35% 30%,#fca5a5,#dc2626 50%,#7f1d1d);border-color:#7f1d1d;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7);box-shadow:inset 0 -3px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.2),0 6px 14px rgba(220,38,38,.4),0 0 18px rgba(220,38,38,.3);animation:m9-danger-pulse 1.4s ease-in-out infinite}
+        .m9-plaque.checkpoint::after{content:"🏁";position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:1rem;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 
-        /* Voiture decorative en pixel art */
-        .m9-car{position:absolute;width:36px;height:54px;transform:translate(-50%,-50%);font-size:1.85rem;line-height:1;text-align:center;z-index:2;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
-        .m9-car.car-moving{animation:m9-car-roll 3s linear infinite}
+        /* Voitures decoratives qui boucle sur lanes vides */
+        .m9-deco-car{position:absolute;width:38px;transform:translate(-50%,-50%);font-size:1.9rem;line-height:1;text-align:center;z-index:2;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5));animation:m9-deco-roll 4s linear infinite}
+
+        /* Voiture entrante = approche la plaque destination */
+        .m9-incoming-car{position:absolute;width:42px;transform:translate(-50%,-50%);font-size:2.1rem;line-height:1;text-align:center;z-index:4;filter:drop-shadow(0 6px 10px rgba(0,0,0,.65))}
+        .m9-incoming-car.stop{animation:m9-incoming-stop 1.2s cubic-bezier(.4,1.4,.6,1) forwards}
+        .m9-incoming-car.hit{animation:m9-incoming-hit .6s cubic-bezier(.6,0,.8,.4) forwards}
+
+        /* Barriere de protection qui sort du sol quand safe */
+        .m9-barrier{position:absolute;width:54px;height:18px;transform:translate(-50%,0);font-size:1.4rem;line-height:1;text-align:center;z-index:5;opacity:0}
+        .m9-barrier.show{animation:m9-barrier-rise .35s cubic-bezier(.34,1.56,.64,1) forwards}
 
         /* Poulet */
-        .m9-chicken{position:absolute;top:50%;left:${positionXPct}%;transform:translate(-50%,-50%);width:52px;height:52px;font-size:2.3rem;line-height:1;text-align:center;z-index:5;transition:left .48s cubic-bezier(.34,1.56,.64,1),top .3s ease-out;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6));animation:m9-chicken-idle 1.4s ease-in-out infinite}
-        .m9-chicken.moving{animation:m9-chicken-hop .48s cubic-bezier(.4,1.6,.6,1)}
+        .m9-chicken{position:absolute;top:55%;left:${positionXPct}%;transform:translate(-50%,-50%);width:58px;height:58px;font-size:2.6rem;line-height:1;text-align:center;z-index:5;transition:left ${MOVE_DURATION_MS}ms cubic-bezier(.34,1.56,.64,1);filter:drop-shadow(0 6px 10px rgba(0,0,0,.6));animation:m9-chicken-idle 1.4s ease-in-out infinite}
+        .m9-chicken.moving{animation:m9-chicken-hop ${MOVE_DURATION_MS}ms cubic-bezier(.34,1.4,.64,1)}
         .m9-chicken.dead{animation:m9-death .9s ease-out forwards}
 
-        .m9-boom{position:absolute;top:50%;left:${positionXPct}%;transform:translate(-50%,-50%);font-size:3rem;z-index:6;opacity:0;pointer-events:none}
+        .m9-boom{position:absolute;top:55%;left:${positionXPct}%;transform:translate(-50%,-50%);font-size:3.4rem;z-index:6;opacity:0;pointer-events:none}
         .m9-boom.show{animation:m9-boom-pop .9s ease-out forwards}
 
         /* Buttons */
-        .m9-actions{display:flex;flex-direction:column;width:min(94vw,520px);gap:10px}
+        .m9-actions{display:flex;flex-direction:column;width:min(96vw,580px);gap:10px}
         .m9-cta{display:block;width:100%;padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#062012;font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:14px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease;animation:m9-cta-pulse 2.2s ease-in-out infinite}
         .m9-cta:not(:disabled):hover{transform:translateY(-2px)}
         .m9-cta:not(:disabled):active{transform:translateY(1px)}
@@ -207,8 +229,12 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         @keyframes m9-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
         @keyframes m9-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:.7}}
         @keyframes m9-chicken-idle{0%,100%{transform:translate(-50%,-50%) translateY(0)}50%{transform:translate(-50%,-50%) translateY(-3px)}}
-        @keyframes m9-chicken-hop{0%{transform:translate(-50%,-50%) translateY(0) scale(1)}50%{transform:translate(-50%,-50%) translateY(-22px) scale(1.08)}100%{transform:translate(-50%,-50%) translateY(0) scale(1)}}
-        @keyframes m9-car-roll{0%{top:-20%}100%{top:120%}}
+        @keyframes m9-chicken-hop{0%{transform:translate(-50%,-50%) translateY(0) scale(1)}50%{transform:translate(-50%,-50%) translateY(-40px) scale(1.15)}100%{transform:translate(-50%,-50%) translateY(0) scale(1)}}
+        @keyframes m9-deco-roll{0%{top:-15%}100%{top:115%}}
+        @keyframes m9-incoming-stop{0%{top:-15%}70%{top:32%}100%{top:32%}}
+        @keyframes m9-incoming-hit{0%{top:-15%}100%{top:55%}}
+        @keyframes m9-barrier-rise{0%{opacity:0;transform:translate(-50%,12px) scale(.6)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+        @keyframes m9-danger-pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25) drop-shadow(0 0 12px rgba(220,38,38,.5))}}
         @keyframes m9-death{0%{transform:translate(-50%,-50%) scale(1)}30%{transform:translate(-50%,-50%) scale(1.4) rotate(-12deg);filter:drop-shadow(0 6px 12px rgba(239,68,68,.8))}100%{transform:translate(-50%,-50%) scale(0) rotate(-90deg);opacity:0}}
         @keyframes m9-boom-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}40%{opacity:1;transform:translate(-50%,-50%) scale(1.4)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
         @keyframes m9-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55)}}
@@ -232,16 +258,18 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
       <div className="m9-hud">
         <div className="m9-hud-card">
-          <div className="m9-hud-lbl">Multi</div>
-          <div className={`m9-hud-val ${step >= SAFE_PALIER ? "win" : ""}`}>{currentMult}</div>
-        </div>
-        <div className="m9-hud-card">
           <div className="m9-hud-lbl">Bonus</div>
-          <div className={`m9-hud-val ${step >= SAFE_PALIER ? "win" : ""}`}>{bon || "—"}</div>
+          <div className={`m9-hud-val ${step >= 1 ? "win" : ""}`}>{currentPct > 0 ? `+${currentPct}%` : "—"}</div>
         </div>
         <div className="m9-hud-card">
           <div className="m9-hud-lbl">Mise</div>
           <div className="m9-hud-val">{dep || "—"}</div>
+        </div>
+        <div className="m9-hud-card">
+          <div className="m9-hud-lbl">Gain</div>
+          <div className={`m9-hud-val ${step >= SAFE_PALIER ? "win" : ""}`}>
+            {computedGain != null ? `${computedGain}€` : (bon || "—")}
+          </div>
         </div>
       </div>
 
@@ -256,15 +284,34 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         {/* Route */}
         <div className="m9-road" />
 
-        {/* Lane dividers (entre chaque case) */}
+        {/* Lignes pointillees ENTRE les plaques (entre voies) */}
         {Array.from({ length: SLOTS - 1 }).map((_, i) => {
           const leftPct = DEPART_WIDTH_PCT + slotWidth * (i + 1);
           return <div key={`div-${i}`} className="m9-lane-divider" style={{ left: `${leftPct}%` }} />;
         })}
 
+        {/* Voitures decoratives sur lanes apres le poulet ET pas la lane d'arrivee */}
+        {Array.from({ length: SLOTS }).map((_, i) => {
+          const laneIdx = i + 1;
+          // Pas de voiture decorative sur la lane du poulet, ni sur la lane d'arrivee si on est en mouvement
+          if (laneIdx <= step) return null;
+          if (incomingCar && incomingCar.lane === laneIdx) return null;
+          const leftPct = DEPART_WIDTH_PCT + slotWidth * (laneIdx - 0.5);
+          const delay = (i * 1.1) % 4;
+          return (
+            <div
+              key={`deco-${i}`}
+              className="m9-deco-car"
+              style={{ left: `${leftPct}%`, animationDelay: `${-delay}s` }}
+            >
+              🚗
+            </div>
+          );
+        })}
+
         {/* Plaques avec multiplicateurs */}
         {PALIERS.slice(1).map((p, i) => {
-          const plaqueIdx = i + 1; // step index reel
+          const plaqueIdx = i + 1;
           const leftPct = DEPART_WIDTH_PCT + slotWidth * (i + 0.5);
           const reached = plaqueIdx <= step;
           const danger = !p.safe;
@@ -274,33 +321,39 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
               className={[
                 "m9-plaque",
                 reached ? "reached" : "",
-                danger ? "danger" : "",
+                danger && !reached ? "danger" : "",
                 p.checkpoint ? "checkpoint" : "",
               ].filter(Boolean).join(" ")}
               style={{ left: `${leftPct}%` }}
             >
-              {p.mult}
+              {p.label}
             </div>
           );
         })}
 
-        {/* Voitures decoratives sur les lanes non encore atteintes */}
-        {Array.from({ length: SLOTS - 1 }).map((_, i) => {
-          const laneIdx = i + 1; // index entre plaques
-          // affiche une voiture si la lane est apres le poulet et pas encore franchie
-          if (laneIdx <= step) return null;
-          const leftPct = DEPART_WIDTH_PCT + slotWidth * laneIdx;
-          const delay = (i * 0.7) % 3;
-          return (
-            <div
-              key={`car-${i}`}
-              className="m9-car car-moving"
-              style={{ left: `${leftPct}%`, animationDelay: `${-delay}s` }}
-            >
-              🚗
-            </div>
-          );
-        })}
+        {/* Voiture entrante (arrive sur la plaque de destination) */}
+        {incomingCar ? (
+          <div
+            key={incomingCar.key}
+            className={`m9-incoming-car ${incomingCar.mode}`}
+            style={{ left: `${DEPART_WIDTH_PCT + slotWidth * (incomingCar.lane - 0.5)}%` }}
+          >
+            🚙
+          </div>
+        ) : null}
+
+        {/* Barriere de protection (devant la plaque safe quand arrivee) */}
+        {incomingCar && incomingCar.mode === "stop" ? (
+          <div
+            className="m9-barrier show"
+            style={{
+              left: `${DEPART_WIDTH_PCT + slotWidth * (incomingCar.lane - 0.5)}%`,
+              top: `38%`,
+            }}
+          >
+            🚧
+          </div>
+        ) : null}
 
         {/* Poulet */}
         <div className={`m9-chicken ${phase === "moving" ? "moving" : ""} ${phase === "dead" ? "dead" : ""}`}>🐔</div>
@@ -319,7 +372,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
           </>
         ) : (
           <>
-            <button className="m9-cta" onClick={advance} disabled={phase === "moving"}>
+            <button className="m9-cta" onClick={advance} disabled={phase === "moving" || step >= PALIERS.length - 1}>
               {phase === "moving" ? "..." : step === 0 ? "🐔 Démarrer" : "🐔 Avancer"}
             </button>
             {step >= SAFE_PALIER ? (
@@ -328,7 +381,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
               </button>
             ) : null}
             {step >= SAFE_PALIER ? (
-              <div className="m9-warn">⚠ Avancer encore = traverser sans bonus garanti</div>
+              <div className="m9-warn">⚠ Avancer encore = mort assurée (les cases rouges)</div>
             ) : null}
           </>
         )}
