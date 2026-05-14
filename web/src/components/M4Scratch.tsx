@@ -176,8 +176,8 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         .m4-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m4-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
-        .m4-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:14px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
-        .m4-promo strong{color:${T.accent}}
+        .m4-promo{position:relative;z-index:2;display:inline-block;padding:9px 20px;margin-bottom:14px;background:rgba(10,5,25,.7);border:1px solid ${T.accent};border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.92);box-shadow:0 0 20px ${T.accent}55}
+        .m4-promo strong{color:${T.accentLight};font-weight:800;text-shadow:0 0 10px ${T.accent}}
 
         .m4-step{position:relative;z-index:2;font-size:.88rem;color:rgba(245,241,230,.7);margin-bottom:20px;text-align:center;font-weight:500}
         .m4-step strong{color:${T.accent};font-weight:700}
@@ -200,7 +200,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         .m4-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px}
 
         /* Face fermée */
-        .m4-face-front{background:linear-gradient(180deg,#2a1d12,#1a1108);border:1px solid #1f1408;box-shadow:0 6px 16px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.04)}
+        .m4-face-front{background:linear-gradient(180deg,#2a1d12,#1a1108);border:1px solid ${T.accent}66;box-shadow:0 6px 16px rgba(0,0,0,.55),inset 0 0 0 1px ${T.accent}22,0 0 14px ${T.accent}22}
         .m4-box.idle:hover .m4-face-front{border-color:${T.accent};transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)}
         .m4-box.idle .m4-face-front{transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
         .m4-front-num{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-size:.65rem;font-weight:700;letter-spacing:.12em;color:rgba(245,241,230,.35)}
