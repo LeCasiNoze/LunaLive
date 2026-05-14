@@ -52,7 +52,6 @@ function generateMessage(): string {
 }
 
 export function V3SocialProof({
-  bonusAmount,
   accent = "#22c55e",
   accentGlow = "rgba(34,197,94,.4)",
   intervalMs = 5500,
