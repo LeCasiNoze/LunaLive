@@ -5,8 +5,6 @@
 // sous l'avatar/contenu. Le parent doit etre position:relative et overflow:hidden.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import * as React from "react";
-
 export type V3NeonBgProps = {
   accent?: string;
   accentGlow?: string;

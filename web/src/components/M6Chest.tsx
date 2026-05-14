@@ -40,6 +40,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
     accent:      theme?.accent      || "#d4a843",
     accentLight: theme?.accentLight || "#f0c84a",
     accentDark:  "#8a6724",
+    accentGlow:  theme?.accentGlow  || "rgba(212,168,67,.4)",
     bgPage:      theme?.bgPage      || "#0a0712",
     bgCard:      theme?.bgCard      || "#15101a",
     chrome:      "#3a3a42",
