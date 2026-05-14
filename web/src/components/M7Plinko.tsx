@@ -8,6 +8,7 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3NeonBg } from "./V3NeonBg";
 
 export type M7PlinkoProps = {
   pseudo?: string;
@@ -110,28 +111,27 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   const ballY = phase === "idle" ? 4 : 4 + ((pathIdx) / (ROWS)) * 88;
 
   return (
-    <div className="m7-root" style={{ background: T.bgPage, color: "#f5f1e6" }}>
+    <div className="m7-root" style={{ color: "#f5f1e6" }}>
       <style>{`
-        .m7-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative}
-        .m7-root::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,${T.accentGlow}40,transparent 60%);pointer-events:none}
+        .m7-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
 
         .m7-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
         .m7-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
         .m7-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m7-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
-        .m7-promo{position:relative;z-index:2;display:inline-block;padding:8px 18px;margin-bottom:20px;background:rgba(0,0,0,.35);border:1px solid ${T.accent}33;border-radius:4px;font-size:.78rem;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.85)}
-        .m7-promo strong{color:${T.accent}}
+        .m7-promo{position:relative;z-index:2;display:inline-block;padding:9px 20px;margin-bottom:20px;background:rgba(10,5,25,.78);border:1px solid ${T.accent};border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.95);box-shadow:0 0 22px ${T.accentGlow}}
+        .m7-promo strong{color:${T.accentLight};font-weight:800;text-shadow:0 0 10px ${T.accentGlow}}
 
-        .m7-stage{position:relative;width:min(92vw,360px);aspect-ratio:.92/1;background:linear-gradient(180deg,${T.bgCard},#0a070f);border:2px solid #1f1d24;border-radius:10px;padding:14px 14px 0;margin-bottom:22px;box-shadow:0 12px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden;z-index:2}
+        .m7-stage{position:relative;width:min(92vw,360px);aspect-ratio:.92/1;background:linear-gradient(180deg,${T.bgCard},#0a070f);border:2px solid ${T.accent}55;border-radius:14px;padding:14px 14px 0;margin-bottom:22px;box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 28px ${T.accent}22,inset 0 0 0 1px ${T.accent}22,inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden;z-index:2}
         .m7-stage::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,${T.accentGlow}40,transparent 50%);pointer-events:none}
 
         .m7-field{position:relative;width:100%;height:88%}
-        .m7-peg{position:absolute;width:7px;height:7px;background:radial-gradient(circle at 30% 30%,#d1d5db,#71717a 50%,#3f3f46);border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 2px rgba(0,0,0,.6)}
+        .m7-peg{position:absolute;width:8px;height:8px;background:radial-gradient(circle at 30% 30%,#fff,${T.accent} 55%,${T.accentDark});border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 2px rgba(0,0,0,.6),0 0 6px ${T.accent}66}
         .m7-ball{position:absolute;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,${T.accentLight},${T.accent} 50%,${T.accentDark});box-shadow:0 0 16px ${T.accentGlow},inset 0 -2px 4px rgba(0,0,0,.3),inset 0 2px 0 rgba(255,255,255,.4);transform:translate(-50%,-50%);transition:left .28s cubic-bezier(.5,.1,.3,1),top .28s cubic-bezier(.4,.5,.3,1.1);z-index:3}
 
         .m7-slots{position:absolute;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(${SLOT_COUNT},1fr);gap:1px;padding:0 14px;height:34px}
-        .m7-slot{display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;letter-spacing:.04em;color:rgba(245,241,230,.7);background:linear-gradient(180deg,#1a1a1d,#0d0d10);border:1px solid #27272a;border-top:none}
+        .m7-slot{display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;letter-spacing:.04em;color:${T.accent}cc;background:linear-gradient(180deg,#1a1a1d,#0d0d10);border:1px solid ${T.accent}33;border-top:none;text-shadow:0 0 6px ${T.accent}44}
         .m7-slot.jackpot{background:linear-gradient(180deg,${T.accent},${T.accentDark});color:#0e0a05;border-color:${T.accent};font-weight:900}
         .m7-slot.jackpot.lit{box-shadow:0 0 16px ${T.accentGlow},inset 0 0 8px ${T.accentLight};animation:m7-jackpot-pulse .8s ease-in-out infinite alternate}
 
@@ -156,6 +156,8 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         @keyframes m7-fade{from{opacity:0}to{opacity:1}}
         @keyframes m7-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
       `}</style>
+
+      <V3NeonBg accent={T.accent} accentGlow={T.accentGlow} />
 
       <div className="m7-header">
         {profileImageUrl ? <div className="m7-avatar"><img src={profileImageUrl} alt="" /></div> : null}

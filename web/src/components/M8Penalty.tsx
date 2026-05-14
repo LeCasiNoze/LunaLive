@@ -110,10 +110,12 @@ export function M8Penalty({
   };
 
   const ballPos = (() => {
-    if (phase === "idle") return { left: 50, top: 88, scale: 1, rotate: 0 };
+    if (phase === "idle" || phase === "select") return { left: 50, top: 88, scale: 1, rotate: 0 };
     const targetLeft = aim === "L" ? 22 : aim === "R" ? 78 : 50;
-    const targetTop = aim === "C" ? 33 : 24;
-    return { left: targetLeft, top: targetTop, scale: 0.58, rotate: aim === "L" ? -18 : aim === "R" ? 18 : 0 };
+    const targetTop = aim === "C" ? 32 : 24;
+    // 2 tours complets de spin + tilt en fin de course selon l'aim → effet "frappe vissée"
+    const spin = 720 + (aim === "L" ? -22 : aim === "R" ? 22 : 8);
+    return { left: targetLeft, top: targetTop, scale: 0.42, rotate: spin };
   })();
 
   const gkPos = (() => {
@@ -188,13 +190,23 @@ export function M8Penalty({
         .m8-crowd-ribbon{position:absolute;top:178px;left:22px;right:22px;display:flex;justify-content:space-between;z-index:2}
         .m8-crowd-flag{padding:6px 12px;border-radius:999px;background:rgba(5,8,18,.55);border:1px solid rgba(255,255,255,.08);font-size:.72rem;font-weight:800;letter-spacing:.12em;color:${T.crowd};backdrop-filter:blur(8px)}
 
-        .m8-goal-shell{position:absolute;left:12%;right:12%;top:27%;height:34%;border-radius:24px 24px 12px 12px;background:linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.03));box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);z-index:2}
-        .m8-goal{position:absolute;inset:16px 16px 0 16px;border:7px solid rgba(255,255,255,.96);border-bottom:none;border-radius:18px 18px 0 0;box-shadow:0 -8px 28px rgba(255,255,255,.12)}
-        .m8-net{position:absolute;inset:8px 8px 0 8px;background:
-          repeating-linear-gradient(0deg,rgba(255,255,255,.22) 0,rgba(255,255,255,.22) 1px,transparent 1px,transparent 16px),
-          repeating-linear-gradient(90deg,rgba(255,255,255,.22) 0,rgba(255,255,255,.22) 1px,transparent 1px,transparent 16px),
-          linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.16));
-          opacity:.9}
+        /* Cage — perspective : poteaux blancs 3D, traverse, filet net */
+        .m8-goal-shell{position:absolute;left:10%;right:10%;top:26%;height:36%;z-index:2;perspective:600px}
+        .m8-goal{position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.04),rgba(0,0,0,.18));border-radius:6px 6px 2px 2px}
+        /* Filet : double cross-hatch + degrade pour effet profondeur */
+        .m8-net{position:absolute;inset:9px 9px 0 9px;background:
+          repeating-linear-gradient(45deg,rgba(255,255,255,.28) 0,rgba(255,255,255,.28) 1px,transparent 1px,transparent 10px),
+          repeating-linear-gradient(-45deg,rgba(255,255,255,.28) 0,rgba(255,255,255,.28) 1px,transparent 1px,transparent 10px),
+          repeating-linear-gradient(0deg,rgba(255,255,255,.08) 0,rgba(255,255,255,.08) 1px,transparent 1px,transparent 6px),
+          linear-gradient(180deg,rgba(0,0,0,.32) 0%,rgba(0,0,0,.55) 100%);
+          border-radius:4px;box-shadow:inset 0 6px 14px rgba(0,0,0,.55),inset 0 -6px 12px rgba(0,0,0,.4)}
+        .m8-net.shake{animation:m8-net-shake .6s cubic-bezier(.2,1.4,.4,.95)}
+        /* Poteaux verticaux gauche & droit */
+        .m8-goal::before,.m8-goal::after{content:"";position:absolute;top:0;bottom:0;width:9px;background:linear-gradient(90deg,#e2e8f0,#fff 35%,#cbd5e1);border-radius:4px;box-shadow:0 0 14px rgba(255,255,255,.4),inset -2px 0 3px rgba(0,0,0,.25),inset 2px 0 1px rgba(255,255,255,.6);z-index:3}
+        .m8-goal::before{left:0}
+        .m8-goal::after{right:0}
+        /* Traverse */
+        .m8-crossbar{position:absolute;top:0;left:0;right:0;height:9px;background:linear-gradient(180deg,#fff 0%,#e2e8f0 60%,#cbd5e1);border-radius:4px;box-shadow:0 0 14px rgba(255,255,255,.45),inset 0 -2px 3px rgba(0,0,0,.25),inset 0 2px 1px rgba(255,255,255,.7);z-index:4}
 
         .m8-zones{position:absolute;left:12%;right:12%;top:27%;height:34%;display:grid;grid-template-columns:1fr 1fr 1fr;z-index:8}
         .m8-zone{position:relative;cursor:pointer;transition:background .16s ease,transform .16s ease;border:1px solid transparent}
@@ -206,14 +218,18 @@ export function M8Penalty({
         .m8-gk{position:absolute;width:17%;aspect-ratio:.62/1;left:50%;top:37%;transform:translate(-50%,0) rotate(0deg);transition:left .85s cubic-bezier(.3,1.6,.5,.95),transform .85s cubic-bezier(.3,1.6,.5,.95),top .85s cubic-bezier(.3,1.6,.5,.95);z-index:7;will-change:transform,left,top}
         .m8-gk svg{width:100%;height:100%;display:block;filter:drop-shadow(0 10px 14px rgba(0,0,0,.42))}
 
-        .m8-ball{position:absolute;width:34px;height:34px;left:50%;top:88%;transform:translate(-50%,-50%) scale(1) rotate(0deg);transition:left .86s cubic-bezier(.3,1.1,.4,1),top .86s cubic-bezier(.4,1.1,.5,1),transform .86s ease;z-index:9;will-change:transform,left,top;filter:drop-shadow(0 6px 12px rgba(0,0,0,.55))}
-        .m8-ball::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#e5e7eb 38%,#9ca3af 86%);box-shadow:inset 0 -4px 8px rgba(0,0,0,.28)}
+        .m8-ball{position:absolute;width:34px;height:34px;left:50%;top:88%;transform:translate(-50%,-50%) scale(1) rotate(0deg);z-index:9;will-change:transform,left,top;filter:drop-shadow(0 6px 12px rgba(0,0,0,.55));transition:left .86s cubic-bezier(.3,1.1,.4,1),top .92s cubic-bezier(.18,.85,.32,1),transform .92s cubic-bezier(.34,1.2,.64,1)}
+        .m8-ball::before{content:"";position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,#e5e7eb 38%,#9ca3af 86%);box-shadow:inset 0 -4px 8px rgba(0,0,0,.32),0 0 12px rgba(255,255,255,.3)}
         .m8-ball::after{content:"";position:absolute;inset:16%;border-radius:50%;background:
           radial-gradient(circle at 30% 50%,transparent 18%,#111827 19%,#111827 22%,transparent 23%),
           radial-gradient(circle at 70% 50%,transparent 18%,#111827 19%,#111827 22%,transparent 23%),
           radial-gradient(circle at 50% 30%,transparent 14%,#111827 15%,#111827 18%,transparent 19%);
           opacity:.62}
-        .m8-ball-trail{position:absolute;left:50%;top:71%;width:14px;height:110px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,0),${T.accentGlow});transform:translateX(-50%);opacity:${phase === "shooting" || phase === "goal" || phase === "won" ? 1 : 0};filter:blur(10px);transition:opacity .2s ease;z-index:5}
+        .m8-ball-trail{position:absolute;left:50%;top:72%;width:18px;height:140px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,0),${T.accent}66 60%,${T.accentLight});transform:translateX(-50%);opacity:${phase === "shooting" || phase === "goal" || phase === "won" ? 1 : 0};filter:blur(12px);transition:opacity .2s ease;z-index:5}
+        .m8-ball-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:${T.accentLight};box-shadow:0 0 12px ${T.accentLight},0 0 20px ${T.accent};pointer-events:none;opacity:0;z-index:6}
+        .m8-ball-spark.s1{left:50%;top:60%;animation:m8-spark-trail .8s ease-out infinite}
+        .m8-ball-spark.s2{left:48%;top:50%;animation:m8-spark-trail .8s ease-out .2s infinite}
+        .m8-ball-spark.s3{left:52%;top:40%;animation:m8-spark-trail .8s ease-out .4s infinite}
 
         .m8-goal-flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:4.1rem;font-weight:900;color:#fff;text-shadow:0 0 24px ${T.accent},0 0 50px ${T.accentGlow};letter-spacing:.04em;pointer-events:none;opacity:0;transform:scale(.5);z-index:10;background:radial-gradient(circle,${T.accentGlow},transparent 62%)}
         .m8-goal-flash.show{animation:m8-goal-pop .62s cubic-bezier(.17,1.4,.34,1.06) forwards}
@@ -249,6 +265,8 @@ export function M8Penalty({
         .m8-popup .m8-cta{width:100%;font-size:.9rem;padding:16px 18px;letter-spacing:.12em}
 
         @keyframes m8-goal-pop{0%{opacity:0;transform:scale(.5)}40%{opacity:1;transform:scale(1.18)}70%{transform:scale(1)}100%{opacity:1;transform:scale(1)}}
+        @keyframes m8-net-shake{0%{transform:translateX(0) scaleY(1)}20%{transform:translateX(-3px) scaleY(1.03)}40%{transform:translateX(3px) scaleY(.98)}60%{transform:translateX(-2px) scaleY(1.02)}80%{transform:translateX(1px) scaleY(.99)}100%{transform:translateX(0) scaleY(1)}}
+        @keyframes m8-spark-trail{0%{opacity:0;transform:translate(-50%,0) scale(.5)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,40px) scale(.3)}}
         @keyframes m8-fade{from{opacity:0}to{opacity:1}}
         @keyframes m8-pop{0%{transform:translateY(20px) scale(.96);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
       `}</style>
@@ -339,7 +357,8 @@ export function M8Penalty({
 
         <div className="m8-goal-shell">
           <div className="m8-goal">
-            <div className="m8-net" />
+            <div className="m8-crossbar" />
+            <div className={`m8-net ${phase === "goal" || phase === "won" ? "shake" : ""}`} />
           </div>
         </div>
 
@@ -375,6 +394,13 @@ export function M8Penalty({
         </div>
 
         <div className="m8-ball-trail" />
+        {phase === "shooting" ? (
+          <>
+            <span className="m8-ball-spark s1" />
+            <span className="m8-ball-spark s2" />
+            <span className="m8-ball-spark s3" />
+          </>
+        ) : null}
         <div
           className="m8-ball"
           style={{

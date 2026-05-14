@@ -153,7 +153,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-cta:not(:disabled):active{transform:translateY(1px)}
         .m3-cta:disabled{background:linear-gradient(180deg,#2a2a32,#1a1a20);color:rgba(255,255,255,.5);border-color:#2a2a32;cursor:not-allowed;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);animation:none}
 
-        .m3-info{margin-top:16px;font-size:.78rem;color:rgba(245,241,230,.7);letter-spacing:.05em;position:relative;z-index:3;text-align:center}
+        .m3-info{margin-top:16px;font-size:.78rem;color:rgba(245,241,230,.8);letter-spacing:.05em;position:relative;z-index:3;text-align:center;padding:8px 16px;background:rgba(10,5,25,.5);border:1px solid ${T.accent}44;border-radius:999px;box-shadow:0 0 14px ${T.accentGlow}}
         .m3-info .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-right:6px;box-shadow:0 0 8px #22c55e;animation:m3-blink 1.4s ease-in-out infinite}
 
         @keyframes m3-mesh{0%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-30px,20px) rotate(8deg)}100%{transform:translate(20px,-15px) rotate(-6deg)}}
