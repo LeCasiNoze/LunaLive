@@ -20,6 +20,8 @@ const DEFAULT_ALLOWED = [
   // Rumble
   "rumble.com", "*.rumble.com",
   "1a-1791.com", "*.1a-1791.com",
+  // Rumble CDN secondaire (ex: hugh.cdn.rumble.cloud)
+  "rumble.cloud", "*.rumble.cloud",
 ];
 
 function isAllowedHost(host: string) {
