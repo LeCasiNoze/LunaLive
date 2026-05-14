@@ -32,6 +32,7 @@ import { M5Slot } from "../components/M5Slot";
 import { M6Chest } from "../components/M6Chest";
 import { M7Plinko } from "../components/M7Plinko";
 import { M8Penalty } from "../components/M8Penalty";
+import { M9Crossy } from "../components/M9Crossy";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -385,6 +386,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     case "M6": return <M6Chest {...props} />;
     case "M7": return <M7Plinko {...props} />;
     case "M8": return <M8Penalty {...props} penaltyTeam={b.penaltyTeam} />;
+    case "M9": return <M9Crossy {...props} />;
   }
 }
 

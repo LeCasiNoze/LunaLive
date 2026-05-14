@@ -511,7 +511,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -524,6 +524,7 @@ function WizardQuickView({
               {inputs.modelKind === "M6" && "M6 = Mines — grille 3x3 sans bombe"}
               {inputs.modelKind === "M7" && "M7 = Plinko — bille qui rebondit sur les pegs"}
               {inputs.modelKind === "M8" && "M8 = Penalty — ambiance coupe du monde, thème d'équipe"}
+              {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
             </div>
           </div>
 

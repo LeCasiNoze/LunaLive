@@ -120,7 +120,7 @@ export interface V3QuickInputs {
    *   - M6 = Mines (grille 3x3 diamants/bombe)
    *   - M7 = Plinko (bille à travers les pegs)
    *   - M8 = Penalty (tir au but, vise une zone) */
-  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8";
+  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9";
   /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
   m5Variant?: M5V1Variant;
   /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
@@ -422,7 +422,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 // très simple : un V2Page minimaliste avec une seule zone (cards) contenant
 // ce bloc.
 export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
-  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8";
+  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9";
   const useTheme = inputs.m1UseTheme !== false;
   const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
   const baseThemeColors = theme ? {
