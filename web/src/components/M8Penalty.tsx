@@ -1,9 +1,19 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
-import { getPenaltyTeam } from "../lib/v3_penalty_teams";
+import { getPenaltyTeam, V3_PENALTY_TEAMS, type V3PenaltyTeamKey } from "../lib/v3_penalty_teams";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3NeonBg } from "./V3NeonBg";
+
+const TEAM_FLAGS: Record<V3PenaltyTeamKey, string> = {
+  france: "🇫🇷",
+  brazil: "🇧🇷",
+  argentina: "🇦🇷",
+  morocco: "🇲🇦",
+  spain: "🇪🇸",
+  portugal: "🇵🇹",
+};
 
 export type M8PenaltyProps = {
   pseudo?: string;
@@ -47,7 +57,11 @@ export function M8Penalty({
   theme,
   pseudoStyle,
 }: M8PenaltyProps) {
-  const team = getPenaltyTeam(penaltyTeam);
+  // Selection equipe pilotee par l'utilisateur (defaut = prop ou France)
+  const [selectedKey, setSelectedKey] = React.useState<V3PenaltyTeamKey>(
+    (penaltyTeam as V3PenaltyTeamKey) || "france"
+  );
+  const team = getPenaltyTeam(selectedKey);
   const T = {
     accent: theme?.accent || team.accent,
     accentLight: theme?.accentLight || team.accentLight,
@@ -68,7 +82,7 @@ export function M8Penalty({
     buttonText: team.buttonText,
   };
 
-  const [phase, setPhase] = React.useState<"idle" | "shooting" | "goal" | "won">("idle");
+  const [phase, setPhase] = React.useState<"select" | "idle" | "shooting" | "goal" | "won">("select");
   const [aim, setAim] = React.useState<AimZone | null>(null);
   const [popupOpen, setPopupOpen] = React.useState(false);
 
@@ -111,15 +125,23 @@ export function M8Penalty({
   })();
 
   return (
-    <div className="m8-root" style={{ background: T.bgPage, color: "#f8fafc" }}>
+    <div className="m8-root" style={{ color: "#f8fafc" }}>
       <style>{`
-        .m8-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative;overflow:hidden}
-        .m8-root::before{content:"";position:absolute;inset:0;background:
-          radial-gradient(circle at 50% 0%,${T.accentGlow},transparent 36%),
-          radial-gradient(circle at 10% 20%,rgba(255,255,255,.08),transparent 20%),
-          linear-gradient(180deg,${T.bgPage},#04070f 100%);
-          pointer-events:none}
-        .m8-root::after{content:"";position:absolute;inset:auto 0 0 0;height:38%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.28));pointer-events:none}
+        .m8-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
+
+        /* Country selector */
+        .m8-team-picker{position:relative;z-index:3;width:min(94vw,460px);margin-bottom:18px;padding:18px 14px;background:rgba(8,12,28,.78);border:1px solid ${T.borderColor};border-radius:18px;backdrop-filter:blur(10px);box-shadow:0 0 22px ${T.accentGlow}}
+        .m8-team-picker-title{font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700;color:#fff;text-align:center;margin-bottom:4px}
+        .m8-team-picker-sub{text-align:center;font-size:.74rem;color:rgba(226,232,240,.7);margin-bottom:14px}
+        .m8-team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+        .m8-team-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 6px;border-radius:12px;background:rgba(2,6,23,.5);border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:all .18s ease}
+        .m8-team-tile:hover{transform:translateY(-2px);background:rgba(2,6,23,.7);border-color:rgba(255,255,255,.18)}
+        .m8-team-tile.selected{border-color:${T.accent};background:rgba(2,6,23,.85);box-shadow:0 0 18px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55}
+        .m8-team-flag{font-size:1.8rem;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.4))}
+        .m8-team-name{font-size:.66rem;font-weight:800;letter-spacing:.06em;color:rgba(241,245,249,.85);text-transform:uppercase}
+        .m8-team-tile.selected .m8-team-name{color:${T.accentLight}}
+        .m8-team-confirm{display:block;width:100%;padding:14px 20px;background:linear-gradient(135deg,${T.accentLight},${T.accent});color:${T.buttonText};font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:.84rem;border:none;border-radius:12px;cursor:pointer;font-family:inherit;box-shadow:0 6px 18px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.42);transition:transform .12s ease}
+        .m8-team-confirm:hover{transform:translateY(-1px)}
 
         .m8-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;position:relative;z-index:2}
         .m8-avatar{width:74px;height:74px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(255,255,255,.05),0 12px 28px rgba(0,0,0,.35)}
@@ -231,6 +253,8 @@ export function M8Penalty({
         @keyframes m8-pop{0%{transform:translateY(20px) scale(.96);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
       `}</style>
 
+      <V3NeonBg accent={T.accent} accentGlow={T.accentGlow} />
+
       <div className="m8-header">
         {profileImageUrl ? <div className="m8-avatar"><img src={profileImageUrl} alt="" /></div> : null}
         {pseudo ? (
@@ -242,12 +266,41 @@ export function M8Penalty({
         ) : null}
       </div>
 
+      {phase === "select" ? (
+        <div className="m8-team-picker">
+          <div className="m8-team-picker-title">Choisis ton équipe</div>
+          <div className="m8-team-picker-sub">Le stade, ton maillot et le gardien s'adaptent à ton choix</div>
+          <div className="m8-team-grid">
+            {V3_PENALTY_TEAMS.map((t) => (
+              <div
+                key={t.key}
+                className={`m8-team-tile ${selectedKey === t.key ? "selected" : ""}`}
+                onClick={() => { sfx.click(); setSelectedKey(t.key); }}
+              >
+                <div className="m8-team-flag">{TEAM_FLAGS[t.key]}</div>
+                <div className="m8-team-name">{t.label}</div>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="m8-team-confirm"
+            onClick={() => { sfx.click(); setPhase("idle"); }}
+          >
+            Valider · {team.label} {TEAM_FLAGS[selectedKey]}
+          </button>
+        </div>
+      ) : null}
+
+      {phase !== "select" ? (
       <div className="m8-promo">
         <span className="m8-team-dot" />
         Penalty mondial
         <strong>{team.label}</strong>
       </div>
+      ) : null}
 
+      {phase !== "select" ? (<>
       <div className="m8-step">
         <div className="m8-step-title">
           {phase === "idle"
@@ -355,6 +408,7 @@ export function M8Penalty({
       ) : (
         <button className="m8-cta" disabled>{phase === "shooting" ? "Frappe en cours..." : "But valide"}</button>
       )}
+      </>) : null}
 
       <V3OfferPopup
         open={phase === "won" && popupOpen}

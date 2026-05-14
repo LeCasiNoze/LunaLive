@@ -183,7 +183,7 @@ export function M5Slot({
         .m5-promo strong{color:${T.accentLight};font-weight:800}
 
         .m5-rows{position:relative;z-index:3;display:flex;flex-direction:column;gap:14px;width:min(94vw,420px);margin-bottom:24px}
-        .m5-row{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:12px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.7);border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease}
+        .m5-row{position:relative;display:grid;grid-template-columns:20px 1fr 96px;align-items:center;gap:10px;padding:12px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.7);border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease}
         .m5-row.revealed.loss{border-color:rgba(239,68,68,.4);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(239,68,68,.18)}
         .m5-row.revealed.bait{border-color:rgba(251,146,60,.55);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 22px rgba(251,146,60,.3)}
         .m5-row.revealed.win{border-color:${T.accent};box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55;animation:m5-row-win-pulse 1.6s ease-in-out infinite}
@@ -213,7 +213,7 @@ export function M5Slot({
         .m5-row.revealed.win.celebrating::before{top:-12px;left:14%;animation-delay:0s}
         .m5-row.revealed.win.celebrating::after{bottom:-12px;right:14%;animation-delay:.4s}
 
-        .m5-row-status{font-size:.68rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;text-align:right;min-width:60px}
+        .m5-row-status{font-size:.66rem;font-weight:900;letter-spacing:.1em;text-transform:uppercase;text-align:right;line-height:1.15}
         .m5-row.idle .m5-row-status,.m5-row.spinning .m5-row-status{color:rgba(226,232,240,.4)}
         .m5-row.revealed.loss .m5-row-status{color:#ef4444}
         .m5-row.revealed.bait .m5-row-status{color:#fb923c;animation:m5-bait-flash 1.4s ease-in-out infinite}

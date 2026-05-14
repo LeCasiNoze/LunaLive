@@ -9,6 +9,7 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3NeonBg } from "./V3NeonBg";
 
 export type M6ChestProps = {
   pseudo?: string;
@@ -141,10 +142,9 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   }
 
   return (
-    <div className="m6-root" style={{ background: T.bgPage, color: "#f5f1e6" }}>
+    <div className="m6-root" style={{ color: "#f5f1e6" }}>
       <style>{`
-        .m6-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative}
-        .m6-root::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(212,168,67,.08),transparent 60%);pointer-events:none}
+        .m6-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
 
         .m6-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
         .m6-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
@@ -208,6 +208,8 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         @keyframes m6-fade{from{opacity:0}to{opacity:1}}
         @keyframes m6-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
       `}</style>
+
+      <V3NeonBg accent={T.accent} accentGlow={`${T.accent}66`} />
 
       <div className="m6-header">
         {profileImageUrl ? <div className="m6-avatar"><img src={profileImageUrl} alt="" /></div> : null}

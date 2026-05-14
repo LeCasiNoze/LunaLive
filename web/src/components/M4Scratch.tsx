@@ -10,6 +10,7 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3NeonBg } from "./V3NeonBg";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -166,10 +167,9 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
     && [0, 1, 2].filter((idx) => idx !== picked).every((idx) => revealedSet.has(idx));
 
   return (
-    <div className="m4-root" style={{ background: T.bgPage, color: "#f5f1e6" }}>
+    <div className="m4-root" style={{ color: "#f5f1e6" }}>
       <style>{`
-        .m4-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative}
-        .m4-root::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(212,168,67,.08),transparent 60%);pointer-events:none}
+        .m4-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
 
         .m4-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
         .m4-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
@@ -237,6 +237,8 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         @keyframes m4-tense-glow{from{filter:none}to{filter:drop-shadow(0 0 12px ${T.accent}88)}}
         @keyframes m4-celebrate-pop{0%{transform:rotateY(180deg) scale(1)}40%{transform:rotateY(180deg) scale(1.12)}100%{transform:rotateY(180deg) scale(1)}}
       `}</style>
+
+      <V3NeonBg accent={T.accent} accentGlow={`${T.accent}66`} />
 
       <div className="m4-header">
         {profileImageUrl ? <div className="m4-avatar"><img src={profileImageUrl} alt="" /></div> : null}

@@ -236,10 +236,17 @@ export function V3OfferPopup({
         .v3p-countdown-cancel{margin-top:2px;background:none;border:none;color:rgba(148,163,184,.7);font-size:.7rem;cursor:pointer;text-decoration:underline;letter-spacing:.04em}
         .v3p-countdown-cancel:hover{color:rgba(248,250,252,.9)}
 
-        /* VIP banner */
-        .v3p-vip-btn{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:14px 0 0;padding:12px 16px;background:transparent;border:1px dashed rgba(253,230,138,.32);border-radius:14px;color:rgba(253,230,138,.85);font-size:.78rem;font-weight:700;letter-spacing:.04em;font-family:inherit;cursor:pointer;transition:background .2s ease,border-color .2s ease,color .2s ease}
-        .v3p-vip-btn:hover{background:rgba(253,230,138,.06);border-color:var(--v3p-accent);color:var(--v3p-accent-light)}
-        .v3p-vip-btn-icon{font-size:1rem}
+        /* VIP banner — carte */
+        .v3p-vip-card{position:relative;z-index:1;display:flex;align-items:stretch;gap:12px;width:100%;margin:14px 0 0;padding:14px;background:linear-gradient(135deg,rgba(2,6,23,.72),rgba(15,23,42,.4));border:1px solid var(--v3p-accent);border-radius:16px;text-align:left;box-shadow:0 0 0 4px rgba(0,0,0,.18),0 0 22px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.06);overflow:hidden}
+        .v3p-vip-card::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 100% 0,var(--v3p-accent-glow),transparent 60%);opacity:.45;pointer-events:none}
+        .v3p-vip-crown{position:relative;z-index:1;flex-shrink:0;width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--v3p-accent-light),var(--v3p-accent));display:grid;place-items:center;font-size:1.5rem;box-shadow:0 6px 18px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.5);animation:v3p-vip-crown-bob 2.6s ease-in-out infinite}
+        .v3p-vip-content{position:relative;z-index:1;flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+        .v3p-vip-title{font-size:.86rem;font-weight:800;color:#fff;line-height:1.25}
+        .v3p-vip-title em{font-style:normal;color:var(--v3p-accent-light);text-shadow:0 0 8px var(--v3p-accent-glow)}
+        .v3p-vip-sub{font-size:.7rem;color:rgba(203,213,225,.75);line-height:1.35}
+        .v3p-vip-action{position:relative;z-index:1;align-self:stretch;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;margin-top:auto;background:linear-gradient(135deg,var(--v3p-accent-light),var(--v3p-accent));color:var(--v3p-button-text);font-weight:800;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;border:none;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.4);transition:transform .12s ease,box-shadow .15s ease;width:100%}
+        .v3p-vip-action:hover{transform:translateY(-1px);box-shadow:0 6px 16px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.4)}
+        .v3p-vip-action::after{content:"→";font-weight:900;font-size:.8rem}
 
         /* VIP form expanded */
         .v3p-vip-form{position:relative;z-index:1;margin:14px -8px 0;padding:16px 16px;background:linear-gradient(135deg,rgba(15,23,42,.85),rgba(15,23,42,.6));border-top:1px solid rgba(255,255,255,.1);border-radius:0 0 22px 22px;text-align:left;animation:v3p-fade .2s ease-out}
@@ -265,6 +272,7 @@ export function V3OfferPopup({
         @keyframes v3p-shimmer{from{transform:translate(-30%,-30%) rotate(0)}to{transform:translate(-30%,-30%) rotate(360deg)}}
         @keyframes v3p-step-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
         @keyframes v3p-blink{0%,100%{opacity:1}50%{opacity:.25}}
+        @keyframes v3p-vip-crown-bob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-3px) rotate(4deg)}}
       `}</style>
 
       <div className="v3p-card" onClick={(event) => event.stopPropagation()}>
@@ -326,14 +334,20 @@ export function V3OfferPopup({
         ) : null}
 
         {showVipBanner && vipMode === "closed" ? (
-          <button
-            type="button"
-            className="v3p-vip-btn"
-            onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}
-          >
-            <span className="v3p-vip-btn-icon">👑</span>
-            Je suis un gros joueur (500€–1K€ / mois)
-          </button>
+          <div className="v3p-vip-card" onClick={(e) => e.stopPropagation()}>
+            <div className="v3p-vip-crown">👑</div>
+            <div className="v3p-vip-content">
+              <div className="v3p-vip-title">Vous êtes un <em>gros joueur</em> ?</div>
+              <div className="v3p-vip-sub">500€–1K€ de dépôt par mois ? Un host dédié + bonus exclusifs t'attendent.</div>
+              <button
+                type="button"
+                className="v3p-vip-action"
+                onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}
+              >
+                Demander mon host VIP
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {showVipBanner && (vipMode === "form" || vipMode === "sending") ? (

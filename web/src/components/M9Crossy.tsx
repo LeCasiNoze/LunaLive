@@ -173,10 +173,10 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         .m9-promo{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;margin-bottom:14px;background:rgba(8,15,22,.85);border:1px solid ${T.borderColor};border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(241,245,249,.92);box-shadow:0 0 18px ${T.accentGlow}}
         .m9-promo-dot{width:8px;height:8px;border-radius:50%;background:${T.accent};box-shadow:0 0 12px ${T.accentGlow};animation:m9-pulse 1.6s ease-in-out infinite}
 
-        .m9-hud{display:flex;width:min(96vw,580px);gap:8px;margin-bottom:14px}
-        .m9-hud-card{flex:1;padding:10px 14px;background:rgba(8,15,22,.7);border:1px solid rgba(134,239,172,.18);border-radius:12px;text-align:center;backdrop-filter:blur(6px)}
-        .m9-hud-lbl{font-size:.6rem;color:rgba(241,245,249,.55);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
-        .m9-hud-val{font-size:1.1rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
+        .m9-hud{display:flex;width:min(96vw,580px);gap:6px;margin-bottom:14px;box-sizing:border-box}
+        .m9-hud-card{flex:1;min-width:0;padding:8px 8px;background:rgba(8,15,22,.7);border:1px solid rgba(134,239,172,.18);border-radius:12px;text-align:center;backdrop-filter:blur(6px);box-sizing:border-box;overflow:hidden}
+        .m9-hud-lbl{font-size:.56rem;color:rgba(241,245,249,.55);letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px;white-space:nowrap}
+        .m9-hud-val{font-size:.96rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .m9-hud-val.win{color:${T.accentLight};text-shadow:0 0 14px ${T.accentGlow}}
 
         /* Stage horizontal — plus grand */
@@ -263,7 +263,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
       <div className="m9-promo">
         <span className="m9-promo-dot" />
-        Crossy · Avance pour gagner
+        Chicken Cross · Avance pour gagner
       </div>
 
       <div className="m9-hud">
