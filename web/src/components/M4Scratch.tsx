@@ -9,6 +9,7 @@ import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3SocialProof } from "./V3SocialProof";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -326,6 +327,8 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         steps={popupSteps}
         href={safeAffi}
       />
+
+      <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={`${T.accent}66`} />
     </div>
   );
 }
