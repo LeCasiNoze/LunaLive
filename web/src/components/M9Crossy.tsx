@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M9 — Crossy Road : poulet qui avance sur une route à 3 voies. Chaque
-// palier débloque un multiplicateur croissant. Le user doit "Collecter" avant
-// le palier de la mort (étape 5 = 150%). Max sécurisable = 100% à l'étape 4.
-// Tout après mène à la mort → message "tu as ton 100% sécurisé".
+// M9 — Crossy Road : route horizontale type Stake. Poulet a gauche dans une
+// zone verte (depart), avance d'une plaque d'egout (multiplicateur) a l'autre.
+// Voitures decoratives traversent verticalement entre les plaques.
+// Palier 4 = checkpoint 100% SAFE. Avancer plus loin = risque de mort
+// (le poulet a deja securise son 100%, le bonus reste garanti).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -28,23 +29,20 @@ export type M9CrossyProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-// Paliers de récompense (du départ au sommet)
-// Index 4 = JACKPOT SÉCURISÉ (100%), Index 5 = mort si tenté
+// 0 = depart (zone verte). 1..7 = plaques.
+// Palier 4 = checkpoint 100% safe.
 const PALIERS = [
-  { label: "0%",   safe: true,  checkpoint: false, mult: 1.0 },
-  { label: "25%",  safe: true,  checkpoint: false, mult: 1.25 },
-  { label: "50%",  safe: true,  checkpoint: false, mult: 1.5 },
-  { label: "75%",  safe: true,  checkpoint: false, mult: 1.75 },
-  { label: "100%", safe: true,  checkpoint: true,  mult: 2.0 },   // ← collect ici
-  { label: "150%", safe: false, checkpoint: false, mult: 2.5 },   // DEATH zone
-  { label: "200%", safe: false, checkpoint: false, mult: 3.0 },
-  { label: "500%", safe: false, checkpoint: true,  mult: 6.0 },   // checkpoint visuel jamais atteint
+  { label: "Départ", mult: "1.00x", safe: true,  checkpoint: false },
+  { label: "+25%",   mult: "1.25x", safe: true,  checkpoint: false },
+  { label: "+50%",   mult: "1.50x", safe: true,  checkpoint: false },
+  { label: "+75%",   mult: "1.75x", safe: true,  checkpoint: false },
+  { label: "+100%",  mult: "2.00x", safe: true,  checkpoint: true  },
+  { label: "+150%",  mult: "2.50x", safe: false, checkpoint: false },
+  { label: "+200%",  mult: "3.00x", safe: false, checkpoint: false },
+  { label: "+500%",  mult: "6.00x", safe: false, checkpoint: true  },
 ];
 
-const SAFE_PALIER = 4;  // index max sécurisé
-
-// Pattern décoratif de voitures par palier (lane = 0|1|2). null = pas de voiture.
-const CAR_PATTERN: Array<number | null> = [null, 1, 2, 0, null, 1, 0, 2];
+const SAFE_PALIER = 4;
 
 export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M9CrossyProps) {
   const T = {
@@ -55,29 +53,23 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     bgPage:      theme?.bgPage      || "#0a1014",
     bgCard:      theme?.bgCard      || "#0f1820",
     borderColor: theme?.borderColor || "rgba(134,239,172,.22)",
-    road:        "#1e2530",
-    roadStripe:  "#fde047",
   };
 
-  // step = palier atteint. 0 = départ.
   const [step, setStep] = React.useState(0);
-  // lane = voie du poulet (0=gauche, 1=centre, 2=droite). Démarre au centre.
-  const [lane, setLane] = React.useState(1);
   const [phase, setPhase] = React.useState<"idle" | "moving" | "dead" | "collected">("idle");
   const [popupOpen, setPopupOpen] = React.useState(false);
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
+  const safeAffi = affiLink || "#";
+
   const crossySteps = React.useMemo(() => [
     "Vérification du palier",
     "Validation du bonus 100%",
     "Lien d'accès prêt",
   ], []);
-  const safeAffi = affiLink || "#";
 
-  // Niveau de récompense atteint = max(SAFE_PALIER, step) si dead, sinon step
-  const currentLabel = PALIERS[Math.min(step, PALIERS.length - 1)]?.label || "0%";
-  const lockedReward = "100%";  // toujours 100% peu importe le path
+  const currentMult = PALIERS[Math.min(step, PALIERS.length - 1)]?.mult || "1.00x";
 
   const advance = () => {
     if (phase === "moving" || phase === "dead" || phase === "collected") return;
@@ -85,138 +77,141 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     setPhase("moving");
     const nextStep = step + 1;
     const nextPalier = PALIERS[nextStep];
-    // Random lane shift visuelle (le poulet bouge légèrement)
-    setLane((l) => (Math.random() > 0.5 ? Math.min(2, l + 1) : Math.max(0, l - 1)));
 
     window.setTimeout(() => {
       setStep(nextStep);
-      if (nextPalier?.checkpoint && nextPalier.safe) {
+      if (!nextPalier) {
+        setPhase("idle");
+        return;
+      }
+      if (nextPalier.checkpoint && nextPalier.safe) {
         sfx.coin();
         sfx.win();
-      } else if (nextPalier?.safe) {
+        setPhase("idle");
+      } else if (nextPalier.safe) {
         sfx.reveal();
+        setPhase("idle");
       } else {
-        // DEATH
         sfx.boom();
         setTimeout(() => {
           sfx.tension(500);
           setPhase("dead");
-          setTimeout(() => {
-            sfx.win();
-            setPopupOpen(true);
-          }, 1100);
+          setTimeout(() => { sfx.win(); setPopupOpen(true); }, 1100);
         }, 300);
-        return;
       }
-      setPhase("idle");
-    }, 420);
+    }, 480);
   };
 
   const collect = () => {
     if (phase === "moving" || phase === "dead" || phase === "collected") return;
     if (step < SAFE_PALIER) return;
-    sfx.click();
-    sfx.coin();
-    sfx.win();
+    sfx.click(); sfx.coin(); sfx.win();
     setPhase("collected");
     setTimeout(() => setPopupOpen(true), 500);
   };
 
   const reset = () => {
     setStep(0);
-    setLane(1);
     setPhase("idle");
     setPopupOpen(false);
   };
 
-  // ─── Render ───────────────────────────────────────────────
-  const totalRows = PALIERS.length;
-  // Position visuelle du poulet (% from bottom)
-  const chickenBottom = (step / (totalRows - 1)) * 86 + 4;  // 4% bottom margin
-  const chickenLeft = 14 + (lane * 36);  // 14%, 50%, 86%
+  // Position du poulet : 0 = zone depart (gauche), 1..7 = plaques sur la route
+  // Layout horizontal: depart prend 22% a gauche, route 78% repartie sur 7 cases
+  const DEPART_WIDTH_PCT = 22;
+  const ROAD_WIDTH_PCT = 100 - DEPART_WIDTH_PCT;
+  const SLOTS = PALIERS.length - 1; // 7 plaques
+  const slotWidth = ROAD_WIDTH_PCT / SLOTS;
+
+  const positionXPct = step === 0
+    ? DEPART_WIDTH_PCT / 2
+    : DEPART_WIDTH_PCT + slotWidth * (step - 0.5);
 
   return (
     <div className="m9-root" style={{ background: T.bgPage, color: "#f1f5f9" }}>
       <style>{`
         .m9-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative;overflow:hidden;min-height:100vh}
         .m9-root::before{content:"";position:absolute;inset:0;background:
-          radial-gradient(circle at 50% 0%,${T.accentGlow}50,transparent 35%),
-          radial-gradient(circle at 80% 60%,rgba(252,211,77,.12),transparent 30%),
+          radial-gradient(circle at 50% 0%,${T.accentGlow}40,transparent 35%),
+          radial-gradient(circle at 80% 60%,rgba(252,211,77,.10),transparent 30%),
           linear-gradient(180deg,${T.bgPage},#040608 100%);
           pointer-events:none}
         .m9-root > *{position:relative;z-index:2}
 
-        /* Header */
         .m9-header{display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:14px}
-        .m9-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(255,255,255,.04),0 12px 28px rgba(0,0,0,.4)}
+        .m9-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(255,255,255,.04),0 0 22px ${T.accentGlow}}
         .m9-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m9-pseudo-wrap{display:flex;justify-content:center}
+        .m9-pseudo-wrap{display:flex;justify-content:center;position:relative;isolation:isolate}
+        .m9-pseudo-wrap::before{content:"";position:absolute;inset:-6px -14px;border-radius:999px;background:radial-gradient(ellipse at center,${T.accentGlow} 0%,transparent 70%);z-index:-1;animation:m9-pseudo-glow 2.6s ease-in-out infinite;pointer-events:none}
 
-        .m9-promo{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;margin-bottom:14px;background:rgba(8,15,22,.55);border:1px solid ${T.borderColor};border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(241,245,249,.85);backdrop-filter:blur(8px)}
+        .m9-promo{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;margin-bottom:14px;background:rgba(8,15,22,.85);border:1px solid ${T.borderColor};border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(241,245,249,.92);box-shadow:0 0 18px ${T.accentGlow}}
         .m9-promo-dot{width:8px;height:8px;border-radius:50%;background:${T.accent};box-shadow:0 0 12px ${T.accentGlow};animation:m9-pulse 1.6s ease-in-out infinite}
 
-        /* HUD */
-        .m9-hud{display:flex;width:min(94vw,420px);gap:8px;margin-bottom:14px}
-        .m9-hud-card{flex:1;padding:10px 14px;background:rgba(8,15,22,.6);border:1px solid rgba(134,239,172,.18);border-radius:12px;text-align:center}
-        .m9-hud-lbl{font-size:.62rem;color:rgba(241,245,249,.55);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
-        .m9-hud-val{font-size:1.15rem;font-weight:900;color:#fff}
+        .m9-hud{display:flex;width:min(94vw,520px);gap:8px;margin-bottom:14px}
+        .m9-hud-card{flex:1;padding:10px 14px;background:rgba(8,15,22,.7);border:1px solid rgba(134,239,172,.18);border-radius:12px;text-align:center;backdrop-filter:blur(6px)}
+        .m9-hud-lbl{font-size:.6rem;color:rgba(241,245,249,.55);letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px}
+        .m9-hud-val{font-size:1.05rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums}
         .m9-hud-val.win{color:${T.accentLight};text-shadow:0 0 14px ${T.accentGlow}}
 
-        /* Stage = route verticale 3 voies */
-        .m9-stage{position:relative;width:min(94vw,420px);height:min(76vh,560px);background:
-          linear-gradient(180deg,rgba(252,211,77,.04),transparent 30%),
-          ${T.road};
-          border:1px solid ${T.borderColor};border-radius:24px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);margin-bottom:16px}
+        /* Stage horizontal */
+        .m9-stage{position:relative;width:min(94vw,520px);height:200px;background:#3f3a48;border:1px solid ${T.borderColor};border-radius:18px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.06);margin-bottom:14px}
 
-        /* Lignes de voies (pointillés blancs) */
-        .m9-lane-line{position:absolute;top:0;bottom:0;width:2px;background:repeating-linear-gradient(180deg,${T.roadStripe} 0,${T.roadStripe} 18px,transparent 18px,transparent 36px);opacity:.7}
-        .m9-lane-line.l{left:33.3%}
-        .m9-lane-line.r{left:66.6%}
+        /* Zone DEPART (gauche, verte avec ferme) */
+        .m9-depart{position:absolute;top:0;bottom:0;left:0;width:${DEPART_WIDTH_PCT}%;background:
+          linear-gradient(180deg,#a3e635 0%,#65a30d 100%);
+          border-right:3px solid #422006;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:2;box-shadow:inset -6px 0 12px rgba(0,0,0,.18)}
+        .m9-depart-tree{font-size:1.4rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+        .m9-depart-barn{font-size:1.6rem;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+        .m9-depart-label{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:.55rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase}
 
-        /* Bords de route (lignes pleines) */
-        .m9-stage::before,.m9-stage::after{content:"";position:absolute;top:0;bottom:0;width:3px;background:${T.roadStripe};opacity:.4}
-        .m9-stage::before{left:4%}
-        .m9-stage::after{right:4%}
+        /* Route principale (zone droite) */
+        .m9-road{position:absolute;top:0;bottom:0;left:${DEPART_WIDTH_PCT}%;right:0;background:
+          repeating-linear-gradient(180deg,transparent 0,transparent 18px,rgba(255,255,255,.7) 18px,rgba(255,255,255,.7) 26px,transparent 26px,transparent 60px),
+          linear-gradient(180deg,#5b5564,#3f3a48);
+        }
+        /* Lanes verticales (lignes blanches pointillees entre les plaques) */
+        .m9-lane-divider{position:absolute;top:0;bottom:0;width:1px;background:repeating-linear-gradient(180deg,rgba(255,255,255,.85) 0,rgba(255,255,255,.85) 8px,transparent 8px,transparent 18px)}
 
-        /* Paliers — lignes horizontales avec multiplicateurs */
-        .m9-palier{position:absolute;left:0;right:0;height:1px;border-top:1px dashed rgba(255,255,255,.12)}
-        .m9-palier-tag{position:absolute;left:50%;transform:translateX(-50%) translateY(-50%);padding:3px 10px;border-radius:999px;background:rgba(15,20,30,.85);border:1px solid rgba(255,255,255,.1);font-size:.62rem;font-weight:900;letter-spacing:.06em;color:rgba(241,245,249,.7);white-space:nowrap;backdrop-filter:blur(4px);transition:all .3s ease}
-        .m9-palier-tag.safe{border-color:${T.accent}55;color:${T.accentLight}}
-        .m9-palier-tag.reached{background:${T.accent};color:#0a1014;border-color:${T.accent};box-shadow:0 0 16px ${T.accentGlow}}
-        .m9-palier-tag.checkpoint{padding-left:18px}
-        .m9-palier-tag.checkpoint::before{content:"🏁";position:absolute;left:4px;top:50%;transform:translateY(-50%);font-size:.7rem}
-        .m9-palier-tag.danger{border-color:rgba(239,68,68,.4);color:rgba(252,165,165,.7)}
+        /* Plaques (manholes / multiplier circles) */
+        .m9-plaque{position:absolute;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border-radius:50%;background:
+          radial-gradient(circle at 35% 30%,#5b5564,#1a1820 60%,#0a0810);
+          border:2px solid #2a262e;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.02em;box-shadow:inset 0 -3px 4px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.1),0 6px 14px rgba(0,0,0,.55);z-index:3;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+        .m9-plaque::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px dashed rgba(255,255,255,.18);pointer-events:none}
+        .m9-plaque.reached{background:radial-gradient(circle at 35% 30%,${T.accentLight},${T.accent} 50%,${T.accentDark});border-color:${T.accentDark};color:#0a1014;text-shadow:none;box-shadow:inset 0 -3px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.4),0 8px 18px ${T.accentGlow},0 0 22px ${T.accentGlow}}
+        .m9-plaque.danger{background:radial-gradient(circle at 35% 30%,#7f1d1d,#450a0a 60%,#1a0606);border-color:#7f1d1d;color:#fecaca}
+        .m9-plaque.checkpoint::after{content:"🏁";position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:.95rem;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 
-        /* Voitures décoratives */
-        .m9-car{position:absolute;width:28px;height:42px;transform:translate(-50%,-50%);font-size:1.6rem;line-height:1;text-align:center;animation:m9-car-bob 2s ease-in-out infinite;filter:drop-shadow(0 4px 8px rgba(0,0,0,.6))}
-        .m9-car:nth-child(odd){animation-delay:-1s}
+        /* Voiture decorative en pixel art */
+        .m9-car{position:absolute;width:36px;height:54px;transform:translate(-50%,-50%);font-size:1.85rem;line-height:1;text-align:center;z-index:2;filter:drop-shadow(0 4px 8px rgba(0,0,0,.5))}
+        .m9-car.car-moving{animation:m9-car-roll 3s linear infinite}
 
         /* Poulet */
-        .m9-chicken{position:absolute;width:46px;height:46px;transform:translate(-50%,50%);font-size:2.3rem;line-height:1;text-align:center;transition:left .42s cubic-bezier(.34,1.56,.64,1),bottom .42s cubic-bezier(.34,1.56,.64,1);filter:drop-shadow(0 6px 12px rgba(0,0,0,.7));z-index:5}
+        .m9-chicken{position:absolute;top:50%;left:${positionXPct}%;transform:translate(-50%,-50%);width:52px;height:52px;font-size:2.3rem;line-height:1;text-align:center;z-index:5;transition:left .48s cubic-bezier(.34,1.56,.64,1),top .3s ease-out;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6));animation:m9-chicken-idle 1.4s ease-in-out infinite}
+        .m9-chicken.moving{animation:m9-chicken-hop .48s cubic-bezier(.4,1.6,.6,1)}
         .m9-chicken.dead{animation:m9-death .9s ease-out forwards}
 
-        /* Boom indicator on death */
-        .m9-boom{position:absolute;transform:translate(-50%,-50%);font-size:3rem;z-index:6;opacity:0;pointer-events:none}
+        .m9-boom{position:absolute;top:50%;left:${positionXPct}%;transform:translate(-50%,-50%);font-size:3rem;z-index:6;opacity:0;pointer-events:none}
         .m9-boom.show{animation:m9-boom-pop .9s ease-out forwards}
 
-        /* Departure label */
-        .m9-depart{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);padding:4px 10px;border-radius:999px;background:${T.bgCard};border:1px solid ${T.borderColor};font-size:.62rem;font-weight:900;letter-spacing:.14em;color:${T.accentLight};text-transform:uppercase;z-index:4}
-
         /* Buttons */
-        .m9-actions{display:flex;flex-direction:column;width:min(94vw,420px);gap:10px}
-        .m9-cta{display:block;width:100%;padding:18px 24px;background:linear-gradient(135deg,${T.accentLight},${T.accent});color:#062012;font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.95rem;border:none;border-radius:16px;cursor:pointer;box-shadow:0 12px 32px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.42);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease}
+        .m9-actions{display:flex;flex-direction:column;width:min(94vw,520px);gap:10px}
+        .m9-cta{display:block;width:100%;padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#062012;font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:14px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease;animation:m9-cta-pulse 2.2s ease-in-out infinite}
         .m9-cta:not(:disabled):hover{transform:translateY(-2px)}
-        .m9-cta:disabled{background:rgba(148,163,184,.22);color:rgba(226,232,240,.5);cursor:not-allowed;box-shadow:none}
-        .m9-cta.collect{background:linear-gradient(135deg,#fde68a,#facc15);color:#1f1300;box-shadow:0 12px 32px rgba(250,204,21,.4),inset 0 1px 0 rgba(255,255,255,.42);animation:m9-collect-pulse 1.6s ease-in-out infinite}
-        .m9-cta.ghost{background:rgba(8,15,22,.5);color:rgba(241,245,249,.7);border:1px solid rgba(255,255,255,.08);box-shadow:none;font-size:.8rem;padding:12px 18px}
+        .m9-cta:not(:disabled):active{transform:translateY(1px)}
+        .m9-cta:disabled{background:linear-gradient(180deg,#2a2a32,#1a1a20);color:rgba(255,255,255,.5);border-color:#2a2a32;cursor:not-allowed;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);animation:none}
+        .m9-cta.collect{background:linear-gradient(180deg,#fde68a 0%,#facc15 100%);border-color:#fde68a;color:#1f1300;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px rgba(250,204,21,.5),0 0 44px rgba(250,204,21,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+        .m9-cta.ghost{background:rgba(8,15,22,.5);color:rgba(241,245,249,.7);border:1px solid rgba(255,255,255,.08);box-shadow:none;font-size:.8rem;padding:12px 18px;animation:none}
 
-        .m9-warn{font-size:.74rem;color:rgba(252,165,165,.7);text-align:center;letter-spacing:.04em;margin-top:6px}
+        .m9-warn{font-size:.74rem;color:rgba(252,165,165,.85);text-align:center;letter-spacing:.04em;margin-top:6px;font-weight:600}
 
+        @keyframes m9-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
         @keyframes m9-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:.7}}
-        @keyframes m9-car-bob{0%,100%{transform:translate(-50%,-50%)}50%{transform:translate(-50%,-48%)}}
-        @keyframes m9-death{0%{transform:translate(-50%,50%) scale(1)}30%{transform:translate(-50%,50%) scale(1.4) rotate(-12deg);filter:drop-shadow(0 6px 12px rgba(239,68,68,.8))}100%{transform:translate(-50%,50%) scale(0) rotate(-90deg);opacity:0}}
+        @keyframes m9-chicken-idle{0%,100%{transform:translate(-50%,-50%) translateY(0)}50%{transform:translate(-50%,-50%) translateY(-3px)}}
+        @keyframes m9-chicken-hop{0%{transform:translate(-50%,-50%) translateY(0) scale(1)}50%{transform:translate(-50%,-50%) translateY(-22px) scale(1.08)}100%{transform:translate(-50%,-50%) translateY(0) scale(1)}}
+        @keyframes m9-car-roll{0%{top:-20%}100%{top:120%}}
+        @keyframes m9-death{0%{transform:translate(-50%,-50%) scale(1)}30%{transform:translate(-50%,-50%) scale(1.4) rotate(-12deg);filter:drop-shadow(0 6px 12px rgba(239,68,68,.8))}100%{transform:translate(-50%,-50%) scale(0) rotate(-90deg);opacity:0}}
         @keyframes m9-boom-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}40%{opacity:1;transform:translate(-50%,-50%) scale(1.4)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
-        @keyframes m9-collect-pulse{0%,100%{box-shadow:0 12px 32px rgba(250,204,21,.4),inset 0 1px 0 rgba(255,255,255,.42)}50%{box-shadow:0 16px 40px rgba(250,204,21,.6),0 0 0 6px rgba(250,204,21,.08),inset 0 1px 0 rgba(255,255,255,.42)}}
+        @keyframes m9-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55)}}
       `}</style>
 
       <div className="m9-header">
@@ -237,8 +232,8 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
       <div className="m9-hud">
         <div className="m9-hud-card">
-          <div className="m9-hud-lbl">Palier</div>
-          <div className={`m9-hud-val ${step >= SAFE_PALIER ? "win" : ""}`}>{currentLabel}</div>
+          <div className="m9-hud-lbl">Multi</div>
+          <div className={`m9-hud-val ${step >= SAFE_PALIER ? "win" : ""}`}>{currentMult}</div>
         </div>
         <div className="m9-hud-card">
           <div className="m9-hud-lbl">Bonus</div>
@@ -251,43 +246,56 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
       </div>
 
       <div className="m9-stage">
-        {/* Lignes de voies pointillées */}
-        <div className="m9-lane-line l" />
-        <div className="m9-lane-line r" />
+        {/* Zone depart */}
+        <div className="m9-depart">
+          <div className="m9-depart-tree">🌳</div>
+          <div className="m9-depart-barn">🏠</div>
+          <div className="m9-depart-label">Départ</div>
+        </div>
 
-        {/* Paliers + multiplicateurs (du sommet au bas car position bottom %) */}
-        {PALIERS.map((p, i) => {
-          const bottomPct = (i / (PALIERS.length - 1)) * 86 + 4;
-          if (i === 0) return null;  // pas de tag pour le départ
+        {/* Route */}
+        <div className="m9-road" />
+
+        {/* Lane dividers (entre chaque case) */}
+        {Array.from({ length: SLOTS - 1 }).map((_, i) => {
+          const leftPct = DEPART_WIDTH_PCT + slotWidth * (i + 1);
+          return <div key={`div-${i}`} className="m9-lane-divider" style={{ left: `${leftPct}%` }} />;
+        })}
+
+        {/* Plaques avec multiplicateurs */}
+        {PALIERS.slice(1).map((p, i) => {
+          const plaqueIdx = i + 1; // step index reel
+          const leftPct = DEPART_WIDTH_PCT + slotWidth * (i + 0.5);
+          const reached = plaqueIdx <= step;
+          const danger = !p.safe;
           return (
-            <React.Fragment key={i}>
-              <div className="m9-palier" style={{ bottom: `${bottomPct}%` }} />
-              <div
-                className={[
-                  "m9-palier-tag",
-                  p.safe ? "safe" : "danger",
-                  p.checkpoint ? "checkpoint" : "",
-                  i <= step ? "reached" : "",
-                ].filter(Boolean).join(" ")}
-                style={{ bottom: `${bottomPct}%` }}
-              >
-                {p.label}
-              </div>
-            </React.Fragment>
+            <div
+              key={`p-${plaqueIdx}`}
+              className={[
+                "m9-plaque",
+                reached ? "reached" : "",
+                danger ? "danger" : "",
+                p.checkpoint ? "checkpoint" : "",
+              ].filter(Boolean).join(" ")}
+              style={{ left: `${leftPct}%` }}
+            >
+              {p.mult}
+            </div>
           );
         })}
 
-        {/* Voitures décoratives (skip la lane du poulet pour éviter d'overlay) */}
-        {CAR_PATTERN.map((carLane, i) => {
-          if (carLane === null || i === 0) return null;
-          if (i <= step) return null;  // déjà dépassé
-          const bottomPct = (i / (PALIERS.length - 1)) * 86 + 4 - 4;  // décalé légèrement sous le palier
-          const leftPct = 14 + (carLane * 36);
+        {/* Voitures decoratives sur les lanes non encore atteintes */}
+        {Array.from({ length: SLOTS - 1 }).map((_, i) => {
+          const laneIdx = i + 1; // index entre plaques
+          // affiche une voiture si la lane est apres le poulet et pas encore franchie
+          if (laneIdx <= step) return null;
+          const leftPct = DEPART_WIDTH_PCT + slotWidth * laneIdx;
+          const delay = (i * 0.7) % 3;
           return (
             <div
               key={`car-${i}`}
-              className="m9-car"
-              style={{ left: `${leftPct}%`, bottom: `${bottomPct}%`, animationDelay: `${-i * 0.3}s` }}
+              className="m9-car car-moving"
+              style={{ left: `${leftPct}%`, animationDelay: `${-delay}s` }}
             >
               🚗
             </div>
@@ -295,22 +303,10 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         })}
 
         {/* Poulet */}
-        <div
-          className={`m9-chicken ${phase === "dead" ? "dead" : ""}`}
-          style={{ left: `${chickenLeft}%`, bottom: `${chickenBottom}%` }}
-        >
-          🐔
-        </div>
+        <div className={`m9-chicken ${phase === "moving" ? "moving" : ""} ${phase === "dead" ? "dead" : ""}`}>🐔</div>
 
         {/* Boom on death */}
-        <div
-          className={`m9-boom ${phase === "dead" ? "show" : ""}`}
-          style={{ left: `${chickenLeft}%`, bottom: `${chickenBottom + 2}%` }}
-        >
-          💥
-        </div>
-
-        <div className="m9-depart">Départ</div>
+        <div className={`m9-boom ${phase === "dead" ? "show" : ""}`}>💥</div>
       </div>
 
       <div className="m9-actions">
@@ -324,15 +320,15 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         ) : (
           <>
             <button className="m9-cta" onClick={advance} disabled={phase === "moving"}>
-              {phase === "moving" ? "..." : step === 0 ? "🐔 Démarrer" : "🐔 Avancer !"}
+              {phase === "moving" ? "..." : step === 0 ? "🐔 Démarrer" : "🐔 Avancer"}
             </button>
             {step >= SAFE_PALIER ? (
               <button className="m9-cta collect" onClick={collect} disabled={phase === "moving"}>
-                💰 Collecter {lockedReward}
+                💰 Collecter mon 100%
               </button>
             ) : null}
             {step >= SAFE_PALIER ? (
-              <div className="m9-warn">⚠ Avancer encore = risquer de tout perdre</div>
+              <div className="m9-warn">⚠ Avancer encore = traverser sans bonus garanti</div>
             ) : null}
           </>
         )}

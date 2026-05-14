@@ -39,10 +39,16 @@ function pickRandom<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function generateMessage(bonus: string): string {
+// Genere un montant credible entre 10 et 100€ (paliers de 5)
+function randomAmount(): string {
+  const steps = [10, 15, 20, 25, 30, 40, 50, 60, 75, 80, 90, 100];
+  return `${steps[Math.floor(Math.random() * steps.length)]}€`;
+}
+
+function generateMessage(): string {
   const name = pickRandom(NAMES);
   const variant = pickRandom(VARIANTS);
-  return variant(name, bonus);
+  return variant(name, randomAmount());
 }
 
 export function V3SocialProof({
@@ -54,7 +60,6 @@ export function V3SocialProof({
 }: V3SocialProofProps) {
   const [visible, setVisible] = React.useState(false);
   const [message, setMessage] = React.useState<string>("");
-  const bonusLabel = bonusAmount && bonusAmount.trim() ? bonusAmount : "bonus";
 
   React.useEffect(() => {
     let mounted = true;
@@ -63,7 +68,7 @@ export function V3SocialProof({
 
     const showOne = () => {
       if (!mounted) return;
-      setMessage(generateMessage(bonusLabel));
+      setMessage(generateMessage());
       setVisible(true);
       visibleTimer = window.setTimeout(() => {
         if (!mounted) return;
@@ -71,7 +76,6 @@ export function V3SocialProof({
       }, visibleMs);
     };
 
-    // Première notification après un délai initial pour ne pas spam le mount
     const initial = window.setTimeout(showOne, 2500);
     cycleTimer = window.setInterval(showOne, intervalMs + visibleMs / 2);
 
@@ -81,7 +85,7 @@ export function V3SocialProof({
       if (visibleTimer) window.clearTimeout(visibleTimer);
       if (cycleTimer) window.clearInterval(cycleTimer);
     };
-  }, [bonusLabel, intervalMs, visibleMs]);
+  }, [intervalMs, visibleMs]);
 
   return (
     <div

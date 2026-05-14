@@ -1,3 +1,12 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// M5 — Slot 3 lignes independantes.
+// 3 rangees x 3 symboles = 9 cellules au total, revelees une par une.
+// L1 : perdante (3 symboles differents)
+// L2 : bait — 7 7 💎 (presque jackpot)
+// L3 : winner — 3 💎 = bonus 100%
+// Pas de grille 3x3, pas de "ligne centrale", pas de bloc statut/mise/bonus.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
@@ -21,82 +30,29 @@ export type M5SlotProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-const SYMBOLS = ["🍒", "🍋", "🍇", "🍀", "🔔", "7️⃣", "🪙", "⭐", "💎"];
-const WIN = "💎";
-const CELL_H = 86;
-const STRIP_LEN = 44;
-const TARGET_IDX = 34;
+const SPIN_POOL = ["🍒", "🍋", "🍇", "🍀", "🔔", "🪙", "⭐", "7️⃣", "💎"];
+
+const ROW_RESULTS: ReadonlyArray<readonly [string, string, string]> = [
+  ["🍒", "🔔", "🍋"],   // L1 perdante
+  ["7️⃣", "7️⃣", "💎"], // L2 bait
+  ["💎", "💎", "💎"],   // L3 win
+];
+
+type RowKind = "loss" | "bait" | "win";
+const ROW_KINDS: ReadonlyArray<RowKind> = ["loss", "bait", "win"];
+
+// Timing : chaque cellule cycle des symboles pdt CELL_SPIN_MS puis se verrouille
+const CELL_SPIN_MS = 600;
+const CELL_GAP_MS = 220;          // intervalle entre 2 lock dans la meme ligne
+const ROW_GAP_MS = 460;           // pause entre fin d'une ligne et debut de la suivante
+const CELL_TICK_MS = 65;          // vitesse de cycle des symboles pendant le spin
+const POPUP_DELAY_MS = 700;       // delai apres derniere cellule revealee avant popup
+
 const POPUP_STEPS = [
-  "Verification de la ligne bonus",
+  "Verification de la ligne gagnante",
   "Preparation de l'offre",
   "Lien de recuperation pret",
 ] as const;
-
-type ResultRows = {
-  top: string[];
-  bottom: string[];
-};
-
-function pickSymbol(exclude: string[] = []): string {
-  const pool = SYMBOLS.filter((symbol) => !exclude.includes(symbol));
-  return pool[Math.floor(Math.random() * pool.length)] || WIN;
-}
-
-function buildLosingRow(): string[] {
-  let row = [pickSymbol(), pickSymbol(), pickSymbol()];
-  while (row.every((symbol) => symbol === row[0]) || row.every((symbol) => symbol === WIN)) {
-    row = [pickSymbol(), pickSymbol(), pickSymbol()];
-  }
-  return row;
-}
-
-function buildResultRows(): ResultRows {
-  return {
-    top: buildLosingRow(),
-    bottom: buildLosingRow(),
-  };
-}
-
-function Reel({
-  phase,
-  duration,
-  spinKey,
-  reelIndex,
-  resultRows,
-}: {
-  phase: "idle" | "spinning" | "tension" | "won";
-  duration: number;
-  spinKey: number;
-  reelIndex: number;
-  resultRows: ResultRows;
-}) {
-  const rowSignature = `${resultRows.top.join("")}|${resultRows.bottom.join("")}`;
-  const strip = React.useMemo(() => {
-    const values = Array.from({ length: STRIP_LEN }, () => pickSymbol());
-    values[TARGET_IDX - 1] = resultRows.top[reelIndex];
-    values[TARGET_IDX] = WIN;
-    values[TARGET_IDX + 1] = resultRows.bottom[reelIndex];
-    return values;
-  }, [reelIndex, resultRows.bottom, resultRows.top, rowSignature, spinKey]);
-
-  const translateY = phase === "idle" ? 0 : -((TARGET_IDX - 1) * CELL_H);
-
-  return (
-    <div className={`m5-reel ${phase === "tension" && reelIndex === 2 ? "armed" : ""} ${phase === "won" ? "won" : ""}`}>
-      <div
-        className="m5-strip"
-        style={{
-          transform: `translateY(${translateY}px)`,
-          transition: phase === "idle" ? "none" : `transform ${duration}s cubic-bezier(.17,.67,.16,.99)`,
-        }}
-      >
-        {strip.map((symbol, index) => (
-          <div key={index} className="m5-cell">{symbol}</div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function M5Slot({
   pseudo,
@@ -111,144 +67,150 @@ export function M5Slot({
     accent: theme?.accent || "#f7c948",
     accentLight: theme?.accentLight || "#fde68a",
     accentGlow: theme?.accentGlow || "rgba(247,201,72,.42)",
-    accentDark: "#6f4f10",
     bgPage: theme?.bgPage || "#060811",
     bgCard: theme?.bgCard || "#0f172a",
     borderColor: theme?.borderColor || "rgba(253,230,138,.26)",
-    panel: "#132240",
-    panelDark: "#0b1428",
   };
 
-  const [phase, setPhase] = React.useState<"idle" | "spinning" | "tension" | "won">("idle");
-  const [spinKey, setSpinKey] = React.useState(0);
+  // phase globale du jeu
+  const [phase, setPhase] = React.useState<"idle" | "playing" | "won">("idle");
+  // revealedCount = nombre de cellules deja verrouillees (0 a 9)
+  const [revealedCount, setRevealedCount] = React.useState(0);
+  // ticker pour faire defiler les symboles aleatoires sur les cellules pas encore lockees
+  const [tick, setTick] = React.useState(0);
   const [popupOpen, setPopupOpen] = React.useState(false);
-  const [resultRows, setResultRows] = React.useState<ResultRows>(() => buildResultRows());
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
   const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
   const rewardHeadline = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
-  const REEL_DURATIONS = [1.7, 2.45, 3.2] as const;
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
+
+  // Ticker de symboles aleatoires pdt le spin
+  React.useEffect(() => {
+    if (phase !== "playing") return;
+    const id = window.setInterval(() => setTick((t) => t + 1), CELL_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [phase]);
 
   const play = () => {
     if (phase !== "idle") return;
     sfx.click();
     setPopupOpen(false);
-    setResultRows(buildResultRows());
-    setSpinKey((value) => value + 1);
-    setPhase("spinning");
-    window.setTimeout(() => sfx.reelStop(), REEL_DURATIONS[0] * 1000);
+    setRevealedCount(0);
+    setPhase("playing");
+
+    // Schedule des 9 verrouillages
+    let cumul = 0;
+    for (let rowIdx = 0; rowIdx < 3; rowIdx++) {
+      for (let colIdx = 0; colIdx < 3; colIdx++) {
+        const cellGlobalIdx = rowIdx * 3 + colIdx + 1; // 1..9
+        cumul += CELL_GAP_MS;
+        // ajout du spin initial seulement avant la 1ere cellule
+        if (rowIdx === 0 && colIdx === 0) cumul = CELL_SPIN_MS;
+        // pause supplementaire entre lignes
+        if (colIdx === 0 && rowIdx > 0) cumul += ROW_GAP_MS;
+        const at = cumul;
+        const isLastOfRow = colIdx === 2;
+        const rowKind = ROW_KINDS[rowIdx];
+        window.setTimeout(() => {
+          setRevealedCount(cellGlobalIdx);
+          sfx.reelStop();
+          if (isLastOfRow) {
+            if (rowKind === "win") sfx.win();
+            else if (rowKind === "bait") sfx.tension(400);
+            else sfx.loss();
+          }
+        }, at);
+      }
+    }
+    // Apres derniere cellule
+    const totalDuration = cumul + POPUP_DELAY_MS;
     window.setTimeout(() => {
-      sfx.reelStop();
-      setPhase("tension");
-      sfx.tension(REEL_DURATIONS[2] * 1000 - REEL_DURATIONS[1] * 1000);
-    }, REEL_DURATIONS[1] * 1000);
-    window.setTimeout(() => {
-      sfx.reelStop();
       setPhase("won");
-      sfx.win();
-      window.setTimeout(() => setPopupOpen(true), 620);
-    }, REEL_DURATIONS[2] * 1000);
+      setPopupOpen(true);
+    }, totalDuration);
   };
 
+  const rowState = (rowIdx: number): "idle" | "spinning" | "revealed" => {
+    if (phase === "idle") return "idle";
+    const cellsRevealedInRow = Math.max(0, Math.min(3, revealedCount - rowIdx * 3));
+    if (cellsRevealedInRow === 0) return "spinning";
+    if (cellsRevealedInRow === 3) return "revealed";
+    return "spinning";
+  };
+
+  const cellSymbol = (rowIdx: number, colIdx: number): string => {
+    const globalIdx = rowIdx * 3 + colIdx + 1;
+    if (revealedCount >= globalIdx) return ROW_RESULTS[rowIdx][colIdx];
+    // Encore en train de spin : symbole pseudo-aleatoire decale par index pour avoir des cellules desynchronisees
+    return SPIN_POOL[(tick + rowIdx * 7 + colIdx * 3) % SPIN_POOL.length];
+  };
+
+  const ROW_LABELS: ReadonlyArray<{ idle: string; revealed: (kind: RowKind) => string }> = [
+    { idle: "Ligne 1", revealed: (k) => k === "win" ? "Gagnant" : k === "bait" ? "Presque" : "Perdu" },
+    { idle: "Ligne 2", revealed: (k) => k === "win" ? "Gagnant" : k === "bait" ? "Presque !" : "Perdu" },
+    { idle: "Ligne 3", revealed: (k) => k === "win" ? "Bonus 100%" : k === "bait" ? "Presque" : "Perdu" },
+  ];
+
   return (
-    <div className="m5-root" style={{ background: T.bgPage, color: "#f8fafc" }}>
+    <div className="m5-root" style={{ color: "#f8fafc" }}>
       <style>{`
-        .m5-root{display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;position:relative;overflow:hidden}
-        .m5-root::before{content:"";position:absolute;inset:0;background:
-          radial-gradient(circle at 50% 0%,${T.accentGlow},transparent 35%),
-          radial-gradient(circle at 10% 20%,rgba(255,255,255,.08),transparent 18%),
-          linear-gradient(180deg,${T.bgPage},#03050c 100%);
-          pointer-events:none}
-        .m5-root::after{content:"";position:absolute;inset:auto 0 0 0;height:42%;background:linear-gradient(180deg,transparent,rgba(0,0,0,.34));pointer-events:none}
+        .m5-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 56px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
+        .m5-bg-mesh{position:absolute;inset:-20%;background:
+          radial-gradient(circle at 30% 40%,${T.accentGlow} 0%,transparent 40%),
+          radial-gradient(circle at 70% 60%,rgba(168,85,247,.32) 0%,transparent 40%),
+          radial-gradient(circle at 50% 20%,rgba(6,182,212,.22) 0%,transparent 40%);
+          filter:blur(40px);animation:m5-mesh 18s ease-in-out infinite alternate;pointer-events:none;z-index:0}
 
-        .m5-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:16px;position:relative;z-index:2}
-        .m5-avatar{width:74px;height:74px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(255,255,255,.05),0 12px 28px rgba(0,0,0,.35)}
+        .m5-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;position:relative;z-index:3}
+        .m5-avatar{width:74px;height:74px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
         .m5-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m5-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
+        .m5-pseudo-wrap{display:flex;justify-content:center;margin-top:2px;position:relative;isolation:isolate}
+        .m5-pseudo-wrap::before{content:"";position:absolute;inset:-6px -14px;border-radius:999px;background:radial-gradient(ellipse at center,${T.accentGlow} 0%,transparent 70%);z-index:-1;animation:m5-pseudo-glow 2.6s ease-in-out infinite;pointer-events:none}
 
-        .m5-promo{position:relative;z-index:2;display:inline-flex;align-items:center;gap:10px;padding:10px 18px;margin-bottom:16px;background:rgba(6,12,26,.62);border:1px solid ${T.borderColor};border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(248,250,252,.88);backdrop-filter:blur(10px);box-shadow:0 16px 40px rgba(0,0,0,.24)}
-        .m5-promo-dot{width:10px;height:10px;border-radius:50%;background:${T.accent};box-shadow:0 0 14px ${T.accentGlow}}
+        .m5-promo{position:relative;z-index:3;display:inline-flex;align-items:center;gap:10px;padding:9px 18px;margin-bottom:24px;background:rgba(10,5,25,.85);border:1px solid ${T.accent}66;border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(248,250,252,.92);box-shadow:0 0 18px ${T.accentGlow}}
+        .m5-promo strong{color:${T.accentLight};font-weight:800}
 
-        .m5-topline{position:relative;z-index:2;text-align:center;margin-bottom:16px}
-        .m5-topline strong{display:block;font-family:'Playfair Display',serif;font-size:2rem;line-height:1;color:#fff;text-shadow:0 0 22px rgba(255,255,255,.12)}
-        .m5-topline span{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(8,15,30,.55);border:1px solid rgba(255,255,255,.08);font-size:.78rem;color:rgba(226,232,240,.82);letter-spacing:.1em;text-transform:uppercase}
-        .m5-topline span em{font-style:normal;color:${T.accentLight}}
+        .m5-rows{position:relative;z-index:3;display:flex;flex-direction:column;gap:14px;width:min(94vw,420px);margin-bottom:24px}
+        .m5-row{position:relative;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;padding:12px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.7);border:1px solid rgba(255,255,255,.07);box-shadow:0 8px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease}
+        .m5-row.revealed.loss{border-color:rgba(239,68,68,.4);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(239,68,68,.18)}
+        .m5-row.revealed.bait{border-color:rgba(251,146,60,.55);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 22px rgba(251,146,60,.3)}
+        .m5-row.revealed.win{border-color:${T.accent};box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55;animation:m5-row-win-pulse 1.6s ease-in-out infinite}
 
-        .m5-cabinet{position:relative;z-index:2;width:min(94vw,430px);padding:18px 16px 16px;background:
-          linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02)),
-          linear-gradient(180deg,#132648,#081224);
-          border:1px solid ${T.borderColor};border-radius:28px;box-shadow:0 22px 52px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.08);margin-bottom:16px;overflow:hidden}
-        .m5-cabinet::before{content:"";position:absolute;left:12px;right:12px;top:12px;height:72px;border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,0));pointer-events:none}
-        .m5-marquee{position:relative;display:flex;align-items:center;justify-content:space-between;padding:14px 16px;margin-bottom:14px;border-radius:20px;background:rgba(3,7,18,.72);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px)}
-        .m5-marquee-title{font-family:'Playfair Display',serif;font-size:1.12rem;font-weight:700;letter-spacing:.06em;color:#fff}
-        .m5-marquee-copy{font-size:.72rem;font-weight:800;letter-spacing:.14em;color:${T.accentLight};text-transform:uppercase}
+        .m5-row-num{font-size:.6rem;font-weight:900;letter-spacing:.14em;color:rgba(226,232,240,.55);text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg);padding:4px 2px}
+        .m5-row.revealed.win .m5-row-num{color:${T.accentLight}}
+        .m5-row.revealed.bait .m5-row-num{color:#fb923c}
+        .m5-row.revealed.loss .m5-row-num{color:#ef4444}
 
-        .m5-lights{display:flex;gap:8px}
-        .m5-light{width:10px;height:10px;border-radius:50%;background:${T.accent};box-shadow:0 0 14px ${T.accentGlow}}
+        .m5-cells{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .m5-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:2.3rem;border-radius:14px;background:linear-gradient(180deg,#0a0f20,#050811);border:1px solid rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.02),inset 0 8px 20px rgba(0,0,0,.45);overflow:hidden;line-height:1}
+        .m5-cell.spinning{filter:blur(2px);opacity:.55}
+        .m5-cell.locked{animation:m5-cell-lock .4s cubic-bezier(.34,1.56,.64,1)}
+        .m5-cell.win.locked{box-shadow:inset 0 0 0 1px ${T.accent},0 0 18px ${T.accentGlow}}
+        .m5-cell.bait.locked{box-shadow:inset 0 0 0 1px rgba(251,146,60,.55),0 0 14px rgba(251,146,60,.3)}
 
-        .m5-screen-shell{position:relative;padding:12px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));border-radius:24px;border:1px solid rgba(255,255,255,.08)}
-        .m5-screen{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px;background:linear-gradient(180deg,#050911,#09101d);border-radius:18px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04),inset 0 18px 50px rgba(0,0,0,.45)}
-        .m5-screen::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.08),transparent 22%,transparent 78%,rgba(255,255,255,.05));pointer-events:none;z-index:3}
+        .m5-row-status{font-size:.68rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;text-align:right;min-width:60px}
+        .m5-row.idle .m5-row-status,.m5-row.spinning .m5-row-status{color:rgba(226,232,240,.4)}
+        .m5-row.revealed.loss .m5-row-status{color:#ef4444}
+        .m5-row.revealed.bait .m5-row-status{color:#fb923c;animation:m5-bait-flash 1.4s ease-in-out infinite}
+        .m5-row.revealed.win .m5-row-status{color:${T.accentLight};text-shadow:0 0 12px ${T.accentGlow}}
 
-        .m5-reel{position:relative;height:${CELL_H * 3}px;background:linear-gradient(180deg,${T.panel},${T.panelDark});border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.02)}
-        .m5-reel::before,.m5-reel::after{content:"";position:absolute;left:0;right:0;height:28px;z-index:2;pointer-events:none}
-        .m5-reel::before{top:0;background:linear-gradient(180deg,rgba(2,6,23,.95),transparent)}
-        .m5-reel::after{bottom:0;background:linear-gradient(0deg,rgba(2,6,23,.95),transparent)}
-        .m5-reel.armed{box-shadow:inset 0 0 36px ${T.accentGlow},0 0 24px rgba(255,255,255,.05)}
-        .m5-reel.won{box-shadow:inset 0 0 30px rgba(255,255,255,.08),0 0 24px rgba(255,255,255,.04)}
-        .m5-strip{display:flex;flex-direction:column;will-change:transform}
-        .m5-cell{height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-size:2.35rem;flex-shrink:0}
+        .m5-cta{position:relative;display:block;width:min(94vw,420px);padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#0a0508;font-weight:800;text-transform:uppercase;letter-spacing:.16em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:10px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease,box-shadow .2s ease;z-index:3;animation:m5-cta-pulse 2.2s ease-in-out infinite}
+        .m5-cta:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentGlow},0 0 60px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}
+        .m5-cta:not(:disabled):active{transform:translateY(1px)}
+        .m5-cta:disabled{background:linear-gradient(180deg,#2a2a32,#1a1a20);color:rgba(255,255,255,.5);border-color:#2a2a32;cursor:not-allowed;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);animation:none}
 
-        .m5-row-highlight{position:absolute;left:10px;right:10px;top:${CELL_H + 10}px;height:${CELL_H}px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02);box-shadow:inset 0 0 0 1px rgba(255,255,255,.02);display:flex;align-items:center;justify-content:flex-end;padding-right:14px;font-size:.7rem;font-weight:900;letter-spacing:.16em;text-transform:uppercase;color:rgba(226,232,240,.42);pointer-events:none;z-index:2;transition:all .25s ease}
-        .m5-row-highlight.armed{border-color:rgba(255,255,255,.12);color:rgba(248,250,252,.68)}
-        .m5-row-highlight.won{border-color:${T.accent};background:linear-gradient(90deg,rgba(255,255,255,.03),${T.accentGlow},rgba(255,255,255,.03));color:${T.accentLight};box-shadow:0 0 20px ${T.accentGlow},inset 0 0 0 1px rgba(255,255,255,.08)}
-        .m5-row-highlight span{position:relative;z-index:1}
-
-        .m5-lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-        .m5-lane{padding:10px 12px;border-radius:16px;background:rgba(2,6,23,.42);border:1px solid rgba(255,255,255,.06);font-size:.76rem;color:rgba(226,232,240,.72);text-transform:uppercase;letter-spacing:.12em}
-        .m5-lane strong{display:block;margin-top:6px;font-size:1rem;color:#fff;letter-spacing:normal;text-transform:none}
-        .m5-lane.active{border-color:${T.accent};background:linear-gradient(180deg,rgba(255,255,255,.06),${T.accentGlow});box-shadow:0 0 20px ${T.accentGlow}}
-        .m5-lane.active strong{color:${T.accentLight}}
-
-        .m5-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding:12px 14px;background:rgba(2,6,23,.42);border:1px solid rgba(255,255,255,.06);border-radius:18px;font-size:.82rem;color:rgba(226,232,240,.72)}
-        .m5-bar strong{display:block;margin-top:4px;color:#fff;font-size:1.02rem}
-
-        .m5-cta{display:block;width:min(94vw,430px);padding:18px 24px;background:linear-gradient(135deg,${T.accentLight},${T.accent});color:#18120a;font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.92rem;border:none;border-radius:18px;cursor:pointer;box-shadow:0 10px 26px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.42);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease,box-shadow .12s ease;position:relative;z-index:2}
-        .m5-cta:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 14px 30px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.42)}
-        .m5-cta:disabled{background:rgba(148,163,184,.22);color:rgba(226,232,240,.6);cursor:not-allowed;box-shadow:none}
-
-        .m5-overlay{position:fixed;inset:0;background:rgba(2,6,23,.82);backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m5-fade .22s ease-out}
-        .m5-popup{position:relative;background:
-          radial-gradient(circle at top,rgba(255,255,255,.08),transparent 30%),
-          linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01)),
-          ${T.bgCard};
-          border:1px solid ${T.borderColor};border-radius:28px;padding:32px 24px 24px;text-align:center;max-width:396px;width:100%;box-shadow:0 28px 90px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04);animation:m5-pop .36s cubic-bezier(.17,.84,.34,1.27);box-sizing:border-box;overflow:hidden}
-        .m5-popup::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at top,${T.accentGlow},transparent 34%);opacity:.6;pointer-events:none}
-        .m5-popup-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:999px;background:rgba(15,23,42,.58);border:1px solid rgba(255,255,255,.08);color:#e2e8f0;font-size:20px;cursor:pointer;z-index:2}
-        .m5-popup-close:hover{background:rgba(30,41,59,.82)}
-        .m5-popup-badge{position:relative;z-index:1;display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(5,8,18,.58);border:1px solid rgba(255,255,255,.08);font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#f8fafc;margin-bottom:14px}
-        .m5-popup-badge strong{color:${T.accentLight}}
-        .m5-popup-score{position:relative;z-index:1;font-size:3.1rem;font-weight:900;line-height:1;color:${T.accentLight};text-shadow:0 0 24px ${T.accentGlow}}
-        .m5-popup-copy{position:relative;z-index:1;margin:12px 0 0}
-        .m5-popup-copy h2{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;margin:0;color:#fff;line-height:1.02}
-        .m5-popup-copy p{margin:10px 0 0;font-size:.95rem;color:rgba(226,232,240,.8)}
-        .m5-popup-offer{position:relative;z-index:1;margin:18px 0 18px;padding:14px 16px;background:rgba(2,6,23,.44);border:1px solid rgba(255,255,255,.08);border-radius:18px}
-        .m5-popup-offer .lbl{font-size:.7rem;color:rgba(226,232,240,.6);letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
-        .m5-popup-offer .val{font-weight:800;color:#fff}
-        .m5-popup-offer .val strong{color:${T.accentLight}}
-        .m5-popup-steps{position:relative;z-index:1;display:grid;gap:8px;margin:0 0 18px;padding:0;list-style:none}
-        .m5-popup-step{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(2,6,23,.34);border:1px solid rgba(255,255,255,.06);color:rgba(226,232,240,.6);text-align:left}
-        .m5-popup-step.done{color:#fff;border-color:${T.borderColor};background:rgba(255,255,255,.04)}
-        .m5-popup-step-dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:.76rem;font-weight:900;background:rgba(148,163,184,.18);color:transparent}
-        .m5-popup-step.done .m5-popup-step-dot{background:${T.accent};color:#20160a;box-shadow:0 0 16px ${T.accentGlow}}
-        .m5-popup .m5-cta{width:100%;font-size:.9rem;padding:16px 18px;letter-spacing:.12em}
-
-        @keyframes m5-fade{from{opacity:0}to{opacity:1}}
-        @keyframes m5-pop{0%{transform:translateY(20px) scale(.96);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
+        @keyframes m5-mesh{0%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-30px,20px) rotate(8deg)}100%{transform:translate(20px,-15px) rotate(-6deg)}}
+        @keyframes m5-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
+        @keyframes m5-cell-lock{0%{transform:scale(.7);opacity:.4}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+        @keyframes m5-row-win-pulse{0%,100%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55}50%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 44px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}88}}
+        @keyframes m5-bait-flash{0%,100%{opacity:1}50%{opacity:.55}}
+        @keyframes m5-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}}
       `}</style>
+
+      <div className="m5-bg-mesh" />
 
       <div className="m5-header">
         {profileImageUrl ? <div className="m5-avatar"><img src={profileImageUrl} alt="" /></div> : null}
@@ -262,79 +224,41 @@ export function M5Slot({
       </div>
 
       <div className="m5-promo">
-        <span className="m5-promo-dot" />
-        Demo slot 3x3
-        <strong>ligne bonus centrale</strong>
+        Slot · <strong>3 tirages indépendants</strong>
       </div>
 
-      <div className="m5-topline">
-        <strong>Sequence bonus</strong>
-        <span>
-          <em>3 lignes</em> · animation visuelle avec ligne 2 mise en avant
-        </span>
-      </div>
-
-      <div className="m5-cabinet">
-        <div className="m5-marquee">
-            <div>
-            <div className="m5-marquee-copy">Sequence bonus</div>
-            <div className="m5-marquee-title">Night Spin Matrix</div>
-          </div>
-          <div className="m5-lights">
-            <span className="m5-light" />
-            <span className="m5-light" />
-            <span className="m5-light" />
-          </div>
-        </div>
-
-        <div className="m5-screen-shell">
-          <div className="m5-screen">
-            <Reel phase={phase} duration={REEL_DURATIONS[0]} spinKey={spinKey} reelIndex={0} resultRows={resultRows} />
-            <Reel phase={phase} duration={REEL_DURATIONS[1]} spinKey={spinKey + 100} reelIndex={1} resultRows={resultRows} />
-            <Reel phase={phase} duration={REEL_DURATIONS[2]} spinKey={spinKey + 200} reelIndex={2} resultRows={resultRows} />
-            <div className={`m5-row-highlight ${phase === "tension" ? "armed" : ""} ${phase === "won" ? "won" : ""}`}>
-              <span>{phase === "won" ? "ligne bonus validee" : "ligne bonus"}</span>
+      <div className="m5-rows">
+        {ROW_KINDS.map((kind, rowIdx) => {
+          const state = rowState(rowIdx);
+          const revealed = state === "revealed";
+          const label = revealed ? ROW_LABELS[rowIdx].revealed(kind) : ROW_LABELS[rowIdx].idle;
+          return (
+            <div key={rowIdx} className={`m5-row ${state} ${revealed ? kind : ""}`}>
+              <div className="m5-row-num">L{rowIdx + 1}</div>
+              <div className="m5-cells">
+                {[0, 1, 2].map((colIdx) => {
+                  const globalIdx = rowIdx * 3 + colIdx + 1;
+                  const locked = revealedCount >= globalIdx;
+                  return (
+                    <div
+                      key={colIdx}
+                      className={`m5-cell ${locked ? "locked" : "spinning"} ${locked ? kind : ""}`}
+                    >
+                      {cellSymbol(rowIdx, colIdx)}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="m5-row-status">{label}</div>
             </div>
-          </div>
-        </div>
-
-        <div className="m5-lanes">
-          <div className="m5-lane">
-            Ligne 1
-            <strong>{phase === "won" ? resultRows.top.join(" ") : "En attente"}</strong>
-          </div>
-          <div className={`m5-lane ${phase === "won" ? "active" : ""}`}>
-            Ligne 2
-            <strong>{phase === "won" ? `${WIN} ${WIN} ${WIN}` : "Bonus central"}</strong>
-          </div>
-          <div className="m5-lane">
-            Ligne 3
-            <strong>{phase === "won" ? resultRows.bottom.join(" ") : "En attente"}</strong>
-          </div>
-        </div>
-
-        <div className="m5-bar">
-          <div>
-            Mise
-            <strong>{dep || "—"}</strong>
-          </div>
-          <div>
-            Bonus
-            <strong>{bon || "100%"}</strong>
-          </div>
-          <div>
-            Statut
-            <strong>{phase === "won" ? "Ligne 2 allumee" : phase === "tension" ? "Suspense" : phase === "spinning" ? "Spin" : "Pret"}</strong>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
       {phase === "idle" ? (
         <button className="m5-cta" onClick={play}>Lancer la machine</button>
-      ) : phase === "spinning" ? (
-        <button className="m5-cta" disabled>Spin en cours...</button>
-      ) : phase === "tension" ? (
-        <button className="m5-cta" disabled>Lecture des 3 lignes...</button>
+      ) : phase === "playing" ? (
+        <button className="m5-cta" disabled>Lecture en cours…</button>
       ) : (
         <button className="m5-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus</button>
       )}
