@@ -275,7 +275,7 @@ export function M8Penalty({
           radial-gradient(circle at 70% 50%,transparent 18%,#111827 19%,#111827 22%,transparent 23%),
           radial-gradient(circle at 50% 30%,transparent 14%,#111827 15%,#111827 18%,transparent 19%);
           opacity:.62}
-        .m8-ball-trail{position:absolute;left:50%;top:72%;width:18px;height:140px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,0),${T.accent}66 60%,${T.accentLight});transform:translateX(-50%);opacity:${phase === "shooting" || phase === "goal" || phase === "won" ? 1 : 0};filter:blur(12px);transition:opacity .2s ease;z-index:5}
+        .m8-ball-trail{position:absolute;left:50%;top:72%;width:18px;height:140px;border-radius:999px;background:linear-gradient(180deg,rgba(255,255,255,0),${T.accent}66 60%,${T.accentLight});transform:translateX(-50%);opacity:${phase === "shooting" || phase === "scored" || phase === "won" ? 1 : 0};filter:blur(12px);transition:opacity .2s ease;z-index:5}
         .m8-ball-spark{position:absolute;width:6px;height:6px;border-radius:50%;background:${T.accentLight};box-shadow:0 0 12px ${T.accentLight},0 0 20px ${T.accent};pointer-events:none;opacity:0;z-index:6}
         .m8-ball-spark.s1{left:50%;top:60%;animation:m8-spark-trail .8s ease-out infinite}
         .m8-ball-spark.s2{left:48%;top:50%;animation:m8-spark-trail .8s ease-out .2s infinite}
@@ -381,19 +381,6 @@ export function M8Penalty({
       </div>
 
       <div className={`m8-stage ${phase === "scored" || phase === "won" ? "goal" : ""}`}>
-        <div className="m8-scoreboard">
-          <div className="m8-score-side">
-            <span className="m8-score-badge">{team.shortLabel}</span>
-            <div className="m8-score-copy">
-              <strong>Challenge penalty</strong>
-              3 tirs · bonus exclusif
-            </div>
-          </div>
-          <div className="m8-score-shot">
-            {phase === "shooting" ? "tir en vol" : `${Math.min(attempt + 1, TOTAL_ATTEMPTS)}/${TOTAL_ATTEMPTS}`}
-          </div>
-        </div>
-
         <div className="m8-floodlight left" />
         <div className="m8-floodlight right" />
         <div className="m8-stands" />
@@ -401,7 +388,7 @@ export function M8Penalty({
         <div className="m8-goal-shell">
           <div className="m8-goal">
             <div className="m8-crossbar" />
-            <div className={`m8-net ${phase === "goal" || phase === "won" ? "shake" : ""}`} />
+            <div className={`m8-net ${phase === "scored" || phase === "won" ? "shake" : ""}`} />
           </div>
         </div>
 
