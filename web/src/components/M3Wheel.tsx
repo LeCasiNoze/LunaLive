@@ -116,9 +116,11 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;position:relative;z-index:3}
         .m3-avatar{width:74px;height:74px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
         .m3-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m3-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
+        .m3-pseudo-wrap{display:flex;justify-content:center;margin-top:2px;position:relative;isolation:isolate}
+        .m3-pseudo-wrap::before{content:"";position:absolute;inset:-6px -14px;border-radius:999px;background:radial-gradient(ellipse at center,${T.accentGlow} 0%,transparent 70%);z-index:-1;animation:m3-pseudo-glow 2.6s ease-in-out infinite;pointer-events:none}
+        .m3-pseudo-wrap > *{animation:m3-pseudo-float 4s ease-in-out infinite}
 
-        .m3-promo{position:relative;z-index:3;display:inline-block;padding:9px 20px;margin-bottom:22px;background:rgba(10,5,25,.65);border:1px solid ${T.accent}66;border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,241,230,.92);backdrop-filter:blur(6px);box-shadow:0 0 18px ${T.accentGlow}}
+        .m3-promo{position:relative;z-index:6;display:inline-block;padding:9px 20px;margin-bottom:22px;background:rgba(10,5,25,.92);border:1px solid ${T.accent}88;border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,241,230,.95);box-shadow:0 0 18px ${T.accentGlow},0 4px 14px rgba(0,0,0,.5);isolation:isolate}
         .m3-promo strong{color:${T.accentLight};font-weight:800;text-shadow:0 0 8px ${T.accentGlow}}
 
         .m3-cabinet{position:relative;width:min(92vw,360px);aspect-ratio:1/1;margin-bottom:32px;z-index:3}
@@ -145,12 +147,10 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-hub.spinning{animation:m3-hub-spinning .6s ease-in-out infinite}
 
         /* CTA néon */
-        .m3-cta{position:relative;display:block;width:min(92vw,360px);padding:18px 24px;background:linear-gradient(180deg,${T.accentLight},${T.accent} 60%,${T.accentDark});color:#0a0508;font-weight:800;text-transform:uppercase;letter-spacing:.16em;font-size:.95rem;border:none;border-radius:8px;cursor:pointer;box-shadow:0 6px 0 ${T.accentDark},0 10px 30px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease,box-shadow .1s ease;z-index:3;overflow:hidden}
-        .m3-cta::before{content:"";position:absolute;top:0;left:-100%;width:80%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:m3-cta-shimmer 2.8s linear infinite}
-        .m3-cta:not(:disabled):hover{transform:translateY(2px);box-shadow:0 4px 0 ${T.accentDark},0 8px 22px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.4)}
-        .m3-cta:not(:disabled):active{transform:translateY(5px);box-shadow:0 1px 0 ${T.accentDark}}
-        .m3-cta:disabled{background:linear-gradient(180deg,#3a3a42,#1f1f24);color:rgba(255,255,255,.55);cursor:not-allowed;box-shadow:0 3px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}
-        .m3-cta:disabled::before{display:none}
+        .m3-cta{position:relative;display:block;width:min(92vw,360px);padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#0a0508;font-weight:800;text-transform:uppercase;letter-spacing:.16em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:10px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease,box-shadow .2s ease;z-index:3;animation:m3-cta-pulse 2.2s ease-in-out infinite}
+        .m3-cta:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentGlow},0 0 60px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}
+        .m3-cta:not(:disabled):active{transform:translateY(1px)}
+        .m3-cta:disabled{background:linear-gradient(180deg,#2a2a32,#1a1a20);color:rgba(255,255,255,.5);border-color:#2a2a32;cursor:not-allowed;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);animation:none}
 
         .m3-info{margin-top:16px;font-size:.78rem;color:rgba(245,241,230,.7);letter-spacing:.05em;position:relative;z-index:3;text-align:center}
         .m3-info .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;margin-right:6px;box-shadow:0 0 8px #22c55e;animation:m3-blink 1.4s ease-in-out infinite}
@@ -162,7 +162,9 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         @keyframes m3-peg-pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.5)}}
         @keyframes m3-hub-pulse{0%,100%{box-shadow:0 0 24px ${T.accent},0 0 44px ${T.accentGlow},0 4px 12px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.4),inset 0 -3px 0 rgba(0,0,0,.5)}50%{box-shadow:0 0 36px ${T.accentLight},0 0 64px ${T.accent},0 4px 12px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(0,0,0,.5)}}
         @keyframes m3-hub-spinning{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.08)}}
-        @keyframes m3-cta-shimmer{0%{left:-100%}100%{left:120%}}
+        @keyframes m3-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}}
+        @keyframes m3-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
+        @keyframes m3-pseudo-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
         @keyframes m3-blink{0%,100%{opacity:1}50%{opacity:.3}}
       `}</style>
 
