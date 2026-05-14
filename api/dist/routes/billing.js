@@ -19,11 +19,20 @@ if (!PRICE_VIEWER)
     console.warn("[billing] STRIPE_PRICE_VIEWER missing");
 if (!PRICE_STREAMER)
     console.warn("[billing] STRIPE_PRICE_STREAMER missing");
-// note: tu peux mettre "2025-12-15.clover" si ton compte est sur cette version.
-// Le SDK accepte une string.
-const stripe = new Stripe(STRIPE_SECRET_KEY, {
-    apiVersion: "2025-12-15.clover",
-});
+let stripeInstance = null;
+function getStripe() {
+    if (!STRIPE_SECRET_KEY) {
+        throw new Error("stripe_not_configured");
+    }
+    if (!stripeInstance) {
+        // note: tu peux mettre "2025-12-15.clover" si ton compte est sur cette version.
+        // Le SDK accepte une string.
+        stripeInstance = new Stripe(STRIPE_SECRET_KEY, {
+            apiVersion: "2025-12-15.clover",
+        });
+    }
+    return stripeInstance;
+}
 function isPlan(x) {
     return x === "viewer" || x === "streamer";
 }
@@ -45,7 +54,7 @@ async function getOrCreateCustomerId(u) {
     const existing = r.rows[0]?.stripe_customer_id || null;
     if (existing)
         return existing;
-    const customer = await stripe.customers.create({
+    const customer = await getStripe().customers.create({
         metadata: { user_id: String(u.id) },
     });
     await pool.query(`UPDATE users SET stripe_customer_id=$1 WHERE id=$2`, [customer.id, u.id]);
@@ -142,7 +151,7 @@ billingRouter.post("/checkout-session", express.json({ limit: "64kb" }), require
     if (!priceId)
         return res.status(500).json({ ok: false, error: "price_not_configured" });
     const customerId = await getOrCreateCustomerId(u);
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
         mode: "subscription",
         customer: customerId,
         line_items: [{ price: priceId, quantity: 1 }],
@@ -160,7 +169,7 @@ billingRouter.post("/checkout-session", express.json({ limit: "64kb" }), require
 billingRouter.post("/customer-portal", express.json({ limit: "64kb" }), requireAuth, a(async (req, res) => {
     const u = req.user;
     const customerId = await getOrCreateCustomerId(u);
-    const portal = await stripe.billingPortal.sessions.create({
+    const portal = await getStripe().billingPortal.sessions.create({
         customer: customerId,
         return_url: `${FRONT_URL}/shop?tab=subs`,
     });
@@ -168,10 +177,13 @@ billingRouter.post("/customer-portal", express.json({ limit: "64kb" }), requireA
 }));
 // ✅ Webhook Stripe (raw body obligatoire)
 billingRouter.post("/webhook", express.raw({ type: "application/json" }), a(async (req, res) => {
+    if (!STRIPE_SECRET_KEY || !STRIPE_WEBHOOK_SECRET) {
+        return res.status(503).json({ ok: false, error: "billing_not_configured" });
+    }
     const sig = String(req.headers["stripe-signature"] || "");
     let event;
     try {
-        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
+        event = getStripe().webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
     }
     catch (err) {
         return res.status(400).send(`Webhook Error: ${err?.message || "invalid_signature"}`);
@@ -183,7 +195,7 @@ billingRouter.post("/webhook", express.raw({ type: "application/json" }), a(asyn
             const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id || "";
             if (!subId)
                 return res.json({ received: true });
-            const sub = await stripe.subscriptions.retrieve(subId);
+            const sub = await getStripe().subscriptions.retrieve(subId);
             const plan = (sub.metadata?.plan || s.metadata?.plan || "");
             const userId = Number(sub.metadata?.user_id || s.metadata?.user_id || 0);
             if (userId && (plan === "viewer" || plan === "streamer")) {
@@ -204,7 +216,7 @@ billingRouter.post("/webhook", express.raw({ type: "application/json" }), a(asyn
             const once = await markOnce(`invoice.paid:${inv.id}`);
             if (!once)
                 return res.json({ received: true });
-            const sub = await stripe.subscriptions.retrieve(subId);
+            const sub = await getStripe().subscriptions.retrieve(subId);
             const plan = (sub.metadata?.plan || "");
             const userId = Number(sub.metadata?.user_id || 0);
             if (userId && (plan === "viewer" || plan === "streamer")) {

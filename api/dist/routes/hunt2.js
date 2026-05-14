@@ -726,10 +726,28 @@ hunt2Router.post("/api/hunt2/set-pay", async (req, res) => {
         const sync = await isSyncActiveForUser(userId);
         if (sync.ok) {
             await setCallPay(pool, sync.streamerId, id, pay);
-            return res.json({ ok: true });
         }
-        await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2`, [userId, id, pay]);
-        res.json({ ok: true });
+        else {
+            await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2`, [userId, id, pay]);
+        }
+        // ✅ Auto-archive: when the last open bonus gets its pay, finalise the hunt
+        // automatically so the user no longer has to click "Terminer le hunt".
+        // Only fires when phase === "open" (avoids double-archive) and every item
+        // has a pay value (>=0) set.
+        const after = await getState(userId);
+        const allPaid = after.items.length > 0 && after.items.every((it) => it.pay != null && Number(it.pay) >= 0);
+        if (after.phase === "open" && allPaid) {
+            try {
+                const { archiveId, state: closed } = await closeHunt(userId);
+                return res.json({ ok: true, autoArchived: true, archiveId, state: closed });
+            }
+            catch (closeErr) {
+                console.error("[hunt2] auto-archive failed", closeErr);
+                // fall through and return ok=true without auto-archive so the set-pay
+                // itself is still considered successful
+            }
+        }
+        res.json({ ok: true, state: after });
     }
     catch (e) {
         console.error(e);
@@ -811,33 +829,45 @@ hunt2Router.post("/api/hunt2/revert", async (req, res) => {
         res.status(500).json({ ok: false, error: "server_error" });
     }
 });
+/**
+ * Archive the current hunt snapshot for `userId` into `hunt_archives`,
+ * update the session meta to closed, and (in sync mode) wipe the calls_queue.
+ *
+ * Returns { archiveId, state } for the caller to forward to the client.
+ * Safe to call multiple times in theory, but the caller should gate it on
+ * `phase === "open"` to avoid duplicate archives.
+ */
+async function closeHunt(userId) {
+    const state = await getState(userId);
+    const start = Number(state.start) || 0;
+    const totalPay = state.items.reduce((s, it) => s + (Number(it.pay) || 0), 0);
+    const itemsCount = state.items.length;
+    const snapshot = {
+        phase: "closed",
+        opened: false,
+        start: start || null,
+        items: state.items,
+        archive_id: null,
+    };
+    const ins = await pool.query(`INSERT INTO hunt_archives(user_id, title, start, total_pay, items_count, snapshot)
+     VALUES($1,$2,$3,$4,$5,$6)
+     RETURNING id`, [userId, null, start || null, totalPay, itemsCount, snapshot]);
+    const archiveId = Number(ins.rows[0].id);
+    await writeSessionMeta(userId, { phase: "closed", opened: false, archive_id: archiveId });
+    // ✅ if sync active => reset calls_queue too
+    const sync = await isSyncActiveForUser(userId);
+    if (sync.ok) {
+        await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1`, [sync.streamerId]);
+    }
+    const next = await getState(userId);
+    return { archiveId, state: next };
+}
 // close = archive snapshot (in sync mode: snapshot comes from calls_queue view)
 hunt2Router.post("/api/hunt2/close", async (req, res) => {
     try {
         const userId = Number(req.user.id);
-        const state = await getState(userId);
-        const start = Number(state.start) || 0;
-        const totalPay = state.items.reduce((s, it) => s + (Number(it.pay) || 0), 0);
-        const itemsCount = state.items.length;
-        const snapshot = {
-            phase: "closed",
-            opened: false,
-            start: start || null,
-            items: state.items,
-            archive_id: null,
-        };
-        const ins = await pool.query(`INSERT INTO hunt_archives(user_id, title, start, total_pay, items_count, snapshot)
-       VALUES($1,$2,$3,$4,$5,$6)
-       RETURNING id`, [userId, null, start || null, totalPay, itemsCount, snapshot]);
-        const archiveId = Number(ins.rows[0].id);
-        await writeSessionMeta(userId, { phase: "closed", opened: false, archive_id: archiveId });
-        // ✅ if sync active => reset calls_queue too
-        const sync = await isSyncActiveForUser(userId);
-        if (sync.ok) {
-            await pool.query(`DELETE FROM calls_queue WHERE streamer_id=$1`, [sync.streamerId]);
-        }
-        const next = await getState(userId);
-        res.json({ ok: true, state: next });
+        const { state } = await closeHunt(userId);
+        res.json({ ok: true, state });
     }
     catch (e) {
         console.error(e);
