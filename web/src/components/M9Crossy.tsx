@@ -65,6 +65,9 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   // incomingCar : voiture qui approche la plaque destination apres un saut
   // mode "stop" = bloquee par la barriere (safe), "hit" = ecrase le poulet (danger)
   const [incomingCar, setIncomingCar] = React.useState<{ lane: number; mode: "stop" | "hit"; key: number } | null>(null);
+  // Lanes "safe gagnées" — la voiture stoppée + barrière restent affichées
+  // jusqu'au reset (au lieu de disparaître après 900ms).
+  const [safedLanes, setSafedLanes] = React.useState<Set<number>>(() => new Set());
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -103,6 +106,12 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         window.setTimeout(() => {
           if (nextPalier.checkpoint) { sfx.coin(); sfx.win(); }
           else sfx.reveal();
+          // On garde la voiture + barriere visibles définitivement sur cette lane
+          setSafedLanes((prev) => {
+            const next = new Set(prev);
+            next.add(nextStep);
+            return next;
+          });
           setIncomingCar(null);
           setPhase("idle");
         }, 900);
@@ -130,6 +139,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     setStep(0);
     setPhase("idle");
     setIncomingCar(null);
+    setSafedLanes(new Set());
     setPopupOpen(false);
   };
 
@@ -296,6 +306,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
           // Pas de voiture decorative sur la lane du poulet, ni sur la lane d'arrivee si on est en mouvement
           if (laneIdx <= step) return null;
           if (incomingCar && incomingCar.lane === laneIdx) return null;
+          if (safedLanes.has(laneIdx)) return null;
           const leftPct = DEPART_WIDTH_PCT + slotWidth * (laneIdx - 0.5);
           const delay = (i * 1.1) % 4;
           return (
@@ -354,6 +365,34 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
             🚧
           </div>
         ) : null}
+
+        {/* Voitures + barrières persistantes des lanes déjà gagnées (safe) */}
+        {Array.from(safedLanes).map((lane) => (
+          <React.Fragment key={`safed-${lane}`}>
+            <div
+              className="m9-incoming-car"
+              style={{
+                left: `${DEPART_WIDTH_PCT + slotWidth * (lane - 0.5)}%`,
+                top: "32%",
+                animation: "none",
+              }}
+            >
+              🚙
+            </div>
+            <div
+              className="m9-barrier"
+              style={{
+                left: `${DEPART_WIDTH_PCT + slotWidth * (lane - 0.5)}%`,
+                top: `38%`,
+                animation: "none",
+                opacity: 1,
+                transform: "translate(-50%, 0)",
+              }}
+            >
+              🚧
+            </div>
+          </React.Fragment>
+        ))}
 
         {/* Poulet */}
         <div className={`m9-chicken ${phase === "moving" ? "moving" : ""} ${phase === "dead" ? "dead" : ""}`}>🐔</div>
