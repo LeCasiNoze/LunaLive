@@ -134,12 +134,15 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   } else if (diamondCount < 6) {
     mini = "Bonus débloqué · continue";
     main = <>Encore <span className="accent">{6 - diamondCount}</span> pour le SUPER BONUS</>;
-  } else if (diamondCount < 8) {
+  } else if (diamondCount < 7) {
     mini = "SUPER BONUS débloqué";
     main = <>Encore <span className="accent">{8 - diamondCount}</span> pour le JACKPOT</>;
-  } else {
+  } else if (diamondCount < 8) {
     mini = "JACKPOT en vue";
-    main = <><span className="accent">Une dernière case</span>… ose-tu ?</>;
+    main = <><span className="accent">Plus que 2 cases</span>… oseras-tu ?</>;
+  } else {
+    mini = "Tension maximale";
+    main = <>Dernière case · <span className="accent">révélation imminente</span></>;
   }
 
   return (
