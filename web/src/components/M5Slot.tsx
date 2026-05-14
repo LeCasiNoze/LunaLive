@@ -342,10 +342,7 @@ export function M5Slot({
         open={phase === "won" && popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        badge="Ligne centrale ·"
-        badgeStrong="validee"
         score={rewardHeadline}
-        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

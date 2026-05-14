@@ -317,10 +317,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         open={popupOpen && revealedSet.has(picked)}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
-        badge="Coffre ouvert ·"
-        badgeStrong="bonus revele"
         score={rewardScore}
-        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

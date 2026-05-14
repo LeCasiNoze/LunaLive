@@ -277,10 +277,8 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         open={popupOpen && !!winType}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
-        badge={winType === "all" ? "Jackpot mega ·" : diamondCount >= 6 ? "Super bonus ·" : "Bonus debloque ·"}
-        badgeStrong={winType === "all" ? "grille complete" : "diamants valides"}
         score={rewardScore}
-        title={winType === "all" ? "Jackpot débloqué" : "Bonus débloqué"}
+        title={winType === "all" ? "Jackpot débloqué" : undefined}
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

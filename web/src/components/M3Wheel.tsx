@@ -293,10 +293,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         open={phase === "won" && popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        badge="Gain valide ·"
-        badgeStrong="roue bonus"
         score={rewardScore}
-        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

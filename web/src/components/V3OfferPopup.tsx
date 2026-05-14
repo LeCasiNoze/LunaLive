@@ -13,10 +13,11 @@ export type V3OfferPopupProps = {
   open: boolean;
   onClose: () => void;
   theme?: PopupTheme;
-  badge: string;
+  /** Badge optionnel en haut. Si omis, pas de badge. */
+  badge?: string;
   badgeStrong?: string;
   score: string;
-  /** Titre court (h2). Si vide, le bloc title est masque. */
+  /** Titre court (h2). Si omis, "X% bonus debloque" calcule auto, sinon "Bonus debloque". */
   title?: string;
   /** Texte secondaire court. Si vide, masque. */
   body?: string;
@@ -24,6 +25,8 @@ export type V3OfferPopupProps = {
   bonusAmount?: string;
   /** Label personnalise du bloc offre. Si omis, genere "Ton offre de X% bonus !". */
   offerLabel?: string;
+  /** Affiche le bloc offre detaille. Default false (info deja dans title+score). */
+  showOffer?: boolean;
   steps?: readonly string[];
   href: string;
   ctaLabel?: string;
@@ -52,6 +55,7 @@ export function V3OfferPopup({
   depositAmount,
   bonusAmount,
   offerLabel,
+  showOffer = false,
   steps = [],
   href,
   ctaLabel = "Recuperer mon bonus",
@@ -73,7 +77,7 @@ export function V3OfferPopup({
     setStepProgress(0);
     setCancelled(false);
     setAutoRedirect(null);
-  }, [open, steps]);
+  }, [open, steps.length]);
 
   React.useEffect(() => {
     if (!open || steps.length === 0 || stepIndex >= steps.length) return;
@@ -170,6 +174,7 @@ export function V3OfferPopup({
   const pct = (dep != null && bon != null && dep > 0) ? Math.round(((bon - dep) / dep) * 100) : null;
   const computedOfferLabel = offerLabel
     ?? (pct != null && pct > 0 ? `Ton offre de ${pct}% bonus !` : "Ton offre");
+  const computedTitle = (title !== undefined ? title : (pct != null && pct > 0 ? `${pct}% bonus débloqué` : "Bonus débloqué"));
 
   return (
     <div
@@ -206,7 +211,7 @@ export function V3OfferPopup({
         .v3p-offer .val{font-weight:800;color:#fff;font-size:1.05rem}
         .v3p-offer .val strong{color:var(--v3p-accent-light);font-size:1.15rem}
 
-        .v3p-steps{position:relative;z-index:1;display:grid;gap:8px;margin:0 0 18px;padding:0;list-style:none}
+        .v3p-steps{position:relative;z-index:1;display:grid;gap:8px;margin:20px 0 18px;padding:0;list-style:none}
         .v3p-step{position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(2,6,23,.34);border:1px solid rgba(255,255,255,.06);color:rgba(226,232,240,.5);text-align:left;overflow:hidden}
         .v3p-step.done{color:#fff;border-color:var(--v3p-border-color);background:rgba(255,255,255,.04)}
         .v3p-step.active{color:#fff;border-color:var(--v3p-accent);background:rgba(255,255,255,.04)}
@@ -232,14 +237,9 @@ export function V3OfferPopup({
         .v3p-countdown-cancel:hover{color:rgba(248,250,252,.9)}
 
         /* VIP banner */
-        .v3p-vip{position:relative;z-index:1;margin:18px -8px 0;padding:12px 14px;background:linear-gradient(135deg,rgba(15,23,42,.6),rgba(15,23,42,.3));border-top:1px solid rgba(255,255,255,.06);border-radius:0 0 22px 22px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;transition:background .2s ease}
-        .v3p-vip:hover{background:linear-gradient(135deg,rgba(15,23,42,.8),rgba(15,23,42,.5))}
-        .v3p-vip-icon{flex-shrink:0;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid var(--v3p-border-color);display:grid;place-items:center;font-size:.95rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
-        .v3p-vip-body{flex:1;min-width:0}
-        .v3p-vip-title{display:flex;align-items:center;gap:6px;font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--v3p-accent-light);margin-bottom:2px}
-        .v3p-vip-title em{font-style:normal;background:linear-gradient(90deg,var(--v3p-accent),var(--v3p-accent-light));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
-        .v3p-vip-copy{font-size:.7rem;color:rgba(203,213,225,.7);line-height:1.4}
-        .v3p-vip-cta-arrow{font-size:1.1rem;color:var(--v3p-accent-light);opacity:.7;margin-left:6px}
+        .v3p-vip-btn{position:relative;z-index:1;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:14px 0 0;padding:12px 16px;background:transparent;border:1px dashed rgba(253,230,138,.32);border-radius:14px;color:rgba(253,230,138,.85);font-size:.78rem;font-weight:700;letter-spacing:.04em;font-family:inherit;cursor:pointer;transition:background .2s ease,border-color .2s ease,color .2s ease}
+        .v3p-vip-btn:hover{background:rgba(253,230,138,.06);border-color:var(--v3p-accent);color:var(--v3p-accent-light)}
+        .v3p-vip-btn-icon{font-size:1rem}
 
         /* VIP form expanded */
         .v3p-vip-form{position:relative;z-index:1;margin:14px -8px 0;padding:16px 16px;background:linear-gradient(135deg,rgba(15,23,42,.85),rgba(15,23,42,.6));border-top:1px solid rgba(255,255,255,.1);border-radius:0 0 22px 22px;text-align:left;animation:v3p-fade .2s ease-out}
@@ -269,19 +269,21 @@ export function V3OfferPopup({
 
       <div className="v3p-card" onClick={(event) => event.stopPropagation()}>
         <button className="v3p-close" onClick={onClose} aria-label="Fermer">×</button>
-        <div className="v3p-badge">
-          <span className="v3p-dot" />
-          {badge}
-          {badgeStrong ? <strong>{badgeStrong}</strong> : null}
-        </div>
+        {badge ? (
+          <div className="v3p-badge">
+            <span className="v3p-dot" />
+            {badge}
+            {badgeStrong ? <strong>{badgeStrong}</strong> : null}
+          </div>
+        ) : null}
         <div className="v3p-score">{score}</div>
-        {(title || body) ? (
+        {(computedTitle || body) ? (
           <div className="v3p-copy">
-            {title ? <h2>{title}</h2> : null}
+            {computedTitle ? <h2>{computedTitle}</h2> : null}
             {body ? <p>{body}</p> : null}
           </div>
         ) : null}
-        {bonusAmount ? (
+        {showOffer && bonusAmount ? (
           <div className="v3p-offer">
             <div className="lbl">{computedOfferLabel}</div>
             <div className="val">Recois <strong>{bonusAmount}</strong></div>
@@ -324,16 +326,14 @@ export function V3OfferPopup({
         ) : null}
 
         {showVipBanner && vipMode === "closed" ? (
-          <div className="v3p-vip" onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}>
-            <div className="v3p-vip-icon">👑</div>
-            <div className="v3p-vip-body">
-              <div className="v3p-vip-title">Club <em>VIP</em></div>
-              <div className="v3p-vip-copy">
-                Tu joues 500€+ / mois ? Host dédié + bonus exclusifs.
-              </div>
-            </div>
-            <div className="v3p-vip-cta-arrow">→</div>
-          </div>
+          <button
+            type="button"
+            className="v3p-vip-btn"
+            onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}
+          >
+            <span className="v3p-vip-btn-icon">👑</span>
+            Je suis un gros joueur
+          </button>
         ) : null}
 
         {showVipBanner && (vipMode === "form" || vipMode === "sending") ? (

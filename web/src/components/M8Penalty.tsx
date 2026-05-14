@@ -366,8 +366,6 @@ export function M8Penalty({
           borderColor: T.borderColor,
           buttonText: T.buttonText,
         }}
-        badge="Penalty valide ·"
-        badgeStrong={team.shortLabel}
         score={rewardHeadline}
         title="But marqué !"
         depositAmount={dep}

@@ -217,10 +217,7 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         open={phase === "won" && popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        badge="Plinko valide ·"
-        badgeStrong="palier central"
         score={rewardScore}
-        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

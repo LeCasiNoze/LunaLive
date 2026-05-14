@@ -68,6 +68,11 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
+  const crossySteps = React.useMemo(() => [
+    "Vérification du palier",
+    "Validation du bonus 100%",
+    "Lien d'accès prêt",
+  ], []);
   const safeAffi = affiLink || "#";
 
   // Niveau de récompense atteint = max(SAFE_PALIER, step) si dead, sinon step
@@ -337,17 +342,10 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         open={popupOpen && (phase === "dead" || phase === "collected")}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard, borderColor: T.borderColor }}
-        badge={phase === "dead" ? "Tu avais ton 100% ·" : "Bonus collecté ·"}
-        badgeStrong={phase === "dead" ? "récupéré quand même" : "100%"}
         score={bon ? `+${bon}` : "100%"}
-        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
-        steps={[
-          "Vérification du palier",
-          "Validation du bonus 100%",
-          "Lien d'accès prêt",
-        ]}
+        steps={crossySteps}
         href={safeAffi}
       />
 
