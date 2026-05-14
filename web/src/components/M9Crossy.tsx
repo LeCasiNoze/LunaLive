@@ -186,7 +186,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         .m9-hud-val.win{color:${T.accentLight};text-shadow:0 0 14px ${T.accentGlow}}
 
         /* Stage horizontal — plus grand */
-        .m9-stage{position:relative;width:100%;max-width:580px;height:300px;background:linear-gradient(180deg,#46414f 0%,#3f3a48 40%,#2d2933 100%);border:1px solid ${T.borderColor};border-radius:20px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.08),inset 0 0 0 1px ${T.accent}22,0 0 28px ${T.accent}22;margin-bottom:14px;box-sizing:border-box}
+        .m9-stage{position:relative;width:min(96vw,680px);height:320px;background:linear-gradient(180deg,#46414f 0%,#3f3a48 40%,#2d2933 100%);border:1px solid ${T.borderColor};border-radius:20px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.08),inset 0 0 0 1px ${T.accent}22,0 0 28px ${T.accent}22;margin-bottom:14px;box-sizing:border-box}
         .m9-camera{position:absolute;inset:0;transition:transform 700ms cubic-bezier(.34,1.4,.64,1)}
 
         /* Zone DEPART */
@@ -245,7 +245,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         .m9-boom.show{animation:m9-boom-pop .9s ease-out forwards}
 
         /* Buttons */
-        .m9-actions{display:flex;flex-direction:column;width:100%;max-width:580px;gap:10px;box-sizing:border-box}
+        .m9-actions{display:flex;flex-direction:column;width:min(96vw,680px);gap:10px;box-sizing:border-box}
         .m9-cta{display:block;width:100%;padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#062012;font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:14px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease;animation:m9-cta-pulse 2.2s ease-in-out infinite}
         .m9-cta:not(:disabled):hover{transform:translateY(-2px)}
         .m9-cta:not(:disabled):active{transform:translateY(1px)}

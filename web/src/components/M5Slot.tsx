@@ -183,7 +183,7 @@ export function M5Slot({
         .m5-promo strong{color:${T.accentLight};font-weight:900;text-shadow:0 0 10px ${T.accentGlow}}
 
         .m5-rows{position:relative;z-index:3;display:flex;flex-direction:column;gap:16px;width:min(96vw,500px);margin-bottom:26px}
-        .m5-row{position:relative;display:grid;grid-template-columns:24px 1fr 96px;align-items:center;gap:14px;padding:16px 18px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.78);border:1px solid ${T.accent}33;box-shadow:0 8px 22px rgba(0,0,0,.45),0 0 0 1px ${T.accent}11,inset 0 1px 0 rgba(255,255,255,.06);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease}
+        .m5-row{position:relative;display:grid;grid-template-columns:22px 1fr minmax(70px,auto);align-items:center;gap:12px;padding:16px 14px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.78);border:1px solid ${T.accent}33;box-shadow:0 8px 22px rgba(0,0,0,.45),0 0 0 1px ${T.accent}11,inset 0 1px 0 rgba(255,255,255,.06);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease;box-sizing:border-box}
         .m5-row::before{content:"";position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,${T.accent}22 0%,transparent 50%,${T.accentLight}11 100%);pointer-events:none;opacity:.6}
         .m5-row.revealed.loss{border-color:rgba(239,68,68,.4);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(239,68,68,.18)}
         .m5-row.revealed.bait{border-color:rgba(251,146,60,.55);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 22px rgba(251,146,60,.3)}
@@ -214,7 +214,7 @@ export function M5Slot({
         .m5-row.revealed.win.celebrating::before{top:-12px;left:14%;animation-delay:0s}
         .m5-row.revealed.win.celebrating::after{bottom:-12px;right:14%;animation-delay:.4s}
 
-        .m5-row-status{position:relative;z-index:1;font-size:.7rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;text-align:right;line-height:1.15;color:${T.accent}88;text-shadow:0 0 8px ${T.accentGlow}}
+        .m5-row-status{position:relative;z-index:1;font-size:.66rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;text-align:right;line-height:1.15;color:${T.accent}aa;text-shadow:0 0 8px ${T.accentGlow};white-space:normal;word-break:break-word;max-width:88px;min-width:0}
         .m5-row.idle .m5-row-status,.m5-row.spinning .m5-row-status{color:rgba(226,232,240,.4)}
         .m5-row.revealed.loss .m5-row-status{color:#ef4444}
         .m5-row.revealed.bait .m5-row-status{color:#fb923c;animation:m5-bait-flash 1.4s ease-in-out infinite}

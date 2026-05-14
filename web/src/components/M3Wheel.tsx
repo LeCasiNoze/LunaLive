@@ -80,16 +80,22 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const spin = () => {
     if (phase !== "idle") return;
     sfx.click();
-    sfx.wheelTicks(4200);
+    sfx.wheelTicks(4400);
     setPhase("spinning");
-    const target = 360 * 6 + (360 - (WIN_INDEX * SLICE_DEG + SLICE_DEG / 2));
+    // Offset aléatoire (±10°) dans la tranche WIN pour ne pas s'arrêter
+    // pile sur la ligne (visuellement plus crédible).
+    const wedgeOffset = (Math.random() * 20 - 10);
+    const baseAngle = 360 - (WIN_INDEX * SLICE_DEG + SLICE_DEG / 2);
+    const target = 360 * 7 + baseAngle + wedgeOffset;
     setAngle(target);
-    setTimeout(() => sfx.tension(800), 3400);
+    // Tension qui monte plus tôt + croissante pour build le suspense
+    setTimeout(() => sfx.tension(1400), 2800);
+    setTimeout(() => sfx.tension(700), 3900);
     setTimeout(() => {
       sfx.win();
       setPhase("won");
       setPopupOpen(true);
-    }, 4400);
+    }, 4500);
   };
 
   return (
@@ -140,7 +146,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         .m3-peg{position:absolute;width:9px;height:9px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff,${T.accent} 60%,${T.accentDark});box-shadow:0 0 6px ${T.accent},0 0 12px ${T.accentGlow},0 1px 2px rgba(0,0,0,.6);z-index:6;animation:m3-peg-pulse 2.8s ease-in-out infinite}
 
         /* Disque qui tourne */
-        .m3-wheel{position:absolute;inset:8%;border-radius:50%;background:#05030a;box-shadow:inset 0 0 32px rgba(0,0,0,.9),inset 0 0 60px rgba(168,85,247,.15);transform:rotate(0deg);transition:transform 4.2s cubic-bezier(.17,.67,.16,.99);z-index:3}
+        .m3-wheel{position:absolute;inset:8%;border-radius:50%;background:#05030a;box-shadow:inset 0 0 32px rgba(0,0,0,.9),inset 0 0 60px rgba(168,85,247,.15);transform:rotate(0deg);transition:transform 4.4s cubic-bezier(.12,.6,.14,1);z-index:3}
         .m3-wheel.spinning{transform:rotate(${angle}deg)}
 
         /* Hub central — bouton neon */

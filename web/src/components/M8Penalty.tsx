@@ -82,9 +82,13 @@ export function M8Penalty({
     buttonText: team.buttonText,
   };
 
-  const [phase, setPhase] = React.useState<"select" | "idle" | "shooting" | "goal" | "won">("select");
+  const [phase, setPhase] = React.useState<"idle" | "shooting" | "missed" | "scored" | "won">("idle");
   const [aim, setAim] = React.useState<AimZone | null>(null);
   const [popupOpen, setPopupOpen] = React.useState(false);
+  // 3 chances : miss (1er), goal (2eme → +50%), goal (3eme → +100%)
+  const [attempt, setAttempt] = React.useState(0);
+  const ATTEMPT_OUTCOMES: ReadonlyArray<"miss" | "goal"> = ["miss", "goal", "goal"];
+  const TOTAL_ATTEMPTS = ATTEMPT_OUTCOMES.length;
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -95,32 +99,63 @@ export function M8Penalty({
 
   const shoot = (zone: AimZone) => {
     if (phase !== "idle") return;
+    if (attempt >= TOTAL_ATTEMPTS) return;
     sfx.click();
     setAim(zone);
     setPhase("shooting");
     sfx.tension(700);
+    const outcome = ATTEMPT_OUTCOMES[attempt];
+    const isLastShot = attempt === TOTAL_ATTEMPTS - 1;
+
     window.setTimeout(() => {
-      sfx.win();
-      setPhase("goal");
-    }, 900);
-    window.setTimeout(() => {
-      setPhase("won");
-      setPopupOpen(true);
-    }, 1800);
+      if (outcome === "miss") {
+        sfx.loss();
+        setPhase("missed");
+        // Retour a idle apres 1.7s, incremente le compteur
+        window.setTimeout(() => {
+          setAim(null);
+          setAttempt((a) => a + 1);
+          setPhase("idle");
+        }, 1700);
+      } else {
+        sfx.win();
+        if (isLastShot) {
+          setPhase("won");
+          window.setTimeout(() => setPopupOpen(true), 900);
+        } else {
+          setPhase("scored");
+          window.setTimeout(() => {
+            setAim(null);
+            setAttempt((a) => a + 1);
+            setPhase("idle");
+          }, 1900);
+        }
+      }
+    }, 920);
   };
 
+  const willScoreNow = attempt < TOTAL_ATTEMPTS && ATTEMPT_OUTCOMES[attempt] === "goal";
+
   const ballPos = (() => {
-    if (phase === "idle" || phase === "select") return { left: 50, top: 88, scale: 1, rotate: 0 };
-    const targetLeft = aim === "L" ? 22 : aim === "R" ? 78 : 50;
-    const targetTop = aim === "C" ? 32 : 24;
-    // 2 tours complets de spin + tilt en fin de course selon l'aim → effet "frappe vissée"
+    if (phase === "idle") return { left: 50, top: 88, scale: 1, rotate: 0 };
+    if (!aim) return { left: 50, top: 88, scale: 1, rotate: 0 };
     const spin = 720 + (aim === "L" ? -22 : aim === "R" ? 22 : 8);
+    if (!willScoreNow) {
+      // Tir arrete par le gardien — ball stoppe au niveau du gardien
+      const left = aim === "L" ? 30 : aim === "R" ? 70 : 50;
+      return { left, top: 46, scale: 0.55, rotate: 540 };
+    }
+    // Goal : ball entre dans le filet (top entre 42% et 50% = a l'interieur de la cage)
+    const targetLeft = aim === "L" ? 24 : aim === "R" ? 76 : 50;
+    const targetTop = aim === "C" ? 48 : 44;
     return { left: targetLeft, top: targetTop, scale: 0.42, rotate: spin };
   })();
 
   const gkPos = (() => {
     if (phase === "idle") return { left: 50, rotate: 0, top: 37 };
-    const dive = gkDive(aim || "C");
+    if (!aim) return { left: 50, rotate: 0, top: 37 };
+    // Miss → gardien plonge du MEME cote (arret). Goal → plonge a l'OPPOSE (rate).
+    const dive = willScoreNow ? gkDive(aim) : aim;
     if (dive === "L") return { left: 23, rotate: -34, top: 42 };
     if (dive === "R") return { left: 77, rotate: 34, top: 42 };
     return { left: 50, rotate: 0, top: 37 };
@@ -153,10 +188,25 @@ export function M8Penalty({
         .m8-promo{position:relative;z-index:2;display:inline-flex;align-items:center;gap:10px;padding:10px 18px;margin-bottom:18px;background:rgba(6,12,26,.62);border:1px solid ${T.borderColor};border-radius:999px;font-size:.76rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(248,250,252,.88);backdrop-filter:blur(10px);box-shadow:0 16px 40px rgba(0,0,0,.24)}
         .m8-team-dot{width:10px;height:10px;border-radius:50%;background:${T.accent};box-shadow:0 0 14px ${T.accentGlow}}
 
-        .m8-step{position:relative;z-index:2;text-align:center;margin-bottom:14px}
-        .m8-step-title{font-family:'Playfair Display',serif;font-size:1.18rem;font-weight:700;color:#f8fafc}
-        .m8-step-title .accent{color:${T.accent}}
-        .m8-step-sub{margin-top:6px;font-size:.84rem;color:rgba(226,232,240,.72)}
+        .m8-step{position:relative;z-index:2;text-align:center;margin-bottom:14px;width:min(94vw,460px);display:flex;flex-direction:column;align-items:center;gap:12px}
+        .m8-step-title{font-family:'Playfair Display',serif;font-size:1.18rem;font-weight:700;color:#f8fafc;line-height:1.3}
+        .m8-step-title .accent{color:${T.accent};text-shadow:0 0 14px ${T.accentGlow}}
+
+        /* Strip drapeaux selection equipe */
+        .m8-flag-strip{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;width:100%}
+        .m8-flag-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(6,12,26,.62);border:1px solid rgba(255,255,255,.1);border-radius:999px;color:rgba(248,250,252,.85);font-size:.7rem;font-weight:700;letter-spacing:.04em;cursor:pointer;font-family:inherit;transition:all .15s ease;backdrop-filter:blur(6px)}
+        .m8-flag-chip:hover:not(:disabled){border-color:${T.accent}88;color:#fff}
+        .m8-flag-chip.selected{background:linear-gradient(135deg,${T.accentLight},${T.accent});color:${T.buttonText};border-color:${T.accentLight};box-shadow:0 0 16px ${T.accentGlow}}
+        .m8-flag-chip:disabled{opacity:.5;cursor:not-allowed}
+        .m8-flag-emoji{font-size:1.05rem;line-height:1}
+        .m8-flag-label{font-size:.7rem}
+
+        /* Compteur tirs */
+        .m8-attempts{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;background:rgba(6,12,26,.62);border:1px solid ${T.accent}44;border-radius:999px;font-size:.74rem;font-weight:800;letter-spacing:.06em;color:rgba(248,250,252,.92)}
+        .m8-attempt-dot{font-size:1rem;line-height:1;opacity:.35;filter:grayscale(.8)}
+        .m8-attempt-dot.done{opacity:1;filter:none}
+        .m8-attempt-dot.active{animation:m8-attempt-pulse .8s ease-in-out infinite}
+        .m8-attempts-text{margin-left:4px;color:${T.accentLight};font-variant-numeric:tabular-nums}
 
         .m8-stage{position:relative;width:min(94vw,430px);aspect-ratio:1.14/1;background:
           linear-gradient(180deg,${T.skyTop} 0%,${T.skyBottom} 40%,${T.pitchTop} 40%,${T.pitchBottom} 100%);
@@ -267,6 +317,12 @@ export function M8Penalty({
         @keyframes m8-goal-pop{0%{opacity:0;transform:scale(.5)}40%{opacity:1;transform:scale(1.18)}70%{transform:scale(1)}100%{opacity:1;transform:scale(1)}}
         @keyframes m8-net-shake{0%{transform:translateX(0) scaleY(1)}20%{transform:translateX(-3px) scaleY(1.03)}40%{transform:translateX(3px) scaleY(.98)}60%{transform:translateX(-2px) scaleY(1.02)}80%{transform:translateX(1px) scaleY(.99)}100%{transform:translateX(0) scaleY(1)}}
         @keyframes m8-spark-trail{0%{opacity:0;transform:translate(-50%,0) scale(.5)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,40px) scale(.3)}}
+        @keyframes m8-attempt-pulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.25);opacity:1}}
+        @keyframes m8-goal-stadium-flash{0%{box-shadow:0 18px 42px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08),0 0 0 1px rgba(255,255,255,.04)}50%{box-shadow:0 18px 60px ${T.accentGlow},inset 0 0 40px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.18),0 0 0 4px ${T.accent}88,0 0 80px ${T.accentGlow}}100%{box-shadow:0 18px 42px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.08),0 0 0 1px rgba(255,255,255,.04)}}
+        .m8-stage.goal{animation:m8-goal-stadium-flash 1.2s ease-out}
+        @keyframes m8-confetti-burst{0%{opacity:0;transform:translate(-50%,-50%) scale(.3) rotate(0)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,calc(-50% + 60px)) scale(1.4) rotate(180deg)}}
+        .m8-confetti{position:absolute;font-size:1.5rem;z-index:11;pointer-events:none;opacity:0}
+        .m8-confetti.show{animation:m8-confetti-burst 1.1s ease-out forwards}
         @keyframes m8-fade{from{opacity:0}to{opacity:1}}
         @keyframes m8-pop{0%{transform:translateY(20px) scale(.96);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
       `}</style>
@@ -284,76 +340,63 @@ export function M8Penalty({
         ) : null}
       </div>
 
-      {phase === "select" ? (
-        <div className="m8-team-picker">
-          <div className="m8-team-picker-title">Choisis ton équipe</div>
-          <div className="m8-team-picker-sub">Le stade, ton maillot et le gardien s'adaptent à ton choix</div>
-          <div className="m8-team-grid">
-            {V3_PENALTY_TEAMS.map((t) => (
-              <div
-                key={t.key}
-                className={`m8-team-tile ${selectedKey === t.key ? "selected" : ""}`}
-                onClick={() => { sfx.click(); setSelectedKey(t.key); }}
-              >
-                <div className="m8-team-flag">{TEAM_FLAGS[t.key]}</div>
-                <div className="m8-team-name">{t.label}</div>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="m8-team-confirm"
-            onClick={() => { sfx.click(); setPhase("idle"); }}
-          >
-            Valider · {team.label} {TEAM_FLAGS[selectedKey]}
-          </button>
-        </div>
-      ) : null}
-
-      {phase !== "select" ? (
-      <div className="m8-promo">
-        <span className="m8-team-dot" />
-        Penalty mondial
-        <strong>{team.label}</strong>
-      </div>
-      ) : null}
-
-      {phase !== "select" ? (<>
       <div className="m8-step">
         <div className="m8-step-title">
-          {phase === "idle"
-            ? <>Choisis ton <span className="accent">angle</span> et enclenche le bonus</>
-            : phase === "shooting"
-              ? <>Frappe en <span className="accent">cours</span></>
-              : <><span className="accent">But !</span> Le tir est valide</>}
+          {phase === "won"
+            ? <><span className="accent">BUT décisif !</span> Bonus 100% débloqué</>
+            : phase === "scored"
+              ? <><span className="accent">BUT !</span> +50% bonus en poche</>
+              : phase === "missed"
+                ? <>Tir <span className="accent">arrêté</span> par le gardien</>
+                : phase === "shooting"
+                  ? <>Frappe en <span className="accent">cours</span>…</>
+                  : <>Marque un but pour remporter un <span className="accent">bonus exclusif !</span></>}
         </div>
-        <div className="m8-step-sub">
-          Theme actif: {team.label} · palette adaptee au stade, au gardien et au popup final
+        {phase === "idle" || phase === "shooting" ? (
+          <div className="m8-flag-strip">
+            {V3_PENALTY_TEAMS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`m8-flag-chip ${selectedKey === t.key ? "selected" : ""}`}
+                disabled={phase !== "idle"}
+                onClick={() => { sfx.click(); setSelectedKey(t.key); }}
+                title={t.label}
+              >
+                <span className="m8-flag-emoji">{TEAM_FLAGS[t.key]}</span>
+                <span className="m8-flag-label">{t.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="m8-attempts">
+          {Array.from({ length: TOTAL_ATTEMPTS }).map((_, i) => (
+            <span
+              key={i}
+              className={`m8-attempt-dot ${i < attempt ? "done" : ""} ${i === attempt && phase === "shooting" ? "active" : ""}`}
+            >⚽</span>
+          ))}
+          <span className="m8-attempts-text">Tir {Math.min(attempt + (phase === "shooting" ? 1 : 1), TOTAL_ATTEMPTS)}/{TOTAL_ATTEMPTS}</span>
         </div>
       </div>
 
-      <div className="m8-stage">
+      <div className={`m8-stage ${phase === "scored" || phase === "won" ? "goal" : ""}`}>
         <div className="m8-scoreboard">
           <div className="m8-score-side">
             <span className="m8-score-badge">{team.shortLabel}</span>
             <div className="m8-score-copy">
               <strong>Challenge penalty</strong>
-              1 tir bonus a convertir
+              3 tirs · bonus exclusif
             </div>
           </div>
           <div className="m8-score-shot">
-            {phase === "idle" ? "0/1 tir" : phase === "shooting" ? "tir en vol" : "1/1 but"}
+            {phase === "shooting" ? "tir en vol" : `${Math.min(attempt + 1, TOTAL_ATTEMPTS)}/${TOTAL_ATTEMPTS}`}
           </div>
         </div>
 
         <div className="m8-floodlight left" />
         <div className="m8-floodlight right" />
         <div className="m8-stands" />
-
-        <div className="m8-crowd-ribbon">
-          <span className="m8-crowd-flag">{team.shortLabel}</span>
-          <span className="m8-crowd-flag">FINAL STAGE</span>
-        </div>
 
         <div className="m8-goal-shell">
           <div className="m8-goal">
@@ -422,19 +465,32 @@ export function M8Penalty({
           </div>
         </div>
 
-        <div className={`m8-goal-flash ${phase === "goal" || phase === "won" ? "show" : ""}`}>
-          BUT !
+        <div className={`m8-goal-flash ${phase === "scored" || phase === "won" ? "show" : ""}`}>
+          {phase === "won" ? "BUT !" : "BUT !"}
         </div>
+
+        {phase === "scored" || phase === "won" ? (
+          <>
+            <span className="m8-confetti show" style={{ left: "20%", top: "45%" }}>🎉</span>
+            <span className="m8-confetti show" style={{ left: "78%", top: "48%", animationDelay: ".1s" }}>✨</span>
+            <span className="m8-confetti show" style={{ left: "50%", top: "32%", animationDelay: ".25s" }}>⭐</span>
+            <span className="m8-confetti show" style={{ left: "35%", top: "58%", animationDelay: ".15s" }}>💫</span>
+            <span className="m8-confetti show" style={{ left: "65%", top: "30%", animationDelay: ".3s" }}>🎊</span>
+          </>
+        ) : null}
       </div>
 
       {phase === "idle" ? (
-        <button className="m8-cta" disabled>Clique dans la cage pour tirer</button>
+        <button className="m8-cta" disabled>👆 Clique dans la cage pour tirer</button>
       ) : phase === "won" ? (
-        <button className="m8-cta" onClick={() => setPopupOpen(true)}>Voir mon offre</button>
+        <button className="m8-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus 100%</button>
+      ) : phase === "shooting" ? (
+        <button className="m8-cta" disabled>Frappe en cours…</button>
+      ) : phase === "missed" ? (
+        <button className="m8-cta" disabled>Tir arrêté · prochain tir…</button>
       ) : (
-        <button className="m8-cta" disabled>{phase === "shooting" ? "Frappe en cours..." : "But valide"}</button>
+        <button className="m8-cta" disabled>+50% en poche · prochain tir…</button>
       )}
-      </>) : null}
 
       <V3OfferPopup
         open={phase === "won" && popupOpen}
