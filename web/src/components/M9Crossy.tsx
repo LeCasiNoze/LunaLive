@@ -179,7 +179,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         .m9-promo{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;margin-bottom:14px;background:rgba(8,15,22,.85);border:1px solid ${T.borderColor};border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(241,245,249,.92);box-shadow:0 0 18px ${T.accentGlow}}
         .m9-promo-dot{width:8px;height:8px;border-radius:50%;background:${T.accent};box-shadow:0 0 12px ${T.accentGlow};animation:m9-pulse 1.6s ease-in-out infinite}
 
-        .m9-hud{display:flex;width:100%;max-width:580px;gap:6px;margin-bottom:14px;box-sizing:border-box}
+        .m9-hud{display:flex;width:100%;max-width:420px;gap:6px;margin-bottom:14px;box-sizing:border-box}
         .m9-hud-card{flex:1 1 0;min-width:0;padding:8px 6px;background:rgba(8,15,22,.78);border:1px solid ${T.accent}44;border-radius:12px;text-align:center;backdrop-filter:blur(6px);box-sizing:border-box;overflow:hidden;box-shadow:0 0 14px ${T.accent}11}
         .m9-hud-lbl{font-size:.55rem;color:${T.accent}bb;letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px;white-space:nowrap;text-shadow:0 0 6px ${T.accent}44}
         .m9-hud-val{font-size:.92rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
