@@ -220,8 +220,7 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         badge="Plinko valide ·"
         badgeStrong="palier central"
         score={rewardScore}
-        title="La bille termine au meilleur palier"
-        body="Le multiplicateur central est confirme. L'offre bonus est maintenant prete."
+        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

@@ -340,12 +340,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         badge={phase === "dead" ? "Tu avais ton 100% ·" : "Bonus collecté ·"}
         badgeStrong={phase === "dead" ? "récupéré quand même" : "100%"}
         score={bon ? `+${bon}` : "100%"}
-        title={phase === "dead" ? "Heureusement, tu avais ton 100%" : "Bien joué"}
-        body={
-          phase === "dead"
-            ? "Tu as poussé un peu trop loin — mais tu avais déjà sécurisé le palier 100% au checkpoint. Bonus garanti."
-            : "Tu t'es arrêté au bon moment. Le bonus 100% est verrouillé."
-        }
+        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={[

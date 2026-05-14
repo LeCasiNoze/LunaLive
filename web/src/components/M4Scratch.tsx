@@ -320,8 +320,7 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
         badge="Coffre ouvert ·"
         badgeStrong="bonus revele"
         score={rewardScore}
-        title="La meilleure carte est tombee"
-        body="Ton choix est confirme. L'offre peut etre recuperee tout de suite."
+        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

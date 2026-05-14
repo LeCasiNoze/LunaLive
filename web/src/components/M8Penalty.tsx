@@ -369,8 +369,7 @@ export function M8Penalty({
         badge="Penalty valide ·"
         badgeStrong={team.shortLabel}
         score={rewardHeadline}
-        title="Frappe parfaite"
-        body="Le bonus est pret. Tu peux poursuivre vers l'offre quand tu veux."
+        title="But marqué !"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

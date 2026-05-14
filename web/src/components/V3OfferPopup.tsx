@@ -16,20 +16,29 @@ export type V3OfferPopupProps = {
   badge: string;
   badgeStrong?: string;
   score: string;
-  title: string;
-  body: string;
+  /** Titre court (h2). Si vide, le bloc title est masque. */
+  title?: string;
+  /** Texte secondaire court. Si vide, masque. */
+  body?: string;
   depositAmount?: string;
   bonusAmount?: string;
+  /** Label personnalise du bloc offre. Si omis, genere "Ton offre de X% bonus !". */
   offerLabel?: string;
   steps?: readonly string[];
   href: string;
   ctaLabel?: string;
-  /** Redirection auto vers href après autoRedirectMs si l'user ne clique pas
-   *  (déclenchée après la fin des steps + un délai de courtoisie). */
   autoRedirectMs?: number;
-  /** Bannière VIP discrète en bas du popup (programme high-roller). Default true. */
   showVipBanner?: boolean;
 };
+
+// Durees irregulieres pour chaque etape (effet "chargement reel")
+const STEP_DURATIONS = [1180, 760, 1520, 980, 1340, 820];
+
+function parseEuro(value?: string): number | null {
+  if (!value) return null;
+  const n = parseFloat(value.replace(/[^\d.,-]/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
 
 export function V3OfferPopup({
   open,
@@ -42,7 +51,7 @@ export function V3OfferPopup({
   body,
   depositAmount,
   bonusAmount,
-  offerLabel = "Ton offre",
+  offerLabel,
   steps = [],
   href,
   ctaLabel = "Recuperer mon bonus",
@@ -50,24 +59,44 @@ export function V3OfferPopup({
   showVipBanner = true,
 }: V3OfferPopupProps) {
   const [stepIndex, setStepIndex] = React.useState(0);
+  const [stepProgress, setStepProgress] = React.useState(0);
   const [autoRedirect, setAutoRedirect] = React.useState<{ remaining: number; total: number } | null>(null);
   const [cancelled, setCancelled] = React.useState(false);
+  const [vipMode, setVipMode] = React.useState<"closed" | "form" | "sending" | "sent">("closed");
+  const [vipEmail, setVipEmail] = React.useState("");
+  const [vipError, setVipError] = React.useState<string | null>(null);
 
+  // Reset + lance la sequence d'etapes avec timings irreguliers
   React.useEffect(() => {
     if (!open) return;
     setStepIndex(0);
+    setStepProgress(0);
     setCancelled(false);
     setAutoRedirect(null);
-    const timers = steps.map((_, index) =>
-      window.setTimeout(() => setStepIndex(index + 1), 420 + index * 620)
-    );
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [open, steps]);
 
-  // Démarre le countdown après que les steps soient finis
+  React.useEffect(() => {
+    if (!open || steps.length === 0 || stepIndex >= steps.length) return;
+    const duration = STEP_DURATIONS[stepIndex % STEP_DURATIONS.length];
+    const tickMs = 50;
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const ratio = Math.min(1, elapsed / duration);
+      setStepProgress(ratio);
+      if (ratio >= 1) {
+        window.clearInterval(interval);
+        setStepIndex((i) => i + 1);
+        setStepProgress(0);
+      }
+    }, tickMs);
+    return () => window.clearInterval(interval);
+  }, [open, stepIndex, steps.length]);
+
   React.useEffect(() => {
     if (!open || cancelled || !autoRedirectMs || !href || href === "#") return;
-    const stepsDone = steps.length === 0 || stepIndex > steps.length - 1;
+    if (vipMode !== "closed") return; // pause si l'user remplit le form VIP
+    const stepsDone = steps.length === 0 || stepIndex >= steps.length;
     if (!stepsDone) return;
     const total = autoRedirectMs;
     setAutoRedirect({ remaining: total, total });
@@ -77,7 +106,6 @@ export function V3OfferPopup({
         const next = cur.remaining - 100;
         if (next <= 0) {
           window.clearInterval(interval);
-          // Redirection auto vers href dans un nouvel onglet
           try { window.open(href, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
           return null;
         }
@@ -85,12 +113,46 @@ export function V3OfferPopup({
       });
     }, 100);
     return () => window.clearInterval(interval);
-  }, [open, cancelled, autoRedirectMs, href, steps.length, stepIndex]);
+  }, [open, cancelled, autoRedirectMs, href, steps.length, stepIndex, vipMode]);
 
   const cancelAutoRedirect = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     setCancelled(true);
     setAutoRedirect(null);
+  };
+
+  const submitVipEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const email = vipEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setVipError("Email invalide");
+      return;
+    }
+    setVipError(null);
+    setVipMode("sending");
+    // Slug derive de l'URL /r/<slug> si disponible
+    let slug = "";
+    try {
+      const path = window.location.pathname || "";
+      const m = path.match(/\/r\/([^/?#]+)/);
+      if (m && m[1]) slug = decodeURIComponent(m[1]);
+    } catch { /* noop */ }
+    const base = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+    try {
+      await fetch(`${base}/api/public/affi-vip-leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug || "unknown", email, referrer: document.referrer || null }),
+      });
+    } catch { /* lead perdu mais on continue */ }
+    // Notifie le parent (cas iframe editor)
+    try { window.parent?.postMessage({ type: "v3-vip-lead", email, slug }, "*"); } catch { /* noop */ }
+    setVipMode("sent");
+    // Redirige vers le lien d'affiliation apres 1.6s
+    window.setTimeout(() => {
+      try { window.open(href, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
+    }, 1600);
   };
 
   if (!open) return null;
@@ -101,6 +163,13 @@ export function V3OfferPopup({
   const bgCard = theme?.bgCard || "#0f172a";
   const borderColor = theme?.borderColor || "rgba(253,230,138,.22)";
   const buttonText = theme?.buttonText || "#17110a";
+
+  // Calcule le % de bonus si on a les deux montants
+  const dep = parseEuro(depositAmount);
+  const bon = parseEuro(bonusAmount);
+  const pct = (dep != null && bon != null && dep > 0) ? Math.round(((bon - dep) / dep) * 100) : null;
+  const computedOfferLabel = offerLabel
+    ?? (pct != null && pct > 0 ? `Ton offre de ${pct}% bonus !` : "Ton offre");
 
   return (
     <div
@@ -130,17 +199,26 @@ export function V3OfferPopup({
         .v3p-badge strong{color:var(--v3p-accent-light)}
         .v3p-score{position:relative;z-index:1;font-size:3.1rem;font-weight:900;line-height:1;color:var(--v3p-accent-light);text-shadow:0 0 24px var(--v3p-accent-glow)}
         .v3p-copy{position:relative;z-index:1;margin:12px 0 0}
-        .v3p-copy h2{font-family:'Playfair Display',serif;font-size:2rem;font-weight:700;margin:0;color:#fff;line-height:1.02}
-        .v3p-copy p{margin:10px 0 0;font-size:.95rem;color:rgba(226,232,240,.8)}
-        .v3p-offer{position:relative;z-index:1;margin:18px 0 18px;padding:14px 16px;background:rgba(2,6,23,.44);border:1px solid rgba(255,255,255,.08);border-radius:18px}
-        .v3p-offer .lbl{font-size:.7rem;color:rgba(226,232,240,.6);letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px}
-        .v3p-offer .val{font-weight:800;color:#fff}
-        .v3p-offer .val strong{color:var(--v3p-accent-light)}
+        .v3p-copy h2{font-family:'Playfair Display',serif;font-size:1.7rem;font-weight:700;margin:0;color:#fff;line-height:1.05}
+        .v3p-copy p{margin:8px 0 0;font-size:.92rem;color:rgba(226,232,240,.78)}
+        .v3p-offer{position:relative;z-index:1;margin:18px 0 18px;padding:14px 16px;background:rgba(2,6,23,.44);border:1px solid var(--v3p-border-color);border-radius:18px;box-shadow:0 0 18px var(--v3p-accent-glow)}
+        .v3p-offer .lbl{font-size:.78rem;color:var(--v3p-accent-light);letter-spacing:.06em;text-transform:none;margin-bottom:6px;font-weight:800}
+        .v3p-offer .val{font-weight:800;color:#fff;font-size:1.05rem}
+        .v3p-offer .val strong{color:var(--v3p-accent-light);font-size:1.15rem}
+
         .v3p-steps{position:relative;z-index:1;display:grid;gap:8px;margin:0 0 18px;padding:0;list-style:none}
-        .v3p-step{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(2,6,23,.34);border:1px solid rgba(255,255,255,.06);color:rgba(226,232,240,.6);text-align:left}
+        .v3p-step{position:relative;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(2,6,23,.34);border:1px solid rgba(255,255,255,.06);color:rgba(226,232,240,.5);text-align:left;overflow:hidden}
         .v3p-step.done{color:#fff;border-color:var(--v3p-border-color);background:rgba(255,255,255,.04)}
-        .v3p-step-dot{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:.76rem;font-weight:900;background:rgba(148,163,184,.18);color:transparent}
+        .v3p-step.active{color:#fff;border-color:var(--v3p-accent);background:rgba(255,255,255,.04)}
+        .v3p-step-dot{position:relative;z-index:1;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:.76rem;font-weight:900;background:rgba(148,163,184,.18);color:transparent;flex-shrink:0}
         .v3p-step.done .v3p-step-dot{background:var(--v3p-accent);color:var(--v3p-button-text);box-shadow:0 0 16px var(--v3p-accent-glow)}
+        .v3p-step.active .v3p-step-dot{background:transparent;border:2px solid var(--v3p-accent);box-sizing:border-box;animation:v3p-step-spin .9s linear infinite;color:transparent}
+        .v3p-step.active .v3p-step-dot::after{content:"";position:absolute;top:-2px;left:-2px;width:14px;height:14px;border:2px solid transparent;border-top-color:var(--v3p-accent-light);border-radius:50%}
+        .v3p-step-label{position:relative;z-index:1;flex:1}
+        .v3p-step.active .v3p-step-label::after{content:"*";color:var(--v3p-accent-light);margin-left:4px;animation:v3p-blink 1s ease-in-out infinite}
+        .v3p-step-progress{position:absolute;left:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--v3p-accent),var(--v3p-accent-light));border-radius:0 2px 2px 0;box-shadow:0 0 6px var(--v3p-accent-glow);transition:width .05s linear;z-index:0}
+        .v3p-step-pct{position:relative;z-index:1;font-size:.7rem;color:var(--v3p-accent-light);font-weight:700;font-variant-numeric:tabular-nums;min-width:32px;text-align:right}
+
         .v3p-cta{display:block;width:100%;padding:16px 18px;background:linear-gradient(135deg,var(--v3p-accent-light),var(--v3p-accent));color:var(--v3p-button-text);font-weight:900;text-transform:uppercase;letter-spacing:.12em;font-size:.9rem;border:none;border-radius:18px;text-decoration:none;text-align:center;box-shadow:0 10px 26px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.42);position:relative;z-index:1;animation:v3p-cta-glow 2.2s ease-in-out infinite}
         .v3p-cta:hover{transform:translateY(-1px)}
 
@@ -153,22 +231,40 @@ export function V3OfferPopup({
         .v3p-countdown-cancel{margin-top:2px;background:none;border:none;color:rgba(148,163,184,.7);font-size:.7rem;cursor:pointer;text-decoration:underline;letter-spacing:.04em}
         .v3p-countdown-cancel:hover{color:rgba(248,250,252,.9)}
 
-        /* VIP banner — discret mais visible */
-        .v3p-vip{position:relative;z-index:1;margin:18px -8px 0;padding:12px 14px;background:linear-gradient(135deg,rgba(15,23,42,.6),rgba(15,23,42,.3));border-top:1px solid rgba(255,255,255,.06);border-radius:0 0 22px 22px;display:flex;align-items:center;gap:10px;text-align:left}
+        /* VIP banner */
+        .v3p-vip{position:relative;z-index:1;margin:18px -8px 0;padding:12px 14px;background:linear-gradient(135deg,rgba(15,23,42,.6),rgba(15,23,42,.3));border-top:1px solid rgba(255,255,255,.06);border-radius:0 0 22px 22px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer;transition:background .2s ease}
+        .v3p-vip:hover{background:linear-gradient(135deg,rgba(15,23,42,.8),rgba(15,23,42,.5))}
         .v3p-vip-icon{flex-shrink:0;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid var(--v3p-border-color);display:grid;place-items:center;font-size:.95rem;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
         .v3p-vip-body{flex:1;min-width:0}
         .v3p-vip-title{display:flex;align-items:center;gap:6px;font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--v3p-accent-light);margin-bottom:2px}
         .v3p-vip-title em{font-style:normal;background:linear-gradient(90deg,var(--v3p-accent),var(--v3p-accent-light));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
         .v3p-vip-copy{font-size:.7rem;color:rgba(203,213,225,.7);line-height:1.4}
-        .v3p-vip-copy a{color:var(--v3p-accent-light);text-decoration:underline;font-weight:700;letter-spacing:.02em}
+        .v3p-vip-cta-arrow{font-size:1.1rem;color:var(--v3p-accent-light);opacity:.7;margin-left:6px}
 
-        /* Effet shimmer décoratif */
+        /* VIP form expanded */
+        .v3p-vip-form{position:relative;z-index:1;margin:14px -8px 0;padding:16px 16px;background:linear-gradient(135deg,rgba(15,23,42,.85),rgba(15,23,42,.6));border-top:1px solid rgba(255,255,255,.1);border-radius:0 0 22px 22px;text-align:left;animation:v3p-fade .2s ease-out}
+        .v3p-vip-form-title{font-size:.78rem;font-weight:800;letter-spacing:.06em;color:var(--v3p-accent-light);margin-bottom:4px}
+        .v3p-vip-form-sub{font-size:.72rem;color:rgba(203,213,225,.75);margin-bottom:10px;line-height:1.4}
+        .v3p-vip-form-row{display:flex;gap:8px}
+        .v3p-vip-form input{flex:1;padding:10px 12px;background:rgba(2,6,23,.7);border:1px solid var(--v3p-border-color);border-radius:10px;color:#fff;font-size:.85rem;font-family:inherit;outline:none}
+        .v3p-vip-form input:focus{border-color:var(--v3p-accent);box-shadow:0 0 0 3px var(--v3p-accent-glow)}
+        .v3p-vip-form button{padding:10px 16px;background:linear-gradient(135deg,var(--v3p-accent-light),var(--v3p-accent));color:var(--v3p-button-text);font-weight:800;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;border:none;border-radius:10px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px var(--v3p-accent-glow)}
+        .v3p-vip-form button:disabled{opacity:.6;cursor:not-allowed}
+        .v3p-vip-form-error{margin-top:6px;font-size:.7rem;color:#fca5a5}
+        .v3p-vip-form-back{margin-top:8px;background:none;border:none;color:rgba(148,163,184,.7);font-size:.7rem;cursor:pointer;text-decoration:underline;padding:0}
+        .v3p-vip-sent{padding:14px;text-align:center}
+        .v3p-vip-sent-check{display:inline-grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--v3p-accent);color:var(--v3p-button-text);font-size:1.1rem;font-weight:900;margin-bottom:8px;box-shadow:0 0 22px var(--v3p-accent-glow);animation:v3p-pop .3s cubic-bezier(.17,.84,.34,1.27)}
+        .v3p-vip-sent-text{font-size:.82rem;color:#fff;font-weight:700}
+        .v3p-vip-sent-sub{margin-top:2px;font-size:.7rem;color:rgba(203,213,225,.7)}
+
         .v3p-card::after{content:"";position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(45deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);pointer-events:none;animation:v3p-shimmer 6s linear infinite;z-index:0}
 
         @keyframes v3p-fade{from{opacity:0}to{opacity:1}}
         @keyframes v3p-pop{0%{transform:translateY(20px) scale(.96);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
         @keyframes v3p-cta-glow{0%,100%{box-shadow:0 10px 26px var(--v3p-accent-glow),inset 0 1px 0 rgba(255,255,255,.42)}50%{box-shadow:0 14px 34px var(--v3p-accent-glow),0 0 0 4px rgba(255,255,255,.03),inset 0 1px 0 rgba(255,255,255,.42)}}
         @keyframes v3p-shimmer{from{transform:translate(-30%,-30%) rotate(0)}to{transform:translate(-30%,-30%) rotate(360deg)}}
+        @keyframes v3p-step-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+        @keyframes v3p-blink{0%,100%{opacity:1}50%{opacity:.25}}
       `}</style>
 
       <div className="v3p-card" onClick={(event) => event.stopPropagation()}>
@@ -179,28 +275,30 @@ export function V3OfferPopup({
           {badgeStrong ? <strong>{badgeStrong}</strong> : null}
         </div>
         <div className="v3p-score">{score}</div>
-        <div className="v3p-copy">
-          <h2>{title}</h2>
-          <p>{body}</p>
-        </div>
-        {(depositAmount || bonusAmount) ? (
+        {(title || body) ? (
+          <div className="v3p-copy">
+            {title ? <h2>{title}</h2> : null}
+            {body ? <p>{body}</p> : null}
+          </div>
+        ) : null}
+        {bonusAmount ? (
           <div className="v3p-offer">
-            <div className="lbl">{offerLabel}</div>
-            <div className="val">
-              {depositAmount ? <>Depose <strong>{depositAmount}</strong></> : null}
-              {depositAmount && bonusAmount ? " · " : null}
-              {bonusAmount ? <>Recois <strong>{bonusAmount}</strong></> : null}
-            </div>
+            <div className="lbl">{computedOfferLabel}</div>
+            <div className="val">Recois <strong>{bonusAmount}</strong></div>
           </div>
         ) : null}
         {steps.length ? (
           <ul className="v3p-steps">
             {steps.map((label, index) => {
               const done = stepIndex > index;
+              const active = stepIndex === index;
+              const pct = active ? Math.round(stepProgress * 100) : (done ? 100 : 0);
               return (
-                <li key={label} className={`v3p-step ${done ? "done" : ""}`}>
-                  <span className="v3p-step-dot">{done ? "✓" : "•"}</span>
-                  <span>{label}</span>
+                <li key={label} className={`v3p-step ${done ? "done" : ""} ${active ? "active" : ""}`}>
+                  <span className="v3p-step-dot">{done ? "✓" : ""}</span>
+                  <span className="v3p-step-label">{label}</span>
+                  {active ? <span className="v3p-step-pct">{pct}%</span> : null}
+                  {active ? <span className="v3p-step-progress" style={{ width: `${pct}%` }} /> : null}
                 </li>
               );
             })}
@@ -225,14 +323,50 @@ export function V3OfferPopup({
           </div>
         ) : null}
 
-        {showVipBanner ? (
-          <div className="v3p-vip" onClick={(e) => e.stopPropagation()}>
+        {showVipBanner && vipMode === "closed" ? (
+          <div className="v3p-vip" onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}>
             <div className="v3p-vip-icon">👑</div>
             <div className="v3p-vip-body">
               <div className="v3p-vip-title">Club <em>VIP</em></div>
               <div className="v3p-vip-copy">
-                Tu joues 500€+ / mois ? Demande un <a href={href} target="_blank" rel="noreferrer">host dédié</a> + bonus exclusifs.
+                Tu joues 500€+ / mois ? Host dédié + bonus exclusifs.
               </div>
+            </div>
+            <div className="v3p-vip-cta-arrow">→</div>
+          </div>
+        ) : null}
+
+        {showVipBanner && (vipMode === "form" || vipMode === "sending") ? (
+          <form className="v3p-vip-form" onClick={(e) => e.stopPropagation()} onSubmit={submitVipEmail}>
+            <div className="v3p-vip-form-title">👑 Club VIP — recontact express</div>
+            <div className="v3p-vip-form-sub">Laisse ton email, un host dédié te contacte sous 24h.</div>
+            <div className="v3p-vip-form-row">
+              <input
+                type="email"
+                placeholder="ton.email@exemple.com"
+                value={vipEmail}
+                onChange={(e) => { setVipEmail(e.target.value); setVipError(null); }}
+                disabled={vipMode === "sending"}
+                autoFocus
+                required
+              />
+              <button type="submit" disabled={vipMode === "sending"}>
+                {vipMode === "sending" ? "..." : "Envoyer"}
+              </button>
+            </div>
+            {vipError ? <div className="v3p-vip-form-error">{vipError}</div> : null}
+            <button type="button" className="v3p-vip-form-back" onClick={() => { setVipMode("closed"); setVipError(null); }}>
+              Retour
+            </button>
+          </form>
+        ) : null}
+
+        {showVipBanner && vipMode === "sent" ? (
+          <div className="v3p-vip-form" onClick={(e) => e.stopPropagation()}>
+            <div className="v3p-vip-sent">
+              <div className="v3p-vip-sent-check">✓</div>
+              <div className="v3p-vip-sent-text">Demande envoyée</div>
+              <div className="v3p-vip-sent-sub">Un host dédié te recontacte sous 24h. Redirection vers ton bonus…</div>
             </div>
           </div>
         ) : null}

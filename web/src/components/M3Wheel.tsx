@@ -296,8 +296,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         badge="Gain valide ·"
         badgeStrong="roue bonus"
         score={rewardScore}
-        title="La roue s'arrete au bon palier"
-        body="L'offre est prete. Tu peux ouvrir le lien bonus quand tu veux."
+        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

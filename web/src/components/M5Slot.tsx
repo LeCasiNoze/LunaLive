@@ -345,8 +345,7 @@ export function M5Slot({
         badge="Ligne centrale ·"
         badgeStrong="validee"
         score={rewardHeadline}
-        title="Bonus pret"
-        body="Les 3 lignes sont revelees. La ligne du milieu est maintenant mise en avant."
+        title="Bonus débloqué"
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

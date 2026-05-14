@@ -280,10 +280,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
         badge={winType === "all" ? "Jackpot mega ·" : diamondCount >= 6 ? "Super bonus ·" : "Bonus debloque ·"}
         badgeStrong={winType === "all" ? "grille complete" : "diamants valides"}
         score={rewardScore}
-        title={winType === "all" ? "La derniere case confirme le jackpot" : "La serie de diamants valide ton bonus"}
-        body={winType === "all"
-          ? "La grille est terminee. L'offre premium est prete a etre recuperee."
-          : "Le palier est atteint. Tu peux recuperer l'offre sans continuer la grille."}
+        title={winType === "all" ? "Jackpot débloqué" : "Bonus débloqué"}
         depositAmount={dep}
         bonusAmount={bon}
         steps={popupSteps}

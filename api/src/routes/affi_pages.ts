@@ -330,6 +330,38 @@ publicAffiPagesRouter.post(
   })
 );
 
+// VIP lead capture (banniere "Club VIP" du popup V3)
+const vipLeadSchema = z.object({
+  slug: z.string().min(1).max(160),
+  email: z.string().email().max(320),
+  referrer: z.string().max(2000).optional().nullable(),
+});
+
+publicAffiPagesRouter.post(
+  "/public/affi-vip-leads",
+  a(async (req, res) => {
+    const input = vipLeadSchema.safeParse(req.body || {});
+    if (!input.success) return res.status(400).json({ ok: false, error: "bad_input" });
+
+    const slug = normalizeSlug(input.data.slug);
+    const ip = clientIp(req);
+    const ua = String(req.headers["user-agent"] || "").slice(0, 500);
+
+    const { rows: pageRows } = await pool.query(
+      `SELECT id FROM affi_landing_pages WHERE lower(slug) = lower($1) LIMIT 1`,
+      [slug]
+    );
+    const pageId = pageRows[0]?.id ?? null;
+
+    await pool.query(
+      `INSERT INTO affi_vip_leads (page_id, slug, email, ip_hash, user_agent, referrer)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [pageId, slug, input.data.email.toLowerCase().trim(), hashIp(ip), ua, input.data.referrer || null]
+    );
+    return res.json({ ok: true });
+  })
+);
+
 // Stats par page (FSB only)
 fsbAffiPagesRouter.get(
   "/fsb/affi-pages/:id/stats",
