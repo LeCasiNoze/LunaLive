@@ -75,7 +75,8 @@ export function M8Penalty({
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardHeadline = bon ? `+${bon}` : "Bonus 100%";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardHeadline = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
 
   const shoot = (zone: AimZone) => {

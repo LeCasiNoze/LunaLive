@@ -97,7 +97,8 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardScore = bon ? `+${bon}` : "100%";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100%");
   const popupSteps = React.useMemo(() => [
     "Verification du coffre choisi",
     "Preparation de l'offre",

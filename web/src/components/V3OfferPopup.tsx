@@ -332,14 +332,14 @@ export function V3OfferPopup({
             onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}
           >
             <span className="v3p-vip-btn-icon">👑</span>
-            Je suis un gros joueur
+            Je suis un gros joueur (500€–1K€ / mois)
           </button>
         ) : null}
 
         {showVipBanner && (vipMode === "form" || vipMode === "sending") ? (
           <form className="v3p-vip-form" onClick={(e) => e.stopPropagation()} onSubmit={submitVipEmail}>
-            <div className="v3p-vip-form-title">👑 Club VIP — recontact express</div>
-            <div className="v3p-vip-form-sub">Laisse ton email, un host dédié te contacte sous 24h.</div>
+            <div className="v3p-vip-form-title">👑 Club VIP — gros joueurs (500€–1K€ / mois)</div>
+            <div className="v3p-vip-form-sub">Laisse ton email, un host dédié te contacte sous 24h : bonus exclusifs + suivi perso.</div>
             <div className="v3p-vip-form-row">
               <input
                 type="email"

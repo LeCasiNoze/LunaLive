@@ -50,7 +50,8 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardScore = winType === "all" ? "JACKPOT" : (bon ? `+${bon}` : "100%");
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardScore = winType === "all" ? "JACKPOT" : ((netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100%"));
   const popupSteps = React.useMemo(() => [
     winType === "all" ? "Derniere case analysee" : "Serie de diamants validee",
     "Preparation de l'offre",

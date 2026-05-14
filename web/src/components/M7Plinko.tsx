@@ -70,7 +70,8 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardScore = bon ? `+${bon}` : "100x";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100x");
   const popupSteps = React.useMemo(() => [
     "Verification de la chute",
     "Validation du palier central",

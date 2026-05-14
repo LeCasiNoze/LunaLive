@@ -342,7 +342,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         open={popupOpen && (phase === "dead" || phase === "collected")}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard, borderColor: T.borderColor }}
-        score={bon ? `+${bon}` : "100%"}
+        score={(depositAmount != null && bonusAmount != null && bonusAmount - depositAmount > 0) ? `+${bonusAmount - depositAmount}€` : (bon ? `+${bon}` : "100%")}
         depositAmount={dep}
         bonusAmount={bon}
         steps={crossySteps}

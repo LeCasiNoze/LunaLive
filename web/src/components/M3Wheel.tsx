@@ -69,7 +69,8 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardScore = bon ? `+${bon}` : "100%";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100%");
   const popupSteps = React.useMemo(() => [
     "Validation de la roue",
     "Preparation de l'offre",

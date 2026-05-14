@@ -127,7 +127,8 @@ export function M5Slot({
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const rewardHeadline = bon ? `+${bon}` : "Bonus 100%";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardHeadline = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
   const REEL_DURATIONS = [1.7, 2.45, 3.2] as const;
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
 
