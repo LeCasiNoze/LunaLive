@@ -384,7 +384,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     case "M5": return <M5Slot {...props} />;
     case "M6": return <M6Chest {...props} />;
     case "M7": return <M7Plinko {...props} />;
-    case "M8": return <M8Penalty {...props} />;
+    case "M8": return <M8Penalty {...props} penaltyTeam={b.penaltyTeam} />;
   }
 }
 

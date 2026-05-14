@@ -7,6 +7,7 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3OfferPopup } from "./V3OfferPopup";
 
 export type M3WheelProps = {
   pseudo?: string;
@@ -66,6 +67,12 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
+  const rewardScore = bon ? `+${bon}` : "100%";
+  const popupSteps = React.useMemo(() => [
+    "Validation de la roue",
+    "Preparation de l'offre",
+    "Lien bonus pret",
+  ], []);
 
   const spin = () => {
     if (phase !== "idle") return;
@@ -247,28 +254,20 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
       <div className="m3-info"><span className="dot" />247 joueurs en ligne · Bonus crédité en 30s</div>
 
-      {phase === "won" && popupOpen ? (
-        <div className="m3-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m3-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m3-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m3-popup-eyebrow">Gain validé</div>
-            <h2>Tu remportes le <span>bonus 100%</span></h2>
-            {(dep || bon) ? (
-              <div className="reward-box">
-                <div className="lbl">Ton offre</div>
-                <div className="val">
-                  {dep ? <>Dépose <strong>{dep}</strong></> : null}
-                  {dep && bon ? " · " : null}
-                  {bon ? <>Reçois <strong>{bon}</strong></> : null}
-                </div>
-              </div>
-            ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m3-cta v3-cta" style={{ display: "block" }}>
-              Récupérer mon bonus
-            </a>
-          </div>
-        </div>
-      ) : null}
+      <V3OfferPopup
+        open={phase === "won" && popupOpen}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        badge="Gain valide ·"
+        badgeStrong="roue bonus"
+        score={rewardScore}
+        title="La roue s'arrete au bon palier"
+        body="L'offre est prete. Tu peux ouvrir le lien bonus quand tu veux."
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
     </div>
   );
 }

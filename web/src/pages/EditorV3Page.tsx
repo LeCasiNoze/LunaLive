@@ -37,6 +37,7 @@ import {
   M5V1_VARIANTS,
 } from "../lib/m5_v1_apply";
 import { M1_THEMES } from "../lib/m1_themes";
+import { V3_PENALTY_TEAMS } from "../lib/v3_penalty_teams";
 import { M5V1Preview } from "../components/M5V1Preview";
 
 const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
@@ -517,12 +518,12 @@ function WizardQuickView({
             <div style={{ fontSize: 11, color: T.textDim, marginTop: 6 }}>
               {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards)"}
               {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants)"}
-              {inputs.modelKind === "M3" && "M3 = Roue à tourner — gagne toujours 100% bonus"}
+              {inputs.modelKind === "M3" && "M3 = Roue à tourner — rendu bonus premium"}
               {inputs.modelKind === "M4" && "M4 = Mystery Boxes — choisis 1 coffre parmi 3"}
-              {inputs.modelKind === "M5" && "M5 = Machine à sous 3 reels — jackpot garanti"}
+              {inputs.modelKind === "M5" && "M5 = Démo slot 3x3 — ligne bonus centrale"}
               {inputs.modelKind === "M6" && "M6 = Mines — grille 3x3 sans bombe"}
               {inputs.modelKind === "M7" && "M7 = Plinko — bille qui rebondit sur les pegs"}
-              {inputs.modelKind === "M8" && "M8 = Penalty — tire au but, marque toujours"}
+              {inputs.modelKind === "M8" && "M8 = Penalty — ambiance coupe du monde, thème d'équipe"}
             </div>
           </div>
 
@@ -673,6 +674,30 @@ function WizardQuickView({
                           </span>
                         </Chip>
                       ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {inputs.modelKind === "M8" ? (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ ...labelStyle, marginBottom: 6 }}>Équipe penalty</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {V3_PENALTY_TEAMS.map((team) => (
+                        <Chip
+                          key={team.key}
+                          active={(inputs.penaltyTeam || "france") === team.key}
+                          color={team.accent}
+                          onClick={() => update({ penaltyTeam: team.key })}
+                        >
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: "50%", background: team.accent, display: "inline-block" }} />
+                            {team.label}
+                          </span>
+                        </Chip>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textDim, marginTop: 6 }}>
+                      Applique la palette du stade, du gardien, du bouton principal et des sections basses.
                     </div>
                   </div>
                 ) : null}

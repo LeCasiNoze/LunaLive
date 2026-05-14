@@ -8,6 +8,7 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3OfferPopup } from "./V3OfferPopup";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -95,6 +96,12 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
+  const rewardScore = bon ? `+${bon}` : "100%";
+  const popupSteps = React.useMemo(() => [
+    "Verification du coffre choisi",
+    "Preparation de l'offre",
+    "Lien bonus pret",
+  ], []);
 
   const boxes: BoxSpec[] = React.useMemo(() => {
     const winBox: BoxSpec = { prize: "100%", sub: "MEGA BONUS", win: true };
@@ -305,28 +312,20 @@ export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount,
 
       {allOthersRevealed ? <button className="m4-cta ghost" onClick={reset}>Rejouer</button> : null}
 
-      {popupOpen && revealedSet.has(picked) ? (
-        <div className="m4-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m4-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m4-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m4-popup-eyebrow">Coffre ouvert</div>
-            <h2>Tu remportes le <span>bonus 100%</span></h2>
-            {(dep || bon) ? (
-              <div className="reward-box">
-                <div className="lbl">Ton offre</div>
-                <div className="val">
-                  {dep ? <>Dépose <strong>{dep}</strong></> : null}
-                  {dep && bon ? " · " : null}
-                  {bon ? <>Reçois <strong>{bon}</strong></> : null}
-                </div>
-              </div>
-            ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m4-cta v3-cta">
-              Récupérer mon bonus
-            </a>
-          </div>
-        </div>
-      ) : null}
+      <V3OfferPopup
+        open={popupOpen && revealedSet.has(picked)}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
+        badge="Coffre ouvert ·"
+        badgeStrong="bonus revele"
+        score={rewardScore}
+        title="La meilleure carte est tombee"
+        body="Ton choix est confirme. L'offre peut etre recuperee tout de suite."
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
     </div>
   );
 }

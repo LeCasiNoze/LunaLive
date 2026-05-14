@@ -6,6 +6,7 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3OfferPopup } from "./V3OfferPopup";
 
 export type M7PlinkoProps = {
   pseudo?: string;
@@ -68,6 +69,12 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
+  const rewardScore = bon ? `+${bon}` : "100x";
+  const popupSteps = React.useMemo(() => [
+    "Verification de la chute",
+    "Validation du palier central",
+    "Lien bonus pret",
+  ], []);
 
   const drop = () => {
     if (phase !== "idle") return;
@@ -205,28 +212,20 @@ export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         <button className="m7-cta" onClick={() => setPopupOpen(true)}>Voir mon gain</button>
       )}
 
-      {phase === "won" && popupOpen ? (
-        <div className="m7-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m7-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m7-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m7-popup-eyebrow">Slot 100x · Jackpot</div>
-            <h2>Bille atterrie sur le <span>JACKPOT</span></h2>
-            {(dep || bon) ? (
-              <div className="reward-box">
-                <div className="lbl">Ton offre</div>
-                <div className="val">
-                  {dep ? <>Dépose <strong>{dep}</strong></> : null}
-                  {dep && bon ? " · " : null}
-                  {bon ? <>Reçois <strong>{bon}</strong></> : null}
-                </div>
-              </div>
-            ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m7-cta v3-cta">
-              Récupérer mon bonus
-            </a>
-          </div>
-        </div>
-      ) : null}
+      <V3OfferPopup
+        open={phase === "won" && popupOpen}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        badge="Plinko valide ·"
+        badgeStrong="palier central"
+        score={rewardScore}
+        title="La bille termine au meilleur palier"
+        body="Le multiplicateur central est confirme. L'offre bonus est maintenant prete."
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
     </div>
   );
 }

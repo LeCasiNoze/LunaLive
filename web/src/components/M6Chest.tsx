@@ -7,6 +7,7 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3OfferPopup } from "./V3OfferPopup";
 
 export type M6ChestProps = {
   pseudo?: string;
@@ -48,6 +49,12 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
+  const rewardScore = winType === "all" ? "JACKPOT" : (bon ? `+${bon}` : "100%");
+  const popupSteps = React.useMemo(() => [
+    winType === "all" ? "Derniere case analysee" : "Serie de diamants validee",
+    "Preparation de l'offre",
+    "Lien bonus pret",
+  ], [winType]);
 
   const diamondCount = cells.filter((c) => c === "diamond").length;
   const closedCount = cells.filter((c) => c === "closed").length;
@@ -265,34 +272,22 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
 
       {winType ? <button className="m6-cta ghost" onClick={reset}>Rejouer</button> : null}
 
-      {popupOpen && winType ? (
-        <div className="m6-overlay" onClick={() => setPopupOpen(false)}>
-          <div className="m6-popup" onClick={(e) => e.stopPropagation()}>
-            <button className="m6-popup-close" onClick={() => setPopupOpen(false)} aria-label="Fermer">×</button>
-            <div className="m6-popup-eyebrow">
-              {winType === "all" ? "Jackpot Mega" : diamondCount >= 6 ? "Super Bonus" : "Bonus débloqué"}
-            </div>
-            <h2>
-              {winType === "all"
-                ? <>Tu décroches le <span>JACKPOT</span></>
-                : <>Tu remportes ton <span>bonus 100%</span></>}
-            </h2>
-            {(dep || bon) ? (
-              <div className="reward-box">
-                <div className="lbl">Ton offre</div>
-                <div className="val">
-                  {dep ? <>Dépose <strong>{dep}</strong></> : null}
-                  {dep && bon ? " · " : null}
-                  {bon ? <>Reçois <strong>{bon}</strong></> : null}
-                </div>
-              </div>
-            ) : null}
-            <a href={safeAffi} target="_blank" rel="noreferrer" className="m6-cta v3-cta">
-              Récupérer mon bonus
-            </a>
-          </div>
-        </div>
-      ) : null}
+      <V3OfferPopup
+        open={popupOpen && !!winType}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
+        badge={winType === "all" ? "Jackpot mega ·" : diamondCount >= 6 ? "Super bonus ·" : "Bonus debloque ·"}
+        badgeStrong={winType === "all" ? "grille complete" : "diamants valides"}
+        score={rewardScore}
+        title={winType === "all" ? "La derniere case confirme le jackpot" : "La serie de diamants valide ton bonus"}
+        body={winType === "all"
+          ? "La grille est terminee. L'offre premium est prete a etre recuperee."
+          : "Le palier est atteint. Tu peux recuperer l'offre sans continuer la grille."}
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
     </div>
   );
 }

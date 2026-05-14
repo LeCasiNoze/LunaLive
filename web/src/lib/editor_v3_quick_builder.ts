@@ -22,6 +22,7 @@ import { buildM4V2Starter } from "./editor_v2_starters";
 import type { M5V1Variant } from "./m5_v1_apply";
 import type { M1ThemeKey } from "./m1_themes";
 import { getM1Theme } from "./m1_themes";
+import { getPenaltyThemeColors, type V3PenaltyTeamKey } from "./v3_penalty_teams";
 
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
@@ -156,6 +157,8 @@ export interface V3QuickInputs {
   pseudoStyle?: V3LineStyle;
   depositLineStyle?: V3LineStyle;
   bonusLineStyle?: V3LineStyle;
+  /** M8 seulement: palette d'équipe appliquée au stade, au gardien et au CTA. */
+  penaltyTeam?: V3PenaltyTeamKey;
 }
 
 export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {
@@ -183,6 +186,7 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     m1UseTheme: true,
     m1Theme: "gold",
     m1CustomBgPage: "",
+    penaltyTeam: "france",
   };
 }
 
@@ -421,7 +425,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
   const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8";
   const useTheme = inputs.m1UseTheme !== false;
   const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
-  const themeColors = theme ? {
+  const baseThemeColors = theme ? {
     accent: theme.accent,
     accentLight: theme.accentLight,
     accentGlow: theme.accentGlow,
@@ -431,12 +435,15 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
     bgCard: theme.bgCard,
     borderColor: theme.borderColor,
   } : (inputs.m1CustomBgPage?.trim() ? { bgPage: inputs.m1CustomBgPage.trim() } : undefined);
+  const penaltyThemeColors = kind === "M8" ? getPenaltyThemeColors(inputs.penaltyTeam) : undefined;
+  const themeColors = penaltyThemeColors || baseThemeColors;
 
   // Si thème actif → la couleur du pseudo suit le thème (override sur le
   // pseudoStyle, preserve font/size/weight/glow user). Si thème off, on
   // garde la couleur custom choisie par l'user dans le LineStylePicker.
-  const pseudoStyleResolved = useTheme && theme
-    ? { ...inputs.pseudoStyle, color: theme.accent, glow: true }
+  const pseudoAccent = themeColors?.accent || (useTheme && theme ? theme.accent : undefined);
+  const pseudoStyleResolved = pseudoAccent
+    ? { ...inputs.pseudoStyle, color: pseudoAccent, glow: true }
     : inputs.pseudoStyle;
 
   // V2Page minimal : zones quasi vides, juste un bloc full-page dans `cards`
@@ -463,6 +470,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           bonusAmount: inputs.bonusAmount,
           affiLink: inputs.affiLink,
           theme: themeColors,
+          penaltyTeam: inputs.penaltyTeam,
           pseudoStyle: pseudoStyleResolved,
         } as any,
       ],
@@ -480,8 +488,8 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
       ],
     },
     globals: {
-      bgPage: inputs.m1CustomBgPage?.trim() || theme?.bgPage || "#080212",
-      brandGold: theme?.accent || "#FFD700",
+      bgPage: themeColors?.bgPage || inputs.m1CustomBgPage?.trim() || theme?.bgPage || "#080212",
+      brandGold: themeColors?.accent || "#FFD700",
     },
   };
 
