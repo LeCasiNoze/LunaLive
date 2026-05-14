@@ -153,6 +153,12 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     ? DEPART_WIDTH_PCT / 2
     : DEPART_WIDTH_PCT + slotWidth * (step - 0.5);
 
+  // Camera pan : a partir du palier SAFE (100%), recentre la plaque atteinte
+  // sur le milieu du stage pour reveler le 500% a droite.
+  const cameraShiftPct = (step >= SAFE_PALIER)
+    ? Math.min(0, 50 - (DEPART_WIDTH_PCT + slotWidth * (step - 0.5)))
+    : 0;
+
   return (
     <div className="m9-root" style={{ background: T.bgPage, color: "#f1f5f9" }}>
       <style>{`
@@ -181,6 +187,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
         /* Stage horizontal — plus grand */
         .m9-stage{position:relative;width:min(96vw,580px);height:280px;background:#3f3a48;border:1px solid ${T.borderColor};border-radius:20px;overflow:hidden;box-shadow:0 22px 60px rgba(0,0,0,.55),inset 0 2px 0 rgba(255,255,255,.06);margin-bottom:14px}
+        .m9-camera{position:absolute;inset:0;transition:transform 700ms cubic-bezier(.34,1.4,.64,1)}
 
         /* Zone DEPART */
         .m9-depart{position:absolute;top:0;bottom:0;left:0;width:${DEPART_WIDTH_PCT}%;background:
@@ -201,8 +208,6 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
           border:2px solid #2a262e;display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:900;color:#fff;font-variant-numeric:tabular-nums;letter-spacing:.02em;box-shadow:inset 0 -3px 4px rgba(0,0,0,.6),inset 0 2px 0 rgba(255,255,255,.1),0 6px 14px rgba(0,0,0,.55);z-index:3;text-shadow:0 1px 2px rgba(0,0,0,.7)}
         .m9-plaque::before{content:"";position:absolute;inset:6px;border-radius:50%;border:1px dashed rgba(255,255,255,.18);pointer-events:none}
         .m9-plaque.reached{background:radial-gradient(circle at 35% 30%,${T.accentLight},${T.accent} 50%,${T.accentDark});border-color:${T.accentDark};color:#0a1014;text-shadow:none;box-shadow:inset 0 -3px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.4),0 8px 18px ${T.accentGlow},0 0 22px ${T.accentGlow}}
-        /* Plaques DANGER en rouge DES LE DEPART */
-        .m9-plaque.danger{background:radial-gradient(circle at 35% 30%,#fca5a5,#dc2626 50%,#7f1d1d);border-color:#7f1d1d;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7);box-shadow:inset 0 -3px 4px rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.2),0 6px 14px rgba(220,38,38,.4),0 0 18px rgba(220,38,38,.3);animation:m9-danger-pulse 1.4s ease-in-out infinite}
         .m9-plaque.checkpoint::after{content:"🏁";position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:1rem;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 
         /* Voitures decoratives qui boucle sur lanes vides */
@@ -244,7 +249,6 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         @keyframes m9-incoming-stop{0%{top:-15%}70%{top:32%}100%{top:32%}}
         @keyframes m9-incoming-hit{0%{top:-15%}100%{top:55%}}
         @keyframes m9-barrier-rise{0%{opacity:0;transform:translate(-50%,12px) scale(.6)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
-        @keyframes m9-danger-pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25) drop-shadow(0 0 12px rgba(220,38,38,.5))}}
         @keyframes m9-death{0%{transform:translate(-50%,-50%) scale(1)}30%{transform:translate(-50%,-50%) scale(1.4) rotate(-12deg);filter:drop-shadow(0 6px 12px rgba(239,68,68,.8))}100%{transform:translate(-50%,-50%) scale(0) rotate(-90deg);opacity:0}}
         @keyframes m9-boom-pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.3)}40%{opacity:1;transform:translate(-50%,-50%) scale(1.4)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
         @keyframes m9-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55)}}
@@ -284,6 +288,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
       </div>
 
       <div className="m9-stage">
+        <div className="m9-camera" style={{ transform: `translateX(${cameraShiftPct}%)` }}>
         {/* Zone depart */}
         <div className="m9-depart">
           <div className="m9-depart-tree">🌳</div>
@@ -325,14 +330,12 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
           const plaqueIdx = i + 1;
           const leftPct = DEPART_WIDTH_PCT + slotWidth * (i + 0.5);
           const reached = plaqueIdx <= step;
-          const danger = !p.safe;
           return (
             <div
               key={`p-${plaqueIdx}`}
               className={[
                 "m9-plaque",
                 reached ? "reached" : "",
-                danger && !reached ? "danger" : "",
                 p.checkpoint ? "checkpoint" : "",
               ].filter(Boolean).join(" ")}
               style={{ left: `${leftPct}%` }}
@@ -399,6 +402,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
 
         {/* Boom on death */}
         <div className={`m9-boom ${phase === "dead" ? "show" : ""}`}>💥</div>
+        </div>
       </div>
 
       <div className="m9-actions">
@@ -418,9 +422,6 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
               <button className="m9-cta collect" onClick={collect} disabled={phase === "moving"}>
                 💰 Collecter mon 100%
               </button>
-            ) : null}
-            {step >= SAFE_PALIER ? (
-              <div className="m9-warn">⚠ Avancer encore = mort assurée (les cases rouges)</div>
             ) : null}
           </>
         )}
