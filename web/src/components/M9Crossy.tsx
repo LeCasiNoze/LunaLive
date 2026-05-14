@@ -9,6 +9,7 @@ import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3SocialProof } from "./V3SocialProof";
 
 export type M9CrossyProps = {
   pseudo?: string;
@@ -40,7 +41,6 @@ const PALIERS = [
   { label: "500%", safe: false, checkpoint: true,  mult: 6.0 },   // checkpoint visuel jamais atteint
 ];
 
-const LANE_COUNT = 3;
 const SAFE_PALIER = 4;  // index max sécurisé
 
 // Pattern décoratif de voitures par palier (lane = 0|1|2). null = pas de voiture.
@@ -355,6 +355,8 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         ]}
         href={safeAffi}
       />
+
+      <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
     </div>
   );
 }
