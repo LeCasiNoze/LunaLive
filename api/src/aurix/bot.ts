@@ -83,7 +83,9 @@ export async function startAurixBot(): Promise<void> {
       console.error("[aurix] Erreur enregistrement commands :", e);
     }
 
-    // Auto-setup la première fois
+    // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
+    // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
+    const SETUP_VERSION = "2";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -92,10 +94,10 @@ export async function startAurixBot(): Promise<void> {
           const flag = await one<{ value: string }>("SELECT value FROM aurix_kv WHERE key=$1", [
             "initial_setup_done",
           ]);
-          if (!flag) {
-            console.log("[aurix] Auto-setup lancé sur", guild.name);
+          if (!flag || flag.value !== SETUP_VERSION) {
+            console.log(`[aurix] Auto-setup lancé sur ${guild.name} (version ${SETUP_VERSION})`);
             await runSetup(guild);
-            await kvSet("initial_setup_done", "1");
+            await kvSet("initial_setup_done", SETUP_VERSION);
             console.log("[aurix] Auto-setup terminé.");
           }
         } catch (e) {
