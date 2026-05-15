@@ -87,8 +87,12 @@ export function M8Penalty({
   const [popupOpen, setPopupOpen] = React.useState(false);
   // 3 chances : miss (1er), goal (2eme → +50%), goal (3eme → +100%)
   const [attempt, setAttempt] = React.useState(0);
+  const [goalsScored, setGoalsScored] = React.useState(0);
   const ATTEMPT_OUTCOMES: ReadonlyArray<"miss" | "goal"> = ["miss", "goal", "goal"];
   const TOTAL_ATTEMPTS = ATTEMPT_OUTCOMES.length;
+  // Paliers de gain en fonction du nb de buts marques
+  const PCT_BY_GOALS = [0, 50, 100, 250];
+  const currentPct = PCT_BY_GOALS[Math.min(goalsScored, PCT_BY_GOALS.length - 1)];
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -119,9 +123,10 @@ export function M8Penalty({
         }, 1700);
       } else {
         sfx.win();
+        setGoalsScored((g) => g + 1);
         if (isLastShot) {
           setPhase("won");
-          window.setTimeout(() => setPopupOpen(true), 900);
+          window.setTimeout(() => setPopupOpen(true), 1200);
         } else {
           setPhase("scored");
           window.setTimeout(() => {
@@ -285,7 +290,9 @@ export function M8Penalty({
         .m8-ball-spark.s2{left:48%;top:50%;animation:m8-spark-trail .8s ease-out .2s infinite}
         .m8-ball-spark.s3{left:52%;top:40%;animation:m8-spark-trail .8s ease-out .4s infinite}
 
-        .m8-goal-flash{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:4.1rem;font-weight:900;color:#fff;text-shadow:0 0 24px ${T.accent},0 0 50px ${T.accentGlow};letter-spacing:.04em;pointer-events:none;opacity:0;transform:scale(.5);z-index:10;background:radial-gradient(circle,${T.accentGlow},transparent 62%)}
+        .m8-goal-flash{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-family:'Playfair Display',serif;color:#fff;letter-spacing:.04em;pointer-events:none;opacity:0;transform:scale(.5);z-index:10;background:radial-gradient(circle,${T.accentGlow},transparent 62%)}
+        .m8-goal-flash .m8-flash-label{font-size:3.4rem;font-weight:900;text-shadow:0 0 24px ${T.accent},0 0 50px ${T.accentGlow};line-height:1}
+        .m8-goal-flash .m8-flash-pct{font-family:'Inter',sans-serif;font-size:1.65rem;font-weight:900;letter-spacing:.06em;color:${T.accentLight};text-shadow:0 0 16px ${T.accentGlow},0 0 32px ${T.accent};padding:5px 14px;background:rgba(5,8,18,.55);border:1px solid ${T.accent};border-radius:999px;line-height:1}
         .m8-goal-flash.show{animation:m8-goal-pop .62s cubic-bezier(.17,1.4,.34,1.06) forwards}
 
         .m8-cta{display:block;width:min(94vw,430px);padding:18px 24px;background:linear-gradient(135deg,${T.accentLight},${T.accent});color:${T.buttonText};font-weight:900;text-transform:uppercase;letter-spacing:.14em;font-size:.92rem;border:none;border-radius:18px;cursor:pointer;box-shadow:0 10px 26px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.42);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease,box-shadow .12s ease;position:relative;z-index:2}
@@ -347,9 +354,9 @@ export function M8Penalty({
       <div className="m8-step">
         <div className="m8-step-title">
           {phase === "won"
-            ? <><span className="accent">BUT décisif !</span> Bonus 100% débloqué</>
+            ? <><span className="accent">BUT décisif !</span> Bonus {currentPct}% débloqué</>
             : phase === "scored"
-              ? <><span className="accent">BUT !</span> +50% bonus en poche</>
+              ? <><span className="accent">BUT !</span> +{currentPct}% bonus en poche</>
               : phase === "missed"
                 ? <>Tir <span className="accent">arrêté</span> par le gardien</>
                 : phase === "shooting"
@@ -471,7 +478,8 @@ export function M8Penalty({
         </div>
 
         <div className={`m8-goal-flash ${phase === "scored" || phase === "won" ? "show" : ""}`}>
-          {phase === "won" ? "BUT !" : "BUT !"}
+          <span className="m8-flash-label">BUT !</span>
+          <span className="m8-flash-pct">+{currentPct}%</span>
         </div>
 
         {phase === "scored" || phase === "won" ? (
@@ -488,7 +496,7 @@ export function M8Penalty({
       {phase === "idle" ? (
         <button className="m8-cta" disabled>👆 Clique dans la cage pour tirer</button>
       ) : phase === "won" ? (
-        <button className="m8-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus 100%</button>
+        <button className="m8-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus {currentPct}%</button>
       ) : phase === "shooting" ? (
         <button className="m8-cta" disabled>Frappe en cours…</button>
       ) : phase === "missed" ? (
