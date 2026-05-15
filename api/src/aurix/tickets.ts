@@ -1,10 +1,9 @@
 // Tickets : ouverture (bouton), fermeture (bouton staff), close auto si membre part / perd le rôle Streamer.
 import {
   ActionRowBuilder,
-  ButtonBuilder,
   ButtonInteraction,
-  ButtonStyle,
   ChannelType,
+  type ChatInputCommandInteraction,
   EmbedBuilder,
   type Guild,
   type GuildMember,
@@ -104,15 +103,6 @@ async function createTicketChannel(
   return channel;
 }
 
-function buildCloseRow(): ActionRowBuilder<ButtonBuilder> {
-  const closeBtn = new ButtonBuilder()
-    .setCustomId("aurix:ticket:close")
-    .setLabel("Fermer le ticket")
-    .setStyle(ButtonStyle.Danger)
-    .setEmoji("🔒");
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(closeBtn);
-}
-
 async function ensureNoOpenTicket(
   interaction: ButtonInteraction | ModalSubmitInteraction,
   guild: Guild,
@@ -186,7 +176,6 @@ export async function handleOpenTicketDealButton(interaction: ButtonInteraction)
   await channel.send({
     content: mentionParts.join(" "),
     embeds: [embed],
-    components: [buildCloseRow()],
     allowedMentions: { users: [member.id], roles: roleDirectionId !== "0" ? [roleDirectionId] : [] },
   });
 
@@ -299,7 +288,6 @@ export async function handleApplyTicketModal(interaction: ModalSubmitInteraction
   await channel.send({
     content: mentionParts.join(" "),
     embeds: [embed],
-    components: [buildCloseRow()],
     allowedMentions: { users: [member.id], roles: roleDirectionId !== "0" ? [roleDirectionId] : [] },
   });
 
@@ -350,7 +338,9 @@ export async function handleMemberJoin(member: GuildMember): Promise<void> {
   }
 }
 
-export async function handleCloseTicketButton(interaction: ButtonInteraction): Promise<void> {
+async function closeTicketCore(
+  interaction: ButtonInteraction | ChatInputCommandInteraction
+): Promise<void> {
   const guild = interaction.guild;
   const member = interaction.member as GuildMember | null;
   const channel = interaction.channel;
@@ -366,7 +356,10 @@ export async function handleCloseTicketButton(interaction: ButtonInteraction): P
     member.roles.cache.has(roleDirectionId) ||
     member.roles.cache.has(roleModerateurId);
   if (!staff) {
-    await interaction.reply({ content: "Seul le staff peut fermer un ticket.", ephemeral: true });
+    await interaction.reply({
+      content: `${cfg.EMOJI.cross} Seul un **admin** peut fermer un ticket.`,
+      ephemeral: true,
+    });
     return;
   }
 
@@ -393,6 +386,19 @@ export async function handleCloseTicketButton(interaction: ButtonInteraction): P
       /* ignore */
     }
   }, 5000);
+}
+
+// Legacy : ancien bouton "Fermer le ticket" sur les tickets posés avant le deploy.
+// Refuse les non-staff comme avant.
+export async function handleCloseTicketButton(interaction: ButtonInteraction): Promise<void> {
+  await closeTicketCore(interaction);
+}
+
+// Nouveau : slash command admin/staff only — seule façon de fermer un ticket désormais.
+export async function handleCloseTicketCommand(
+  interaction: ChatInputCommandInteraction
+): Promise<void> {
+  await closeTicketCore(interaction);
 }
 
 export async function onMemberRemove(member: GuildMember): Promise<void> {

@@ -444,19 +444,18 @@ async function postBotInvitePanel(channel: TextChannel): Promise<void> {
     .setTitle("🤖  Bot Aurix pour streamers")
     .setDescription(
       [
-        "Tu peux **inviter le bot Aurix sur ton propre serveur Discord** pour offrir à tes viewers une commande de validation Celsius — et suivre tes stats d'inscriptions en direct.",
+        "Invite le bot Aurix sur ton propre serveur Discord pour **valider que tes viewers sont bien affiliés** sur Celsius via toi — et suivre ton vivier en direct.",
         "",
         "**Commandes disponibles sur ton serveur** :",
         "",
         "• `/celsius` — *pour tes viewers*",
-        "   Permet à chaque viewer d'enregistrer son **pseudo Celsius**, son **email** et son **dépôt mensuel moyen**.",
-        "   Les gros joueurs avérés se voient attribuer un **HOST VIP attitré**.",
+        "   Chaque viewer enregistre son **pseudo Celsius** et son **email**. L'équipe Aurix vérifie ensuite que le compte est **bien affilié à toi** ; une fois validé, le viewer apparaît dans tes stats comme **vérifié**.",
         "",
         "• `/autrix` — *réservé à toi (owner du serveur)*",
         "   Affiche en temps réel : nb de viewers **en cours de validation** et nb **vérifiés**.",
-        "   Le bot reconnaît automatiquement que tu es streamer Aurix via ton compte Discord.",
+        "   Le bot te reconnaît automatiquement comme streamer Aurix via ton compte Discord (owner du serveur).",
         "",
-        "**Pour inviter le bot, clique sur le bouton ci-dessous**, autorise sur ton serveur, et tape `/autrix` pour vérifier que tout fonctionne.",
+        "**Pour inviter le bot, clique sur le bouton ci-dessous**, autorise sur ton serveur, puis tape `/autrix` pour vérifier que tout fonctionne.",
       ].join("\n")
     )
     .setColor(cfg.COLOR.PRIMARY)

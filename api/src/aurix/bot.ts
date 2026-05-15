@@ -21,6 +21,7 @@ import {
   handleOpenTicketApplyButton,
   handleApplyTicketModal,
   handleCloseTicketButton,
+  handleCloseTicketCommand,
   handleMemberJoin,
   onMemberRemove,
   onMemberUpdate,
@@ -96,7 +97,7 @@ export async function startAurixBot(): Promise<void> {
 
     // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
     // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-    const SETUP_VERSION = "4";
+    const SETUP_VERSION = "5";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -250,6 +251,9 @@ export async function startAurixBot(): Promise<void> {
             return;
           case "ping":
             await handlePing(ci);
+            return;
+          case "close-ticket":
+            await handleCloseTicketCommand(ci);
             return;
           case "celsius":
             await handleCelsiusCommand(ci);

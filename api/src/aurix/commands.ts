@@ -77,6 +77,11 @@ export const guildCommandDefinitions = [
     name: "ping",
     description: "Test : le bot répond.",
   },
+  {
+    name: "close-ticket",
+    description: "(Admin) Ferme le ticket courant.",
+    default_member_permissions: String(PermissionFlagsBits.ManageChannels),
+  },
 ];
 
 // Commandes GLOBALES — disponibles sur tous les serveurs où le bot est invité (serveurs streamers).
