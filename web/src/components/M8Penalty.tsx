@@ -141,9 +141,13 @@ export function M8Penalty({
     if (!aim) return { left: 50, top: 88, scale: 1, rotate: 0 };
     const spin = 720 + (aim === "L" ? -22 : aim === "R" ? 22 : 8);
     if (!willScoreNow) {
-      // Tir arrete par le gardien — ball stoppe au niveau du gardien
-      const left = aim === "L" ? 30 : aim === "R" ? 70 : 50;
-      return { left, top: 46, scale: 0.55, rotate: 540 };
+      // Tir arrete par le gardien — ball DEVIEE et sort de la cage
+      // aim L → ball repoussee tres a gauche et plus bas (rebond hors-poteau)
+      // aim R → repoussee tres a droite
+      // aim C → ball monte au-dessus de la barre transversale (parry haut)
+      if (aim === "C") return { left: 50, top: 12, scale: 0.5, rotate: 540 };
+      const left = aim === "L" ? 4 : 96;
+      return { left, top: 70, scale: 0.5, rotate: aim === "L" ? -540 : 540 };
     }
     // Goal : ball entre dans le filet (top entre 42% et 50% = a l'interieur de la cage)
     const targetLeft = aim === "L" ? 24 : aim === "R" ? 76 : 50;
@@ -350,23 +354,37 @@ export function M8Penalty({
                 ? <>Tir <span className="accent">arrêté</span> par le gardien</>
                 : phase === "shooting"
                   ? <>Frappe en <span className="accent">cours</span>…</>
-                  : <>Marque un but pour remporter un <span className="accent">bonus exclusif !</span></>}
+                  : <>Tu as <span className="accent">3 tirs</span> · 1 but = 50% · 2 = 100% · 3 = <span className="accent">250%</span></>}
         </div>
         {phase === "idle" || phase === "shooting" ? (
           <div className="m8-flag-strip">
-            {V3_PENALTY_TEAMS.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`m8-flag-chip ${selectedKey === t.key ? "selected" : ""}`}
-                disabled={phase !== "idle"}
-                onClick={() => { sfx.click(); setSelectedKey(t.key); }}
-                title={t.label}
-              >
-                <span className="m8-flag-emoji">{TEAM_FLAGS[t.key]}</span>
-                <span className="m8-flag-label">{t.label}</span>
-              </button>
-            ))}
+            {V3_PENALTY_TEAMS.map((t) => {
+              const isSel = selectedKey === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`m8-flag-chip ${isSel ? "selected" : ""}`}
+                  disabled={phase !== "idle"}
+                  onClick={() => { sfx.click(); setSelectedKey(t.key); }}
+                  title={t.label}
+                  style={isSel
+                    ? {
+                        background: `linear-gradient(135deg,${t.accentLight},${t.accent})`,
+                        borderColor: t.accentLight,
+                        color: t.buttonText,
+                        boxShadow: `0 0 16px ${t.accentGlow}`,
+                      }
+                    : {
+                        borderColor: `${t.accent}88`,
+                        color: t.accentLight,
+                      }}
+                >
+                  <span className="m8-flag-emoji">{TEAM_FLAGS[t.key]}</span>
+                  <span className="m8-flag-label">{t.label}</span>
+                </button>
+              );
+            })}
           </div>
         ) : null}
         <div className="m8-attempts">
