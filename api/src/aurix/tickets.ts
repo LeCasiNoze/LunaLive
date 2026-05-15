@@ -15,7 +15,7 @@ import {
   TextChannel,
 } from "discord.js";
 import * as cfg from "./config.js";
-import { all, kvGetInt, one, query } from "./db.js";
+import { all, kvGet, one, query } from "./db.js";
 
 const log = (...a: unknown[]) => console.log("[aurix.tickets]", ...a);
 
@@ -44,7 +44,7 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
     await query("DELETE FROM aurix_tickets WHERE channel_id=$1", [existing.channel_id]);
   }
 
-  const catId = await kvGetInt("category_tickets_open_id");
+  const catId = await kvGet("category_tickets_open_id");
   if (!catId) {
     await interaction.reply({
       content: "Setup serveur incomplet. Demande à un admin de lancer `/setup-server`.",
@@ -53,7 +53,7 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
     return;
   }
 
-  const category = guild.channels.cache.get(String(catId));
+  const category = guild.channels.cache.get(catId);
   if (!category || category.type !== ChannelType.GuildCategory) {
     await interaction.reply({ content: "Catégorie tickets introuvable.", ephemeral: true });
     return;
@@ -61,8 +61,8 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
 
   await interaction.deferReply({ ephemeral: true });
 
-  const roleDirectionId = String((await kvGetInt("role_direction_id")) ?? 0);
-  const roleModerateurId = String((await kvGetInt("role_moderateur_id")) ?? 0);
+  const roleDirectionId = (await kvGet("role_direction_id")) ?? "0";
+  const roleModerateurId = (await kvGet("role_moderateur_id")) ?? "0";
   const me = guild.members.me!;
 
   const safe = member.user.username.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 25) || "streamer";
@@ -178,8 +178,8 @@ export async function handleCloseTicketButton(interaction: ButtonInteraction): P
     return;
   }
 
-  const roleDirectionId = String((await kvGetInt("role_direction_id")) ?? 0);
-  const roleModerateurId = String((await kvGetInt("role_moderateur_id")) ?? 0);
+  const roleDirectionId = (await kvGet("role_direction_id")) ?? "0";
+  const roleModerateurId = (await kvGet("role_moderateur_id")) ?? "0";
   const staff =
     member.permissions.has(PermissionFlagsBits.Administrator) ||
     member.roles.cache.has(roleDirectionId) ||
@@ -234,7 +234,7 @@ export async function onMemberRemove(member: GuildMember): Promise<void> {
 }
 
 export async function onMemberUpdate(before: GuildMember, after: GuildMember): Promise<void> {
-  const streamerRoleId = String((await kvGetInt("role_streamer_id")) ?? 0);
+  const streamerRoleId = (await kvGet("role_streamer_id")) ?? "0";
   if (streamerRoleId === "0") return;
   const had = before.roles.cache.has(streamerRoleId);
   const has = after.roles.cache.has(streamerRoleId);
@@ -259,9 +259,9 @@ export async function onMemberUpdate(before: GuildMember, after: GuildMember): P
 }
 
 export async function logEvent(guild: Guild, message: string): Promise<void> {
-  const chId = await kvGetInt("channel_logs_id");
+  const chId = await kvGet("channel_logs_id");
   if (!chId) return;
-  const ch = guild.channels.cache.get(String(chId));
+  const ch = guild.channels.cache.get(chId);
   if (ch && ch.type === ChannelType.GuildText) {
     try {
       await (ch as TextChannel).send({

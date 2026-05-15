@@ -297,12 +297,12 @@ export async function ensureOpenBatch(guild: Guild): Promise<Batch | null> {
   const existing = await getOpenBatch();
   if (existing) return existing;
 
-  const chId = await kvGetInt("channel_refills_id");
+  const chId = await kvGet("channel_refills_id");
   if (!chId) {
     log("Salon refills introuvable.");
     return null;
   }
-  const ch = guild.channels.cache.get(String(chId));
+  const ch = guild.channels.cache.get(chId);
   if (!ch || ch.type !== 0 /* GuildText */) return null;
   const channel = ch as TextChannel;
 
@@ -664,13 +664,13 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
   if (!guild) guild = client.guilds.cache.first();
   if (!guild) return;
 
-  const staffChatId = await kvGetInt("channel_staff_chat_id");
-  const staffChat = staffChatId ? guild.channels.cache.get(String(staffChatId)) : null;
+  const staffChatId = await kvGet("channel_staff_chat_id");
+  const staffChat = staffChatId ? guild.channels.cache.get(staffChatId) : null;
   if (!staffChat || staffChat.type !== 0) {
     log("staff-chat introuvable pour cutoff.");
   } else {
-    const roleDirectionId = await kvGetInt("role_direction_id");
-    const roleModerateurId = await kvGetInt("role_moderateur_id");
+    const roleDirectionId = await kvGet("role_direction_id");
+    const roleModerateurId = await kvGet("role_moderateur_id");
     const managerMention = (await kvGet("manager_mention")) ?? "*(à configurer via /config manager)*";
 
     const reqs = await getRequests(batch.id);
@@ -705,7 +705,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     await (staffChat as TextChannel).send({
       content: mentions.join(" ") || undefined,
       embeds: [embed],
-      allowedMentions: { roles: mentions.length ? [String(roleDirectionId), String(roleModerateurId)].filter((x) => x !== "null") : [] },
+      allowedMentions: { roles: mentions.length ? [roleDirectionId, roleModerateurId].filter((x): x is string => !!x) : [] },
     });
   }
 
