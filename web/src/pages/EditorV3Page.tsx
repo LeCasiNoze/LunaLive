@@ -1465,11 +1465,12 @@ function DashboardView({
 // ─── Vue Stats dédiée ───────────────────────────────────────────────────────
 
 function StatsView({
-  pages, loading, statsByPage, onCreateQuick, onRefresh, onSwitchView,
+  pages, loading, statsByPage, token, onCreateQuick, onRefresh, onSwitchView,
 }: {
   pages: FsbAffiPage[];
   loading: boolean;
   statsByPage: Record<string, AffiPageStats>;
+  token: string | null;
   onCreateQuick: () => void;
   onRefresh: () => void;
   onSwitchView: (v: "dashboard" | "stats") => void;
@@ -1653,6 +1654,7 @@ export default function EditorV3Page() {
           pages={pages}
           loading={loadingList}
           statsByPage={statsByPage}
+          token={token}
           onCreateQuick={() => setShowCreateChoice(true)}
           onRefresh={refreshList}
           onSwitchView={switchView}
