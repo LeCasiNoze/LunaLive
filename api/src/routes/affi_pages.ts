@@ -400,6 +400,57 @@ fsbAffiPagesRouter.get(
   })
 );
 
+// Daily stats sur N jours (graphique d'evolution par page)
+fsbAffiPagesRouter.get(
+  "/fsb/affi-pages/:id/daily-stats",
+  a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "bad_id" });
+    const days = Math.min(180, Math.max(1, Number(req.query.days || 30)));
+
+    const { rows } = await pool.query(
+      `SELECT
+         (date_trunc('day', created_at) AT TIME ZONE 'UTC')::date AS d,
+         COUNT(*) FILTER (WHERE event='view')      AS views,
+         COUNT(*) FILTER (WHERE event='click_cta') AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')      AS unique_views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta') AS unique_clicks
+       FROM affi_landing_events
+       WHERE page_id = $1
+         AND created_at >= (NOW() - ($2 || ' days')::interval)
+       GROUP BY d
+       ORDER BY d ASC`,
+      [id, String(days)]
+    );
+
+    // Remplit les jours sans event avec 0
+    const byDate: Record<string, any> = {};
+    for (const r of rows as any[]) {
+      const d = new Date(r.d);
+      const key = d.toISOString().slice(0, 10);
+      byDate[key] = {
+        date: key,
+        views: Number(r.views || 0),
+        clicks: Number(r.clicks || 0),
+        uniqueViews: Number(r.unique_views || 0),
+        uniqueClicks: Number(r.unique_clicks || 0),
+      };
+    }
+
+    const series: Array<any> = [];
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setUTCDate(d.getUTCDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      series.push(byDate[key] || { date: key, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0 });
+    }
+
+    return res.json({ ok: true, series, periodDays: days });
+  })
+);
+
 // Stats agrégées toutes les pages (pour le dashboard V3 ranking)
 fsbAffiPagesRouter.get(
   "/fsb/affi-pages/stats-summary",

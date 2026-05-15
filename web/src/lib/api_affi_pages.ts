@@ -108,3 +108,18 @@ export function getFsbAffiStatsSummary(token: string, days = 30) {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 }
+
+export type AffiDailyPoint = {
+  date: string;
+  views: number;
+  clicks: number;
+  uniqueViews: number;
+  uniqueClicks: number;
+};
+
+export function getFsbAffiDailyStats(token: string, id: number, days = 30) {
+  return request<{ ok: true; series: AffiDailyPoint[]; periodDays: number }>(
+    `/api/fsb/affi-pages/${encodeURIComponent(String(id))}/daily-stats?days=${days}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}

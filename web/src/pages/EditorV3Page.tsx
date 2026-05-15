@@ -30,6 +30,8 @@ import {
 import {
   listFsbAffiPages, createFsbAffiPage, updateFsbAffiPage, deleteFsbAffiPage,
   getFsbAffiStatsSummary,
+  getFsbAffiDailyStats,
+  type AffiDailyPoint,
   type FsbAffiPage, type AffiPageStats,
 } from "../lib/api_affi_pages";
 import {
@@ -900,15 +902,155 @@ function getPageMeta(p: FsbAffiPage): { modelLabel: string; isV3: boolean } {
   return { modelLabel: `V1·M${p.model || "?"}`, isV3: false };
 }
 
+// Couleurs par modèle V3 — utilisées pour colorer la courbe d'une page
+const MODEL_COLORS: Record<string, string> = {
+  M1: "#3b82f6", M2: "#a855f7", M3: "#f59e0b", M4: "#fb923c", M5: "#10b981",
+  M6: "#06b6d4", M7: "#ef4444", M8: "#6366f1", M9: "#ec4899",
+};
+function pageColor(p: FsbAffiPage): string {
+  const meta = getPageMeta(p);
+  if (meta.isV3) {
+    const m = meta.modelLabel.split("·")[1] || "M1";
+    return MODEL_COLORS[m] || "#64748b";
+  }
+  return "#64748b";
+}
+
+// Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol
+function DailyChart({ series, color, label }: { series: AffiDailyPoint[]; color: string; label: string }) {
+  const W = 720;
+  const H = 220;
+  const PADDING = { top: 18, right: 14, bottom: 24, left: 34 };
+  const innerW = W - PADDING.left - PADDING.right;
+  const innerH = H - PADDING.top - PADDING.bottom;
+  const maxVal = Math.max(1, ...series.map((s) => Math.max(s.views, s.clicks)));
+  const stepX = series.length > 1 ? innerW / (series.length - 1) : innerW;
+  const xAt = (i: number) => PADDING.left + i * stepX;
+  const yAt = (v: number) => PADDING.top + innerH - (v / maxVal) * innerH;
+
+  const pathFor = (key: "views" | "clicks") => series.map((s, i) =>
+    `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(s[key]).toFixed(1)}`
+  ).join(" ");
+
+  const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
+
+  // Ticks Y (4)
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((p) => ({
+    y: PADDING.top + innerH * (1 - p),
+    label: Math.round(maxVal * p),
+  }));
+  // Ticks X (jalons : J-30 / J-15 / J0)
+  const xTicks = [0, Math.floor((series.length - 1) / 2), series.length - 1].filter((i) => i >= 0 && i < series.length);
+
+  return (
+    <div style={{ position: "relative", width: "100%" }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "auto", display: "block" }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        {/* Grille horizontale */}
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={PADDING.left} y1={t.y} x2={W - PADDING.right} y2={t.y}
+              stroke="rgba(255,255,255,.06)" strokeDasharray="2 4" />
+            <text x={PADDING.left - 6} y={t.y + 3} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="end" fontFamily="monospace">
+              {t.label}
+            </text>
+          </g>
+        ))}
+        {/* Ticks X dates */}
+        {xTicks.map((idx) => {
+          const d = new Date(series[idx].date);
+          const fmt = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+          return (
+            <text key={idx} x={xAt(idx)} y={H - 6} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="middle" fontFamily="monospace">
+              {fmt}
+            </text>
+          );
+        })}
+        {/* Aire sous courbe vues */}
+        <path d={`${pathFor("views")} L ${xAt(series.length - 1).toFixed(1)} ${(PADDING.top + innerH).toFixed(1)} L ${xAt(0).toFixed(1)} ${(PADDING.top + innerH).toFixed(1)} Z`}
+          fill={color} opacity={0.12} />
+        {/* Courbe vues */}
+        <path d={pathFor("views")} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Courbe clics (pointillé) */}
+        <path d={pathFor("clicks")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 4" opacity={0.85} />
+        {/* Points par jour + hover hitboxes */}
+        {series.map((s, i) => (
+          <g key={i}>
+            <circle cx={xAt(i)} cy={yAt(s.views)} r={hoverIdx === i ? 5 : 3} fill={color} stroke="#0f172a" strokeWidth="1.5" />
+            <circle cx={xAt(i)} cy={yAt(s.clicks)} r={hoverIdx === i ? 4.5 : 2.5} fill="#0f172a" stroke={color} strokeWidth="1.5" />
+            <rect x={xAt(i) - stepX / 2} y={PADDING.top} width={stepX} height={innerH} fill="transparent"
+              onMouseEnter={() => setHoverIdx(i)} style={{ cursor: "crosshair" }} />
+          </g>
+        ))}
+        {/* Vertical hover line */}
+        {hoverIdx !== null ? (
+          <line x1={xAt(hoverIdx)} y1={PADDING.top} x2={xAt(hoverIdx)} y2={PADDING.top + innerH}
+            stroke="rgba(255,255,255,.18)" strokeDasharray="2 3" />
+        ) : null}
+      </svg>
+      {/* Tooltip */}
+      {hoverIdx !== null && series[hoverIdx] ? (
+        <div style={{
+          position: "absolute",
+          left: `${(xAt(hoverIdx) / W) * 100}%`,
+          top: 6,
+          transform: "translateX(-50%)",
+          background: "rgba(2,6,23,.92)",
+          border: `1px solid ${color}`,
+          borderRadius: 8,
+          padding: "6px 10px",
+          fontSize: 11,
+          color: "#fff",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          boxShadow: `0 4px 14px rgba(0,0,0,.5),0 0 12px ${color}55`,
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>
+            {new Date(series[hoverIdx].date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <span style={{ color }}>● {series[hoverIdx].views} vues</span>
+            <span style={{ color: "rgba(226,232,240,.85)" }}>○ {series[hoverIdx].clicks} clics</span>
+          </div>
+        </div>
+      ) : null}
+      <div style={{ display: "flex", gap: 14, fontSize: 11, color: "rgba(148,163,184,.8)", marginTop: 6, paddingLeft: 8 }}>
+        <span><span style={{ color, fontWeight: 700 }}>━</span> Vues · {label}</span>
+        <span><span style={{ color }}>┄</span> Clics CTA</span>
+      </div>
+    </div>
+  );
+}
+
 function StatsRankingSection({
-  pages, statsByPage,
+  pages, statsByPage, token,
 }: {
   pages: FsbAffiPage[];
   statsByPage: Record<string, AffiPageStats>;
+  token: string | null;
 }) {
   const [sortBy, setSortBy] = React.useState<RankingSort>("views");
   const [filterScope, setFilterScope] = React.useState<"all" | "v3" | "v1v2">("all");
   const [expanded, setExpanded] = React.useState(false);
+  const [expandedId, setExpandedId] = React.useState<number | null>(null);
+  const [dailyCache, setDailyCache] = React.useState<Record<number, AffiDailyPoint[] | "loading" | "error">>({});
+
+  const togglePage = React.useCallback(async (pageId: number) => {
+    if (expandedId === pageId) { setExpandedId(null); return; }
+    setExpandedId(pageId);
+    if (dailyCache[pageId] && dailyCache[pageId] !== "error") return;
+    if (!token) return;
+    setDailyCache((prev) => ({ ...prev, [pageId]: "loading" }));
+    try {
+      const r = await getFsbAffiDailyStats(token, pageId, 30);
+      setDailyCache((prev) => ({ ...prev, [pageId]: r.series || [] }));
+    } catch {
+      setDailyCache((prev) => ({ ...prev, [pageId]: "error" }));
+    }
+  }, [expandedId, dailyCache, token]);
 
   // Tableau enrichi avec stats + meta, filtré + trié
   const ranked = React.useMemo(() => {
@@ -1062,23 +1204,36 @@ function StatsRankingSection({
               {rowsToShow.map((r, i) => {
                 const ctr = r.stats.views > 0 ? r.stats.ctr * 100 : null;
                 const isTop = i < 3 && r.stats.views > 0;
+                const isOpen = expandedId === r.page.id;
+                const dailyState = dailyCache[r.page.id];
+                const curveColor = pageColor(r.page);
                 return (
+                  <React.Fragment key={r.page.id}>
                   <tr
-                    key={r.page.id}
                     style={{
                       borderTop: `1px solid ${T.border}`,
                       color: T.text,
+                      background: isOpen ? "rgba(148,163,184,.04)" : undefined,
                     }}
                   >
                     <td style={{ padding: "10px 8px", fontWeight: 700, color: isTop ? T.gold : T.textMute, width: 32 }}>
                       {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                     </td>
-                    <td style={{ padding: "10px 8px", maxWidth: 240 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.page.brandName || r.page.slug}
-                      </div>
-                      <div style={{ fontSize: 10, color: T.textDim, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        /r/{r.page.slug}
+                    <td
+                      style={{ padding: "10px 8px", maxWidth: 240, cursor: "pointer", userSelect: "none" }}
+                      onClick={() => togglePage(r.page.id)}
+                      title="Voir l'évolution sur 30 jours"
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ color: T.textMute, fontSize: 10, transition: "transform .15s ease", display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {r.page.brandName || r.page.slug}
+                          </div>
+                          <div style={{ fontSize: 10, color: T.textDim, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            /r/{r.page.slug}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding: "10px 8px" }}>
@@ -1117,6 +1272,20 @@ function StatsRankingSection({
                       <a href={`/r/${r.page.slug}`} target="_blank" rel="noreferrer" style={{ color: T.textMute, textDecoration: "none", fontSize: 14 }} title="Ouvrir">↗</a>
                     </td>
                   </tr>
+                  {isOpen ? (
+                    <tr style={{ background: "rgba(2,6,23,.4)", borderTop: `1px solid ${T.border}` }}>
+                      <td colSpan={7} style={{ padding: "16px 20px 20px" }}>
+                        {dailyState === "loading" || dailyState === undefined ? (
+                          <div style={{ color: T.textMute, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Chargement de l'évolution…</div>
+                        ) : dailyState === "error" ? (
+                          <div style={{ color: T.danger, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Erreur de chargement</div>
+                        ) : (
+                          <DailyChart series={dailyState} color={curveColor} label={r.meta.modelLabel} />
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -1330,7 +1499,7 @@ function StatsView({
             <button onClick={onCreateQuick} style={btnPrimary}>+ Créer une page</button>
           </div>
         ) : (
-          <StatsRankingSection pages={pages} statsByPage={statsByPage} />
+          <StatsRankingSection pages={pages} statsByPage={statsByPage} token={token} />
         )}
       </div>
     </div>
