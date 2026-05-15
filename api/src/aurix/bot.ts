@@ -33,7 +33,7 @@ import {
 } from "./refill.js";
 import { handleConfig, handlePing } from "./admin.js";
 
-async function main(): Promise<void> {
+export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
 
   console.log("[aurix] Running migrations…");
@@ -205,8 +205,3 @@ async function main(): Promise<void> {
 
   await client.login(env.DISCORD_TOKEN);
 }
-
-main().catch((e) => {
-  console.error("[aurix] fatal:", e);
-  process.exit(1);
-});

@@ -21,6 +21,7 @@ import { runSlotsUpdate } from "./calls/updater.js";
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { startDiscordBot } from "./discord/bot.js";
+import { startAurixBot } from "./aurix/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
 import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
@@ -189,6 +190,12 @@ function setupGracefulShutdown(server: http.Server) {
       log: (msg) => console.log(msg),
     }).catch((e) => {
       console.error("[discord] failed to start", e);
+    });
+  }
+
+  if (process.env.RUN_AURIX_BOT === "1") {
+    startAurixBot().catch((e) => {
+      console.error("[aurix] failed to start", e);
     });
   }
 
