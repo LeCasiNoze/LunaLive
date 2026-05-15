@@ -606,11 +606,19 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       }
       html = html.replace(/<\/head>/, `<style data-affi-m5-display>${rules.join("\n")}</style>\n</head>`);
     }
-    html = html.replace(
-      /<h1 class="hero-title">[\s\S]*?<\/h1>/,
-      `<h1 class="hero-title">${esc(cfg.goldenHeroTitleBefore)} <span>${esc(cfg.goldenHeroTitleSpan)}</span></h1>`
-    );
-    html = html.replace(/<p class="hero-subtitle">[\s\S]*?<\/p>/, `<p class="hero-subtitle">${esc(cfg.goldenHeroSubtitle)}</p>`);
+    // ✅ Ne reecrit le H1/subtitle que si au moins un champ golden est defini.
+    // Sans cette garde, les pages V3 M2 (qui n'ecrivent jamais ces cles) voyaient
+    // leur hero-title V3 propre ("DEPOSEZ X / RECEVEZ Y" injecte plus haut)
+    // ecrase par un H1 vide → texte invisible sur le rendu final.
+    if (cfg.goldenHeroTitleBefore || cfg.goldenHeroTitleSpan) {
+      html = html.replace(
+        /<h1 class="hero-title">[\s\S]*?<\/h1>/,
+        `<h1 class="hero-title">${esc(cfg.goldenHeroTitleBefore)} <span>${esc(cfg.goldenHeroTitleSpan)}</span></h1>`
+      );
+    }
+    if (cfg.goldenHeroSubtitle && cfg.goldenHeroSubtitle.trim()) {
+      html = html.replace(/<p class="hero-subtitle">[\s\S]*?<\/p>/, `<p class="hero-subtitle">${esc(cfg.goldenHeroSubtitle)}</p>`);
+    }
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(cfg.goldenPageTitle)}</title>`);
 
     // Texte custom du bouton RÉCLAME (hero + sticky mobile)
