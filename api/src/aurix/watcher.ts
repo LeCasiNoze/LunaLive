@@ -1,0 +1,439 @@
+// Watcher : board d'admin pour superviser les inscriptions /celsius.
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  type ButtonInteraction,
+  ButtonStyle,
+  ChannelType,
+  type Client,
+  EmbedBuilder,
+  type Guild,
+  ModalBuilder,
+  type ModalSubmitInteraction,
+  PermissionFlagsBits,
+  TextChannel,
+  TextInputBuilder,
+  TextInputStyle,
+} from "discord.js";
+import * as cfg from "./config.js";
+import { all, kvGet, kvSet, one, query } from "./db.js";
+
+export type SortMode = "date_desc" | "date_asc" | "deposit_desc" | "deposit_asc";
+
+const DEFAULT_SORT: SortMode = "date_desc";
+
+type Submission = {
+  id: number;
+  guild_id: string;
+  guild_name: string | null;
+  viewer_user_id: string;
+  viewer_username: string;
+  celsius_pseudo: string;
+  celsius_email: string;
+  monthly_deposit: string;
+  monthly_deposit_amount: string | null;
+  status: "pending" | "verified" | "rejected";
+  created_at: Date;
+  reject_reason: string | null;
+  review_message_id: string | null;
+};
+
+function sortClause(mode: SortMode): string {
+  switch (mode) {
+    case "date_asc":
+      return "ORDER BY created_at ASC";
+    case "deposit_desc":
+      return "ORDER BY monthly_deposit_amount DESC NULLS LAST, created_at DESC";
+    case "deposit_asc":
+      return "ORDER BY monthly_deposit_amount ASC NULLS LAST, created_at DESC";
+    case "date_desc":
+    default:
+      return "ORDER BY created_at DESC";
+  }
+}
+
+async function fetchSubmissions(sort: SortMode, limit = 40): Promise<Submission[]> {
+  return all<Submission>(
+    `SELECT * FROM aurix_celsius_submissions ${sortClause(sort)} LIMIT ${limit}`
+  );
+}
+
+async function fetchStats(): Promise<{
+  total: number;
+  pending: number;
+  verified: number;
+  rejected: number;
+  avgDeposit: number | null;
+  totalDeposit: number | null;
+  multiServer: number;
+}> {
+  const counts = await all<{ status: string; count: string }>(
+    "SELECT status, COUNT(*)::text AS count FROM aurix_celsius_submissions GROUP BY status"
+  );
+  let pending = 0, verified = 0, rejected = 0;
+  for (const r of counts) {
+    const n = Number(r.count) || 0;
+    if (r.status === "pending") pending = n;
+    else if (r.status === "verified") verified = n;
+    else if (r.status === "rejected") rejected = n;
+  }
+  const aggRow = await one<{ avg: string | null; sum: string | null }>(
+    "SELECT AVG(monthly_deposit_amount)::text AS avg, SUM(monthly_deposit_amount)::text AS sum FROM aurix_celsius_submissions WHERE monthly_deposit_amount IS NOT NULL"
+  );
+  const multiRow = await one<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM (
+       SELECT viewer_user_id FROM aurix_celsius_submissions
+       GROUP BY viewer_user_id HAVING COUNT(DISTINCT guild_id) > 1
+     ) t`
+  );
+  return {
+    total: pending + verified + rejected,
+    pending,
+    verified,
+    rejected,
+    avgDeposit: aggRow?.avg ? Number(aggRow.avg) : null,
+    totalDeposit: aggRow?.sum ? Number(aggRow.sum) : null,
+    multiServer: multiRow ? Number(multiRow.n) : 0,
+  };
+}
+
+async function fetchMultiServerUserIds(): Promise<Set<string>> {
+  const rows = await all<{ viewer_user_id: string }>(
+    `SELECT viewer_user_id FROM aurix_celsius_submissions
+     GROUP BY viewer_user_id HAVING COUNT(DISTINCT guild_id) > 1`
+  );
+  return new Set(rows.map((r) => r.viewer_user_id));
+}
+
+function statusBadge(s: Submission["status"]): string {
+  if (s === "verified") return "🟢";
+  if (s === "rejected") return "🔴";
+  return "🟡";
+}
+
+function fmtAmount(s: Submission): string {
+  if (s.monthly_deposit_amount != null) {
+    const n = Number(s.monthly_deposit_amount);
+    if (Number.isFinite(n)) return `${n.toLocaleString("fr-FR")}€`;
+  }
+  return s.monthly_deposit;
+}
+
+function buildListEmbed(submissions: Submission[], sort: SortMode, multi: Set<string>): EmbedBuilder {
+  const sortLabel: Record<SortMode, string> = {
+    date_desc: "📅 Date ↓ (récent → ancien)",
+    date_asc: "📅 Date ↑ (ancien → récent)",
+    deposit_desc: "💰 Dépôt ↓ (gros → petit)",
+    deposit_asc: "💰 Dépôt ↑ (petit → gros)",
+  };
+
+  const embed = new EmbedBuilder()
+    .setTitle("🕵️  The Watcher — Inscriptions /celsius")
+    .setColor(cfg.COLOR.PRIMARY)
+    .setFooter({ text: `Tri : ${sortLabel[sort]} • ${submissions.length} entrées affichées` });
+
+  if (submissions.length === 0) {
+    embed.setDescription("*Aucune inscription pour l'instant.*");
+    return embed;
+  }
+
+  const lines = submissions.map((s) => {
+    const flag = multi.has(s.viewer_user_id) ? " ⚠️" : "";
+    const guild = s.guild_name ? s.guild_name.slice(0, 22) : `guild ${s.guild_id.slice(-4)}`;
+    return `${statusBadge(s.status)} <@${s.viewer_user_id}> · \`${s.celsius_pseudo}\` · ${fmtAmount(s)} · *${guild}*${flag}`;
+  });
+
+  let chunk: string[] = [];
+  let size = 0;
+  for (const line of lines) {
+    if (size + line.length + 1 > 1000) {
+      embed.addFields({ name: "​", value: chunk.join("\n") });
+      chunk = [];
+      size = 0;
+    }
+    chunk.push(line);
+    size += line.length + 1;
+  }
+  if (chunk.length) embed.addFields({ name: "​", value: chunk.join("\n") });
+
+  return embed;
+}
+
+function buildStatsEmbed(stats: Awaited<ReturnType<typeof fetchStats>>): EmbedBuilder {
+  const avg = stats.avgDeposit != null ? `${Math.round(stats.avgDeposit).toLocaleString("fr-FR")}€` : "—";
+  const sum = stats.totalDeposit != null ? `${Math.round(stats.totalDeposit).toLocaleString("fr-FR")}€` : "—";
+  return new EmbedBuilder()
+    .setTitle("📊  Récap Watcher")
+    .setColor(cfg.COLOR.NEUTRAL)
+    .addFields(
+      { name: "Inscriptions totales", value: `\`${stats.total}\``, inline: true },
+      { name: "🟡 En attente", value: `\`${stats.pending}\``, inline: true },
+      { name: "🟢 Vérifiés", value: `\`${stats.verified}\``, inline: true },
+      { name: "🔴 Refusés", value: `\`${stats.rejected}\``, inline: true },
+      { name: "Dépôt moyen", value: `\`${avg}\``, inline: true },
+      { name: "Dépôt total cumulé", value: `\`${sum}\``, inline: true },
+      { name: "Comptes multi-serveurs ⚠️", value: `\`${stats.multiServer}\``, inline: true }
+    )
+    .setFooter({ text: `${cfg.BRAND.NAME} • Mise à jour automatique` });
+}
+
+function buildSortRow(): ActionRowBuilder<ButtonBuilder> {
+  const mk = (mode: SortMode, label: string, emoji: string) =>
+    new ButtonBuilder()
+      .setCustomId(`aurix:watcher:sort:${mode}`)
+      .setLabel(label)
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji(emoji);
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    mk("date_desc", "Date ↓", "📅"),
+    mk("date_asc", "Date ↑", "📅"),
+    mk("deposit_desc", "Dépôt ↓", "💰"),
+    mk("deposit_asc", "Dépôt ↑", "💰")
+  );
+}
+
+async function getWatcherChannel(guild: Guild): Promise<TextChannel | null> {
+  const id = await kvGet("channel_watcher_id");
+  if (!id) return null;
+  const ch = guild.channels.cache.get(id);
+  if (!ch || ch.type !== ChannelType.GuildText) return null;
+  return ch as TextChannel;
+}
+
+// ───────────── Board (sticky list + stats) ─────────────
+export async function ensureWatcherBoard(guild: Guild): Promise<void> {
+  const ch = await getWatcherChannel(guild);
+  if (!ch) return;
+
+  const me = guild.members.me;
+  if (!me) return;
+
+  let listId = await kvGet("watcher_list_message_id");
+  let statsId = await kvGet("watcher_stats_message_id");
+
+  const me2 = me.id;
+  const ensureMsg = async (existingId: string | null, payload: any): Promise<string> => {
+    if (existingId) {
+      try {
+        const m = await ch.messages.fetch(existingId);
+        if (m.author.id === me2) {
+          await m.edit(payload);
+          return m.id;
+        }
+      } catch {
+        /* not found, fall through */
+      }
+    }
+    const m = await ch.send(payload);
+    return m.id;
+  };
+
+  const sort = ((await kvGet("watcher_sort")) as SortMode) || DEFAULT_SORT;
+  const [subs, stats, multi] = await Promise.all([
+    fetchSubmissions(sort),
+    fetchStats(),
+    fetchMultiServerUserIds(),
+  ]);
+
+  const newListId = await ensureMsg(listId, {
+    embeds: [buildListEmbed(subs, sort, multi)],
+    components: [buildSortRow()],
+  });
+  const newStatsId = await ensureMsg(statsId, {
+    embeds: [buildStatsEmbed(stats)],
+  });
+
+  if (newListId !== listId) await kvSet("watcher_list_message_id", newListId);
+  if (newStatsId !== statsId) await kvSet("watcher_stats_message_id", newStatsId);
+}
+
+export async function refreshWatcherBoard(client: Client): Promise<void> {
+  const guildId = process.env.AURIX_GUILD_ID;
+  let guild: Guild | undefined;
+  if (guildId) guild = client.guilds.cache.get(guildId);
+  if (!guild) guild = client.guilds.cache.first();
+  if (!guild) return;
+  await ensureWatcherBoard(guild);
+}
+
+// ───────────── New submission review post (one per /celsius) ─────────────
+export async function postSubmissionReview(client: Client, submissionId: number): Promise<void> {
+  const sub = await one<Submission>("SELECT * FROM aurix_celsius_submissions WHERE id=$1", [submissionId]);
+  if (!sub) return;
+
+  const guildId = process.env.AURIX_GUILD_ID;
+  let aurixGuild: Guild | undefined;
+  if (guildId) aurixGuild = client.guilds.cache.get(guildId);
+  if (!aurixGuild) aurixGuild = client.guilds.cache.first();
+  if (!aurixGuild) return;
+
+  const ch = await getWatcherChannel(aurixGuild);
+  if (!ch) return;
+
+  const multi = await fetchMultiServerUserIds();
+  const isMulti = multi.has(sub.viewer_user_id);
+  const guildLabel = sub.guild_name ? sub.guild_name : `guild ${sub.guild_id}`;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${statusBadge(sub.status)}  Inscription /celsius #${sub.id}`)
+    .setDescription(
+      [
+        `**Viewer :** <@${sub.viewer_user_id}> (\`${sub.viewer_username}\`)`,
+        `**Pseudo Celsius :** \`${sub.celsius_pseudo}\``,
+        `**Email :** \`${sub.celsius_email}\``,
+        `**Dépôt moyen / mois :** \`${fmtAmount(sub)}\``,
+        `**Serveur d'origine :** *${guildLabel}*`,
+        isMulti ? "\n⚠️ *Ce viewer a soumis sur **plusieurs serveurs** — à examiner.*" : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .setColor(cfg.COLOR.WARNING)
+    .setFooter({ text: `${cfg.BRAND.NAME} • Submission #${sub.id}` });
+
+  const validateBtn = new ButtonBuilder()
+    .setCustomId(`aurix:watcher:validate:${sub.id}`)
+    .setLabel("Valider")
+    .setStyle(ButtonStyle.Success)
+    .setEmoji("🟢");
+  const rejectBtn = new ButtonBuilder()
+    .setCustomId(`aurix:watcher:reject:${sub.id}`)
+    .setLabel("Refuser")
+    .setStyle(ButtonStyle.Danger)
+    .setEmoji("🔴");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(validateBtn, rejectBtn);
+
+  // S'il y avait déjà un message de review (renvoi), on l'édite ; sinon on en poste un nouveau.
+  if (sub.review_message_id) {
+    try {
+      const old = await ch.messages.fetch(String(sub.review_message_id));
+      await old.edit({ embeds: [embed], components: [row] });
+      return;
+    } catch {
+      /* deleted, fall through */
+    }
+  }
+  const msg = await ch.send({ embeds: [embed], components: [row] });
+  await query("UPDATE aurix_celsius_submissions SET review_message_id=$1 WHERE id=$2", [msg.id, sub.id]);
+}
+
+async function editReviewToDecision(
+  client: Client,
+  submissionId: number,
+  decidedBy: string
+): Promise<void> {
+  const sub = await one<Submission>("SELECT * FROM aurix_celsius_submissions WHERE id=$1", [submissionId]);
+  if (!sub || !sub.review_message_id) return;
+
+  const guildId = process.env.AURIX_GUILD_ID;
+  let aurixGuild: Guild | undefined;
+  if (guildId) aurixGuild = client.guilds.cache.get(guildId);
+  if (!aurixGuild) aurixGuild = client.guilds.cache.first();
+  if (!aurixGuild) return;
+  const ch = await getWatcherChannel(aurixGuild);
+  if (!ch) return;
+
+  const color =
+    sub.status === "verified" ? cfg.COLOR.SUCCESS : sub.status === "rejected" ? cfg.COLOR.DANGER : cfg.COLOR.WARNING;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${statusBadge(sub.status)}  Inscription /celsius #${sub.id}`)
+    .setDescription(
+      [
+        `**Viewer :** <@${sub.viewer_user_id}> (\`${sub.viewer_username}\`)`,
+        `**Pseudo Celsius :** \`${sub.celsius_pseudo}\``,
+        `**Email :** \`${sub.celsius_email}\``,
+        `**Dépôt moyen / mois :** \`${fmtAmount(sub)}\``,
+        `**Serveur :** ${sub.guild_name ?? sub.guild_id}`,
+        "",
+        sub.status === "verified"
+          ? `🟢 **Validé** par <@${decidedBy}>`
+          : sub.status === "rejected"
+          ? `🔴 **Refusé** par <@${decidedBy}>${sub.reject_reason ? `\n**Raison :** *${sub.reject_reason}*` : ""}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .setColor(color)
+    .setFooter({ text: `${cfg.BRAND.NAME} • Submission #${sub.id}` });
+
+  try {
+    const msg = await ch.messages.fetch(String(sub.review_message_id));
+    await msg.edit({ embeds: [embed], components: [] });
+  } catch {
+    /* ignore */
+  }
+}
+
+// ───────────── Interaction handlers ─────────────
+export async function handleWatcherSort(interaction: ButtonInteraction): Promise<void> {
+  const mode = interaction.customId.split(":").pop() as SortMode;
+  await kvSet("watcher_sort", mode);
+  await interaction.deferUpdate();
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+}
+
+export async function handleWatcherValidate(interaction: ButtonInteraction): Promise<void> {
+  const submissionId = Number(interaction.customId.split(":").pop());
+  if (!Number.isFinite(submissionId)) {
+    await interaction.reply({ content: "Submission invalide.", ephemeral: true });
+    return;
+  }
+  if (!isModerator(interaction)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  await interaction.deferUpdate();
+  await query(
+    "UPDATE aurix_celsius_submissions SET status='verified', decided_by=$1, verified_at=NOW(), reject_reason=NULL WHERE id=$2",
+    [interaction.user.id, submissionId]
+  );
+  await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+}
+
+export async function handleWatcherRejectButton(interaction: ButtonInteraction): Promise<void> {
+  const submissionId = interaction.customId.split(":").pop()!;
+  if (!isModerator(interaction)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  const modal = new ModalBuilder()
+    .setCustomId(`aurix:watcher:reject:modal:${submissionId}`)
+    .setTitle("Refuser la demande");
+  const reason = new TextInputBuilder()
+    .setCustomId("reason")
+    .setLabel("Raison du refus (visible par le viewer)")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(500);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reason));
+  await interaction.showModal(modal);
+}
+
+export async function handleWatcherRejectModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const submissionId = Number(interaction.customId.split(":").pop());
+  if (!Number.isFinite(submissionId)) {
+    await interaction.reply({ content: "Submission invalide.", ephemeral: true });
+    return;
+  }
+  const reason = interaction.fields.getTextInputValue("reason").trim();
+  await interaction.deferReply({ ephemeral: true });
+  await query(
+    "UPDATE aurix_celsius_submissions SET status='rejected', decided_by=$1, verified_at=NOW(), reject_reason=$2 WHERE id=$3",
+    [interaction.user.id, reason, submissionId]
+  );
+  await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+  await interaction.editReply({ content: "🔴 Demande refusée." });
+}
+
+function isModerator(interaction: ButtonInteraction): boolean {
+  const member = interaction.member;
+  if (!member) return false;
+  const perms = (member as any).permissions;
+  if (perms && typeof perms.has === "function" && perms.has(PermissionFlagsBits.Administrator)) return true;
+  if (perms && typeof perms.has === "function" && perms.has(PermissionFlagsBits.ManageMessages)) return true;
+  return false;
+}

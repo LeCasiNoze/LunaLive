@@ -38,8 +38,15 @@ import { handleConfig, handlePing } from "./admin.js";
 import {
   handleCelsiusCommand,
   handleCelsiusModal,
+  handleCelsiusModifyButton,
   handleAutrixCommand,
 } from "./celsius.js";
+import {
+  handleWatcherSort,
+  handleWatcherValidate,
+  handleWatcherRejectButton,
+  handleWatcherRejectModal,
+} from "./watcher.js";
 
 export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
@@ -85,7 +92,7 @@ export async function startAurixBot(): Promise<void> {
 
     // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
     // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-    const SETUP_VERSION = "2";
+    const SETUP_VERSION = "3";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -118,36 +125,60 @@ export async function startAurixBot(): Promise<void> {
     try {
       // Buttons
       if (interaction.isButton()) {
-        switch (interaction.customId) {
-          case "aurix:ticket:open":
-          case "aurix:ticket:open:deal":
-            await handleOpenTicketDealButton(interaction);
-            return;
-          case "aurix:ticket:open:apply":
-            await handleOpenTicketApplyButton(interaction);
-            return;
-          case "aurix:ticket:close":
-            await handleCloseTicketButton(interaction);
-            return;
+        const cid = interaction.customId;
+        if (cid === "aurix:ticket:open" || cid === "aurix:ticket:open:deal") {
+          await handleOpenTicketDealButton(interaction);
+          return;
+        }
+        if (cid === "aurix:ticket:open:apply") {
+          await handleOpenTicketApplyButton(interaction);
+          return;
+        }
+        if (cid === "aurix:ticket:close") {
+          await handleCloseTicketButton(interaction);
+          return;
+        }
+        if (cid === "aurix:celsius:modify" || cid === "aurix:celsius:resubmit") {
+          await handleCelsiusModifyButton(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:sort:")) {
+          await handleWatcherSort(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:validate:")) {
+          await handleWatcherValidate(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:reject:")) {
+          await handleWatcherRejectButton(interaction);
+          return;
         }
         return;
       }
 
       // Modals
       if (interaction.isModalSubmit()) {
-        switch (interaction.customId) {
-          case "aurix:refill:firstEmail":
-            await handleFirstRefillEmailModal(interaction);
-            return;
-          case "aurix:compte:save":
-            await handleCompteModal(interaction);
-            return;
-          case "aurix:ticket:apply:modal":
-            await handleApplyTicketModal(interaction);
-            return;
-          case "aurix:celsius:save":
-            await handleCelsiusModal(interaction);
-            return;
+        const cid = interaction.customId;
+        if (cid === "aurix:refill:firstEmail") {
+          await handleFirstRefillEmailModal(interaction);
+          return;
+        }
+        if (cid === "aurix:compte:save") {
+          await handleCompteModal(interaction);
+          return;
+        }
+        if (cid === "aurix:ticket:apply:modal") {
+          await handleApplyTicketModal(interaction);
+          return;
+        }
+        if (cid === "aurix:celsius:save") {
+          await handleCelsiusModal(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:reject:modal:")) {
+          await handleWatcherRejectModal(interaction);
+          return;
         }
         return;
       }

@@ -56,6 +56,7 @@ export const CHANNELS = {
   REFILLS: "📋-refills-en-cours",
   LOGS: "🔔-logs",
   GESTION: "🗂️-gestion",
+  WATCHER: "🕵️-the-watcher",
   ANNONCES_STREAMERS: "📢-annonces-streamers",
   CHAT_STREAMERS: "💬-chat-streamers",
   PROMOTIONS: "🎁-promotions",

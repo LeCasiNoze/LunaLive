@@ -80,6 +80,18 @@ CREATE INDEX IF NOT EXISTS idx_aurix_celsius_guild_status
   ON aurix_celsius_submissions(guild_id, status);
 `,
   },
+  {
+    name: "003_watcher_review.sql",
+    sql: `
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS reject_reason TEXT;
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS decided_by BIGINT;
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS monthly_deposit_amount NUMERIC;
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS review_message_id BIGINT;
+
+CREATE INDEX IF NOT EXISTS idx_aurix_celsius_viewer ON aurix_celsius_submissions(viewer_user_id);
+CREATE INDEX IF NOT EXISTS idx_aurix_celsius_deposit ON aurix_celsius_submissions(monthly_deposit_amount);
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

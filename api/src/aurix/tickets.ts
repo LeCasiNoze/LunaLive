@@ -35,7 +35,14 @@ async function createTicketChannel(
   const roleModerateurId = (await kvGet("role_moderateur_id")) ?? "0";
   const me = guild.members.me!;
 
-  const safe = member.user.username.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 25) || "streamer";
+  const display = member.displayName || member.user.username;
+  const safe =
+    display
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "streamer";
   const prefix = type === "apply" ? "📝" : "💎";
   const channelName = `${prefix}-${safe}`;
 
