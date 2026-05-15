@@ -261,7 +261,7 @@ export function buildM5V1ConfigForSave(cfg: M5V1QuickConfig): Record<string, str
   const tot = String((Number(dep) || 0) + (Number(bon) || 0));
   const out: Record<string, string> = {
     affiLink: cfg.affiLink || "",
-    goldenBrandMain: cfg.pseudo?.trim() || "LeCasiNoze",
+    goldenBrandMain: cfg.pseudo?.trim() || "",
     goldenDepositAmount: dep,
     goldenBonusAmount: bon,
     goldenTotalAmount: tot,

@@ -141,7 +141,7 @@ const DEFAULT_CONFIG: Config = {
   casinoName: "Celsius Games",
   casinoLogoUrl: "",
   pageTitle: "Offre VIP | Jouer Maintenant",
-  goldenBrandMain: "LeCasiNoze",
+  goldenBrandMain: "",
   goldenBrandSub: "",
   goldenHeroTitleBefore: "",
   goldenHeroTitleSpan: "",
@@ -426,25 +426,52 @@ function applyConfig(
     const deposit = String(cfg.goldenDepositAmount || "20").trim() || "20";
     const bonus = String(cfg.goldenBonusAmount || "20").trim() || "20";
     const total = String(cfg.goldenTotalAmount || "40").trim() || "40";
+    // Detection mode V3 (M2 sauve via V1 pipeline mais marque __v3=1)
+    const isV3 = !!(cfg as any).__v3;
     html = html.replace(/data-offer-deposit="[^"]*"/, `data-offer-deposit="${escAttr(deposit)}"`);
     html = html.replace(/data-offer-bonus="[^"]*"/, `data-offer-bonus="${escAttr(bonus)}"`);
     html = html.replace(/data-offer-total="[^"]*"/, `data-offer-total="${escAttr(total)}"`);
-    html = html.replace(
-      /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
-      `<h1 class="hero-title">D&Eacute;POSE ${esc(deposit)}&euro; <span>JOUE A ${esc(total)}&euro;</span></h1>`
-    );
-    html = html.replace(
-      /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
-      `<p class="hero-subtitle"><strong>+${esc(bonus)}&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>`
-    );
-    html = html.replace(
-      /<span class="step-deposit">[^<]*<\/span>/,
-      `<span class="step-deposit">DEPOSE ${esc(deposit)}EUR</span>`
-    );
-    html = html.replace(
-      /<span class="step-receive">[^<]*<\/span>/,
-      `<span class="step-receive">RECOIS ${esc(bonus)}EUR</span>`
-    );
+    if (isV3) {
+      // V3 phrasing : DEPOSEZ X EUR / RECEVEZ Y EUR (aligne avec editor preview)
+      html = html.replace(
+        /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
+        `<h1 class="hero-title">D&Eacute;POSEZ ${esc(deposit)}&euro; <span>RECEVEZ ${esc(bonus)}&euro;</span></h1>`
+      );
+      html = html.replace(
+        /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
+        `<p class="hero-subtitle"><strong>+${esc(bonus)}&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>`
+      );
+      html = html.replace(
+        /<span class="step-deposit">[^<]*<\/span>/,
+        `<span class="step-deposit">DEPOSEZ ${esc(deposit)}EUR</span>`
+      );
+      html = html.replace(
+        /<span class="step-receive">[^<]*<\/span>/,
+        `<span class="step-receive">RECEVEZ ${esc(bonus)}EUR</span>`
+      );
+      // V3 CTAs : "RECLAMEZ VOS Y EUR"
+      const newCtaInner = `R&Eacute;CLAMEZ VOS <span data-bind-offer-value="bonus">${esc(bonus)}&euro;</span>`;
+      html = html.replace(/<a([^>]*class="btn-jouer"[^>]*)>[\s\S]*?<\/a>/, `<a$1>${newCtaInner}</a>`);
+      html = html.replace(/<a([^>]*class="sticky-cta"[^>]*)>[\s\S]*?<\/a>/, `<a$1>${newCtaInner}</a>`);
+    } else {
+      // V1 phrasing (legacy)
+      html = html.replace(
+        /<h1 class="hero-title">[^<]*<span>[^<]*<\/span><\/h1>/,
+        `<h1 class="hero-title">D&Eacute;POSE ${esc(deposit)}&euro; <span>JOUE A ${esc(total)}&euro;</span></h1>`
+      );
+      html = html.replace(
+        /<p class="hero-subtitle"><strong>\+[^<]*<\/strong>[^<]*<\/p>/,
+        `<p class="hero-subtitle"><strong>+${esc(bonus)}&euro; offerts</strong> d&egrave;s ton premier d&eacute;p&ocirc;t.</p>`
+      );
+      html = html.replace(
+        /<span class="step-deposit">[^<]*<\/span>/,
+        `<span class="step-deposit">DEPOSE ${esc(deposit)}EUR</span>`
+      );
+      html = html.replace(
+        /<span class="step-receive">[^<]*<\/span>/,
+        `<span class="step-receive">RECOIS ${esc(bonus)}EUR</span>`
+      );
+    }
 
     if (cfg.affiLink) {
       const safeAffiLink = escAttr(cfg.affiLink);
