@@ -260,7 +260,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
     "📣 Annonces officielles Aurix.",
     ow.public
   );
-  await getOrCreateTextChannel(
+  const chBienvenue = await getOrCreateTextChannel(
     guild,
     catInfo,
     cfg.CHANNELS.BIENVENUE,
@@ -268,6 +268,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
     ow.public
   );
   await kvSet("channel_annonces_id", chAnnonces.id);
+  await kvSet("channel_bienvenue_id", chBienvenue.id);
 
   // ─── Ouvrir-ticket ───
   const chOpenTicket = await getOrCreateTextChannel(
@@ -301,6 +302,14 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
     "🎁 Promotions, deals et codes exclusifs Aurix.",
     ow.streamersReadOnly
   );
+  const chBotStreamers = await getOrCreateTextChannel(
+    guild,
+    catStreamers,
+    cfg.CHANNELS.BOT_STREAMERS,
+    "🤖 Invite le bot Aurix sur ton Discord pour offrir /celsius à tes viewers.",
+    ow.streamersReadOnly
+  );
+  await kvSet("channel_bot_streamers_id", chBotStreamers.id);
 
   // ─── Staff ───
   const chStaffChat = await getOrCreateTextChannel(
@@ -339,6 +348,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
 
   // ─── Panel ticket message + persistent button ───
   await postTicketPanel(chOpenTicket);
+  await postBotInvitePanel(chBotStreamers);
 
   // ─── Refill batch initial ───
   await ensureOpenBatch(guild);
@@ -355,11 +365,9 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   };
 }
 
-async function postTicketPanel(channel: TextChannel): Promise<void> {
+async function purgeBotMessages(channel: TextChannel): Promise<void> {
   const me = channel.guild.members.me;
   if (!me) return;
-
-  // Purge anciens messages du bot
   const recent = await channel.messages.fetch({ limit: 20 });
   for (const msg of recent.values()) {
     if (msg.author.id === me.id) {
@@ -370,32 +378,85 @@ async function postTicketPanel(channel: TextChannel): Promise<void> {
       }
     }
   }
+}
+
+async function postTicketPanel(channel: TextChannel): Promise<void> {
+  await purgeBotMessages(channel);
 
   const embed = new EmbedBuilder()
-    .setTitle(`${cfg.EMOJI.ticket}  Ouvrir un ticket privé`)
+    .setTitle(`${cfg.EMOJI.ticket}  Ouvre ton ticket Aurix`)
     .setDescription(
       [
         `Bienvenue chez **${cfg.BRAND.NAME}** ${cfg.EMOJI.diamond}`,
         "",
-        "Clique sur le bouton ci-dessous pour ouvrir un **salon privé** avec la direction.",
-        "Ce salon te sera dédié tant que tu fais partie de l'agence — utilise-le pour :",
+        "**Tu as déjà un deal avec nous ?** → ouvre directement ta room privée.",
+        "**Tu veux nous rejoindre ?** → ouvre un ticket de candidature.",
+        "",
+        "Ton salon te sera dédié tant que tu fais partie de l'agence — tu peux y :",
         "• Poser tes questions",
-        `• Demander un **refill** (${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}) via la commande \`/refill\``,
+        `• Demander un **refill** (${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}) via \`/refill\``,
         "• Échanger directement avec ton manager",
         "",
-        `${cfg.EMOJI.lock}  *Seuls toi et la direction Aurix avez accès à ce ticket.*`,
+        `${cfg.EMOJI.lock}  *Seuls toi et la direction Aurix avez accès à ton ticket.*`,
       ].join("\n")
     )
     .setColor(cfg.COLOR.PRIMARY)
     .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
 
-  const button = new ButtonBuilder()
-    .setCustomId("aurix:ticket:open")
-    .setLabel("Ouvrir un ticket")
+  const btnDeal = new ButtonBuilder()
+    .setCustomId("aurix:ticket:open:deal")
+    .setLabel("J'ai déjà un deal")
+    .setStyle(ButtonStyle.Success)
+    .setEmoji("💎");
+  const btnApply = new ButtonBuilder()
+    .setCustomId("aurix:ticket:open:apply")
+    .setLabel("Je veux postuler")
     .setStyle(ButtonStyle.Primary)
-    .setEmoji("🎫");
+    .setEmoji("📝");
 
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btnDeal, btnApply);
+
+  await channel.send({ embeds: [embed], components: [row] });
+}
+
+async function postBotInvitePanel(channel: TextChannel): Promise<void> {
+  await purgeBotMessages(channel);
+
+  const appId = channel.client.application?.id ?? channel.client.user?.id ?? "";
+  const inviteUrl =
+    `https://discord.com/api/oauth2/authorize?client_id=${appId}` +
+    `&permissions=274877974528` + // View Channel + Send Messages + Use Slash + Embed Links + Read History + Mention
+    `&scope=bot%20applications.commands`;
+
+  const embed = new EmbedBuilder()
+    .setTitle("🤖  Bot Aurix pour streamers")
+    .setDescription(
+      [
+        "Tu peux **inviter le bot Aurix sur ton propre serveur Discord** pour offrir à tes viewers une commande de validation Celsius — et suivre tes stats d'inscriptions en direct.",
+        "",
+        "**Commandes disponibles sur ton serveur** :",
+        "",
+        "• `/celsius` — *pour tes viewers*",
+        "   Permet à chaque viewer d'enregistrer son **pseudo Celsius**, son **email** et son **dépôt mensuel moyen**.",
+        "   Les gros joueurs avérés se voient attribuer un **HOST VIP attitré**.",
+        "",
+        "• `/autrix` — *réservé à toi (owner du serveur)*",
+        "   Affiche en temps réel : nb de viewers **en cours de validation** et nb **vérifiés**.",
+        "   Le bot reconnaît automatiquement que tu es streamer Aurix via ton compte Discord.",
+        "",
+        "**Pour inviter le bot, clique sur le bouton ci-dessous**, autorise sur ton serveur, et tape `/autrix` pour vérifier que tout fonctionne.",
+      ].join("\n")
+    )
+    .setColor(cfg.COLOR.PRIMARY)
+    .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+
+  const btnInvite = new ButtonBuilder()
+    .setLabel("Inviter le bot Aurix")
+    .setStyle(ButtonStyle.Link)
+    .setURL(inviteUrl)
+    .setEmoji("🤖");
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btnInvite);
 
   await channel.send({ embeds: [embed], components: [row] });
 }

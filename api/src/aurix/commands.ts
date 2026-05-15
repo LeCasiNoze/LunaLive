@@ -1,7 +1,8 @@
 // Définitions des slash commands (envoyées à Discord via REST).
 import { ApplicationCommandOptionType, PermissionFlagsBits } from "discord.js";
 
-export const commandDefinitions = [
+// Commandes réservées à la guild Aurix (staff/streamers de l'agence).
+export const guildCommandDefinitions = [
   {
     name: "setup-server",
     description: "Crée/synchronise la structure complète du serveur Aurix.",
@@ -75,5 +76,19 @@ export const commandDefinitions = [
   {
     name: "ping",
     description: "Test : le bot répond.",
+  },
+];
+
+// Commandes GLOBALES — disponibles sur tous les serveurs où le bot est invité (serveurs streamers).
+export const globalCommandDefinitions = [
+  {
+    name: "celsius",
+    description: "Enregistrer / mettre à jour tes infos Celsius pour vérification Aurix.",
+    dm_permission: false,
+  },
+  {
+    name: "autrix",
+    description: "(Streamer-owner) Statistiques Aurix de ton serveur.",
+    dm_permission: false,
   },
 ];

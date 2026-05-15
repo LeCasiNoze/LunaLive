@@ -52,6 +52,34 @@ CREATE TABLE IF NOT EXISTS aurix_user_accounts (
 );
 `,
   },
+  {
+    name: "002_apply_tickets_and_celsius.sql",
+    sql: `
+ALTER TABLE aurix_tickets ADD COLUMN IF NOT EXISTS type TEXT NOT NULL DEFAULT 'deal';
+ALTER TABLE aurix_tickets ADD COLUMN IF NOT EXISTS apply_email TEXT;
+ALTER TABLE aurix_tickets ADD COLUMN IF NOT EXISTS apply_telegram TEXT;
+ALTER TABLE aurix_tickets ADD COLUMN IF NOT EXISTS apply_total_deposit TEXT;
+
+CREATE TABLE IF NOT EXISTS aurix_celsius_submissions (
+  id               BIGSERIAL PRIMARY KEY,
+  guild_id         BIGINT NOT NULL,
+  guild_name       TEXT,
+  streamer_user_id BIGINT,
+  viewer_user_id   BIGINT NOT NULL,
+  viewer_username  TEXT NOT NULL,
+  celsius_pseudo   TEXT NOT NULL,
+  celsius_email    TEXT NOT NULL,
+  monthly_deposit  TEXT NOT NULL,
+  status           TEXT NOT NULL DEFAULT 'pending',
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  verified_at      TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_aurix_celsius_guild_viewer
+  ON aurix_celsius_submissions(guild_id, viewer_user_id);
+CREATE INDEX IF NOT EXISTS idx_aurix_celsius_guild_status
+  ON aurix_celsius_submissions(guild_id, status);
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

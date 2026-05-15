@@ -59,5 +59,6 @@ export const CHANNELS = {
   ANNONCES_STREAMERS: "📢-annonces-streamers",
   CHAT_STREAMERS: "💬-chat-streamers",
   PROMOTIONS: "🎁-promotions",
+  BOT_STREAMERS: "🤖-bot-pour-streamers",
   OUVRIR_TICKET: "✅-ouvrir-un-ticket",
 };

@@ -8,65 +8,36 @@ import {
   EmbedBuilder,
   type Guild,
   type GuildMember,
-  type Interaction,
-  OverwriteType,
+  ModalBuilder,
+  type ModalSubmitInteraction,
   PermissionFlagsBits,
   type OverwriteResolvable,
   TextChannel,
+  TextInputBuilder,
+  TextInputStyle,
 } from "discord.js";
 import * as cfg from "./config.js";
-import { all, kvGet, one, query } from "./db.js";
+import { kvGet, one, query } from "./db.js";
 
-const log = (...a: unknown[]) => console.log("[aurix.tickets]", ...a);
+type TicketType = "deal" | "apply";
 
-export async function handleOpenTicketButton(interaction: ButtonInteraction): Promise<void> {
-  const guild = interaction.guild;
-  const member = interaction.member as GuildMember | null;
-  if (!guild || !member) {
-    await interaction.reply({ content: "Erreur de contexte.", ephemeral: true });
-    return;
-  }
-
-  // Existing open ticket ?
-  const existing = await one<{ channel_id: string }>(
-    "SELECT channel_id FROM aurix_tickets WHERE user_id=$1 AND status='open' LIMIT 1",
-    [member.id]
-  );
-  if (existing) {
-    const ch = guild.channels.cache.get(existing.channel_id);
-    if (ch) {
-      await interaction.reply({
-        content: `${cfg.EMOJI.info} Tu as déjà un ticket ouvert : ${ch.toString()}`,
-        ephemeral: true,
-      });
-      return;
-    }
-    await query("DELETE FROM aurix_tickets WHERE channel_id=$1", [existing.channel_id]);
-  }
-
+async function createTicketChannel(
+  guild: Guild,
+  member: GuildMember,
+  type: TicketType
+): Promise<TextChannel | null> {
   const catId = await kvGet("category_tickets_open_id");
-  if (!catId) {
-    await interaction.reply({
-      content: "Setup serveur incomplet. Demande à un admin de lancer `/setup-server`.",
-      ephemeral: true,
-    });
-    return;
-  }
-
+  if (!catId) return null;
   const category = guild.channels.cache.get(catId);
-  if (!category || category.type !== ChannelType.GuildCategory) {
-    await interaction.reply({ content: "Catégorie tickets introuvable.", ephemeral: true });
-    return;
-  }
-
-  await interaction.deferReply({ ephemeral: true });
+  if (!category || category.type !== ChannelType.GuildCategory) return null;
 
   const roleDirectionId = (await kvGet("role_direction_id")) ?? "0";
   const roleModerateurId = (await kvGet("role_moderateur_id")) ?? "0";
   const me = guild.members.me!;
 
   const safe = member.user.username.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 25) || "streamer";
-  const channelName = `💎-${safe}`;
+  const prefix = type === "apply" ? "📝" : "💎";
+  const channelName = `${prefix}-${safe}`;
 
   const overwrites: OverwriteResolvable[] = [
     { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
@@ -113,19 +84,76 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
     });
   }
 
+  const topicPrefix = type === "apply" ? "Candidature de" : "Ticket privé de";
   const channel = await guild.channels.create({
     name: channelName,
     type: ChannelType.GuildText,
     parent: category.id,
-    topic: `Ticket privé de ${member.user.tag} (ID: ${member.id})`,
+    topic: `${topicPrefix} ${member.user.tag} (ID: ${member.id})`,
     permissionOverwrites: overwrites,
-    reason: `Ticket ouvert par ${member.user.tag}`,
+    reason: `Ticket ${type} ouvert par ${member.user.tag}`,
   });
 
+  return channel;
+}
+
+function buildCloseRow(): ActionRowBuilder<ButtonBuilder> {
+  const closeBtn = new ButtonBuilder()
+    .setCustomId("aurix:ticket:close")
+    .setLabel("Fermer le ticket")
+    .setStyle(ButtonStyle.Danger)
+    .setEmoji("🔒");
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(closeBtn);
+}
+
+async function ensureNoOpenTicket(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  guild: Guild,
+  member: GuildMember
+): Promise<boolean> {
+  const existing = await one<{ channel_id: string }>(
+    "SELECT channel_id FROM aurix_tickets WHERE user_id=$1 AND status='open' LIMIT 1",
+    [member.id]
+  );
+  if (existing) {
+    const ch = guild.channels.cache.get(existing.channel_id);
+    if (ch) {
+      await interaction.reply({
+        content: `${cfg.EMOJI.info} Tu as déjà un ticket ouvert : ${ch.toString()}`,
+        ephemeral: true,
+      });
+      return false;
+    }
+    await query("DELETE FROM aurix_tickets WHERE channel_id=$1", [existing.channel_id]);
+  }
+  return true;
+}
+
+export async function handleOpenTicketDealButton(interaction: ButtonInteraction): Promise<void> {
+  const guild = interaction.guild;
+  const member = interaction.member as GuildMember | null;
+  if (!guild || !member) {
+    await interaction.reply({ content: "Erreur de contexte.", ephemeral: true });
+    return;
+  }
+  if (!(await ensureNoOpenTicket(interaction, guild, member))) return;
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const channel = await createTicketChannel(guild, member, "deal");
+  if (!channel) {
+    await interaction.editReply({
+      content: "Setup serveur incomplet ou catégorie tickets introuvable. Demande à un admin de lancer `/setup-server`.",
+    });
+    return;
+  }
+
   await query(
-    "INSERT INTO aurix_tickets(channel_id,user_id,status) VALUES($1,$2,'open')",
+    "INSERT INTO aurix_tickets(channel_id,user_id,status,type) VALUES($1,$2,'open','deal')",
     [channel.id, member.id]
   );
+
+  const roleDirectionId = (await kvGet("role_direction_id")) ?? "0";
 
   const embed = new EmbedBuilder()
     .setTitle(`${cfg.EMOJI.diamond}  Bienvenue ${member.displayName}`)
@@ -145,20 +173,13 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
     .setColor(cfg.COLOR.PRIMARY)
     .setFooter({ text: `${cfg.BRAND.NAME} • Ticket #${channel.id}` });
 
-  const closeBtn = new ButtonBuilder()
-    .setCustomId("aurix:ticket:close")
-    .setLabel("Fermer le ticket")
-    .setStyle(ButtonStyle.Danger)
-    .setEmoji("🔒");
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(closeBtn);
-
   const mentionParts = [`<@${member.id}>`];
   if (roleDirectionId !== "0") mentionParts.push(`<@&${roleDirectionId}>`);
 
   await channel.send({
     content: mentionParts.join(" "),
     embeds: [embed],
-    components: [row],
+    components: [buildCloseRow()],
     allowedMentions: { users: [member.id], roles: roleDirectionId !== "0" ? [roleDirectionId] : [] },
   });
 
@@ -166,7 +187,160 @@ export async function handleOpenTicketButton(interaction: ButtonInteraction): Pr
     content: `${cfg.EMOJI.check} Ticket ouvert : ${channel.toString()}`,
   });
 
-  await logEvent(guild, `🎫 Ticket ouvert par <@${member.id}> → ${channel.toString()}`);
+  await logEvent(guild, `${cfg.EMOJI.ticket} Ticket deal ouvert par <@${member.id}> → ${channel.toString()}`);
+}
+
+export async function handleOpenTicketApplyButton(interaction: ButtonInteraction): Promise<void> {
+  const guild = interaction.guild;
+  const member = interaction.member as GuildMember | null;
+  if (!guild || !member) {
+    await interaction.reply({ content: "Erreur de contexte.", ephemeral: true });
+    return;
+  }
+  if (!(await ensureNoOpenTicket(interaction, guild, member))) return;
+
+  const modal = new ModalBuilder()
+    .setCustomId("aurix:ticket:apply:modal")
+    .setTitle("Candidature Aurix");
+
+  const emailInput = new TextInputBuilder()
+    .setCustomId("email")
+    .setLabel("Adresse email")
+    .setPlaceholder("exemple@mail.com")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(120);
+  const telegramInput = new TextInputBuilder()
+    .setCustomId("telegram")
+    .setLabel("Pseudo Telegram (@pseudo)")
+    .setPlaceholder("@MonPseudo")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+  const depositInput = new TextInputBuilder()
+    .setCustomId("total_deposit")
+    .setLabel("Total déposé à ce jour (€)")
+    .setPlaceholder("Ex : 12 500 €")
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(64);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(emailInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(telegramInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(depositInput)
+  );
+
+  await interaction.showModal(modal);
+}
+
+export async function handleApplyTicketModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const guild = interaction.guild;
+  const member = interaction.member as GuildMember | null;
+  if (!guild || !member) {
+    await interaction.reply({ content: "Erreur de contexte.", ephemeral: true });
+    return;
+  }
+  if (!(await ensureNoOpenTicket(interaction, guild, member))) return;
+
+  const email = interaction.fields.getTextInputValue("email").trim();
+  const telegram = interaction.fields.getTextInputValue("telegram").trim();
+  const totalDeposit = interaction.fields.getTextInputValue("total_deposit").trim();
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const channel = await createTicketChannel(guild, member, "apply");
+  if (!channel) {
+    await interaction.editReply({
+      content: "Setup serveur incomplet ou catégorie tickets introuvable. Demande à un admin de lancer `/setup-server`.",
+    });
+    return;
+  }
+
+  await query(
+    `INSERT INTO aurix_tickets(channel_id,user_id,status,type,apply_email,apply_telegram,apply_total_deposit)
+     VALUES($1,$2,'open','apply',$3,$4,$5)`,
+    [channel.id, member.id, email, telegram, totalDeposit]
+  );
+
+  const roleDirectionId = (await kvGet("role_direction_id")) ?? "0";
+
+  const embed = new EmbedBuilder()
+    .setTitle(`📝  Candidature de ${member.displayName}`)
+    .setDescription(
+      [
+        `Salut <@${member.id}> — merci pour ta candidature chez **${cfg.BRAND.NAME}** ${cfg.EMOJI.diamond}`,
+        "",
+        "**Infos fournies :**",
+        `• ✉️ Email : \`${email}\``,
+        `• 💬 Telegram : \`${telegram}\``,
+        `• 💰 Total déposé : \`${totalDeposit}\``,
+        "",
+        "**Dernière étape — pour valider ta candidature** :",
+        "📹 Envoie ici **une vidéo de ton dashboard casino** prouvant tes dépôts et stats.",
+        "Sans cette vidéo, la candidature ne peut pas être traitée.",
+        "",
+        "La direction te répondra dès la vidéo reçue.",
+      ].join("\n")
+    )
+    .setColor(cfg.COLOR.PRIMARY)
+    .setFooter({ text: `${cfg.BRAND.NAME} • Candidature #${channel.id}` });
+
+  const mentionParts = [`<@${member.id}>`];
+  if (roleDirectionId !== "0") mentionParts.push(`<@&${roleDirectionId}>`);
+
+  await channel.send({
+    content: mentionParts.join(" "),
+    embeds: [embed],
+    components: [buildCloseRow()],
+    allowedMentions: { users: [member.id], roles: roleDirectionId !== "0" ? [roleDirectionId] : [] },
+  });
+
+  await interaction.editReply({
+    content: `${cfg.EMOJI.check} Candidature envoyée : ${channel.toString()}`,
+  });
+
+  await logEvent(
+    guild,
+    `📝 Candidature ouverte par <@${member.id}> → ${channel.toString()} (email \`${email}\`, telegram \`${telegram}\`, total \`${totalDeposit}\`)`
+  );
+}
+
+export async function handleMemberJoin(member: GuildMember): Promise<void> {
+  try {
+    const chId = await kvGet("channel_bienvenue_id");
+    if (!chId) return;
+    const ch = member.guild.channels.cache.get(chId);
+    if (!ch || ch.type !== ChannelType.GuildText) return;
+
+    const openTicketId = await kvGet("channel_open_ticket_id");
+    const openTicketMention = openTicketId ? `<#${openTicketId}>` : "le salon **✅-ouvrir-un-ticket**";
+
+    const embed = new EmbedBuilder()
+      .setTitle(`👋  Bienvenue ${member.user.username} chez ${cfg.BRAND.NAME}`)
+      .setDescription(
+        [
+          `Salut <@${member.id}>, content de te voir ici ${cfg.EMOJI.diamond}`,
+          "",
+          `Pour commencer, **ouvre ton ticket** dans ${openTicketMention} :`,
+          "",
+          "• **💎 J'ai déjà un deal** — on crée directement ta room privée.",
+          "• **📝 Je veux postuler** — on ouvre un ticket de candidature, tu remplis tes infos et tu joins une vidéo de ton dashboard casino.",
+          "",
+          "À tout de suite 👇",
+        ].join("\n")
+      )
+      .setColor(cfg.COLOR.PRIMARY)
+      .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+
+    await (ch as TextChannel).send({
+      content: `<@${member.id}>`,
+      embeds: [embed],
+      allowedMentions: { users: [member.id] },
+    });
+  } catch (e) {
+    console.error("[aurix.tickets] welcome failed:", e);
+  }
 }
 
 export async function handleCloseTicketButton(interaction: ButtonInteraction): Promise<void> {

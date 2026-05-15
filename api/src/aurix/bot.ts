@@ -14,11 +14,14 @@ import { loadEnv } from "./env.js";
 import * as cfg from "./config.js";
 import { kvSet } from "./db.js";
 import { runMigrations } from "./migrate.js";
-import { commandDefinitions } from "./commands.js";
+import { guildCommandDefinitions, globalCommandDefinitions } from "./commands.js";
 import { runSetup } from "./setup.js";
 import {
-  handleOpenTicketButton,
+  handleOpenTicketDealButton,
+  handleOpenTicketApplyButton,
+  handleApplyTicketModal,
   handleCloseTicketButton,
+  handleMemberJoin,
   onMemberRemove,
   onMemberUpdate,
 } from "./tickets.js";
@@ -32,6 +35,11 @@ import {
   startCutoffTask,
 } from "./refill.js";
 import { handleConfig, handlePing } from "./admin.js";
+import {
+  handleCelsiusCommand,
+  handleCelsiusModal,
+  handleAutrixCommand,
+} from "./celsius.js";
 
 export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
@@ -54,18 +62,23 @@ export async function startAurixBot(): Promise<void> {
       console.log(`[aurix] GUILD_ID auto-détecté : ${guildId}`);
     }
 
-    // Enregistre les slash commands
+    // Enregistre les slash commands : Aurix guild (commandes agence) + global (celsius/autrix)
     try {
       const rest = new REST({ version: "10" }).setToken(env.DISCORD_TOKEN);
       if (guildId) {
         await rest.put(Routes.applicationGuildCommands(env.DISCORD_APP_ID, guildId), {
-          body: commandDefinitions,
+          body: guildCommandDefinitions,
         });
-        console.log(`[aurix] Slash commands enregistrées sur guild ${guildId} : ${commandDefinitions.length}`);
-      } else {
-        await rest.put(Routes.applicationCommands(env.DISCORD_APP_ID), { body: commandDefinitions });
-        console.log(`[aurix] Slash commands enregistrées globalement : ${commandDefinitions.length}`);
+        console.log(
+          `[aurix] Guild commands enregistrées sur ${guildId} : ${guildCommandDefinitions.length}`
+        );
       }
+      await rest.put(Routes.applicationCommands(env.DISCORD_APP_ID), {
+        body: globalCommandDefinitions,
+      });
+      console.log(
+        `[aurix] Global commands enregistrées : ${globalCommandDefinitions.length} (celsius / autrix)`
+      );
     } catch (e) {
       console.error("[aurix] Erreur enregistrement commands :", e);
     }
@@ -75,7 +88,6 @@ export async function startAurixBot(): Promise<void> {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
         try {
-          // Vérifie un flag KV pour faire le setup une seule fois
           const { one } = await import("./db.js");
           const flag = await one<{ value: string }>("SELECT value FROM aurix_kv WHERE key=$1", [
             "initial_setup_done",
@@ -92,7 +104,6 @@ export async function startAurixBot(): Promise<void> {
       }
     }
 
-    // Démarre la tâche cutoff
     startCutoffTask(c);
 
     await c.user.setPresence({
@@ -105,26 +116,36 @@ export async function startAurixBot(): Promise<void> {
     try {
       // Buttons
       if (interaction.isButton()) {
-        if (interaction.customId === "aurix:ticket:open") {
-          await handleOpenTicketButton(interaction);
-          return;
-        }
-        if (interaction.customId === "aurix:ticket:close") {
-          await handleCloseTicketButton(interaction);
-          return;
+        switch (interaction.customId) {
+          case "aurix:ticket:open":
+          case "aurix:ticket:open:deal":
+            await handleOpenTicketDealButton(interaction);
+            return;
+          case "aurix:ticket:open:apply":
+            await handleOpenTicketApplyButton(interaction);
+            return;
+          case "aurix:ticket:close":
+            await handleCloseTicketButton(interaction);
+            return;
         }
         return;
       }
 
       // Modals
       if (interaction.isModalSubmit()) {
-        if (interaction.customId === "aurix:refill:firstEmail") {
-          await handleFirstRefillEmailModal(interaction);
-          return;
-        }
-        if (interaction.customId === "aurix:compte:save") {
-          await handleCompteModal(interaction);
-          return;
+        switch (interaction.customId) {
+          case "aurix:refill:firstEmail":
+            await handleFirstRefillEmailModal(interaction);
+            return;
+          case "aurix:compte:save":
+            await handleCompteModal(interaction);
+            return;
+          case "aurix:ticket:apply:modal":
+            await handleApplyTicketModal(interaction);
+            return;
+          case "aurix:celsius:save":
+            await handleCelsiusModal(interaction);
+            return;
         }
         return;
       }
@@ -172,6 +193,12 @@ export async function startAurixBot(): Promise<void> {
           case "ping":
             await handlePing(ci);
             return;
+          case "celsius":
+            await handleCelsiusCommand(ci);
+            return;
+          case "autrix":
+            await handleAutrixCommand(ci);
+            return;
         }
       }
     } catch (e) {
@@ -188,6 +215,18 @@ export async function startAurixBot(): Promise<void> {
     }
   });
 
+  client.on(Events.GuildMemberAdd, async (member) => {
+    if (member.partial) {
+      try {
+        await member.fetch();
+      } catch {
+        return;
+      }
+    }
+    if (env.GUILD_ID && member.guild.id !== env.GUILD_ID) return;
+    await handleMemberJoin(member as any);
+  });
+
   client.on(Events.GuildMemberRemove, async (member) => {
     if (member.partial) {
       try {
@@ -196,11 +235,17 @@ export async function startAurixBot(): Promise<void> {
         return;
       }
     }
+    if (env.GUILD_ID && member.guild.id !== env.GUILD_ID) return;
     await onMemberRemove(member as any);
   });
 
   client.on(Events.GuildMemberUpdate, async (before, after) => {
+    if (env.GUILD_ID && after.guild.id !== env.GUILD_ID) return;
     await onMemberUpdate(before as any, after as any);
+  });
+
+  client.on(Events.GuildCreate, (guild) => {
+    console.log(`[aurix] Joined new guild: ${guild.name} (${guild.id}) — owner=${guild.ownerId}`);
   });
 
   await client.login(env.DISCORD_TOKEN);
