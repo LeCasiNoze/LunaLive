@@ -46,6 +46,10 @@ import {
   handleWatcherValidate,
   handleWatcherRejectButton,
   handleWatcherRejectModal,
+  handleQueueAccept,
+  handleQueuePass,
+  handleQueueRejectButton,
+  handleQueueFilterSelect,
 } from "./watcher.js";
 
 export async function startAurixBot(): Promise<void> {
@@ -92,7 +96,7 @@ export async function startAurixBot(): Promise<void> {
 
     // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
     // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-    const SETUP_VERSION = "3";
+    const SETUP_VERSION = "4";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -146,12 +150,33 @@ export async function startAurixBot(): Promise<void> {
           await handleWatcherSort(interaction);
           return;
         }
+        if (cid.startsWith("aurix:watcher:queue:accept:")) {
+          await handleQueueAccept(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:queue:pass:")) {
+          await handleQueuePass(interaction);
+          return;
+        }
+        if (cid.startsWith("aurix:watcher:queue:reject:")) {
+          await handleQueueRejectButton(interaction);
+          return;
+        }
         if (cid.startsWith("aurix:watcher:validate:")) {
           await handleWatcherValidate(interaction);
           return;
         }
         if (cid.startsWith("aurix:watcher:reject:")) {
           await handleWatcherRejectButton(interaction);
+          return;
+        }
+        return;
+      }
+
+      // Select menus
+      if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === "aurix:watcher:queue:filter") {
+          await handleQueueFilterSelect(interaction);
           return;
         }
         return;

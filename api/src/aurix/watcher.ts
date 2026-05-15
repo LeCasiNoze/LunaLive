@@ -8,9 +8,14 @@ import {
   type Client,
   EmbedBuilder,
   type Guild,
+  type GuildMember,
+  type MessageActionRowComponentBuilder,
   ModalBuilder,
   type ModalSubmitInteraction,
   PermissionFlagsBits,
+  StringSelectMenuBuilder,
+  type StringSelectMenuInteraction,
+  StringSelectMenuOptionBuilder,
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
@@ -36,7 +41,10 @@ type Submission = {
   created_at: Date;
   reject_reason: string | null;
   review_message_id: string | null;
+  skipped_at: Date | null;
 };
+
+const QUEUE_FILTER_ALL = "__ALL__";
 
 function sortClause(mode: SortMode): string {
   switch (mode) {
@@ -245,6 +253,9 @@ export async function ensureWatcherBoard(guild: Guild): Promise<void> {
 
   if (newListId !== listId) await kvSet("watcher_list_message_id", newListId);
   if (newStatsId !== statsId) await kvSet("watcher_stats_message_id", newStatsId);
+
+  // 3e message sticky : file de traitement (1 demande à la fois + boutons).
+  await ensureQueueMessage(guild);
 }
 
 export async function refreshWatcherBoard(client: Client): Promise<void> {
@@ -429,11 +440,276 @@ export async function handleWatcherRejectModal(interaction: ModalSubmitInteracti
   await interaction.editReply({ content: "🔴 Demande refusée." });
 }
 
-function isModerator(interaction: ButtonInteraction): boolean {
-  const member = interaction.member;
+function isModerator(interaction: { member: GuildMember | null | unknown }): boolean {
+  const member = interaction.member as any;
   if (!member) return false;
-  const perms = (member as any).permissions;
-  if (perms && typeof perms.has === "function" && perms.has(PermissionFlagsBits.Administrator)) return true;
-  if (perms && typeof perms.has === "function" && perms.has(PermissionFlagsBits.ManageMessages)) return true;
-  return false;
+  const perms = member.permissions;
+  if (!perms || typeof perms.has !== "function") return false;
+  return perms.has(PermissionFlagsBits.Administrator) || perms.has(PermissionFlagsBits.ManageMessages);
+}
+
+// ═════════════════════════════════════════════════════════
+// File de traitement (3e message sticky)
+// ═════════════════════════════════════════════════════════
+
+async function getQueueFilter(): Promise<string> {
+  return (await kvGet("watcher_queue_filter")) || QUEUE_FILTER_ALL;
+}
+
+async function fetchPendingGuilds(): Promise<{ guild_id: string; guild_name: string | null; count: number }[]> {
+  const rows = await all<{ guild_id: string; guild_name: string | null; count: string }>(
+    `SELECT guild_id, MAX(guild_name) AS guild_name, COUNT(*)::text AS count
+       FROM aurix_celsius_submissions
+       WHERE status='pending'
+       GROUP BY guild_id
+       ORDER BY COUNT(*) DESC`
+  );
+  return rows.map((r) => ({ guild_id: r.guild_id, guild_name: r.guild_name, count: Number(r.count) || 0 }));
+}
+
+async function fetchNextPending(filterGuildId: string): Promise<Submission | null> {
+  const useFilter = filterGuildId && filterGuildId !== QUEUE_FILTER_ALL;
+  const where = useFilter ? "WHERE status='pending' AND guild_id=$1" : "WHERE status='pending'";
+  const params = useFilter ? [filterGuildId] : [];
+  return one<Submission>(
+    `SELECT * FROM aurix_celsius_submissions
+       ${where}
+       ORDER BY COALESCE(skipped_at, created_at) ASC, id ASC
+       LIMIT 1`,
+    params
+  );
+}
+
+async function countPendingForFilter(filterGuildId: string): Promise<number> {
+  const useFilter = filterGuildId && filterGuildId !== QUEUE_FILTER_ALL;
+  const row = useFilter
+    ? await one<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM aurix_celsius_submissions WHERE status='pending' AND guild_id=$1",
+        [filterGuildId]
+      )
+    : await one<{ n: string }>(
+        "SELECT COUNT(*)::text AS n FROM aurix_celsius_submissions WHERE status='pending'"
+      );
+  return row ? Number(row.n) || 0 : 0;
+}
+
+function buildQueueEmbed(
+  sub: Submission | null,
+  filterGuildName: string | null,
+  remaining: number,
+  isMulti: boolean
+): EmbedBuilder {
+  const filterLabel = filterGuildName ? `🎯 Filtre actif : **${filterGuildName}**` : "🌐 Tous les streamers";
+
+  if (!sub) {
+    return new EmbedBuilder()
+      .setTitle("🎯  File de traitement")
+      .setColor(cfg.COLOR.SUCCESS)
+      .setDescription(
+        [
+          filterLabel,
+          "",
+          "🎉 **Plus aucune demande en attente** sur ce filtre.",
+          "",
+          "Sélectionne un autre streamer ou attends qu'une nouvelle demande arrive.",
+        ].join("\n")
+      )
+      .setFooter({ text: `${cfg.BRAND.NAME} • File vide` });
+  }
+
+  const guildLabel = sub.guild_name ? sub.guild_name : `guild ${sub.guild_id}`;
+  return new EmbedBuilder()
+    .setTitle("🎯  File de traitement — demande à traiter")
+    .setColor(cfg.COLOR.WARNING)
+    .setDescription(
+      [
+        filterLabel,
+        `📊 **${remaining}** demande${remaining > 1 ? "s" : ""} en attente`,
+        "",
+        "─────────────────────",
+        "",
+        `👤 **Viewer :** <@${sub.viewer_user_id}> · \`${sub.viewer_username}\``,
+        `🎰 **Pseudo Celsius :** \`${sub.celsius_pseudo}\``,
+        `✉️ **Email :** \`${sub.celsius_email}\``,
+        `💰 **Dépôt moyen / mois :** \`${fmtAmount(sub)}\``,
+        `🌐 **Serveur d'origine :** *${guildLabel}*`,
+        isMulti ? "\n⚠️ *Ce viewer est inscrit sur **plusieurs serveurs** — à examiner.*" : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .setFooter({ text: `${cfg.BRAND.NAME} • Submission #${sub.id}` });
+}
+
+function buildQueueActionRows(
+  sub: Submission | null,
+  pendingGuilds: { guild_id: string; guild_name: string | null; count: number }[],
+  currentFilter: string
+): ActionRowBuilder<MessageActionRowComponentBuilder>[] {
+  const rows: ActionRowBuilder<MessageActionRowComponentBuilder>[] = [];
+
+  // Row 1: select menu pour filtrer par streamer
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("aurix:watcher:queue:filter")
+    .setPlaceholder("Filtrer par streamer…");
+
+  const opts: StringSelectMenuOptionBuilder[] = [
+    new StringSelectMenuOptionBuilder()
+      .setLabel("🌐 Tous les streamers")
+      .setValue(QUEUE_FILTER_ALL)
+      .setDefault(currentFilter === QUEUE_FILTER_ALL),
+  ];
+
+  for (const g of pendingGuilds.slice(0, 24)) {
+    const name = (g.guild_name || `Guild ${g.guild_id.slice(-4)}`).slice(0, 60);
+    opts.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(`${name} · ${g.count} en attente`.slice(0, 100))
+        .setValue(g.guild_id)
+        .setDefault(currentFilter === g.guild_id)
+    );
+  }
+  select.addOptions(opts);
+  rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select));
+
+  // Row 2: boutons d'action (uniquement si une demande à traiter)
+  if (sub) {
+    const acceptBtn = new ButtonBuilder()
+      .setCustomId(`aurix:watcher:queue:accept:${sub.id}`)
+      .setLabel("Accepter")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("🟢");
+    const passBtn = new ButtonBuilder()
+      .setCustomId(`aurix:watcher:queue:pass:${sub.id}`)
+      .setLabel("Passer")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("⏭️");
+    const rejectBtn = new ButtonBuilder()
+      .setCustomId(`aurix:watcher:queue:reject:${sub.id}`)
+      .setLabel("Refuser")
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji("🔴");
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(acceptBtn, passBtn, rejectBtn));
+  }
+
+  return rows;
+}
+
+export async function ensureQueueMessage(guild: Guild): Promise<void> {
+  const ch = await getWatcherChannel(guild);
+  if (!ch) return;
+
+  const me = guild.members.me;
+  if (!me) return;
+
+  const filter = await getQueueFilter();
+  const [next, pendingGuilds, multi] = await Promise.all([
+    fetchNextPending(filter),
+    fetchPendingGuilds(),
+    fetchMultiServerUserIds(),
+  ]);
+
+  // Si le filtre actif n'a plus rien, on retombe sur "Tous" automatiquement.
+  let effectiveFilter = filter;
+  if (!next && filter !== QUEUE_FILTER_ALL) {
+    effectiveFilter = QUEUE_FILTER_ALL;
+    await kvSet("watcher_queue_filter", QUEUE_FILTER_ALL);
+  }
+  const finalNext = effectiveFilter === filter ? next : await fetchNextPending(effectiveFilter);
+  const remaining = await countPendingForFilter(effectiveFilter);
+
+  const filterName = (() => {
+    if (effectiveFilter === QUEUE_FILTER_ALL) return null;
+    const g = pendingGuilds.find((g) => g.guild_id === effectiveFilter);
+    return g?.guild_name ?? `Guild ${effectiveFilter.slice(-4)}`;
+  })();
+
+  const isMulti = finalNext ? multi.has(finalNext.viewer_user_id) : false;
+  const payload = {
+    embeds: [buildQueueEmbed(finalNext, filterName, remaining, isMulti)],
+    components: buildQueueActionRows(finalNext, pendingGuilds, effectiveFilter),
+  };
+
+  const existingId = await kvGet("watcher_queue_message_id");
+  if (existingId) {
+    try {
+      const m = await ch.messages.fetch(existingId);
+      if (m.author.id === me.id) {
+        await m.edit(payload);
+        return;
+      }
+    } catch {
+      /* not found, fall through */
+    }
+  }
+  const msg = await ch.send(payload);
+  await kvSet("watcher_queue_message_id", msg.id);
+}
+
+// ───────────── Queue handlers ─────────────
+export async function handleQueueAccept(interaction: ButtonInteraction): Promise<void> {
+  const submissionId = Number(interaction.customId.split(":").pop());
+  if (!Number.isFinite(submissionId)) {
+    await interaction.reply({ content: "Submission invalide.", ephemeral: true });
+    return;
+  }
+  if (!isModerator(interaction)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  await interaction.deferUpdate();
+  await query(
+    "UPDATE aurix_celsius_submissions SET status='verified', decided_by=$1, verified_at=NOW(), reject_reason=NULL WHERE id=$2",
+    [interaction.user.id, submissionId]
+  );
+  await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+}
+
+export async function handleQueuePass(interaction: ButtonInteraction): Promise<void> {
+  const submissionId = Number(interaction.customId.split(":").pop());
+  if (!Number.isFinite(submissionId)) {
+    await interaction.reply({ content: "Submission invalide.", ephemeral: true });
+    return;
+  }
+  if (!isModerator(interaction)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  await interaction.deferUpdate();
+  await query(
+    "UPDATE aurix_celsius_submissions SET skipped_at=NOW() WHERE id=$1 AND status='pending'",
+    [submissionId]
+  );
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+}
+
+export async function handleQueueRejectButton(interaction: ButtonInteraction): Promise<void> {
+  const submissionId = interaction.customId.split(":").pop()!;
+  if (!isModerator(interaction)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  const modal = new ModalBuilder()
+    .setCustomId(`aurix:watcher:reject:modal:${submissionId}`)
+    .setTitle("Refuser la demande");
+  const reason = new TextInputBuilder()
+    .setCustomId("reason")
+    .setLabel("Raison du refus (visible par le viewer)")
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(true)
+    .setMaxLength(500);
+  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(reason));
+  await interaction.showModal(modal);
+}
+
+export async function handleQueueFilterSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (!isModerator(interaction as any)) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+  const value = interaction.values[0] || QUEUE_FILTER_ALL;
+  await kvSet("watcher_queue_filter", value);
+  await interaction.deferUpdate();
+  if (interaction.guild) await ensureWatcherBoard(interaction.guild);
 }

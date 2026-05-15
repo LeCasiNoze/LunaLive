@@ -92,6 +92,14 @@ CREATE INDEX IF NOT EXISTS idx_aurix_celsius_viewer ON aurix_celsius_submissions
 CREATE INDEX IF NOT EXISTS idx_aurix_celsius_deposit ON aurix_celsius_submissions(monthly_deposit_amount);
 `,
   },
+  {
+    name: "004_celsius_review_queue.sql",
+    sql: `
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS skipped_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_aurix_celsius_queue
+    ON aurix_celsius_submissions(status, skipped_at, created_at);
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {
