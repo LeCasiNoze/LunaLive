@@ -453,6 +453,13 @@ function applyConfig(
       const newCtaInner = `R&Eacute;CLAMEZ VOS <span data-bind-offer-value="bonus">${esc(bonus)}&euro;</span>`;
       html = html.replace(/<a([^>]*class="btn-jouer"[^>]*)>[\s\S]*?<\/a>/, `<a$1>${newCtaInner}</a>`);
       html = html.replace(/<a([^>]*class="sticky-cta"[^>]*)>[\s\S]*?<\/a>/, `<a$1>${newCtaInner}</a>`);
+      // V3 M2 : offset vertical pour aligner avec l'editor preview (sinon le
+      // texte est colle au top, surtout quand brand-signature est masque).
+      const verticalOffsetCss = `<style data-affi-m5-v3-offset>
+.hero-content{padding-top:113px !important;}
+@media (max-width:720px){.hero-content{padding-top:80px !important;}}
+</style>`;
+      html = html.replace(/<\/head>/, `${verticalOffsetCss}\n</head>`);
     } else {
       // V1 phrasing (legacy)
       html = html.replace(

@@ -124,12 +124,17 @@ export function applyM5V1Config(
 </style>`;
   html = html.replace(/<\/head>/, `${verticalOffsetCss}\n</head>`);
 
-  // 3) Pseudo (brand-logo-main)
-  if (cfg.pseudo && cfg.pseudo.trim()) {
-    html = html.replace(
-      /<span class="brand-logo-main">[^<]*<\/span>/,
-      `<span class="brand-logo-main">${esc(cfg.pseudo.trim())}</span>`
-    );
+  // 3) Pseudo (brand-logo-main) — toujours remplacer (vide si pseudo vide)
+  const pseudoTrim = (cfg.pseudo || "").trim();
+  html = html.replace(
+    /<span class="brand-logo-main">[^<]*<\/span>/,
+    `<span class="brand-logo-main">${esc(pseudoTrim)}</span>`
+  );
+  // Pseudo vide → masque tout le bloc brand-signature (sinon le template
+  // garde "LECASINOZE" hardcode visible).
+  if (!pseudoTrim) {
+    const hideSig = `<style data-affi-m5-hide-sig>.brand-signature{display:none !important;}</style>`;
+    html = html.replace(/<\/head>/, `${hideSig}\n</head>`);
   }
 
   // 4) Affi link sur tous les CTAs
