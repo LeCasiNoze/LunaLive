@@ -88,6 +88,11 @@ export function M8Penalty({
   // 3 chances : miss (1er), goal (2eme → +50%), goal (3eme → +100%)
   const [attempt, setAttempt] = React.useState(0);
   const [goalsScored, setGoalsScored] = React.useState(0);
+  // ballStage: pendant un miss, etape de la trajectoire de la balle
+  //   "fly" = vol normal vers la cible
+  //   "impact" = balle arrive sur le gardien (pause courte)
+  //   "deflect" = balle deviee hors cage
+  const [ballStage, setBallStage] = React.useState<"fly" | "impact" | "deflect">("fly");
   const ATTEMPT_OUTCOMES: ReadonlyArray<"miss" | "goal"> = ["miss", "goal", "goal"];
   const TOTAL_ATTEMPTS = ATTEMPT_OUTCOMES.length;
   // Paliers de gain en fonction du nb de buts marques
@@ -107,20 +112,28 @@ export function M8Penalty({
     sfx.click();
     setAim(zone);
     setPhase("shooting");
+    setBallStage("impact");  // balle vise le gardien (defaut)
     sfx.tension(700);
     const outcome = ATTEMPT_OUTCOMES[attempt];
     const isLastShot = attempt === TOTAL_ATTEMPTS - 1;
 
     window.setTimeout(() => {
       if (outcome === "miss") {
-        sfx.loss();
-        setPhase("missed");
-        // Retour a idle apres 1.7s, incremente le compteur
+        // 1. Balle arrive sur le gardien (impact court)
+        sfx.reelStop();
+        // 2. Apres pause, balle deviee hors cage
+        window.setTimeout(() => {
+          setBallStage("deflect");
+          sfx.loss();
+          setPhase("missed");
+        }, 250);
+        // 3. Retour a idle apres l'anim de deflection
         window.setTimeout(() => {
           setAim(null);
+          setBallStage("fly");
           setAttempt((a) => a + 1);
           setPhase("idle");
-        }, 1700);
+        }, 1900);
       } else {
         sfx.win();
         setGoalsScored((g) => g + 1);
@@ -146,13 +159,17 @@ export function M8Penalty({
     if (!aim) return { left: 50, top: 88, scale: 1, rotate: 0 };
     const spin = 720 + (aim === "L" ? -22 : aim === "R" ? 22 : 8);
     if (!willScoreNow) {
-      // Tir arrete par le gardien — ball DEVIEE et sort de la cage
-      // aim L → ball repoussee tres a gauche et plus bas (rebond hors-poteau)
-      // aim R → repoussee tres a droite
-      // aim C → ball monte au-dessus de la barre transversale (parry haut)
-      if (aim === "C") return { left: 50, top: 12, scale: 0.5, rotate: 540 };
-      const left = aim === "L" ? 4 : 96;
-      return { left, top: 70, scale: 0.5, rotate: aim === "L" ? -540 : 540 };
+      // 2 etapes : impact sur le gardien puis deflection hors cage
+      if (ballStage !== "deflect") {
+        // Etape impact : balle arrive sur la position du gardien (qui plonge du meme cote)
+        if (aim === "C") return { left: 50, top: 38, scale: 0.55, rotate: 540 };
+        const impactLeft = aim === "L" ? 23 : 77;
+        return { left: impactLeft, top: 42, scale: 0.55, rotate: aim === "L" ? -360 : 360 };
+      }
+      // Etape deflect : balle ricochee hors de la cage
+      if (aim === "C") return { left: 50, top: 10, scale: 0.45, rotate: 900 };
+      const deflectLeft = aim === "L" ? 3 : 97;
+      return { left: deflectLeft, top: 72, scale: 0.45, rotate: aim === "L" ? -720 : 720 };
     }
     // Goal : ball entre dans le filet (top entre 42% et 50% = a l'interieur de la cage)
     const targetLeft = aim === "L" ? 24 : aim === "R" ? 76 : 50;
