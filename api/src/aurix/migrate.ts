@@ -1,5 +1,9 @@
--- Aurix bot — schéma Postgres (préfixe aurix_ pour cohabiter avec LunaLive)
+import { pool } from "../db.js";
 
+const MIGRATIONS: { name: string; sql: string }[] = [
+  {
+    name: "001_init.sql",
+    sql: `
 CREATE TABLE IF NOT EXISTS aurix_kv (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -46,3 +50,35 @@ CREATE TABLE IF NOT EXISTS aurix_user_accounts (
     casino_username  TEXT,
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+`,
+  },
+];
+
+export async function runMigrations(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS aurix_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  for (const m of MIGRATIONS) {
+    const applied = await pool.query("SELECT 1 FROM aurix_migrations WHERE name=$1", [m.name]);
+    if (applied.rowCount && applied.rowCount > 0) continue;
+
+    console.log(`[aurix.migrate] applying ${m.name}`);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(m.sql);
+      await client.query("INSERT INTO aurix_migrations(name) VALUES($1)", [m.name]);
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+  console.log("[aurix.migrate] done.");
+}
