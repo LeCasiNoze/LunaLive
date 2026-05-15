@@ -1,4 +1,4 @@
-// /celsius (viewers) + /autrix (streamer-owner) — fonctionnent sur N'IMPORTE QUEL serveur où le bot est invité.
+// /celsius (viewers) + /aurix (streamer-owner) — fonctionnent sur N'IMPORTE QUEL serveur où le bot est invité.
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -298,8 +298,8 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
   }
 }
 
-// ───────────── /autrix ─────────────
-export async function handleAutrixCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+// ───────────── /aurix ─────────────
+export async function handleAurixCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const guild = interaction.guild;
   if (!guild) {
     await interaction.reply({ content: "Commande utilisable uniquement en serveur.", ephemeral: true });

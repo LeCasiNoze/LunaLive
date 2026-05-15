@@ -40,7 +40,7 @@ import {
   handleCelsiusCommand,
   handleCelsiusModal,
   handleCelsiusModifyButton,
-  handleAutrixCommand,
+  handleAurixCommand,
 } from "./celsius.js";
 import {
   handleWatcherSort,
@@ -74,7 +74,7 @@ export async function startAurixBot(): Promise<void> {
       console.log(`[aurix] GUILD_ID auto-détecté : ${guildId}`);
     }
 
-    // Enregistre les slash commands : Aurix guild (commandes agence) + global (celsius/autrix)
+    // Enregistre les slash commands : Aurix guild (commandes agence) + global (celsius/aurix)
     try {
       const rest = new REST({ version: "10" }).setToken(env.DISCORD_TOKEN);
       if (guildId) {
@@ -89,7 +89,7 @@ export async function startAurixBot(): Promise<void> {
         body: globalCommandDefinitions,
       });
       console.log(
-        `[aurix] Global commands enregistrées : ${globalCommandDefinitions.length} (celsius / autrix)`
+        `[aurix] Global commands enregistrées : ${globalCommandDefinitions.length} (celsius / aurix)`
       );
     } catch (e) {
       console.error("[aurix] Erreur enregistrement commands :", e);
@@ -97,7 +97,7 @@ export async function startAurixBot(): Promise<void> {
 
     // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
     // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-    const SETUP_VERSION = "5";
+    const SETUP_VERSION = "6";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -258,8 +258,8 @@ export async function startAurixBot(): Promise<void> {
           case "celsius":
             await handleCelsiusCommand(ci);
             return;
-          case "autrix":
-            await handleAutrixCommand(ci);
+          case "aurix":
+            await handleAurixCommand(ci);
             return;
         }
       }

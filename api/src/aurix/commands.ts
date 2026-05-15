@@ -92,7 +92,7 @@ export const globalCommandDefinitions = [
     dm_permission: false,
   },
   {
-    name: "autrix",
+    name: "aurix",
     description: "(Streamer-owner) Statistiques Aurix de ton serveur.",
     dm_permission: false,
   },

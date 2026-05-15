@@ -451,11 +451,11 @@ async function postBotInvitePanel(channel: TextChannel): Promise<void> {
         "• `/celsius` — *pour tes viewers*",
         "   Chaque viewer enregistre son **pseudo Celsius** et son **email**. L'équipe Aurix vérifie ensuite que le compte est **bien affilié à toi** ; une fois validé, le viewer apparaît dans tes stats comme **vérifié**.",
         "",
-        "• `/autrix` — *réservé à toi (owner du serveur)*",
+        "• `/aurix` — *réservé à toi (owner du serveur)*",
         "   Affiche en temps réel : nb de viewers **en cours de validation** et nb **vérifiés**.",
         "   Le bot te reconnaît automatiquement comme streamer Aurix via ton compte Discord (owner du serveur).",
         "",
-        "**Pour inviter le bot, clique sur le bouton ci-dessous**, autorise sur ton serveur, puis tape `/autrix` pour vérifier que tout fonctionne.",
+        "**Pour inviter le bot, clique sur le bouton ci-dessous**, autorise sur ton serveur, puis tape `/aurix` pour vérifier que tout fonctionne.",
       ].join("\n")
     )
     .setColor(cfg.COLOR.PRIMARY)
