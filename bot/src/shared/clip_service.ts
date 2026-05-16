@@ -8,9 +8,9 @@ async function notifyStreamerOfFirstAutoClip(_pool: any, _streamerId: number, _c
 
 const DLIVE_ENDPOINT = process.env.DLIVE_GRAPHQL_ENDPOINT || "https://graphigo.prd.dlive.tv/";
 
-const LATENCY_PAD_SEC  = 0;     // Pas de compensation latence (cible: 1m15 avant / 15s après la commande)
-const DEFAULT_PRE_SEC  = 75;   // 1m15 avant la commande/détection
-const DEFAULT_POST_SEC = 15;   // 15s après la commande/détection
+const LATENCY_PAD_SEC  = 0;     // Pas de compensation latence (cible: 1m45 avant / 15s après la commande)
+const DEFAULT_PRE_SEC  = 105;  // 1m45 avant la commande/détection
+const DEFAULT_POST_SEC = 15;   // 15s après la commande/détection → clip total 2m00
 
 type LiveStart = { createdAtMs: number; permlink: string };
 type Pool = any; // Type générique pour éviter la dépendance pg
