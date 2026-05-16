@@ -247,7 +247,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   await kvSet("category_staff_id", catStaff.id);
 
   // ─── Info salons ───
-  await getOrCreateTextChannel(
+  const chReglement = await getOrCreateTextChannel(
     guild,
     catInfo,
     cfg.CHANNELS.REGLEMENT,
@@ -356,6 +356,8 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   await kvSet("channel_watcher_id", chWatcher.id);
 
   // ─── Panel ticket message + persistent button ───
+  await postWelcomePanel(chBienvenue);
+  await postRulesPanel(chReglement);
   await postTicketPanel(chOpenTicket);
   await postBotInvitePanel(chBotStreamers);
 
@@ -470,4 +472,131 @@ async function postBotInvitePanel(channel: TextChannel): Promise<void> {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(btnInvite);
 
   await channel.send({ embeds: [embed], components: [row] });
+}
+
+async function postWelcomePanel(channel: TextChannel): Promise<void> {
+  await purgeBotMessages(channel);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${cfg.EMOJI.diamond}  Bienvenue chez ${cfg.BRAND.NAME}`)
+    .setDescription(
+      [
+        "Ce Discord est l'**espace privé de l'agence Aurix** pour ses streamers et candidats.",
+        "C'est ici qu'on échange directement, qu'on traite tes refills, et qu'on partage les promos et deals exclusifs.",
+      ].join("\n")
+    )
+    .setColor(cfg.COLOR.PRIMARY)
+    .addFields(
+      {
+        name: "🎯  À quoi ça sert",
+        value: [
+          `• **Discuter directement avec la direction** ${cfg.BRAND.NAME}`,
+          `• **Demander tes refills** (\`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\` par demande, ${cfg.EMOJI.diamond} en quotidien)`,
+          "• **Échanger avec les autres streamers** affiliés",
+          "• **Recevoir les deals & promotions exclusives** réservés à l'agence",
+        ].join("\n"),
+      },
+      {
+        name: "🎫  Comment ça démarre",
+        value: [
+          "1. Ouvre ton ticket dans **✅-ouvrir-un-ticket**",
+          "   • **💎 J'ai déjà un deal** → ta room privée est créée tout de suite",
+          "   • **📝 Je veux postuler** → formulaire rapide (email / Telegram / total dépôt + vidéo dashboard)",
+          "2. La direction te répond dans ton ticket",
+        ].join("\n"),
+      },
+      {
+        name: `💰  Comment demander un refill (\`/refill\`)`,
+        value: [
+          "Une fois ton ticket ouvert :",
+          "• Tape `/refill` **dans ton ticket** pour déclencher une demande",
+          `• **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** par demande, **une demande / jour**`,
+          "• La 1ʳᵉ fois tu renseignes ton **email casino** ; ensuite c'est mémorisé, plus rien à retaper",
+          "• Si tu te trompes ou changes d'avis : `/refill-cancel` annule la demande **avant le cutoff**",
+          "• Le batch du jour est envoyé au manager après le cutoff — tu n'as rien à faire de plus",
+          "",
+          "**Astuce :** `/compte` te permet de mettre à jour ton **Telegram**, ton **email** et ton **pseudo casino** quand tu veux.",
+        ].join("\n"),
+      },
+      {
+        name: "📜  Avant de commencer",
+        value:
+          "**Lis le règlement** dans **📌-règlement**. C'est court, c'est clair, ça évite les malentendus.",
+      }
+    )
+    .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+
+  await channel.send({ embeds: [embed] });
+}
+
+async function postRulesPanel(channel: TextChannel): Promise<void> {
+  await purgeBotMessages(channel);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`📌  Règlement ${cfg.BRAND.NAME}`)
+    .setDescription(
+      "Règles à respecter pour tous les membres de l'agence. Le non-respect peut entraîner des sanctions allant du simple rappel à la **rupture immédiate du contrat**."
+    )
+    .setColor(cfg.COLOR.WARNING)
+    .addFields(
+      {
+        name: "1. 🤝  Comportement général",
+        value: [
+          "• Respect mutuel entre membres et avec la direction.",
+          "• Pas d'insulte, pas de harcèlement, pas de discrimination.",
+          "• Pas de spam, ni d'auto-promo non autorisée (autres agences, autres casinos, etc.).",
+          "• Pas de partage de liens douteux / NSFW / scams.",
+        ].join("\n"),
+      },
+      {
+        name: "2. 🔒  Confidentialité",
+        value: [
+          "• Ce qui est dit dans ton **ticket privé** reste entre toi et la direction.",
+          "• Ne partage **aucun screenshot** des salons internes (deals, promos, refills, staff-chat) en dehors du serveur.",
+          "• Les codes promo et offres exclusives sont **strictement réservés à l'agence**.",
+        ].join("\n"),
+      },
+      {
+        name: `3. 💰  Refills`,
+        value: [
+          `• **\`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\` par demande**, **une demande maximum par jour** via \`/refill\`.`,
+          "• Le **cutoff quotidien** (heure de verrouillage du batch) est annoncé par la direction — toute demande après le cutoff passe au lendemain.",
+          "• Pas de double demande, pas de demande pour un tiers.",
+          "• L'email renseigné doit être **celui de ton compte casino** — toute info fausse bloque ton refill.",
+        ].join("\n"),
+      },
+      {
+        name: "4. 💎  Deals & affiliation",
+        value: [
+          "• En rejoignant l'agence, tu t'engages à respecter **les termes de ton deal personnel**.",
+          "• Tu joues **uniquement avec le compte casino renseigné à la direction**. Multi-comptes = exclusion immédiate.",
+          "• **Toute fraude au dépôt** (faux justificatifs, faux dashboards, dépôts gonflés) est détectée et constitue un **motif de rupture immédiate du contrat**.",
+          "• Toute tentative de **détournement de joueurs** vers une autre agence pendant la durée du deal = rupture.",
+        ].join("\n"),
+      },
+      {
+        name: "5. 📹  Preuves & dashboards",
+        value: [
+          "• Lors d'une candidature, la **vidéo de ton dashboard casino** doit être authentique et complète.",
+          "• Toute capture éditée, masquée ou trafiquée est un motif de refus définitif.",
+          "• La direction peut te demander des **preuves complémentaires** à tout moment (statement officiel du casino, etc.).",
+        ].join("\n"),
+      },
+      {
+        name: "6. 📺  Stream & mentions",
+        value: [
+          "• Tu respectes la **fréquence de stream** et les **mentions de marque** prévues dans ton deal.",
+          "• Les **promotions et codes exclusifs Aurix** sont à utiliser uniquement après validation par la direction.",
+          "• Aucune communication officielle au nom de l'agence sans accord préalable.",
+        ].join("\n"),
+      },
+      {
+        name: "7. 📣  Mises à jour",
+        value:
+          "Ce règlement peut évoluer. Les changements seront annoncés dans **📣-annonces** et appliqués immédiatement.",
+      }
+    )
+    .setFooter({ text: `${cfg.BRAND.NAME} • Si tu as un doute, ouvre un ticket et demande.` });
+
+  await channel.send({ embeds: [embed] });
 }
