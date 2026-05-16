@@ -365,8 +365,12 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   await kvSet("channel_watcher_id", chWatcher.id);
 
   // ─── Panel ticket message + persistent button ───
-  await postWelcomePanel(chALire);
-  await postRulesPanel(chReglement);
+  await postWelcomePanel(chALire, {
+    openTicketId: chOpenTicket.id,
+    reglementId: chReglement.id,
+    botStreamersId: chBotStreamers.id,
+  });
+  await postRulesPanel(chReglement, { annoncesId: chAnnonces.id });
   await postTicketPanel(chOpenTicket);
   await postBotInvitePanel(chBotStreamers);
 
@@ -483,8 +487,15 @@ async function postBotInvitePanel(channel: TextChannel): Promise<void> {
   await channel.send({ embeds: [embed], components: [row] });
 }
 
-async function postWelcomePanel(channel: TextChannel): Promise<void> {
+async function postWelcomePanel(
+  channel: TextChannel,
+  refs: { openTicketId: string; reglementId: string; botStreamersId: string }
+): Promise<void> {
   await purgeBotMessages(channel);
+
+  const openTicketMention = `<#${refs.openTicketId}>`;
+  const reglementMention = `<#${refs.reglementId}>`;
+  const botStreamersMention = `<#${refs.botStreamersId}>`;
 
   const embed = new EmbedBuilder()
     .setTitle(`${cfg.EMOJI.diamond}  Bienvenue chez ${cfg.BRAND.NAME}`)
@@ -508,7 +519,7 @@ async function postWelcomePanel(channel: TextChannel): Promise<void> {
       {
         name: "🎫  Comment ça démarre",
         value: [
-          "1. Ouvre ton ticket dans **✅-ouvrir-un-ticket**",
+          `1. Ouvre ton ticket dans ${openTicketMention}`,
           "   • **💎 J'ai déjà un deal** → ta room privée est créée tout de suite",
           "   • **📝 Je veux postuler** → formulaire rapide (email / Telegram / total dépôt + vidéo dashboard)",
           "2. La direction te répond dans ton ticket",
@@ -528,9 +539,19 @@ async function postWelcomePanel(channel: TextChannel): Promise<void> {
         ].join("\n"),
       },
       {
+        name: `🤖  Le bot Aurix sur ton propre Discord`,
+        value: [
+          `Tu es streamer ? Tu peux **inviter le bot Aurix sur ton serveur Discord** pour offrir à tes viewers une commande de **validation d'affiliation Celsius** — et suivre ton vivier en direct.`,
+          "",
+          "• `/celsius` (tes viewers) → ils renseignent **pseudo Celsius + email** ; l'équipe Aurix vérifie ensuite qu'ils sont bien affiliés à toi.",
+          "• `/aurix` (toi, owner du serveur) → **stats en temps réel** : en cours de validation / vérifiés.",
+          "",
+          `👉 Toutes les infos + bouton d'invitation : ${botStreamersMention}`,
+        ].join("\n"),
+      },
+      {
         name: "📜  Avant de commencer",
-        value:
-          "**Lis le règlement** dans **📌-règlement**. C'est court, c'est clair, ça évite les malentendus.",
+        value: `**Lis le règlement** dans ${reglementMention}. C'est court, c'est clair, ça évite les malentendus.`,
       }
     )
     .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
@@ -538,8 +559,12 @@ async function postWelcomePanel(channel: TextChannel): Promise<void> {
   await channel.send({ embeds: [embed] });
 }
 
-async function postRulesPanel(channel: TextChannel): Promise<void> {
+async function postRulesPanel(
+  channel: TextChannel,
+  refs: { annoncesId: string }
+): Promise<void> {
   await purgeBotMessages(channel);
+  const annoncesMention = `<#${refs.annoncesId}>`;
 
   const embed = new EmbedBuilder()
     .setTitle(`📌  Règlement ${cfg.BRAND.NAME}`)
@@ -603,8 +628,7 @@ async function postRulesPanel(channel: TextChannel): Promise<void> {
       },
       {
         name: "7. 📣  Mises à jour",
-        value:
-          "Ce règlement peut évoluer. Les changements seront annoncés dans **📣-annonces** et appliqués immédiatement.",
+        value: `Ce règlement peut évoluer. Les changements seront annoncés dans ${annoncesMention} et appliqués immédiatement.`,
       }
     )
     .setFooter({ text: `${cfg.BRAND.NAME} • Si tu as un doute, ouvre un ticket et demande.` });
