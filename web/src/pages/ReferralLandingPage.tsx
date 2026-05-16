@@ -919,6 +919,23 @@ export default function ReferralLandingPage() {
     trackAffiEvent(safeSlug, "view");
   }, [status, slug]);
 
+  // BFcache : quand l'user revient sur l'onglet via le bouton back du
+  // navigateur, la page est restauree depuis le cache → React ne re-mount pas,
+  // la view ne re-fire pas, mais les clics CTA fonctionnent toujours.
+  // C'est ce qui explique des CTR > 100% : l'utilisateur clique le CTA,
+  // ouvre le casino dans un nouvel onglet, revient sur notre landing via le
+  // bouton back du casino, re-clique le CTA → 1 view + N clics.
+  // Fix : re-fire la view quand event.persisted=true (= restore bfcache).
+  React.useEffect(() => {
+    const safeSlug = String(slug || "").trim();
+    if (!safeSlug) return;
+    const onPageshow = (event: PageTransitionEvent) => {
+      if (event.persisted) trackAffiEvent(safeSlug, "view");
+    };
+    window.addEventListener("pageshow", onPageshow);
+    return () => window.removeEventListener("pageshow", onPageshow);
+  }, [slug]);
+
   // V3 analytics : intercepte les clics sur CTA d'affi en délégation globale
   // (via capture). Détection : <a> avec href externe OU class incluant
   // btn-jouer / sticky-cta / chest-link / final-chest-link / cta-final-btn.
