@@ -278,6 +278,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   await kvSet("channel_annonces_id", chAnnonces.id);
   await kvSet("channel_bienvenue_id", chBienvenue.id);
   await kvSet("channel_a_lire_id", chALire.id);
+  await kvSet("channel_reglement_id", chReglement.id);
 
   // ─── Ouvrir-ticket ───
   const chOpenTicket = await getOrCreateTextChannel(

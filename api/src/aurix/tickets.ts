@@ -309,7 +309,11 @@ export async function handleMemberJoin(member: GuildMember): Promise<void> {
     if (!ch || ch.type !== ChannelType.GuildText) return;
 
     const openTicketId = await kvGet("channel_open_ticket_id");
-    const openTicketMention = openTicketId ? `<#${openTicketId}>` : "le salon **✅-ouvrir-un-ticket**";
+    const aLireId = await kvGet("channel_a_lire_id");
+    const reglementId = await kvGet("channel_reglement_id");
+    const openTicketMention = openTicketId ? `<#${openTicketId}>` : "**✅-ouvrir-un-ticket**";
+    const aLireMention = aLireId ? `<#${aLireId}>` : "**📖-à-lire**";
+    const reglementMention = reglementId ? `<#${reglementId}>` : "**📌-règlement**";
 
     const embed = new EmbedBuilder()
       .setTitle(`👋  Bienvenue ${member.user.username} chez ${cfg.BRAND.NAME}`)
@@ -317,10 +321,11 @@ export async function handleMemberJoin(member: GuildMember): Promise<void> {
         [
           `Salut <@${member.id}>, content de te voir ici ${cfg.EMOJI.diamond}`,
           "",
-          `Pour commencer, **ouvre ton ticket** dans ${openTicketMention} :`,
-          "",
-          "• **💎 J'ai déjà un deal** — on crée directement ta room privée.",
-          "• **📝 Je veux postuler** — on ouvre un ticket de candidature, tu remplis tes infos et tu joins une vidéo de ton dashboard casino.",
+          `1️⃣  Lis ${aLireMention} pour comprendre comment ça marche.`,
+          `2️⃣  Lis ${reglementMention} (c'est court).`,
+          `3️⃣  Ouvre ton ticket dans ${openTicketMention} :`,
+          "      • **💎 J'ai déjà un deal** — on crée directement ta room privée.",
+          "      • **📝 Je veux postuler** — formulaire rapide + vidéo dashboard.",
           "",
           "À tout de suite 👇",
         ].join("\n")
