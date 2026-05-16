@@ -52,6 +52,7 @@ export const CHANNELS = {
   REGLEMENT: "📌-règlement",
   ANNONCES: "📣-annonces",
   BIENVENUE: "🎉-bienvenue",
+  A_LIRE: "📖-à-lire",
   STAFF_CHAT: "💬-staff-chat",
   REFILLS: "📋-refills-en-cours",
   LOGS: "🔔-logs",

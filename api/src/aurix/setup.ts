@@ -268,8 +268,16 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
     "🎉 Bienvenue dans la famille Aurix.",
     ow.public
   );
+  const chALire = await getOrCreateTextChannel(
+    guild,
+    catInfo,
+    cfg.CHANNELS.A_LIRE,
+    "📖 Panneau d'information — comment fonctionne l'agence Aurix.",
+    ow.public
+  );
   await kvSet("channel_annonces_id", chAnnonces.id);
   await kvSet("channel_bienvenue_id", chBienvenue.id);
+  await kvSet("channel_a_lire_id", chALire.id);
 
   // ─── Ouvrir-ticket ───
   const chOpenTicket = await getOrCreateTextChannel(
@@ -356,7 +364,7 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
   await kvSet("channel_watcher_id", chWatcher.id);
 
   // ─── Panel ticket message + persistent button ───
-  await postWelcomePanel(chBienvenue);
+  await postWelcomePanel(chALire);
   await postRulesPanel(chReglement);
   await postTicketPanel(chOpenTicket);
   await postBotInvitePanel(chBotStreamers);
@@ -569,9 +577,11 @@ async function postRulesPanel(channel: TextChannel): Promise<void> {
         name: "4. 💎  Deals & affiliation",
         value: [
           "• En rejoignant l'agence, tu t'engages à respecter **les termes de ton deal personnel**.",
-          "• Tu joues **uniquement avec le compte casino renseigné à la direction**. Multi-comptes = exclusion immédiate.",
-          "• **Toute fraude au dépôt** (faux justificatifs, faux dashboards, dépôts gonflés) est détectée et constitue un **motif de rupture immédiate du contrat**.",
-          "• Toute tentative de **détournement de joueurs** vers une autre agence pendant la durée du deal = rupture.",
+          "• Tu joues **uniquement avec le compte casino renseigné à la direction**.",
+          "• **Toute fraude est détectée et entraîne la rupture immédiate du contrat** :",
+          "  – **Auto-affiliation** : créer un compte casino sous ton propre lien d'affiliation pour toucher la commission sur tes propres dépôts.",
+          "  – **Multi-comptes** : un de tes affiliés qui crée plusieurs comptes, ou des comptes ouverts uniquement pour gonfler tes stats.",
+          "  – **Faux justificatifs / dashboards trafiqués / dépôts gonflés**.",
         ].join("\n"),
       },
       {
