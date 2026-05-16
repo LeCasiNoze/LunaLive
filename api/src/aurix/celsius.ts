@@ -12,8 +12,8 @@ import {
   TextInputStyle,
 } from "discord.js";
 import * as cfg from "./config.js";
-import { one, query } from "./db.js";
-import { postSubmissionReview, refreshWatcherBoard } from "./watcher.js";
+import { all, one, query } from "./db.js";
+import { refreshWatcherBoard } from "./watcher.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -290,7 +290,6 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
 
   if (inserted) {
     try {
-      await postSubmissionReview(interaction.client, inserted.id);
       await refreshWatcherBoard(interaction.client);
     } catch (e) {
       console.error("[aurix.celsius] watcher refresh failed:", e);
@@ -299,6 +298,41 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
 }
 
 // ───────────── /aurix ─────────────
+type AurixListRow = {
+  viewer_user_id: string;
+  viewer_username: string;
+  celsius_pseudo: string;
+  celsius_email: string;
+  monthly_deposit: string;
+  status: "pending" | "verified" | "rejected";
+};
+
+function statusEmoji(s: "pending" | "verified" | "rejected"): string {
+  if (s === "verified") return "🟢";
+  if (s === "rejected") return "🔴";
+  return "🟡";
+}
+
+function buildSectionField(
+  title: string,
+  rows: AurixListRow[]
+): { name: string; value: string } {
+  if (rows.length === 0) return { name: title, value: "*(personne)*" };
+  const lines = rows.map((r) => `• <@${r.viewer_user_id}> · \`${r.celsius_email}\``);
+  let chunk = "";
+  let used = 0;
+  for (const line of lines) {
+    const next = chunk ? `${chunk}\n${line}` : line;
+    if (next.length > 980) break;
+    chunk = next;
+    used++;
+  }
+  if (used < lines.length) {
+    chunk += `\n*… et **${lines.length - used}** autre(s)*`;
+  }
+  return { name: title, value: chunk };
+}
+
 export async function handleAurixCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const guild = interaction.guild;
   if (!guild) {
@@ -314,32 +348,102 @@ export async function handleAurixCommand(interaction: ChatInputCommandInteractio
     return;
   }
 
-  const row = await one<{ pending: string; verified: string; rejected: string; total: string }>(
-    `SELECT
-       COUNT(*) FILTER (WHERE status='pending')  AS pending,
-       COUNT(*) FILTER (WHERE status='verified') AS verified,
-       COUNT(*) FILTER (WHERE status='rejected') AS rejected,
-       COUNT(*)                                  AS total
-     FROM aurix_celsius_submissions
-     WHERE guild_id=$1`,
+  const targetUser = interaction.options.getUser("viewer");
+
+  // ─── Mode 1 : recherche d'un viewer précis ───
+  if (targetUser) {
+    const sub = await one<AurixListRow & { reject_reason: string | null; created_at: Date }>(
+      `SELECT viewer_user_id, viewer_username, celsius_pseudo, celsius_email,
+              monthly_deposit, status, reject_reason, created_at
+         FROM aurix_celsius_submissions
+        WHERE guild_id=$1 AND viewer_user_id=$2`,
+      [guild.id, targetUser.id]
+    );
+
+    if (!sub) {
+      const embed = new EmbedBuilder()
+        .setTitle(`👤  ${targetUser.tag}`)
+        .setDescription(
+          [
+            `<@${targetUser.id}>`,
+            "",
+            "⚪  **Aucune inscription `/celsius`** sur ce serveur.",
+            "",
+            "Ce viewer n'a pas (encore) fait la commande `/celsius` chez toi.",
+          ].join("\n")
+        )
+        .setColor(cfg.COLOR.NEUTRAL)
+        .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
+      return;
+    }
+
+    const statusLabel =
+      sub.status === "verified"
+        ? "🟢  **Vérifié**"
+        : sub.status === "rejected"
+        ? "🔴  **Refusé**"
+        : "🟡  **En cours de validation**";
+    const color =
+      sub.status === "verified"
+        ? cfg.COLOR.SUCCESS
+        : sub.status === "rejected"
+        ? cfg.COLOR.DANGER
+        : cfg.COLOR.WARNING;
+
+    const fields: { name: string; value: string; inline?: boolean }[] = [
+      { name: "🎰 Pseudo Celsius", value: `\`${sub.celsius_pseudo}\``, inline: true },
+      { name: "✉️ Email", value: `\`${sub.celsius_email}\``, inline: true },
+      { name: "💰 Dépôt / mois", value: `\`${sub.monthly_deposit}\``, inline: true },
+    ];
+    if (sub.status === "rejected" && sub.reject_reason) {
+      fields.push({ name: "Raison du refus", value: sub.reject_reason });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(`👤  ${targetUser.tag}`)
+      .setDescription(`<@${targetUser.id}>\n\n${statusLabel}`)
+      .setColor(color)
+      .addFields(fields)
+      .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+    return;
+  }
+
+  // ─── Mode 2 : stats globales + liste enrichie ───
+  const subs = await all<AurixListRow>(
+    `SELECT viewer_user_id, viewer_username, celsius_pseudo, celsius_email,
+            monthly_deposit, status
+       FROM aurix_celsius_submissions
+      WHERE guild_id=$1
+      ORDER BY status ASC, created_at DESC`,
     [guild.id]
   );
 
-  const pending = Number(row?.pending ?? 0);
-  const verified = Number(row?.verified ?? 0);
-  const rejected = Number(row?.rejected ?? 0);
-  const total = Number(row?.total ?? 0);
+  const verifiedRows = subs.filter((s) => s.status === "verified");
+  const pendingRows = subs.filter((s) => s.status === "pending");
+  const rejectedRows = subs.filter((s) => s.status === "rejected");
+  const total = subs.length;
 
   const embed = new EmbedBuilder()
     .setTitle(`📊  Stats Aurix — ${guild.name}`)
+    .setDescription(
+      [
+        `**Total inscriptions :** \`${total}\``,
+        `${statusEmoji("pending")}  En cours : \`${pendingRows.length}\`   ` +
+          `${statusEmoji("verified")}  Vérifiés : \`${verifiedRows.length}\`   ` +
+          `${statusEmoji("rejected")}  Refusés : \`${rejectedRows.length}\``,
+      ].join("\n")
+    )
     .setColor(cfg.COLOR.PRIMARY)
     .addFields(
-      { name: "⏳ En cours de validation", value: `\`${pending}\``, inline: true },
-      { name: "✅ Vérifiés", value: `\`${verified}\``, inline: true },
-      { name: "❌ Rejetés", value: `\`${rejected}\``, inline: true },
-      { name: "📈 Total inscriptions", value: `\`${total}\`` }
+      buildSectionField(`🟢  Vérifiés (${verifiedRows.length})`, verifiedRows),
+      buildSectionField(`🟡  En cours de validation (${pendingRows.length})`, pendingRows),
+      buildSectionField(`🔴  Refusés (${rejectedRows.length})`, rejectedRows)
     )
-    .setFooter({ text: `${cfg.BRAND.NAME} • Mise à jour en temps réel` });
+    .setFooter({
+      text: `${cfg.BRAND.NAME} • Astuce : /aurix viewer:@user pour vérifier un viewer précis`,
+    });
 
   await interaction.reply({ embeds: [embed], ephemeral: true });
 }

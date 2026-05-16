@@ -93,7 +93,15 @@ export const globalCommandDefinitions = [
   },
   {
     name: "aurix",
-    description: "(Streamer-owner) Statistiques Aurix de ton serveur.",
+    description: "(Streamer-owner) Stats Aurix de ton serveur + recherche d'un viewer.",
     dm_permission: false,
+    options: [
+      {
+        name: "viewer",
+        description: "Voir le statut d'inscription d'un viewer précis.",
+        type: ApplicationCommandOptionType.User,
+        required: false,
+      },
+    ],
   },
 ];
