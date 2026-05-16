@@ -926,14 +926,12 @@ export default function ReferralLandingPage() {
     const safeSlug = String(slug || "").trim();
     if (!safeSlug) return;
     const isCta = (a: HTMLAnchorElement) => {
+      // Strict : uniquement les classes de boutons CTA explicites.
+      // Le fallback "tout lien externe" inflate massivement (footer mentions
+      // legales, Trustpilot, liens disclaimer comptaient comme conversions).
       const cls = a.className || "";
-      if (typeof cls === "string" && /\b(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)\b/.test(cls)) return true;
-      const href = a.getAttribute("href") || "";
-      if (!href || href.startsWith("#") || href.startsWith("/")) return false;
-      try {
-        const u = new URL(href, window.location.origin);
-        return u.origin !== window.location.origin;
-      } catch { return false; }
+      return typeof cls === "string"
+        && /\b(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)\b/.test(cls);
     };
     const handler = (e: Event) => {
       const target = e.target as HTMLElement | null;
@@ -994,7 +992,7 @@ export default function ReferralLandingPage() {
         // V3 analytics : injecte un script qui détecte les clics CTA dans
         // l'iframe et postMessage au parent → trackAffiEvent("click_cta").
         const trackingScript = `<script data-affi-v3-track>(function(){
-          function isCta(a){var c=a.className||"";if(typeof c==="string"&&/(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)/.test(c))return true;var h=a.getAttribute("href")||"";if(!h||h[0]==="#")return false;try{var u=new URL(h,location.origin);return u.origin!==location.origin}catch(_){return false}}
+          function isCta(a){var c=a.className||"";return typeof c==="string"&&/(btn-jouer|sticky-cta|chest-link|final-chest-link|cta-final-btn|v3-cta)/.test(c)}
           document.addEventListener("click",function(e){var t=e.target;if(!t)return;var a=t.closest&&t.closest("a");if(!a||!isCta(a))return;try{window.parent.postMessage({type:"v3-cta-click"},"*")}catch(_){}},true);
         })();</script>`;
         html = html.replace(/<\/body>/, trackingScript + "\n</body>");
