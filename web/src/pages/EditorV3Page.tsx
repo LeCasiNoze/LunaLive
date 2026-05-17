@@ -994,6 +994,10 @@ function WizardQuickView({
               border: `1px solid ${T.border}`,
               borderRadius: isMobilePreview ? 24 : 8,
               overflow: "hidden",
+              // Cree un nouveau containing block pour position:fixed → tous les
+              // sticky/social-proof "fixed" des modeles M3-M10 restent confines
+              // dans le preview au lieu de coller a la fenetre.
+              transform: "translateZ(0)",
               background: inputs.modelKind === "M2" ? "#0f0d14" : (page?.globals?.bgPage || "#080212"),
               // M2 (iframe) a besoin d'une hauteur fixe pour scroller à l'intérieur.
               height: inputs.modelKind === "M2" ? (isMobilePreview ? 920 : 1100) : undefined,
