@@ -194,11 +194,12 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     m1Theme: "gold",
     m1CustomBgPage: "",
     penaltyTeam: "france",
-    // M10 defaults (Cyclope) — vides pour que l'editeur impose ses propres images/textes
+    // M10 defaults (Cyclope). L'image poulet est mise par defaut (modifiable
+    // via chips Poulet/Mines/Tower/Penalty ou URL custom dans le wizard).
     pseudoSub: "",
     followersCount: "",
     socialHandle: "",
-    gameImageUrl: "",
+    gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
     gameLabel: "",
     gameBonusPct: "",
   };
@@ -498,7 +499,9 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
       belowCards: [],
       reviews: [],
       faq: [],
-      footer: [
+      footer: kind === "M10" ? [] : [
+        // M10 (Cyclope) a son propre footer + sticky CTA integres, pas besoin
+        // du M4V1LowerSections qui injectait un 2e CTA "JOUER MAINTENANT".
         {
           id: makeV2BlockId("m4V1LowerSections"),
           type: "m4V1LowerSections",

@@ -31,6 +31,7 @@ import {
   listFsbAffiPages, createFsbAffiPage, updateFsbAffiPage, deleteFsbAffiPage,
   getFsbAffiStatsSummary,
   getFsbAffiDailyStats,
+  fetchSocialProfile,
   type AffiDailyPoint,
   type FsbAffiPage, type AffiPageStats,
 } from "../lib/api_affi_pages";
@@ -328,6 +329,74 @@ function GameImagePicker({
 // ─── Wizard view ────────────────────────────────────────────────────────────
 
 type SectionKey = "profile" | "pseudo" | "deposit" | "bonus" | "card1" | "card2" | "amounts" | "visual" | "background" | "color";
+
+function SocialProfileLoader({
+  token, update,
+}: {
+  token: string;
+  update: (patch: Partial<V3QuickInputs>) => void;
+}) {
+  const [url, setUrl] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [status, setStatus] = React.useState<{ kind: "idle" | "ok" | "error"; msg?: string }>({ kind: "idle" });
+
+  const fetchProfile = async () => {
+    if (!url.trim()) return;
+    setLoading(true);
+    setStatus({ kind: "idle" });
+    try {
+      const r = await fetchSocialProfile(token, url.trim());
+      update({
+        socialHandle: r.socialHandle,
+        followersCount: r.followersLabel || (r.followers != null ? String(r.followers) : ""),
+      });
+      setStatus({ kind: "ok", msg: `${r.network || "social"} · ${r.socialHandle}${r.followersLabel ? ` · ${r.followersLabel} followers` : ""}` });
+    } catch (e: any) {
+      const msg = (e?.message || "").toLowerCase();
+      const friendly = msg.includes("no_handle") ? "URL invalide"
+        : msg.includes("fetch_failed") ? "Profil inaccessible (privé ou bloqué)"
+        : "Erreur — saisis le handle et followers à la main";
+      setStatus({ kind: "error", msg: friendly });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      marginBottom: 14, padding: 12, border: `1px solid ${T.border}`, borderRadius: 10, background: T.bgInput,
+    }}>
+      <label style={labelStyle}>Auto-remplir handle + followers</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://tiktok.com/@xxx  ou  instagram.com/xxx"
+          style={{ ...inputStyle, flex: 1 }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void fetchProfile(); } }}
+        />
+        <button
+          type="button"
+          onClick={fetchProfile}
+          disabled={loading || !url.trim()}
+          style={{ ...btnPrimary, padding: "8px 12px", fontSize: 12, opacity: loading ? .6 : 1 }}
+        >
+          {loading ? "..." : "Récupérer"}
+        </button>
+      </div>
+      {status.kind === "ok" ? (
+        <div style={{ marginTop: 6, fontSize: 11, color: T.ok }}>✓ {status.msg}</div>
+      ) : status.kind === "error" ? (
+        <div style={{ marginTop: 6, fontSize: 11, color: T.danger }}>⚠ {status.msg}</div>
+      ) : (
+        <div style={{ marginTop: 6, fontSize: 11, color: T.textDim }}>
+          Colle un lien TikTok ou Instagram, on extrait @handle + nb de followers.
+        </div>
+      )}
+    </div>
+  );
+}
 
 function WizardQuickView({
   initialInputs,
@@ -684,6 +753,7 @@ function WizardQuickView({
 
                 {inputs.modelKind === "M10" ? (
                   <>
+                    <SocialProfileLoader token={token} update={update} />
                     <div style={{ marginBottom: 14 }}>
                       <label style={labelStyle}>Sous-titre pseudo (sous le grand nom)</label>
                       <input type="text" value={inputs.pseudoSub || ""}
@@ -711,10 +781,30 @@ function WizardQuickView({
                       </div>
                     </div>
                     <div style={{ marginBottom: 14 }}>
-                      <label style={labelStyle}>Image hero du jeu (URL)</label>
+                      <label style={labelStyle}>Image hero du jeu</label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                        <Chip
+                          active={inputs.gameImageUrl === "/affi_templates/cyclope/chicken.jpg"}
+                          onClick={() => update({ gameImageUrl: "/affi_templates/cyclope/chicken.jpg" })}
+                        >
+                          Cyclope (défaut)
+                        </Chip>
+                        {V3_GAME_IMAGES.map((g) => {
+                          const isActive = inputs.gameImageUrl === g.url;
+                          return (
+                            <Chip
+                              key={g.key}
+                              active={isActive}
+                              onClick={() => update({ gameImageUrl: g.url })}
+                            >
+                              {g.label}
+                            </Chip>
+                          );
+                        })}
+                      </div>
                       <input type="url" value={inputs.gameImageUrl || ""}
                         onChange={(e) => update({ gameImageUrl: e.target.value })}
-                        placeholder="https://… (vide = placeholder 🎰)"
+                        placeholder="ou colle une URL custom…"
                         style={inputStyle}
                       />
                       {inputs.gameImageUrl ? (

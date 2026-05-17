@@ -123,3 +123,21 @@ export function getFsbAffiDailyStats(token: string, id: number, days = 30) {
     { headers: { Authorization: `Bearer ${token}` } }
   );
 }
+
+export type SocialProfileResponse = {
+  ok: true;
+  network: "tiktok" | "instagram" | null;
+  handle: string;
+  displayName: string | null;
+  followers: number | null;
+  followersLabel: string;
+  socialHandle: string;
+};
+
+export function fetchSocialProfile(token: string, url: string) {
+  return request<SocialProfileResponse>(`/api/fsb/social-profile`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+}

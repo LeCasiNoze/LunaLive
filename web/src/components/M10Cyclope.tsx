@@ -96,16 +96,18 @@ export function M10Cyclope({
   affiLink,
   theme,
 }: M10CyclopeProps) {
-  // Palette Cyclope (cohérente avec Lovable). Surcharge possible via theme.
+  // Palette Cyclope EXACTE (Lovable source). Pas d'override theme : ce modele
+  // est concu visuellement complet, le bg M1Theme ne doit pas s'y appliquer.
   const C = {
-    accentHot:  theme?.accent       || "#FF4B6E",  // rose vif
-    accentWarm: theme?.accentLight  || "#FFB930",  // or
-    accentSoft: "#FF8A4B",                          // orange
+    accentHot:  "#FF4B6E",  // rose vif
+    accentWarm: "#FFB930",  // or
+    accentSoft: "#FF8A4B",  // orange
     cream:      "#FFE9D6",
-    bgDeep:     theme?.bgPage       || "#0B1530",
-    bgCard:     theme?.bgCard       || "#0F1B3D",
-    glow:       theme?.accentGlow   || "rgba(255,75,110,.55)",
+    bgDeep:     "#0B1530",
+    bgCard:     "#0F1B3D",
+    glow:       "rgba(255,75,110,.55)",
   };
+  void theme;
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -129,8 +131,8 @@ export function M10Cyclope({
     <div className="m10-root">
       <style>{`
         .m10-root{position:relative;min-height:100vh;overflow-x:hidden;background:
-          radial-gradient(110% 55% at 50% -10%,${C.accentHot}55 0%,${C.accentWarm}2e 35%,transparent 70%),
-          radial-gradient(80% 45% at 50% 110%,${C.accentHot}38 0%,transparent 70%),
+          radial-gradient(110% 55% at 50% -10%,rgba(255,75,110,.35) 0%,rgba(255,185,48,.18) 35%,transparent 70%),
+          radial-gradient(80% 45% at 50% 110%,rgba(255,75,110,.22) 0%,transparent 70%),
           ${C.bgDeep};
           font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;color:#fff;padding-bottom:160px}
         .m10-layer{position:relative;z-index:10}
@@ -144,23 +146,23 @@ export function M10Cyclope({
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
         .m10-name{margin-top:16px;line-height:1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
-        .m10-name-sub{margin-top:-4px;font-weight:800;font-size:.8rem;letter-spacing:.3em;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80}
+        .m10-name-line2{margin-top:2px;line-height:1;font-family:'Bagel Fat One',cursive;font-size:2.1rem;letter-spacing:.02em;background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
         .m10-pill{margin-top:12px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid ${C.accentWarm}66;box-shadow:0 2px 14px ${C.glow}26;font-size:.72rem;font-weight:600;color:#fff}
         .m10-pill-dot{width:4px;height:4px;border-radius:50%;background:${C.cream}66}
         .m10-pill-count{font-weight:800;font-size:.78rem;color:#fff}
         .m10-pill-count em{font-style:normal;font-size:.6rem;letter-spacing:.16em;font-weight:700;color:${C.cream}b3;margin-left:4px}
 
-        /* ─── Hero card ─── */
+        /* ─── Hero section (copie EXACTE de la source Cyclope) ─── */
         .m10-hero{width:100%;padding:8px 20px 24px}
-        .m10-hero-card{position:relative;max-width:380px;margin:0 auto;border-radius:28px;overflow:hidden;border:2px solid ${C.accentWarm}73;box-shadow:0 20px 60px ${C.glow}8c,0 0 0 3px rgba(255,255,255,.08),0 0 70px ${C.accentWarm}73;background:linear-gradient(135deg,${C.bgCard},${C.bgDeep});cursor:pointer;transition:transform .12s ease}
+        .m10-hero-card{position:relative;display:block;max-width:380px;margin:0 auto;border-radius:28px;overflow:hidden;border:2px solid rgba(255,185,48,.45);box-shadow:0 20px 60px rgba(255,75,110,.55),0 0 0 3px rgba(255,255,255,.08),0 0 70px rgba(255,185,48,.45);cursor:pointer;transition:transform .12s ease}
         .m10-hero-card:active{transform:scale(.98)}
         .m10-hero-img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block}
         .m10-hero-placeholder{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.28);font-size:3.5rem;background:radial-gradient(circle at 50% 40%,${C.accentHot}33,transparent 60%),${C.bgCard}}
-        .m10-hero-sticker{position:absolute;top:12px;left:12px;padding:6px 12px;border-radius:999px;background:#fff;border:1.5px solid ${C.accentHot}73;box-shadow:0 4px 12px ${C.accentHot}40;transform:rotate(-6deg);font-weight:800;font-size:.78rem;letter-spacing:.1em;color:#B91C3C}
-        .m10-hero-overlay{position:absolute;left:0;right:0;bottom:0;padding:56px 20px 24px;background:linear-gradient(to top,${C.bgDeep}f7 0%,${C.bgDeep}d1 55%,transparent 100%);text-align:center}
-        .m10-hero-pre{font-size:.72rem;font-weight:700;letter-spacing:.2em;color:rgba(255,255,255,.95)}
-        .m10-hero-prize{margin-top:4px;line-height:1;font-family:'Bagel Fat One',cursive;font-size:3rem;background:linear-gradient(180deg,#fff 0%,${C.accentWarm} 55%,${C.accentHot} 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 3px 0 rgba(0,0,0,.35))}
-        .m10-hero-sub{margin-top:6px;font-size:.66rem;font-weight:600;letter-spacing:.1em;color:${C.cream}a6}
+        /* Overlay promesse — exact replica source */
+        .m10-hero-overlay{position:absolute;left:0;right:0;bottom:0;padding:56px 20px 24px;background:linear-gradient(to top,rgba(11,21,48,.97) 0%,rgba(11,21,48,.82) 55%,transparent 100%);text-align:center;pointer-events:none}
+        .m10-hero-pre{margin:0;color:#fff;font-family:'Space Grotesk',sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.2em;opacity:.95}
+        .m10-hero-prize{margin:4px 0 0;line-height:1;font-family:'Bagel Fat One',cursive;font-size:3rem;background:linear-gradient(180deg,#fff 0%,${C.accentWarm} 55%,${C.accentHot} 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 3px 0 rgba(0,0,0,.35))}
+        .m10-hero-sub{margin:6px 0 0;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:.65rem;font-weight:600;letter-spacing:.1em;color:rgba(255,233,214,.65)}
 
         /* ─── Gains feed ─── */
         .m10-gains{width:100%;padding:32px 20px}
@@ -236,7 +238,7 @@ export function M10Cyclope({
             </div>
           </div>
           {pseudo ? <h1 className="m10-name">{pseudo}</h1> : null}
-          {pseudoSub ? <p className="m10-name-sub">{pseudoSub}</p> : null}
+          {pseudoSub ? <div className="m10-name-line2">{pseudoSub}</div> : null}
           {(socialHandle || followersCount) ? (
             <div className="m10-pill">
               {socialHandle ? <span>{socialHandle}</span> : null}
@@ -250,18 +252,17 @@ export function M10Cyclope({
           ) : null}
         </header>
 
-        {/* Hero card */}
+        {/* Hero — copie exacte de CyclopeHero.tsx (overlay bas) */}
         <section className="m10-hero">
           <a className="m10-hero-card v3-cta" href={safeAffi} onClick={onCtaClick}>
             {gameImageUrl ? (
-              <img className="m10-hero-img" src={gameImageUrl} alt={gameLabel || "Jeu bonus"} />
+              <img className="m10-hero-img" src={gameImageUrl} alt="Jeu bonus" />
             ) : (
               <div className="m10-hero-placeholder">🎰</div>
             )}
-            {gameLabel ? <div className="m10-hero-sticker">{gameLabel}</div> : null}
             <div className="m10-hero-overlay">
-              {dep ? <p className="m10-hero-pre">DÉPOSE {dep} → REÇOIS</p> : <p className="m10-hero-pre">RÉCLAME TON BONUS</p>}
-              <p className="m10-hero-prize">{bon || "BONUS"} {bon ? "GRATUITS" : ""}</p>
+              <p className="m10-hero-pre">{dep ? `DÉPOSE ${dep} → REÇOIS` : "RÉCLAME TON BONUS"}</p>
+              <p className="m10-hero-prize">{bon ? `${bon} GRATUITS` : "BONUS"}</p>
               {gameBonusPct ? <p className="m10-hero-sub">+ {gameBonusPct} bonus inclus</p> : null}
             </div>
           </a>

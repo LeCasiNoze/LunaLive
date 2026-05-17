@@ -484,3 +484,143 @@ fsbAffiPagesRouter.get(
     return res.json({ ok: true, byPage, periodDays: days });
   })
 );
+
+// ─── Social profile fetcher (TikTok / Instagram) ────────────────────────────
+function extractHandleFromUrl(rawUrl: string): { network: "tiktok" | "instagram" | null; handle: string } {
+  const url = rawUrl.trim();
+  const tt = url.match(/tiktok\.com\/@([\w.\-]+)/i);
+  if (tt) return { network: "tiktok", handle: tt[1] };
+  const ig = url.match(/instagram\.com\/([\w.\-]+)(?:[/?#]|$)/i);
+  if (ig && !["p", "reel", "explore", "accounts"].includes(ig[1])) {
+    return { network: "instagram", handle: ig[1] };
+  }
+  const at = url.match(/^@([\w.\-]+)$/);
+  if (at) return { network: null, handle: at[1] };
+  return { network: null, handle: "" };
+}
+
+function parseFollowerCount(text: string): number | null {
+  if (!text) return null;
+  const m = text.match(/([\d,.\s]+[KMkmBb]?)\s+(?:Followers|abonn[ée]s)/i);
+  if (!m) return null;
+  let raw = m[1].replace(/[\s,]/g, "").toUpperCase();
+  let multiplier = 1;
+  if (raw.endsWith("K")) { multiplier = 1_000; raw = raw.slice(0, -1); }
+  else if (raw.endsWith("M")) { multiplier = 1_000_000; raw = raw.slice(0, -1); }
+  else if (raw.endsWith("B")) { multiplier = 1_000_000_000; raw = raw.slice(0, -1); }
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * multiplier);
+}
+
+function formatFollowerCount(n: number | null): string {
+  if (n == null || n <= 0) return "";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;
+  return String(n);
+}
+
+async function fetchInstagramProfile(handle: string): Promise<{ handle: string; displayName: string | null; followers: number | null } | null> {
+  const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+    const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+    const followers = ogDesc ? parseFollowerCount(ogDesc[1]) : null;
+    const titleStr = ogTitle?.[1] || "";
+    const displayName = titleStr.split("(")[0].trim() || null;
+    return { handle, displayName, followers };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchTikTokProfileBasic(handle: string): Promise<{ handle: string; displayName: string | null; followers: number | null } | null> {
+  const url = `https://www.tiktok.com/@${encodeURIComponent(handle)}`;
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const dataMatch = html.match(/<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+    if (dataMatch) {
+      try {
+        const json = JSON.parse(dataMatch[1]);
+        const scope = json?.__DEFAULT_SCOPE__?.["webapp.user-detail"] || json?.["__DEFAULT_SCOPE__"]?.["webapp.user-detail"];
+        const u = scope?.userInfo?.user || null;
+        const s = scope?.userInfo?.stats || {};
+        if (u?.uniqueId) {
+          return {
+            handle: String(u.uniqueId),
+            displayName: String(u.nickname || u.uniqueId || "") || null,
+            followers: Number(s.followerCount ?? 0) || null,
+          };
+        }
+      } catch { /* noop */ }
+    }
+    const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+    const followers = ogDesc ? parseFollowerCount(ogDesc[1]) : null;
+    return { handle, displayName: null, followers };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+const socialProfileSchema = z.object({ url: z.string().min(1).max(500) });
+
+fsbAffiPagesRouter.post(
+  "/fsb/social-profile",
+  a(async (req, res) => {
+    const input = socialProfileSchema.safeParse(req.body || {});
+    if (!input.success) return res.status(400).json({ ok: false, error: "bad_input" });
+    const { network, handle } = extractHandleFromUrl(input.data.url);
+    if (!handle) return res.status(400).json({ ok: false, error: "no_handle_found" });
+    let profile: { handle: string; displayName: string | null; followers: number | null } | null = null;
+    let detectedNetwork: "tiktok" | "instagram" | null = network;
+    if (network === "tiktok") {
+      profile = await fetchTikTokProfileBasic(handle);
+    } else if (network === "instagram") {
+      profile = await fetchInstagramProfile(handle);
+    } else {
+      profile = await fetchTikTokProfileBasic(handle);
+      if (profile && profile.followers != null) detectedNetwork = "tiktok";
+      else {
+        profile = await fetchInstagramProfile(handle);
+        if (profile) detectedNetwork = "instagram";
+      }
+    }
+    if (!profile) return res.status(502).json({ ok: false, error: "fetch_failed" });
+    return res.json({
+      ok: true,
+      network: detectedNetwork,
+      handle: profile.handle,
+      displayName: profile.displayName,
+      followers: profile.followers,
+      followersLabel: formatFollowerCount(profile.followers),
+      socialHandle: `@${profile.handle}`,
+    });
+  })
+);
