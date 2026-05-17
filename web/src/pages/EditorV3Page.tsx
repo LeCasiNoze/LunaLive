@@ -629,13 +629,16 @@ function WizardQuickView({
           </div>
 
           {inputs.modelKind === "M10" ? (
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>Pseudo ligne 2 (optionnel)</label>
-              <input type="text" value={inputs.pseudoSub || ""} onChange={(e) => update({ pseudoSub: e.target.value })} style={inputStyle} placeholder="ex: L'HÉRITIER (laisser vide si pseudo sur 1 ligne)" />
-              <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
-                2e ligne affichée sous la ligne 1, même style chrome gradient (un peu plus petite).
+            <>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Pseudo ligne 2 (optionnel)</label>
+                <input type="text" value={inputs.pseudoSub || ""} onChange={(e) => update({ pseudoSub: e.target.value })} style={inputStyle} placeholder="ex: L'HÉRITIER (laisser vide si pseudo sur 1 ligne)" />
+                <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+                  2e ligne en cream solide letterspaced, sous la ligne chrome.
+                </div>
               </div>
-            </div>
+              {token ? <SocialProfileLoader token={token} update={update} /> : null}
+            </>
           ) : null}
 
           <div style={{ marginBottom: 14 }}>
@@ -765,7 +768,6 @@ function WizardQuickView({
 
                 {inputs.modelKind === "M10" ? (
                   <>
-                    <SocialProfileLoader token={token} update={update} />
                     <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div>
                         <label style={labelStyle}>Handle social (pill)</label>
