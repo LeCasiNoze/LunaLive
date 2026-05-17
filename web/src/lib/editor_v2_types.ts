@@ -246,7 +246,7 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   gameImageUrl?: string;
   gameLabel?: string;
   gameBonusPct?: string;
-  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "engraved" | "stamp";
+  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   /** Style typographique du pseudo (font/size/color/weight/glow).
    *  Type V3LineStyle structurellement compatible (lazy any pour éviter

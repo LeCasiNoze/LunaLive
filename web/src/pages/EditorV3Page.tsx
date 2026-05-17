@@ -911,12 +911,12 @@ function WizardQuickView({
                         <label style={labelStyle}>Habillage du texte</label>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {([
-                            { k: "fade",     l: "Fade chrome (défaut Cyclope)" },
-                            { k: "outline",  l: "Outline (contour)" },
-                            { k: "3d",       l: "3D pop (relief)" },
-                            { k: "neon",     l: "Néon glow" },
-                            { k: "engraved", l: "Gravé" },
-                            { k: "stamp",    l: "Tampon (incliné)" },
+                            { k: "fade",    l: "Fade chrome (défaut Cyclope)" },
+                            { k: "gold",    l: "Doré sticker" },
+                            { k: "outline", l: "Outline (contour)" },
+                            { k: "3d",      l: "3D pop (relief)" },
+                            { k: "neon",    l: "Néon glow" },
+                            { k: "stamp",   l: "Tampon (incliné)" },
                           ] as const).map((v) => (
                             <Chip key={v.k} active={(inputs.pseudoVariant || "fade") === v.k}
                               onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>

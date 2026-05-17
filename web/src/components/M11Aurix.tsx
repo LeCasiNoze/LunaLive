@@ -21,6 +21,8 @@ import {
 import Lenis from "lenis";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { extendPalette } from "../lib/v3_palette";
+import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M11AurixProps = {
   pseudo?: string;
@@ -41,6 +43,8 @@ export type M11AurixProps = {
     bgPage?: string;
     bgCard?: string;
   };
+  /** Style du pseudo (font / color / size / weight / glow). */
+  pseudoStyle?: V3LineStyleLike;
   onEditField?: (field: M11EditField) => void;
 };
 
@@ -170,20 +174,22 @@ export function M11Aurix({
   bonusAmount,
   affiLink,
   theme,
+  pseudoStyle,
   onEditField,
 }: M11AurixProps) {
   void onEditField;
-  void theme;
 
-  // Palette Aurix : violet électrique → cyan → magenta (aurora boréale)
+  // Palette Aurix derivee du theme M1 (or / rubis / emeraude / saphir ...).
+  // accent1/2/3 = trio aurora derive (accent + accentLight + complementaire HSL).
+  const P = extendPalette(theme, "#7C3AED");
   const C = {
-    accent1:   "#7C3AED",       // violet
-    accent2:   "#06B6D4",       // cyan
-    accent3:   "#EC4899",       // magenta
-    accentHot: "#F472B6",
-    bgDeep:    "#05060F",
-    bgCard:    "#0B0E1F",
-    glow:      "rgba(124,58,237,.55)",
+    accent1:   P.accent,
+    accent2:   P.accentLight,
+    accent3:   P.accentAlt,
+    accentHot: P.accentHot,
+    bgDeep:    P.bgPage,
+    bgCard:    P.bgCard,
+    glow:      P.glow,
   };
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
@@ -487,6 +493,15 @@ export function M11Aurix({
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.9, delay: 0.15, ease: [0.2, 0.7, 0.2, 1] }}
+                style={pseudoStyle?.color || pseudoStyle?.font ? {
+                  fontFamily: pseudoStyle.font ? `"${pseudoStyle.font}", Inter, sans-serif` : undefined,
+                  background: pseudoStyle.color ? "none" : undefined,
+                  WebkitBackgroundClip: pseudoStyle.color ? ("border-box" as any) : undefined,
+                  WebkitTextFillColor: pseudoStyle.color || undefined,
+                  color: pseudoStyle.color || undefined,
+                  filter: pseudoStyle.glow ? `drop-shadow(0 0 18px ${pseudoStyle.color || C.accent1}99)` : undefined,
+                  animation: pseudoStyle.color ? "none" : undefined,
+                } : undefined}
               >
                 {pseudo}
               </motion.h1>

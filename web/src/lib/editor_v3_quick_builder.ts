@@ -174,7 +174,7 @@ export interface V3QuickInputs {
   gameLabel?: string;
   gameBonusPct?: string;
   /** Habillage visuel du pseudo M10. */
-  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "engraved" | "stamp";
+  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
 }
 

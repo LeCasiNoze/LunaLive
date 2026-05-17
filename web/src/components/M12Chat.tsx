@@ -16,10 +16,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
+import { V3MeshBg, V3AuroraBg, V3GrainBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MagneticButton } from "./V3MagneticButton";
+import { extendPalette } from "../lib/v3_palette";
 import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M12ChatProps = {
@@ -53,12 +56,15 @@ type Tier = {
 export function M12Chat({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
 }: M12ChatProps) {
+  const P = extendPalette(theme, "#FFD700");
   const T = {
-    accent:      theme?.accent      || "#FFD700",
-    accentLight: theme?.accentLight || "#FFC200",
-    accentGlow:  theme?.accentGlow  || "rgba(255,214,0,.5)",
-    bgPage:      theme?.bgPage      || "#080212",
-    bgCard:      theme?.bgCard      || "#150821",
+    accent:      P.accent,
+    accentLight: P.accentLight,
+    accentAlt:   P.accentAlt,
+    accentHot:   P.accentHot,
+    accentGlow:  P.glow,
+    bgPage:      P.bgPage,
+    bgCard:      P.bgCard,
   };
   const safeAffi = affiLink || "#";
 
@@ -137,16 +143,21 @@ export function M12Chat({
   const ss = Math.floor((remain % 60000) / 1000);
 
   const vipRef = React.useRef<HTMLDivElement>(null);
+  const heroRef = React.useRef<HTMLElement>(null);
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
+
+  // Parallax scroll : orbs behind hero
+  const { scrollYProgress } = useScroll();
+  const orbY1 = useTransform(scrollYProgress, [0, 1], [0, -180]);
+  const orbY2 = useTransform(scrollYProgress, [0, 1], [0, 140]);
 
   return (
     <div className="m12-root">
       <style>{`
-        .m12-root{position:relative;min-height:100vh;padding:0 0 160px;background:
-          radial-gradient(80% 50% at 50% -5%,${T.accent}25 0%,transparent 65%),
-          radial-gradient(60% 40% at 50% 100%,${T.accent}15 0%,transparent 70%),
-          ${T.bgPage};
-          font-family:'Inter','Space Grotesk',sans-serif;color:#fff}
+        .m12-root{position:relative;min-height:100vh;padding:0 0 160px;background:${T.bgPage};
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow-x:hidden;
+          --c-accent:${T.accent};--c-light:${T.accentLight};--c-alt:${T.accentAlt};--c-hot:${T.accentHot};--c-glow:${T.accentGlow}}
+        .m12-layer{position:relative;z-index:10}
 
         /* ─── Urgency bar top ─── */
         .m12-urgency{display:flex;align-items:center;justify-content:center;gap:10px;padding:11px 16px;
@@ -171,9 +182,18 @@ export function M12Chat({
         .m12-tiers-label{font-size:.7rem;letter-spacing:.3em;text-transform:uppercase;opacity:.55;text-align:center;margin:0 0 12px}
         .m12-tiers-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
         .m12-tier{position:relative;padding:18px 14px 16px;border-radius:18px;cursor:pointer;text-align:left;
-          background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(0,0,0,.25));
+          background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(0,0,0,.35));
+          backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
           border:1.5px solid rgba(255,255,255,.08);transition:transform .2s cubic-bezier(.2,.7,.2,1),border-color .2s,box-shadow .2s,background .3s;
           overflow:hidden;display:flex;flex-direction:column;gap:8px;color:#fff;font-family:inherit}
+        /* Conic-gradient border anime sur les paliers VIP / Highlight */
+        .m12-tier.vip::before,.m12-tier.highlight::before{content:"";position:absolute;inset:-1px;border-radius:18px;padding:1.5px;pointer-events:none;
+          background:conic-gradient(from var(--a,0deg),var(--tier-color),#fff,var(--tier-color));
+          -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+          animation:m12-border-spin 5s linear infinite;opacity:.85}
+        .m12-tier.vip{background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.5))}
+        @property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
+        @keyframes m12-border-spin{to{--a:360deg}}
         .m12-tier:hover{transform:translateY(-3px)}
         .m12-tier.selected{border-color:var(--tier-color);box-shadow:0 0 0 2px var(--tier-color)55,0 18px 50px var(--tier-color)44;
           background:linear-gradient(160deg,var(--tier-color)22,rgba(0,0,0,.4))}
@@ -220,6 +240,11 @@ export function M12Chat({
         .m12-footer{padding:20px 22px 10px;text-align:center;opacity:.5;font-size:.66rem;line-height:1.7;max-width:460px;margin:0 auto}
         .m12-footer strong{color:#fff;font-weight:700}
 
+        /* ─── Parallax orbs hero ─── */
+        .m12-orb{position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;opacity:.5;z-index:1}
+        .m12-orb-1{width:260px;height:260px;background:${T.accent};top:8%;left:-12%}
+        .m12-orb-2{width:200px;height:200px;background:${T.accentAlt};top:30%;right:-10%;opacity:.4}
+
         /* ─── Sticky CTA mobile ─── */
         .m12-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px 14px 16px;
           background:linear-gradient(to top,${T.bgPage} 55%,${T.bgPage}dd 85%,transparent)}
@@ -236,6 +261,12 @@ export function M12Chat({
         }
       `}</style>
 
+      {/* ─── Couches ambient (mesh + aurora + grain) ─── */}
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} />
+      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.35} />
+      <V3GrainBg opacity={0.05} />
+
+      <div className="m12-layer">
       {/* ─── Urgency bar ─── */}
       <div className="m12-urgency">
         <span className="m12-urgency-icon">🔥</span>
@@ -244,7 +275,10 @@ export function M12Chat({
       </div>
 
       {/* ─── Hero ─── */}
-      <section className="m12-hero">
+      <section className="m12-hero" ref={heroRef} style={{ position: "relative" }}>
+        <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.5} size={420} />
+        <motion.div className="m12-orb m12-orb-1" style={{ y: orbY1 }} />
+        <motion.div className="m12-orb m12-orb-2" style={{ y: orbY2 }} />
         <div className="m12-avatar">
           {profileImageUrl ? <img src={profileImageUrl} alt={pseudo || ""} /> : <div className="m12-avatar-empty">👤</div>}
         </div>

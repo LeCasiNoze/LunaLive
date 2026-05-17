@@ -56,7 +56,7 @@ export type M10CyclopeProps = {
     glow?: boolean;
   };
   /** Habillage visuel du pseudo (effet texte). */
-  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "engraved" | "stamp";
+  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   /** Animation appliquee au pseudo. */
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   /** Callback editeur : appelée au clic sur un élément éditable.
@@ -154,8 +154,9 @@ export function M10Cyclope({
   const bgRgb2 = hexToRgba(C.accentWarm, 0.18);
   const bgRgb3 = hexToRgba(C.accentHot, 0.22);
 
-  // Style typo pseudo override (font/weight/color/size si fourni). Tombe
-  // sur Bagel Fat One + chrome gradient par defaut.
+  // Style typo override : SEULEMENT font/size/weight. La couleur et le rendu
+  // visuel sont entierement controles par pseudoVariant (habillage), sinon
+  // le color picker wipait le fade chrome → texte illisible en rose plat.
   const pseudoOverride: React.CSSProperties = {};
   if (pseudoStyle?.font) pseudoOverride.fontFamily = pseudoStyle.font;
   if (pseudoStyle?.weight === "bold")    pseudoOverride.fontWeight = 700;
@@ -167,14 +168,6 @@ export function M10Cyclope({
   if (pseudoStyle?.size === "l")   pseudoOverride.fontSize = "2.6rem";
   if (pseudoStyle?.size === "xl")  pseudoOverride.fontSize = "3rem";
   if (pseudoStyle?.size === "xxl") pseudoOverride.fontSize = "3.6rem";
-  // Si une couleur explicite est definie, on remplace le chrome gradient
-  // par une couleur unie (sinon le gradient ignore la color).
-  if (pseudoStyle?.color) {
-    pseudoOverride.background = "none";
-    (pseudoOverride as any).WebkitBackgroundClip = "border-box";
-    (pseudoOverride as any).WebkitTextFillColor = pseudoStyle.color;
-    pseudoOverride.color = pseudoStyle.color;
-  }
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -213,19 +206,24 @@ export function M10Cyclope({
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
         .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em}
-        /* Habillages de texte (effets différents, pas juste palette) */
-        /* fade : gradient chrome blanc → cream → or → rose → blanc (default Cyclope) */
-        .m10-name-fade{background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
-        /* outline : couleur unie + contour épais */
-        .m10-name-outline{color:#fff;-webkit-text-stroke:3px ${C.accentHot};text-shadow:0 0 18px ${C.accentHot}80}
-        /* 3d : multi-layered shadow donne profondeur sculptée */
-        .m10-name-3d{color:${C.accentWarm};text-shadow:1px 1px 0 ${C.accentHot},2px 2px 0 ${C.accentHot},3px 3px 0 ${C.accentHot},4px 4px 0 ${C.accentHot},5px 5px 0 ${C.accentHot},6px 6px 0 rgba(0,0,0,.6),0 0 22px ${C.accentWarm}88}
-        /* neon : halo lumineux multi-stop */
-        .m10-name-neon{color:#fff;text-shadow:0 0 6px #fff,0 0 14px ${C.accentHot},0 0 28px ${C.accentHot},0 0 50px ${C.accentHot},0 0 80px ${C.accentWarm}}
-        /* engraved : effet gravé (lumière haut, ombre bas inset) */
-        .m10-name-engraved{color:${C.cream};text-shadow:0 -2px 0 rgba(0,0,0,.7),0 1px 0 rgba(255,255,255,.25)}
-        /* stamp : impression tampon — couleur opaque + ombre dure décalée */
-        .m10-name-stamp{color:${C.accentHot};text-shadow:6px 6px 0 ${C.accentWarm},6px 6px 12px rgba(0,0,0,.5);transform:rotate(-2deg);transform-origin:center;display:inline-block}
+        /* === fade : gradient chrome blanc → cream → or → rose → blanc.
+            Recopie EXACTE de la source Cyclope (Lovable). === */
+        .m10-name-fade{
+          background:linear-gradient(180deg,#ffffff 0%,#FFE9D6 25%,#FFB930 55%,#FF4B6E 85%,#ffffff 100%);
+          -webkit-background-clip:text;background-clip:text;
+          -webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 2px 0 rgba(255,75,110,.55)) drop-shadow(0 0 14px rgba(255,185,48,.5));
+        }
+        /* === outline : couleur pleine + contour fin pour rester lisible === */
+        .m10-name-outline{color:#fff;-webkit-text-stroke:2px ${C.accentHot};text-shadow:0 0 22px ${C.accentHot}99}
+        /* === 3d : ombre dure compacte 3 couches, lisible === */
+        .m10-name-3d{color:${C.accentWarm};text-shadow:2px 2px 0 ${C.accentHot},4px 4px 0 ${C.accentHot}aa,6px 6px 8px rgba(0,0,0,.5)}
+        /* === neon : lettres blanches + halo accent, ultra lisible === */
+        .m10-name-neon{color:#fff;text-shadow:0 0 10px #fff,0 0 22px ${C.accentHot},0 0 44px ${C.accentHot}aa}
+        /* === stamp : couleur pleine + ombre or décalée + tilt léger === */
+        .m10-name-stamp{color:${C.accentHot};text-shadow:5px 5px 0 ${C.accentWarm}aa;display:inline-block;transform:rotate(-2deg)}
+        /* === gold : doré uni avec drop-shadow brun, type sticker === */
+        .m10-name-gold{color:${C.accentWarm};text-shadow:0 3px 0 ${C.accentHot}88,0 0 18px ${C.accentWarm}80}
         /* Animations */
         .m10-anim-pulse{animation:m10-name-pulse 1.8s ease-in-out infinite}
         .m10-anim-float{animation:m10-name-float 3s ease-in-out infinite}
