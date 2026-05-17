@@ -46,6 +46,15 @@ export type M10CyclopeProps = {
     bgCard?: string;
     borderColor?: string;
   };
+  /** Style du pseudo (font / color / size / weight / glow). Si fourni,
+   *  override le font/color Cyclope par défaut. */
+  pseudoStyle?: {
+    font?: string;
+    color?: string;
+    size?: string;
+    weight?: string;
+    glow?: boolean;
+  };
   /** Callback editeur : appelée au clic sur un élément éditable.
    *  Si undefined (rendu final), le clic est inert (sauf CTA). */
   onEditField?: (field: M10EditField) => void;
@@ -126,6 +135,40 @@ export function M10Cyclope({
     glow:       theme?.accentGlow  || "rgba(255,75,110,.55)",
   };
 
+  // Helper : convertit hex (#RRGGBB) en rgba(r,g,b,alpha) — utilise dans les
+  // radial gradients du fond pour les rendre theme-aware.
+  const hexToRgba = (hex: string, alpha: number): string => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+    if (!m) return hex;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+  };
+  const bgRgb1 = hexToRgba(C.accentHot, 0.35);
+  const bgRgb2 = hexToRgba(C.accentWarm, 0.18);
+  const bgRgb3 = hexToRgba(C.accentHot, 0.22);
+
+  // Style typo pseudo override (font/weight/color/size si fourni). Tombe
+  // sur Bagel Fat One + chrome gradient par defaut.
+  const pseudoOverride: React.CSSProperties = {};
+  if (pseudoStyle?.font) pseudoOverride.fontFamily = pseudoStyle.font;
+  if (pseudoStyle?.weight === "bold")    pseudoOverride.fontWeight = 700;
+  if (pseudoStyle?.weight === "black")   pseudoOverride.fontWeight = 900;
+  if (pseudoStyle?.weight === "regular") pseudoOverride.fontWeight = 500;
+  if (pseudoStyle?.size === "xs")  pseudoOverride.fontSize = "1.4rem";
+  if (pseudoStyle?.size === "s")   pseudoOverride.fontSize = "1.8rem";
+  if (pseudoStyle?.size === "m")   pseudoOverride.fontSize = "2.2rem";
+  if (pseudoStyle?.size === "l")   pseudoOverride.fontSize = "2.6rem";
+  if (pseudoStyle?.size === "xl")  pseudoOverride.fontSize = "3rem";
+  if (pseudoStyle?.size === "xxl") pseudoOverride.fontSize = "3.6rem";
+  // Si une couleur explicite est definie, on remplace le chrome gradient
+  // par une couleur unie (sinon le gradient ignore la color).
+  if (pseudoStyle?.color) {
+    pseudoOverride.background = "none";
+    (pseudoOverride as any).WebkitBackgroundClip = "border-box";
+    (pseudoOverride as any).WebkitTextFillColor = pseudoStyle.color;
+    pseudoOverride.color = pseudoStyle.color;
+  }
+
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
@@ -148,8 +191,8 @@ export function M10Cyclope({
     <div className="m10-root">
       <style>{`
         .m10-root{position:relative;min-height:100vh;overflow-x:hidden;background:
-          radial-gradient(110% 55% at 50% -10%,rgba(255,75,110,.35) 0%,rgba(255,185,48,.18) 35%,transparent 70%),
-          radial-gradient(80% 45% at 50% 110%,rgba(255,75,110,.22) 0%,transparent 70%),
+          radial-gradient(110% 55% at 50% -10%,${bgRgb1} 0%,${bgRgb2} 35%,transparent 70%),
+          radial-gradient(80% 45% at 50% 110%,${bgRgb3} 0%,transparent 70%),
           ${C.bgDeep};
           font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;color:#fff;padding-bottom:160px}
         .m10-layer{position:relative;z-index:10}
@@ -257,7 +300,7 @@ export function M10Cyclope({
               )}
             </div>
           </div>
-          {pseudo ? <h1 className="m10-name">{pseudo}</h1> : null}
+          {pseudo ? <h1 className="m10-name" style={pseudoOverride}>{pseudo}</h1> : null}
           {pseudoSub ? <div className="m10-name-line2">{pseudoSub}</div> : null}
           {(socialHandle || followersCount) ? (
             <div className="m10-pill">

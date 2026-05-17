@@ -216,25 +216,10 @@ export function M11Aurix({
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0.3]);
   const orbY = useTransform(scrollYProgress, [0, 1], [0, -180]);
 
-  // Lenis smooth scroll (uniquement quand non-prefers-reduced-motion)
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-    });
-    let raf = 0;
-    const tick = (time: number) => {
-      lenis.raf(time);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(raf);
-      lenis.destroy();
-    };
-  }, []);
+  // Lenis : desactive (interferait avec scroll molette dans preview editeur).
+  // Le scroll natif suffit, les animations Framer Motion utilisent useScroll
+  // qui fonctionne avec le scroll natif.
+  void Lenis;
 
   // Mouse move sur hero pour spotlight
   const onHeroMove = (e: React.MouseEvent) => {
@@ -284,7 +269,7 @@ export function M11Aurix({
         .m11-layer{position:relative;z-index:10}
 
         /* ─── HERO ─── */
-        .m11-hero{position:relative;width:100%;min-height:100vh;padding:60px 20px 40px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+        .m11-hero{position:relative;width:100%;min-height:auto;padding:24px 20px 28px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;overflow:hidden}
         .m11-hero-spotlight{position:absolute;inset:0;pointer-events:none;
           background:radial-gradient(420px 420px at var(--mx,50%) var(--my,30%), ${C.accent1}55 0%, ${C.accent3}33 30%, transparent 70%);
           mix-blend-mode:screen;transition:opacity .3s}
