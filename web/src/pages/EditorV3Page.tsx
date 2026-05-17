@@ -1133,6 +1133,28 @@ function pageColor(p: FsbAffiPage): string {
 }
 
 // Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol
+// Fusionne plusieurs series daily-stats (1 par page) en additionnant les vues/clics
+// par date. Les series doivent avoir les memes dates (30 derniers jours) — on
+// utilise la premiere comme reference pour l'ordre et on somme les autres.
+function mergeDailySeries(seriesList: AffiDailyPoint[][]): AffiDailyPoint[] {
+  if (!seriesList.length) return [];
+  const valid = seriesList.filter((s) => Array.isArray(s) && s.length > 0);
+  if (!valid.length) return [];
+  const ref = valid[0];
+  return ref.map((point, i) => {
+    let views = 0, clicks = 0, uniqueViews = 0, uniqueClicks = 0;
+    for (const s of valid) {
+      const p = s[i];
+      if (!p) continue;
+      views += p.views || 0;
+      clicks += p.clicks || 0;
+      uniqueViews += p.uniqueViews || 0;
+      uniqueClicks += p.uniqueClicks || 0;
+    }
+    return { date: point.date, views, clicks, uniqueViews, uniqueClicks };
+  });
+}
+
 function DailyChart({ series, color, label }: { series: AffiDailyPoint[]; color: string; label: string }) {
   const W = 720;
   const H = 220;
@@ -1251,22 +1273,30 @@ function StatsRankingSection({
   const [sortBy, setSortBy] = React.useState<RankingSort>("views");
   const [filterScope, setFilterScope] = React.useState<"all" | "v3" | "v1v2">("all");
   const [expanded, setExpanded] = React.useState(false);
-  const [expandedId, setExpandedId] = React.useState<number | null>(null);
+  const [expandedBrand, setExpandedBrand] = React.useState<string | null>(null);
   const [dailyCache, setDailyCache] = React.useState<Record<number, AffiDailyPoint[] | "loading" | "error">>({});
 
-  const togglePage = React.useCallback(async (pageId: number) => {
-    if (expandedId === pageId) { setExpandedId(null); return; }
-    setExpandedId(pageId);
-    if (dailyCache[pageId] && dailyCache[pageId] !== "error") return;
+  const toggleGroup = React.useCallback(async (brandKey: string, pageIds: number[]) => {
+    if (expandedBrand === brandKey) { setExpandedBrand(null); return; }
+    setExpandedBrand(brandKey);
     if (!token) return;
-    setDailyCache((prev) => ({ ...prev, [pageId]: "loading" }));
-    try {
-      const r = await getFsbAffiDailyStats(token, pageId, 30);
-      setDailyCache((prev) => ({ ...prev, [pageId]: r.series || [] }));
-    } catch {
-      setDailyCache((prev) => ({ ...prev, [pageId]: "error" }));
-    }
-  }, [expandedId, dailyCache, token]);
+    // Fetch en parallele toutes les pages de la personne (skip celles deja en cache)
+    const toFetch = pageIds.filter((id) => !dailyCache[id] || dailyCache[id] === "error");
+    if (toFetch.length === 0) return;
+    setDailyCache((prev) => {
+      const next = { ...prev };
+      for (const id of toFetch) next[id] = "loading";
+      return next;
+    });
+    await Promise.all(toFetch.map(async (id) => {
+      try {
+        const r = await getFsbAffiDailyStats(token, id, 30);
+        setDailyCache((prev) => ({ ...prev, [id]: r.series || [] }));
+      } catch {
+        setDailyCache((prev) => ({ ...prev, [id]: "error" }));
+      }
+    }));
+  }, [expandedBrand, dailyCache, token]);
 
   // Tableau enrichi avec stats + meta, filtré + trié
   const ranked = React.useMemo(() => {
@@ -1304,7 +1334,37 @@ function StatsRankingSection({
     return { v, c, uv, uc, pagesWithTraffic, avgCtr };
   }, [ranked]);
 
-  const rowsToShow = expanded ? ranked : ranked.slice(0, 10);
+  // Groupement par brandName — 1 ligne par personne, stats agregees, pages listees
+  const grouped = React.useMemo(() => {
+    const byBrand = new Map<string, { key: string; brandName: string; pages: typeof ranked }>();
+    for (const r of ranked) {
+      const key = (r.page.brandName || r.page.slug || "").toLowerCase().trim() || `_${r.page.id}`;
+      if (!byBrand.has(key)) {
+        byBrand.set(key, { key, brandName: r.page.brandName || r.page.slug || "Sans nom", pages: [] });
+      }
+      byBrand.get(key)!.pages.push(r);
+    }
+    const groups = Array.from(byBrand.values()).map((g) => {
+      const totals = g.pages.reduce((acc, r) => ({
+        views: acc.views + r.stats.views,
+        uniqueViews: acc.uniqueViews + r.stats.uniqueViews,
+        clicks: acc.clicks + r.stats.clicks,
+        uniqueClicks: acc.uniqueClicks + r.stats.uniqueClicks,
+      }), { views: 0, uniqueViews: 0, clicks: 0, uniqueClicks: 0 });
+      return { ...g, totals, ctr: totals.views > 0 ? totals.clicks / totals.views : 0 };
+    });
+    // Sort selon sortBy
+    groups.sort((a, b) => {
+      if (sortBy === "views") return b.totals.views - a.totals.views;
+      if (sortBy === "clicks") return b.totals.clicks - a.totals.clicks;
+      const ctrA = a.totals.views > 0 ? a.ctr : -1;
+      const ctrB = b.totals.views > 0 ? b.ctr : -1;
+      return ctrB - ctrA;
+    });
+    return groups;
+  }, [ranked, sortBy]);
+
+  const rowsToShow = expanded ? grouped : grouped.slice(0, 10);
 
   const sortBtn = (key: RankingSort, label: string) => (
     <button
@@ -1417,14 +1477,23 @@ function StatsRankingSection({
               </tr>
             </thead>
             <tbody>
-              {rowsToShow.map((r, i) => {
-                const ctr = r.stats.views > 0 ? r.stats.ctr * 100 : null;
-                const isTop = i < 3 && r.stats.views > 0;
-                const isOpen = expandedId === r.page.id;
-                const dailyState = dailyCache[r.page.id];
-                const curveColor = pageColor(r.page);
+              {rowsToShow.map((g, i) => {
+                const ctr = g.totals.views > 0 ? g.ctr * 100 : null;
+                const isTop = i < 3 && g.totals.views > 0;
+                const isOpen = expandedBrand === g.key;
+                const pageIds = g.pages.map((p) => p.page.id);
+                // Etat de chargement global : si AU MOINS une page est loading → loading
+                const anyLoading = pageIds.some((id) => dailyCache[id] === "loading");
+                const allReady = pageIds.every((id) => Array.isArray(dailyCache[id]));
+                // Couleur de la courbe = couleur de la page la plus active (top views) du groupe
+                const topPage = g.pages.slice().sort((a, b) => b.stats.views - a.stats.views)[0];
+                const curveColor = pageColor(topPage.page);
+                // Fusion daily-stats si toutes les pages chargees
+                const mergedSeries = allReady
+                  ? mergeDailySeries(pageIds.map((id) => dailyCache[id] as AffiDailyPoint[]))
+                  : null;
                 return (
-                  <React.Fragment key={r.page.id}>
+                  <React.Fragment key={g.key}>
                   <tr
                     style={{
                       borderTop: `1px solid ${T.border}`,
@@ -1437,40 +1506,44 @@ function StatsRankingSection({
                     </td>
                     <td
                       style={{ padding: "10px 8px", maxWidth: 240, cursor: "pointer", userSelect: "none" }}
-                      onClick={() => togglePage(r.page.id)}
-                      title="Voir l'évolution sur 30 jours"
+                      onClick={() => toggleGroup(g.key, pageIds)}
+                      title="Voir l'évolution 30 jours (toutes pages fusionnées)"
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ color: T.textMute, fontSize: 10, transition: "transform .15s ease", display: "inline-block", transform: isOpen ? "rotate(90deg)" : "rotate(0)" }}>▶</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {r.page.brandName || r.page.slug}
+                            {g.brandName}
                           </div>
-                          <div style={{ fontSize: 10, color: T.textDim, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            /r/{r.page.slug}
+                          <div style={{ fontSize: 10, color: T.textDim }}>
+                            {g.pages.length} page{g.pages.length > 1 ? "s" : ""}
                           </div>
                         </div>
                       </div>
                     </td>
                     <td style={{ padding: "10px 8px" }}>
-                      <span style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        background: r.meta.isV3 ? T.gold + "22" : T.bgInput,
-                        color: r.meta.isV3 ? T.gold : T.textMute,
-                      }}>
-                        {r.meta.modelLabel}
-                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {g.pages.map((p) => (
+                          <span key={p.page.id} style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: "2px 6px",
+                            borderRadius: 999,
+                            background: p.meta.isV3 ? T.gold + "22" : T.bgInput,
+                            color: p.meta.isV3 ? T.gold : T.textMute,
+                          }}>
+                            {p.meta.modelLabel}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      <div style={{ fontWeight: 700 }}>{r.stats.views}</div>
-                      <div style={{ fontSize: 10, color: T.textDim }}>{r.stats.uniqueViews} uniq</div>
+                      <div style={{ fontWeight: 700 }}>{g.totals.views}</div>
+                      <div style={{ fontSize: 10, color: T.textDim }}>{g.totals.uniqueViews} uniq</div>
                     </td>
                     <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                      <div style={{ fontWeight: 700 }}>{r.stats.clicks}</div>
-                      <div style={{ fontSize: 10, color: T.textDim }}>{r.stats.uniqueClicks} uniq</div>
+                      <div style={{ fontWeight: 700 }}>{g.totals.clicks}</div>
+                      <div style={{ fontSize: 10, color: T.textDim }}>{g.totals.uniqueClicks} uniq</div>
                     </td>
                     <td style={{ padding: "10px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                       {ctr === null ? (
@@ -1485,19 +1558,53 @@ function StatsRankingSection({
                       )}
                     </td>
                     <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                      <a href={`/r/${r.page.slug}`} target="_blank" rel="noreferrer" style={{ color: T.textMute, textDecoration: "none", fontSize: 14 }} title="Ouvrir">↗</a>
+                      {g.pages.length === 1 ? (
+                        <a href={`/r/${g.pages[0].page.slug}`} target="_blank" rel="noreferrer" style={{ color: T.textMute, textDecoration: "none", fontSize: 14 }} title="Ouvrir">↗</a>
+                      ) : (
+                        <span style={{ color: T.textDim, fontSize: 11 }}>{g.pages.length}</span>
+                      )}
                     </td>
                   </tr>
                   {isOpen ? (
                     <tr style={{ background: "rgba(2,6,23,.4)", borderTop: `1px solid ${T.border}` }}>
                       <td colSpan={7} style={{ padding: "16px 20px 20px" }}>
-                        {dailyState === "loading" || dailyState === undefined ? (
+                        {anyLoading ? (
                           <div style={{ color: T.textMute, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Chargement de l'évolution…</div>
-                        ) : dailyState === "error" ? (
+                        ) : !allReady ? (
                           <div style={{ color: T.danger, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Erreur de chargement</div>
-                        ) : (
-                          <DailyChart series={dailyState} color={curveColor} label={r.meta.modelLabel} />
-                        )}
+                        ) : mergedSeries ? (
+                          <>
+                            <DailyChart series={mergedSeries} color={curveColor} label={`${g.brandName} · ${g.pages.length} page${g.pages.length > 1 ? "s" : ""} fusionnées`} />
+                            {/* Liste des pages de la personne */}
+                            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                              {g.pages.map((p) => (
+                                <div key={p.page.id} style={{
+                                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                                  padding: "6px 10px", borderRadius: 8, background: "rgba(255,255,255,.02)", fontSize: 12,
+                                }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 999,
+                                      background: p.meta.isV3 ? T.gold + "22" : T.bgInput,
+                                      color: p.meta.isV3 ? T.gold : T.textMute,
+                                      flexShrink: 0,
+                                    }}>
+                                      {p.meta.modelLabel}
+                                    </span>
+                                    <span style={{ color: T.textDim, fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      /r/{p.page.slug}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 12, alignItems: "center", color: T.textMute, fontSize: 11 }}>
+                                    <span>{p.stats.views}<span style={{ opacity: .5 }}>v</span></span>
+                                    <span>{p.stats.clicks}<span style={{ opacity: .5 }}>c</span></span>
+                                    <a href={`/r/${p.page.slug}`} target="_blank" rel="noreferrer" style={{ color: T.textMute, textDecoration: "none" }} title="Ouvrir">↗</a>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : null}
                       </td>
                     </tr>
                   ) : null}
@@ -1509,7 +1616,7 @@ function StatsRankingSection({
         </div>
       )}
 
-      {ranked.length > 10 ? (
+      {grouped.length > 10 ? (
         <button
           onClick={() => setExpanded(!expanded)}
           style={{
@@ -1518,7 +1625,7 @@ function StatsRankingSection({
             cursor: "pointer", width: "100%",
           }}
         >
-          {expanded ? "Réduire" : `Voir tout (${ranked.length} pages)`}
+          {expanded ? "Réduire" : `Voir tout (${grouped.length} personne${grouped.length > 1 ? "s" : ""})`}
         </button>
       ) : null}
     </div>

@@ -14,7 +14,6 @@ import * as React from "react";
 import { motion, useAnimationControls, AnimatePresence } from "framer-motion";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
@@ -77,7 +76,6 @@ export function M4Scratch({
   const winLabel = bon || "JACKPOT";
 
   const [phase, setPhase] = React.useState<Phase>("idle");
-  const [popupOpen, setPopupOpen] = React.useState(false);
   const [flash, setFlash] = React.useState(false);
   const railControls = useAnimationControls();
   const railContainerRef = React.useRef<HTMLDivElement>(null);
@@ -130,7 +128,7 @@ export function M4Scratch({
     setFlash(false);
   };
 
-  const onCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+  // Popup retiree : V3MagneticButton ouvre href en _blank natif
 
   const rarityColor: Record<LootItem["rarity"], string> = {
     common: "#a0a0aa",
@@ -425,7 +423,7 @@ export function M4Scratch({
           </motion.button>
         ) : phase === "revealed" ? (
           <>
-            <V3MagneticButton href={safeAffi} onClick={onCta} className="m4-cta v3-cta">
+            <V3MagneticButton href={safeAffi} className="m4-cta v3-cta">
               🚀 RÉCLAMER {winLabel}
             </V3MagneticButton>
             <button type="button" className="m4-replay" onClick={reset}>↻ Rejouer</button>
@@ -442,17 +440,6 @@ export function M4Scratch({
            "Le rail s'arrête sur ton butin..."}
         </p>
       </div>
-
-      <V3OfferPopup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={bon ? `+${bon}` : "JACKPOT"}
-        depositAmount={dep}
-        bonusAmount={bon}
-        steps={["Validation du loot", "Préparation du bonus", "Lien d'inscription prêt"]}
-        href={safeAffi}
-      />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

@@ -16,10 +16,15 @@ export type V3MagneticButtonProps = {
   strength?: number;
   /** Style additionnel (background, border, etc.). */
   style?: React.CSSProperties;
+  /** Target du lien : par defaut "_blank" (ouvre dans nouvel onglet). */
+  target?: string;
+  /** Rel du lien : par defaut "noopener noreferrer". */
+  rel?: string;
 };
 
 export function V3MagneticButton({
   href, onClick, children, className, strength = 0.18, style,
+  target = "_blank", rel = "noopener noreferrer",
 }: V3MagneticButtonProps) {
   const ref = React.useRef<HTMLAnchorElement>(null);
   const x = useMotionValue(0);
@@ -40,6 +45,8 @@ export function V3MagneticButton({
     <motion.a
       ref={ref}
       href={href}
+      target={target}
+      rel={rel}
       onClick={onClick}
       onMouseMove={onMove}
       onMouseLeave={reset}

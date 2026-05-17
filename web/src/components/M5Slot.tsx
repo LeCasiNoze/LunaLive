@@ -10,7 +10,6 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3MeshBg, V3AuroraBg, V3GrainBg } from "./V3AmbientFx";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
@@ -91,7 +90,7 @@ export function M5Slot({
   const [revealedCount, setRevealedCount] = React.useState(0);
   // ticker pour faire defiler les symboles aleatoires sur les cellules pas encore lockees
   const [tick, setTick] = React.useState(0);
-  const [popupOpen, setPopupOpen] = React.useState(false);
+  const openAffi = () => { if (typeof window !== "undefined") { try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ } } };
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -110,7 +109,6 @@ export function M5Slot({
   const play = () => {
     if (phase !== "idle") return;
     sfx.click();
-    setPopupOpen(false);
     setRevealedCount(0);
     setPhase("playing");
 
@@ -139,7 +137,7 @@ export function M5Slot({
     const totalDuration = CELL_REVEAL_AT_MS[9] + POPUP_DELAY_MS;
     window.setTimeout(() => {
       setPhase("won");
-      setPopupOpen(true);
+      openAffi();
     }, totalDuration);
   };
 
@@ -304,19 +302,8 @@ export function M5Slot({
       ) : phase === "playing" ? (
         <button className="m5-cta" disabled>Lecture en cours…</button>
       ) : (
-        <button className="m5-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus</button>
+        <button className="m5-cta" onClick={openAffi}>Voir mon bonus</button>
       )}
-
-      <V3OfferPopup
-        open={phase === "won" && popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={rewardHeadline}
-        depositAmount={dep}
-        bonusAmount={bon}
-        steps={popupSteps}
-        href={safeAffi}
-      />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

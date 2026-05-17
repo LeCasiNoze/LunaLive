@@ -17,7 +17,6 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
 import { V3MagneticButton } from "./V3MagneticButton";
@@ -120,19 +119,14 @@ export function M12Chat({
   const selectedBonus = Math.round(selected.deposit * selected.bonusMult);
   const selectedReceived = selected.deposit + selectedBonus; // total recu apres bonus
 
-  const [popupOpen, setPopupOpen] = React.useState(false);
-  const onCta = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setPopupOpen(true);
-  };
-  // Click sur un tier : selectionne + ouvre directement le popup. Le popup
-  // adapte sa section VIP selon le tier (gold/diamond = preset "gros joueur").
+  // Popup retiree : click direct sur lien affi pour reduire les frictions.
+  // Click sur un tier : selectionne + ouvre le lien affi dans un nouvel onglet.
   const onTierClick = (key: string) => {
     setSelectedKey(key);
-    setPopupOpen(true);
+    if (typeof window !== "undefined") {
+      try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
+    }
   };
-  // Le palier selectionne est-il considere "gros joueur" ? (Gold + Diamond)
-  const isBigPlayer = selected.highlight || selected.vip;
 
   // Countdown 24h depuis le mount (relance a chaque visite — illusion d'urgence)
   const [now, setNow] = React.useState(() => Date.now());
@@ -386,7 +380,7 @@ export function M12Chat({
             Dépose <em>{selected.deposit}€</em> · Reçois <em>{selectedReceived}€</em>
           </p>
         </div>
-        <V3MagneticButton href={safeAffi} onClick={onCta} className="m12-cta v3-cta">
+        <V3MagneticButton href={safeAffi} className="m12-cta v3-cta">
           {selected.vip ? "DEVENIR VIP" : `RÉCLAMER MES ${selectedReceived}€`}
         </V3MagneticButton>
         <p className="m12-cta-sub">Inscription en 30s · Bonus crédité instantanément</p>
@@ -422,36 +416,10 @@ export function M12Chat({
       </div>
 
       <div className="m12-sticky">
-        <a className="m12-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
+        <a className="m12-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
           {selected.vip ? "👑 DEVENIR VIP" : `🚀 RÉCLAMER ${selectedReceived}€`}
         </a>
       </div>
-
-      <V3OfferPopup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={`+${selectedBonus}€`}
-        depositAmount={`${selected.deposit}€`}
-        bonusAmount={`${selectedBonus}€`}
-        steps={["Validation du palier " + selected.label, "Préparation du bonus", "Lien d'inscription prêt"]}
-        href={safeAffi}
-        // ─── Section VIP adaptee au palier (Gold/Diamond = preset "gros joueur") ─
-        vipForced={isBigPlayer}
-        vipFormTitle={isBigPlayer ? (
-          <>👑 Palier {selected.label} — Tu es un <em style={{ color: T.accent, fontStyle: "normal" }}>gros joueur</em></>
-        ) : undefined}
-        vipFormSubtitle={isBigPlayer
-          ? `Avec un dépôt de ${selected.deposit}€, on t'attribue automatiquement un host VIP dédié. Laisse ton email — il te contacte sous 24h avec une offre personnalisée (cashback augmenté, bonus exclusifs, retraits prioritaires).`
-          : undefined
-        }
-        vipTitle={isBigPlayer ? <>Palier {selected.label} = <em>statut VIP</em></> : undefined}
-        vipSubtitle={isBigPlayer
-          ? "Host dédié, cashback augmenté, bonus exclusifs t'attendent."
-          : undefined
-        }
-        vipCtaLabel={isBigPlayer ? "Activer mon host VIP" : undefined}
-      />
 
       <V3SocialProof accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

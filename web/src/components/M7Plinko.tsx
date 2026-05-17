@@ -15,7 +15,6 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
@@ -73,7 +72,6 @@ export function M7Plinko({
   const [cards, setCards] = React.useState<CardValue[]>(() => Array.from({ length: 5 }, pickValue));
   const [revealed, setRevealed] = React.useState<boolean[]>([false, false, false, false, false]);
   const [phase, setPhase] = React.useState<Phase>("idle");
-  const [popupOpen, setPopupOpen] = React.useState(false);
 
   const revealCard = (idx: number) => {
     if (revealed[idx] || phase === "busted" || phase === "cashed") return;
@@ -115,7 +113,7 @@ export function M7Plinko({
   const finalMult = phase === "busted" ? 0 : totalMult;
   const wonBonus = bonusAmount != null ? Math.round(bonusAmount * finalMult) : null;
 
-  const onCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+  // Popup retiree
 
   const popupSteps = React.useMemo(() => ["Validation du score", "Préparation de l'offre", "Lien bonus prêt"], []);
 
@@ -270,7 +268,7 @@ export function M7Plinko({
             </>
           ) : (
             <>
-              <V3MagneticButton href={safeAffi} onClick={onCta} className="m7-action cta">
+              <V3MagneticButton href={safeAffi} className="m7-action cta">
                 🚀 RÉCLAMER {wonBonus != null && finalMult > 0 ? `+${wonBonus}€` : (bon ? `+${bon}` : "MON BONUS")}
               </V3MagneticButton>
               <button type="button" className="m7-action replay" onClick={reset}>↻</button>
@@ -285,17 +283,6 @@ export function M7Plinko({
            "Sur 5 cartes : multiplier ou BUST. Multiplier × bonus de base."}
         </p>
       </div>
-
-      <V3OfferPopup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={finalMult > 0 ? `×${finalMult.toFixed(1)}` : (bon ? `+${bon}` : "Bonus")}
-        depositAmount={dep}
-        bonusAmount={wonBonus != null ? `${wonBonus}€` : bon}
-        steps={popupSteps}
-        href={safeAffi}
-      />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

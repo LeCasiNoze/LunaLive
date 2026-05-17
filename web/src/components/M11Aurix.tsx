@@ -19,7 +19,6 @@ import {
   AnimatePresence,
 } from "framer-motion";
 import Lenis from "lenis";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { extendPalette } from "../lib/v3_palette";
 import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
@@ -200,7 +199,6 @@ export function M11Aurix({
   const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
 
-  const [popupOpen, setPopupOpen] = React.useState(false);
   const [openFaq, setOpenFaq] = React.useState<number | null>(0);
 
   const rootRef = React.useRef<HTMLDivElement>(null);
@@ -237,10 +235,9 @@ export function M11Aurix({
     my.set(((e.clientY - r.top) / r.height) * 100);
   };
 
-  const onCtaClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setPopupOpen(true);
-  };
+  // Popup retiree : click direct sur lien affi (cible blank).
+  const onCtaClick = undefined as ((e: React.MouseEvent) => void) | undefined;
+  void onCtaClick;
 
   const gainsLoop = React.useMemo(() => [...FAKE_GAINS, ...FAKE_GAINS], []);
 
@@ -534,7 +531,7 @@ export function M11Aurix({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.9, delay: 0.7, ease: [0.2, 0.7, 0.2, 1] }}
             >
-              <a className="m11-hero-card v3-cta" href={safeAffi} onClick={onCtaClick}>
+              <a className="m11-hero-card v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
                 {gameImageUrl ? (
                   <img className="m11-hero-img" src={gameImageUrl} alt="Jeu bonus" />
                 ) : (
@@ -618,7 +615,7 @@ export function M11Aurix({
         {/* ─── FINAL CTA ─── */}
         <Reveal>
           <section className="m11-final">
-            <MagneticButton href={safeAffi} onClick={onCtaClick} className="m11-cta v3-cta">
+            <MagneticButton href={safeAffi} target="_blank" rel="noopener noreferrer" className="m11-cta v3-cta">
               🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
             </MagneticButton>
             <p className="m11-cta-sub">Inscription en 30s · Crédit instantané</p>
@@ -643,21 +640,10 @@ export function M11Aurix({
 
       {/* Sticky mobile */}
       <div className="m11-sticky">
-        <a className="m11-sticky-cta v3-cta" href={safeAffi} onClick={onCtaClick}>
+        <a className="m11-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
       </div>
-
-      <V3OfferPopup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: C.accent1, accentLight: C.accent2, accentGlow: C.glow, bgCard: C.bgCard }}
-        score={rewardScore}
-        depositAmount={dep}
-        bonusAmount={bon}
-        steps={popupSteps}
-        href={safeAffi}
-      />
 
       <V3SocialProof accent={C.accent2} accentGlow={C.glow} />
       <V3PseudoKeyframes />

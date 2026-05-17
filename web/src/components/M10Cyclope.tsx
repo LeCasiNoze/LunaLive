@@ -12,7 +12,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { pseudoTextStyle, pseudoAnimationClass } from "../lib/v3_pseudo_style";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
@@ -196,16 +195,15 @@ export function M10Cyclope({
   const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
 
-  const [popupOpen, setPopupOpen] = React.useState(false);
   const [openFaq, setOpenFaq] = React.useState<number | null>(0);
 
   // Feed gains : double la liste pour anim scroll infini
   const gainsLoop = React.useMemo(() => [...FAKE_GAINS, ...FAKE_GAINS], []);
 
-  const onCtaClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setPopupOpen(true);
-  };
+  // Click direct sur lien affi (popup retire pour reduire les frictions).
+  // L'attribut href + target="_blank" est applique en dur sur les <a>.
+  const onCtaClick = undefined as ((e: React.MouseEvent) => void) | undefined;
+  void onCtaClick;
 
   return (
     <div className="m10-root">
@@ -384,7 +382,7 @@ export function M10Cyclope({
 
         {/* Hero — copie exacte de CyclopeHero.tsx (overlay bas) */}
         <section className="m10-hero">
-          <a className="m10-hero-card v3-cta" href={safeAffi} onClick={onCtaClick}>
+          <a className="m10-hero-card v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
             {gameImageUrl ? (
               <img className="m10-hero-img" src={gameImageUrl} alt="Jeu bonus" />
             ) : (
@@ -446,7 +444,7 @@ export function M10Cyclope({
         {/* Final CTA */}
         <section className="m10-final">
           <div className="m10-final-inner">
-            <a className="m10-cta v3-cta" href={safeAffi} onClick={onCtaClick}>
+            <a className="m10-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
               🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
             </a>
             <p className="m10-cta-sub">Inscription en 30s · Bonus crédité automatiquement</p>
@@ -473,22 +471,11 @@ export function M10Cyclope({
 
       {/* Sticky CTA mobile */}
       <div className="m10-sticky">
-        <a className="m10-sticky-cta v3-cta" href={safeAffi} onClick={onCtaClick}>
+        <a className="m10-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
         <p className="m10-sticky-sub">Inscription gratuite · 30s</p>
       </div>
-
-      <V3OfferPopup
-        open={popupOpen}
-        onClose={() => setPopupOpen(false)}
-        theme={{ accent: C.accentHot, accentLight: C.accentWarm, accentGlow: C.glow, bgCard: C.bgCard }}
-        score={rewardScore}
-        depositAmount={dep}
-        bonusAmount={bon}
-        steps={popupSteps}
-        href={safeAffi}
-      />
 
       <V3SocialProof accent={C.accentWarm} accentGlow={C.glow} />
       <V3PseudoKeyframes />
