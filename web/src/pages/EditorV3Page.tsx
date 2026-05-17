@@ -598,9 +598,9 @@ function WizardQuickView({
               {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
               {inputs.modelKind === "M10" && "M10 = Landing Cyclope — page statique style storytelling (header halo, hero card, gains direct, FAQ)"}
               {inputs.modelKind === "M11" && "M11 = Aurix premium — aurora mesh + spotlight curseur + parallax + magnetic CTA + compteurs animés (vitrine V3)"}
-              {inputs.modelKind === "M12" && "M12 = Chat — conversation iMessage simulée (bulles séquentielles + typing indicator + image preview + CTA)"}
-              {inputs.modelKind === "M13" && "M13 = Ticket Scratch — ticket de loterie rétro à gratter (perforations + barcode + tilt 3D + scratch interactif)"}
-              {inputs.modelKind === "M14" && "M14 = Magazine Cover — éditorial luxe Vogue/GQ (masthead serif géant + hero parallax + sommaire numéroté + offre cadrée)"}
+              {inputs.modelKind === "M12" && "M12 = Paliers VIP — 4 cards Bronze/Silver/Gold/Diamond, bonus scalé selon dépôt, capture email VIP inline (conversion + upsell)"}
+              {inputs.modelKind === "M13" && "M13 = Urgency — countdown 24h XL + places limitées + live activity feed + capture email VIP inline (conversion maximale)"}
+              {inputs.modelKind === "M14" && "M14 = Témoignage — case study gros gagnant + portrait vérifié + stats animées + double CTA bonus standard ou VIP"}
             </div>
           </div>
 
@@ -641,39 +641,6 @@ function WizardQuickView({
                   2e ligne en cream solide letterspaced, sous la ligne chrome.
                 </div>
               </div>
-              {inputs.modelKind === "M10" ? (
-                <>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Style du pseudo</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {([
-                        { k: "cyclope", l: "Cyclope (original)" },
-                        { k: "neon",    l: "Néon" },
-                        { k: "metal",   l: "Métal chromé" },
-                        { k: "flat",    l: "Plat couleur unie" },
-                        { k: "holo",    l: "Holographique" },
-                      ] as const).map((v) => (
-                        <Chip key={v.k} active={(inputs.pseudoVariant || "cyclope") === v.k}
-                          onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Animation du pseudo</label>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {([
-                        { k: "none",  l: "Aucune" },
-                        { k: "pulse", l: "Pulse" },
-                        { k: "float", l: "Float" },
-                        { k: "glow",  l: "Glow pulse" },
-                      ] as const).map((a) => (
-                        <Chip key={a.k} active={(inputs.pseudoAnimation || "none") === a.k}
-                          onClick={() => update({ pseudoAnimation: a.k })}>{a.l}</Chip>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : null}
               {token ? <SocialProfileLoader token={token} update={update} /> : null}
             </>
           ) : null}
@@ -938,6 +905,39 @@ function WizardQuickView({
                   open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
                 >
                   <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
+                  {inputs.modelKind === "M10" ? (
+                    <>
+                      <div style={{ marginTop: 14 }}>
+                        <label style={labelStyle}>Variante de fade (gradient)</label>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {([
+                            { k: "cyclope", l: "Cyclope (rose/or)" },
+                            { k: "neon",    l: "Saphir (cyan/bleu)" },
+                            { k: "metal",   l: "Émeraude (lime/vert)" },
+                            { k: "flat",    l: "Volcan (or/rouge)" },
+                            { k: "holo",    l: "Glacial (bleu/violet)" },
+                          ] as const).map((v) => (
+                            <Chip key={v.k} active={(inputs.pseudoVariant || "cyclope") === v.k}
+                              onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 14 }}>
+                        <label style={labelStyle}>Animation</label>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {([
+                            { k: "none",  l: "Aucune" },
+                            { k: "pulse", l: "Pulse" },
+                            { k: "float", l: "Float" },
+                            { k: "glow",  l: "Glow pulse" },
+                          ] as const).map((a) => (
+                            <Chip key={a.k} active={(inputs.pseudoAnimation || "none") === a.k}
+                              onClick={() => update({ pseudoAnimation: a.k })}>{a.l}</Chip>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
                 </Accordion>
               ) : null}
 

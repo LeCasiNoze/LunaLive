@@ -212,13 +212,13 @@ export function M10Cyclope({
         .m10-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
-        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em}
-        /* Variantes visuelles du pseudo */
-        .m10-name-cyclope{background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
-        .m10-name-neon{color:${C.accentHot};text-shadow:0 0 8px ${C.accentHot},0 0 18px ${C.accentHot},0 0 32px ${C.accentWarm},0 0 60px ${C.accentHot}}
-        .m10-name-metal{background:linear-gradient(180deg,#fff 0%,#e2e8f0 25%,#94a3b8 50%,#475569 70%,#cbd5e1 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 3px 0 rgba(0,0,0,.4)) drop-shadow(0 0 8px rgba(255,255,255,.3))}
-        .m10-name-flat{color:${C.accentWarm};text-shadow:0 2px 0 ${C.accentHot}55}
-        .m10-name-holo{background:linear-gradient(120deg,${C.accentHot} 0%,${C.accentWarm} 25%,#22d3ee 50%,#a855f7 75%,${C.accentHot} 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 0 16px ${C.accentHot}80);animation:m10-name-holo-shift 5s linear infinite}
+        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+        /* Variantes de fade chrome — meme structure (blanc top → 2 accents → blanc bottom) avec drop-shadow accent */
+        .m10-name-cyclope{background:linear-gradient(180deg,#fff 0%,#FFE9D6 25%,#FFB930 55%,#FF4B6E 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(255,75,110,.55)) drop-shadow(0 0 14px rgba(255,185,48,.5))}
+        .m10-name-neon{background:linear-gradient(180deg,#fff 0%,#DBEAFE 25%,#22D3EE 55%,#3B82F6 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(59,130,246,.55)) drop-shadow(0 0 14px rgba(34,211,238,.5))}
+        .m10-name-metal{background:linear-gradient(180deg,#fff 0%,#D9F99D 25%,#84CC16 55%,#15803D 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(21,128,61,.55)) drop-shadow(0 0 14px rgba(132,204,22,.5))}
+        .m10-name-flat{background:linear-gradient(180deg,#FEF3C7 0%,#FBBF24 25%,#F97316 55%,#DC2626 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(220,38,38,.55)) drop-shadow(0 0 14px rgba(251,146,60,.5))}
+        .m10-name-holo{background:linear-gradient(180deg,#fff 0%,#E0E7FF 25%,#6366F1 55%,#A855F7 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(168,85,247,.55)) drop-shadow(0 0 14px rgba(99,102,241,.5))}
         /* Animations */
         .m10-anim-pulse{animation:m10-name-pulse 1.8s ease-in-out infinite}
         .m10-anim-float{animation:m10-name-float 3s ease-in-out infinite}
