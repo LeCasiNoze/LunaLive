@@ -119,6 +119,7 @@ export function M10Cyclope({
   bonusAmount,
   affiLink,
   theme,
+  pseudoStyle,
   onEditField,
 }: M10CyclopeProps) {
   // Plumbing click-to-edit (a wirer dans une prochaine iteration sur chaque element)

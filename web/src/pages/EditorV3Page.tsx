@@ -582,7 +582,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -598,6 +598,9 @@ function WizardQuickView({
               {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
               {inputs.modelKind === "M10" && "M10 = Landing Cyclope — page statique style storytelling (header halo, hero card, gains direct, FAQ)"}
               {inputs.modelKind === "M11" && "M11 = Aurix premium — aurora mesh + spotlight curseur + parallax + magnetic CTA + compteurs animés (vitrine V3)"}
+              {inputs.modelKind === "M12" && "M12 = Chat — conversation iMessage simulée (bulles séquentielles + typing indicator + image preview + CTA)"}
+              {inputs.modelKind === "M13" && "M13 = Ticket Scratch — ticket de loterie rétro à gratter (perforations + barcode + tilt 3D + scratch interactif)"}
+              {inputs.modelKind === "M14" && "M14 = Magazine Cover — éditorial luxe Vogue/GQ (masthead serif géant + hero parallax + sommaire numéroté + offre cadrée)"}
             </div>
           </div>
 
