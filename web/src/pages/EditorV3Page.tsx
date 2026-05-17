@@ -1133,28 +1133,6 @@ function pageColor(p: FsbAffiPage): string {
 }
 
 // Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol
-// Fusionne plusieurs series daily-stats (1 par page) en additionnant les vues/clics
-// par date. Les series doivent avoir les memes dates (30 derniers jours) — on
-// utilise la premiere comme reference pour l'ordre et on somme les autres.
-function mergeDailySeries(seriesList: AffiDailyPoint[][]): AffiDailyPoint[] {
-  if (!seriesList.length) return [];
-  const valid = seriesList.filter((s) => Array.isArray(s) && s.length > 0);
-  if (!valid.length) return [];
-  const ref = valid[0];
-  return ref.map((point, i) => {
-    let views = 0, clicks = 0, uniqueViews = 0, uniqueClicks = 0;
-    for (const s of valid) {
-      const p = s[i];
-      if (!p) continue;
-      views += p.views || 0;
-      clicks += p.clicks || 0;
-      uniqueViews += p.uniqueViews || 0;
-      uniqueClicks += p.uniqueClicks || 0;
-    }
-    return { date: point.date, views, clicks, uniqueViews, uniqueClicks };
-  });
-}
-
 type ChartSeries = { label: string; color: string; data: AffiDailyPoint[] };
 
 function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {

@@ -13,6 +13,7 @@
 
 import * as React from "react";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3VipPopup } from "./V3VipPopup";
 import { pseudoTextStyle, pseudoAnimationClass } from "../lib/v3_pseudo_style";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
@@ -331,6 +332,19 @@ export function M10Cyclope({
         .m10-vip-teaser:hover .m10-vip-teaser-arrow{transform:translateX(3px)}
         @keyframes m10-vip-crown{0%,100%{transform:rotate(-6deg) scale(1)}50%{transform:rotate(6deg) scale(1.12)}}
 
+        /* VIP teaser band : section pleine largeur avant FAQ, centree, visible */
+        .m10-vip-band{width:100%;padding:24px 20px 4px;display:flex;justify-content:center;max-width:420px;margin:0 auto}
+
+        /* VIP teaser mini : sous le sticky CTA, ligne discrete tap-to-VIP */
+        .m10-vip-teaser-mini{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;max-width:380px;margin:8px auto 0;padding:7px 14px;
+          border:none;cursor:pointer;font-family:inherit;
+          background:transparent;
+          color:${C.cream};opacity:.78;font-size:.7rem;font-weight:700;letter-spacing:.06em;
+          text-decoration:underline;text-decoration-color:${C.accentWarm}55;text-underline-offset:3px;
+          transition:opacity .2s,color .2s,text-decoration-color .2s}
+        .m10-vip-teaser-mini:hover{opacity:1;color:${C.accentWarm};text-decoration-color:${C.accentWarm}}
+        .m10-vip-teaser-mini-crown{font-size:.85rem;opacity:.85}
+
         /* ─── Sticky mobile CTA ─── */
         .m10-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px 16px 18px;background:linear-gradient(to top,${C.bgDeep} 55%,${C.bgDeep}d9 85%,transparent)}
         .m10-sticky-cta{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:380px;margin:0 auto;padding:18px;border-radius:18px;font-family:'Bagel Fat One',cursive;font-size:1.3rem;letter-spacing:.05em;color:#fff;background:linear-gradient(135deg,${C.accentHot} 0%,${C.accentSoft} 50%,${C.accentWarm} 100%);border:2px solid #fff;box-shadow:0 0 36px ${C.glow}d9,0 12px 28px ${C.accentHot}80,inset 0 1px 0 rgba(255,255,255,.9);text-shadow:0 2px 0 rgba(155,28,53,.55);text-decoration:none;cursor:pointer;animation:m10-cta-pulse 2.4s ease-in-out infinite;transition:transform .12s ease;font-weight:400}
@@ -441,6 +455,19 @@ export function M10Cyclope({
           </div>
         </section>
 
+        {/* VIP teaser principal — juste avant la FAQ pour capter l'attention */}
+        <section className="m10-vip-band">
+          <button
+            type="button"
+            className="m10-vip-teaser"
+            onClick={() => setVipPopupOpen(true)}
+          >
+            <span className="m10-vip-teaser-crown">👑</span>
+            Vous êtes un gros joueur ? Demandez votre traitement spécial
+            <span className="m10-vip-teaser-arrow">→</span>
+          </button>
+        </section>
+
         {/* FAQ */}
         <section className="m10-faq">
           <div className="m10-faq-inner">
@@ -467,15 +494,7 @@ export function M10Cyclope({
             <a className="m10-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer" onClick={onCtaClick}>
               🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
             </a>
-            <button
-              type="button"
-              className="m10-vip-teaser"
-              onClick={() => setVipPopupOpen(true)}
-            >
-              <span className="m10-vip-teaser-crown">👑</span>
-              Vous êtes un gros joueur ? Demandez votre traitement spécial
-              <span className="m10-vip-teaser-arrow">→</span>
-            </button>
+            <p className="m10-cta-sub">Inscription en 30s · Bonus crédité automatiquement</p>
           </div>
         </section>
 
@@ -502,7 +521,15 @@ export function M10Cyclope({
         <a className="m10-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer" onClick={onCtaClick}>
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
-        <p className="m10-sticky-sub">Inscription gratuite · 30s</p>
+        {/* VIP teaser discret sous le sticky CTA (toujours accessible) */}
+        <button
+          type="button"
+          className="m10-vip-teaser-mini"
+          onClick={() => setVipPopupOpen(true)}
+        >
+          <span className="m10-vip-teaser-mini-crown">👑</span>
+          Gros joueur ? Accès VIP
+        </button>
       </div>
 
       {/* Popup conserve via flag V3_POPUP_ENABLED. Flippe pour reactiver. */}
@@ -517,22 +544,14 @@ export function M10Cyclope({
         href={safeAffi}
       />
 
-      {/* Popup VIP gros joueur : declenche par le teaser "Vous etes un gros joueur ?" */}
-      <V3OfferPopup
+      {/* Popup VIP gros joueur : composant dedie V3VipPopup (UI simple cohherente) */}
+      <V3VipPopup
         open={vipPopupOpen}
         onClose={() => setVipPopupOpen(false)}
         theme={{ accent: C.accentWarm, accentLight: C.cream, accentGlow: C.glow, bgCard: C.bgCard }}
-        score="👑"
-        depositAmount=""
-        bonusAmount=""
-        steps={[]}
         href={safeAffi}
-        showOffer={false}
         title="Programme VIP exclusif"
-        body="Tu déposes entre 500€ et 1 000€ par mois (ou plus) ? Tu mérites un traitement à la hauteur."
-        vipForced={true}
-        vipFormTitle={<>👑 Club VIP — gros joueurs <em style={{ color: C.accentWarm, fontStyle: "normal" }}>500€+ / mois</em></>}
-        vipFormSubtitle="Laisse ton email — un host VIP dédié te contacte sous 24h avec une offre personnalisée : cashback augmenté, bonus exclusifs, retraits prioritaires, ligne directe support."
+        subtitle="Tu déposes 500€ à 1 000€ par mois (ou plus) ? Laisse ton email et un host dédié te contacte sous 24h avec une offre personnalisée."
       />
 
       {/* V3SocialProof retire — les toasts 'X a debloque' parasitaient l'attention */}
