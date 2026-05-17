@@ -1,18 +1,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M4 — "Crack the Vault" (concept original V3, retire de l'ancien M4 Scratch).
-// Un coffre dore central protege par 3 cadenas. Tap chaque cadenas → animation
-// crack (rotation + opacity faded). Une fois les 3 casses → coffre s'ouvre,
-// burst de particules or, montant bonus revele, CTA "RECLAMER".
+// M4 — "Loot Box Opening" (concept original V3 inspire des case openings CSGO).
 //
-// Engagement : 3 micro-actions (chacune satisfaisante via crack + sound)
-// avant le reveal = effet "deserved" → conversion plus forte qu'un simple
-// click. Reset possible apres reveal.
+// User tap "OUVRIR LE COFFRE" -> coffre s'ouvre (anim couvercle + lumiere) ->
+// une rangee d'items defile horizontalement (gauche -> droite), rapide au
+// debut, decelere progressivement via easing, stoppe sur un item au centre.
+// Indicator central jaune marque ou s'arrete l'item gagnant. Reveal anim
+// avec burst de particules + montant bonus affiche.
 //
+// Anticipation + satisfying motion + reveal = pattern viral.
 // Fichier reste M4Scratch.tsx pour retrocompat saves (export name preserve).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { motion } from "framer-motion";
+import { motion, useAnimationControls } from "framer-motion";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
@@ -38,6 +38,30 @@ export type M4ScratchProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
+// Items du loot : icone + label + rarete. Le dernier (jackpot) est celui sur
+// lequel on atterrit toujours (case opening "lock" qui garantit le gros bonus).
+type LootItem = { icon: string; label: string; rarity: "common" | "rare" | "epic" | "legendary" };
+const LOOT_POOL: LootItem[] = [
+  { icon: "🪙", label: "+5€",   rarity: "common" },
+  { icon: "🎁", label: "FS×10", rarity: "common" },
+  { icon: "💰", label: "+15€",  rarity: "common" },
+  { icon: "🪙", label: "+10€",  rarity: "common" },
+  { icon: "🎰", label: "FS×20", rarity: "rare" },
+  { icon: "💎", label: "+25€",  rarity: "rare" },
+  { icon: "🪙", label: "+8€",   rarity: "common" },
+  { icon: "🎁", label: "FS×15", rarity: "common" },
+  { icon: "💰", label: "+30€",  rarity: "rare" },
+  { icon: "🔮", label: "+40€",  rarity: "epic" },
+  { icon: "🪙", label: "+12€",  rarity: "common" },
+  { icon: "💎", label: "+50€",  rarity: "epic" },
+  { icon: "👑", label: "JACKPOT", rarity: "legendary" }, // <- item gagnant garanti
+];
+
+type Phase = "idle" | "opening" | "rolling" | "revealed";
+
+const ITEM_WIDTH = 110; // px par item
+const RAIL_LENGTH = 60; // nombre total d'items dans le rail (le gagnant est positionne au milieu de la derniere section)
+
 export function M4Scratch({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
 }: M4ScratchProps) {
@@ -51,33 +75,62 @@ export function M4Scratch({
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
 
-  const [cracked, setCracked] = React.useState<boolean[]>([false, false, false]);
-  const allCracked = cracked.every(Boolean);
-  const [opened, setOpened] = React.useState(false);
+  const [phase, setPhase] = React.useState<Phase>("idle");
   const [popupOpen, setPopupOpen] = React.useState(false);
+  const railControls = useAnimationControls();
+  const railRef = React.useRef<HTMLDivElement>(null);
 
-  // Auto-open du coffre 500ms apres le 3e cadenas casse
-  React.useEffect(() => {
-    if (!allCracked || opened) return;
-    const id = window.setTimeout(() => {
-      setOpened(true);
-      sfx.win();
-    }, 500);
-    return () => window.clearTimeout(id);
-  }, [allCracked, opened]);
+  // Genere une rail d'items random + le JACKPOT au winning position
+  const WINNING_INDEX = RAIL_LENGTH - 5; // index de l'item gagnant (vers la fin)
+  const railItems = React.useMemo<LootItem[]>(() => {
+    const arr: LootItem[] = [];
+    for (let i = 0; i < RAIL_LENGTH; i++) {
+      if (i === WINNING_INDEX) {
+        arr.push({ icon: "👑", label: bon || "JACKPOT", rarity: "legendary" });
+      } else {
+        arr.push(LOOT_POOL[Math.floor(Math.random() * (LOOT_POOL.length - 1))]); // pool sans jackpot
+      }
+    }
+    return arr;
+  }, [bon]);
 
-  const crackLock = (idx: number) => {
-    if (cracked[idx]) return;
+  const startOpening = async () => {
+    if (phase !== "idle") return;
+    setPhase("opening");
     sfx.tick();
-    setCracked((arr) => arr.map((c, i) => (i === idx ? true : c)));
+    // Pause 600ms pour l'anim d'ouverture du coffre
+    await new Promise((r) => setTimeout(r, 600));
+    setPhase("rolling");
+    // Lance le defilement : target = position du WINNING_INDEX centre sous l'indicator
+    const railWidth = railRef.current?.parentElement?.clientWidth ?? 320;
+    const targetX = -(WINNING_INDEX * ITEM_WIDTH) + (railWidth / 2) - (ITEM_WIDTH / 2);
+    await railControls.start({
+      x: targetX,
+      transition: { duration: 5.2, ease: [0.05, 0.65, 0.18, 1] }, // decelere fort
+    });
+    sfx.win();
+    setPhase("revealed");
   };
 
   const reset = () => {
-    setCracked([false, false, false]);
-    setOpened(false);
+    railControls.set({ x: 0 });
+    setPhase("idle");
   };
 
   const onCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+
+  const rarityColor: Record<LootItem["rarity"], string> = {
+    common: "rgba(180,180,180,1)",
+    rare: "#60a5fa",
+    epic: "#a78bfa",
+    legendary: T.accent,
+  };
+  const rarityBg: Record<LootItem["rarity"], string> = {
+    common: "linear-gradient(180deg,#3a3a45,#1f1f28)",
+    rare: "linear-gradient(180deg,#1e3a8a,#0f1e44)",
+    epic: "linear-gradient(180deg,#5b21b6,#2e0e5c)",
+    legendary: `linear-gradient(180deg,${T.accent},${T.accentLight} 50%,${T.accentHot})`,
+  };
 
   return (
     <div className="m4-root">
@@ -88,85 +141,84 @@ export function M4Scratch({
             radial-gradient(60% 40% at 100% 0%, ${T.accentAlt}1a, transparent 70%),
             radial-gradient(80% 50% at 50% 100%, ${T.accentHot}14, transparent 75%),
             linear-gradient(180deg, ${T.bgPage}, ${T.bgCard} 70%, ${T.bgPage});
-          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow:hidden}
-        .m4-layer{position:relative;z-index:10;max-width:440px;margin:0 auto}
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow-x:hidden}
+        .m4-layer{position:relative;z-index:10;max-width:460px;margin:0 auto}
 
         .m4-header{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;margin-bottom:18px}
         .m4-avatar{width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid ${T.accent};
           box-shadow:0 0 0 3px ${T.bgPage},0 6px 16px rgba(0,0,0,.45);background:${T.bgCard}}
         .m4-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m4-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.62;margin:8px 0 0}
-        .m4-headline{margin:4px 0 0;font-size:clamp(1.5rem,5vw,1.95rem);font-weight:900;letter-spacing:-.02em;line-height:1.1}
+        .m4-headline{margin:4px 0 0;font-size:clamp(1.55rem,5.2vw,2rem);font-weight:900;letter-spacing:-.02em;line-height:1.1}
         .m4-headline em{font-style:normal;color:${T.accent};text-shadow:0 0 18px ${T.accentGlow}}
 
-        /* ─── Coffre ─── */
-        .m4-vault-wrap{position:relative;margin:24px auto 0;width:280px;height:280px;display:flex;align-items:center;justify-content:center;isolation:isolate}
-        .m4-vault-halo{position:absolute;inset:-10%;border-radius:50%;
-          background:radial-gradient(circle,${T.accentGlow} 0%,transparent 60%);
-          filter:blur(20px);animation:m4-halo-pulse 2.8s ease-in-out infinite;z-index:0}
-        .m4-vault{position:relative;z-index:2;width:200px;height:200px;border-radius:20px;
-          background:linear-gradient(160deg,${T.accent},${T.accentLight} 50%,#8a6724);
-          border:3px solid #1a0f08;
-          box-shadow:
-            inset 0 4px 0 rgba(255,255,255,.4),
-            inset 0 -4px 8px rgba(0,0,0,.4),
-            0 18px 50px rgba(0,0,0,.5),
-            0 0 0 4px ${T.accentLight}80,
-            0 0 40px ${T.accentGlow};
-          display:flex;align-items:center;justify-content:center;
-          transition:transform .3s cubic-bezier(.2,.7,.2,1)}
-        .m4-vault.opened{animation:m4-vault-open .8s cubic-bezier(.2,.7,.2,1) both}
-        .m4-vault-handle{position:absolute;width:50px;height:50px;border-radius:50%;
-          background:linear-gradient(135deg,#1a0f08,#000);border:3px solid ${T.accentLight};
-          box-shadow:inset 0 2px 0 rgba(255,255,255,.2),0 4px 12px rgba(0,0,0,.5);
-          display:flex;align-items:center;justify-content:center;
-          color:${T.accent};font-size:1.4rem}
-        .m4-vault.opened .m4-vault-handle{animation:m4-handle-spin .5s linear both}
-        .m4-vault-amount{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;pointer-events:none;text-align:center;padding:14px}
-        .m4-vault.opened .m4-vault-amount{animation:m4-amount-reveal .6s .3s cubic-bezier(.2,.7,.2,1) both}
-        .m4-vault-amount-label{font-size:.6rem;letter-spacing:.3em;opacity:.85;font-weight:700;color:#1a0f08}
-        .m4-vault-amount-val{margin-top:4px;font-family:'Bagel Fat One',cursive;font-size:2.4rem;line-height:1;color:#1a0f08;
-          text-shadow:0 2px 0 ${T.accentLight}}
+        /* ─── Coffre (header au-dessus du rail) ─── */
+        .m4-chest-wrap{position:relative;margin:18px auto 0;width:140px;height:130px;display:flex;align-items:flex-end;justify-content:center}
+        .m4-chest{position:relative;width:120px;height:90px}
+        .m4-chest-body{position:absolute;bottom:0;left:0;right:0;height:70px;border-radius:6px 6px 12px 12px;
+          background:linear-gradient(180deg,#6b4d2a,#3a2814);border:2px solid #1a0f08;
+          box-shadow:inset 0 -4px 8px rgba(0,0,0,.5),0 6px 18px rgba(0,0,0,.5)}
+        .m4-chest-body::before{content:"";position:absolute;top:8px;left:50%;transform:translateX(-50%);width:30px;height:24px;border-radius:4px;
+          background:linear-gradient(180deg,${T.accent},${T.accentLight});border:1.5px solid #1a0f08;
+          box-shadow:0 2px 4px rgba(0,0,0,.4)}
+        .m4-chest-lid{position:absolute;top:0;left:0;right:0;height:36px;border-radius:14px 14px 4px 4px;
+          background:linear-gradient(180deg,#8a6432,#4a3018);border:2px solid #1a0f08;
+          transform-origin:bottom;
+          box-shadow:inset 0 4px 6px rgba(255,255,255,.1),0 -2px 6px rgba(0,0,0,.4);
+          transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+        .m4-chest.opened .m4-chest-lid{transform:rotateX(-110deg)}
+        .m4-chest-light{position:absolute;inset:-30%;border-radius:50%;
+          background:radial-gradient(circle,${T.accentLight} 0%,transparent 50%);
+          opacity:0;pointer-events:none;transition:opacity .4s}
+        .m4-chest.opened .m4-chest-light{opacity:.8;animation:m4-light-pulse 1.4s ease-in-out infinite}
 
-        /* ─── Cadenas ─── */
-        .m4-lock{position:absolute;z-index:3;width:64px;height:64px;border:none;background:none;cursor:pointer;padding:0;
-          display:flex;align-items:center;justify-content:center;
-          filter:drop-shadow(0 6px 14px rgba(0,0,0,.6));
-          transition:transform .15s ease}
-        .m4-lock:not(.cracked):hover{transform:scale(1.08)}
-        .m4-lock:not(.cracked):active{transform:scale(.92)}
-        .m4-lock-1{top:-12px;left:50%;transform:translateX(-50%)}
-        .m4-lock-2{bottom:30px;left:-12px}
-        .m4-lock-3{bottom:30px;right:-12px}
-        .m4-lock svg{width:100%;height:100%}
-        .m4-lock.cracked{animation:m4-lock-crack .5s cubic-bezier(.4,1.4,.6,1) both;pointer-events:none}
+        /* ─── Rail rolling ─── */
+        .m4-rail-wrap{position:relative;margin:20px -18px 0;height:140px;overflow:hidden;
+          background:linear-gradient(180deg,${T.bgCard},${T.bgPage});
+          border-top:2px solid ${T.accent}44;border-bottom:2px solid ${T.accent}44;
+          mask-image:linear-gradient(to right,transparent 0%,#000 8%,#000 92%,transparent 100%);
+          -webkit-mask-image:linear-gradient(to right,transparent 0%,#000 8%,#000 92%,transparent 100%)}
+        .m4-rail{display:flex;align-items:center;height:100%;padding:0 50%;will-change:transform}
+        .m4-rail-item{flex:0 0 ${ITEM_WIDTH}px;height:110px;margin:0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+          border-radius:10px;margin-right:8px;position:relative;overflow:hidden;
+          border:2px solid rgba(255,255,255,.1);text-align:center}
+        .m4-rail-item.legendary{border-color:${T.accentLight};box-shadow:0 0 24px ${T.accentGlow},inset 0 0 18px ${T.accentLight}55}
+        .m4-rail-item-icon{font-size:2.4rem;line-height:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))}
+        .m4-rail-item-label{margin-top:6px;font-size:.7rem;font-weight:900;letter-spacing:.04em;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+        .m4-rail-item.legendary .m4-rail-item-label{color:#1a0f08;font-size:.78rem}
 
-        /* ─── Particules (revealed) ─── */
-        .m4-particle{position:absolute;width:8px;height:8px;border-radius:50%;background:${T.accent};
-          box-shadow:0 0 12px ${T.accent};pointer-events:none;z-index:5;opacity:0}
-        .m4-vault.opened ~ .m4-particles .m4-particle{animation:m4-burst 1.2s cubic-bezier(.2,.7,.2,1) both}
-        .m4-particle:nth-child(1){--dx:80px;--dy:-90px;animation-delay:.1s}
-        .m4-particle:nth-child(2){--dx:-90px;--dy:-80px;animation-delay:.15s;background:${T.accentLight};box-shadow:0 0 12px ${T.accentLight}}
-        .m4-particle:nth-child(3){--dx:100px;--dy:60px;animation-delay:.2s;background:${T.accentHot};box-shadow:0 0 12px ${T.accentHot}}
-        .m4-particle:nth-child(4){--dx:-80px;--dy:80px;animation-delay:.25s}
-        .m4-particle:nth-child(5){--dx:120px;--dy:-30px;animation-delay:.3s;background:${T.accentLight};box-shadow:0 0 12px ${T.accentLight}}
-        .m4-particle:nth-child(6){--dx:-120px;--dy:20px;animation-delay:.35s;background:${T.accentHot};box-shadow:0 0 12px ${T.accentHot}}
-        .m4-particle:nth-child(7){--dx:50px;--dy:120px;animation-delay:.4s}
-        .m4-particle:nth-child(8){--dx:-50px;--dy:-120px;animation-delay:.45s}
+        /* Indicator central (fleche dorée) */
+        .m4-rail-indicator{position:absolute;top:0;left:50%;transform:translateX(-50%);width:4px;height:100%;
+          background:linear-gradient(180deg,${T.accent},${T.accentHot});
+          box-shadow:0 0 18px ${T.accent},0 0 36px ${T.accentLight};z-index:3;pointer-events:none}
+        .m4-rail-indicator::before,.m4-rail-indicator::after{content:"";position:absolute;left:50%;transform:translateX(-50%);width:0;height:0;
+          border-left:8px solid transparent;border-right:8px solid transparent}
+        .m4-rail-indicator::before{top:-2px;border-top:10px solid ${T.accent}}
+        .m4-rail-indicator::after{bottom:-2px;border-bottom:10px solid ${T.accent}}
 
-        /* ─── Status / CTA ─── */
-        .m4-status{margin:18px 0 0;text-align:center;font-size:.85rem;font-weight:700;opacity:.85;min-height:24px}
-        .m4-progress{display:flex;justify-content:center;gap:6px;margin:10px 0 0}
-        .m4-progress-dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.3);transition:background .3s,border-color .3s,box-shadow .3s}
-        .m4-progress-dot.done{background:${T.accent};border-color:${T.accentLight};box-shadow:0 0 10px ${T.accentGlow}}
+        /* ─── Reveal banner (apres roll) ─── */
+        .m4-reveal{margin:18px auto 0;padding:18px 22px;border-radius:18px;text-align:center;
+          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
+          border:1.5px solid ${T.accent};
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 18px 50px ${T.accentGlow},0 0 60px ${T.accentGlow}40;
+          animation:m4-reveal-pop .5s cubic-bezier(.4,1.6,.5,1) both}
+        .m4-reveal-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.75;font-weight:700;color:${T.accent};margin:0}
+        .m4-reveal-val{margin:6px 0 0;font-family:'Bagel Fat One',cursive;font-size:clamp(2.5rem,8vw,3.4rem);line-height:.9;
+          background:linear-gradient(180deg,#fff,${T.accent} 50%,${T.accentHot});
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 4px 18px ${T.accentGlow})}
+        .m4-reveal-sub{margin:6px 0 0;font-size:.78rem;font-weight:600;opacity:.85}
 
-        .m4-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:20px;margin-top:18px;border-radius:16px;
+        /* ─── Actions ─── */
+        .m4-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:20px;margin-top:14px;border-radius:16px;
           font-family:inherit;font-size:1.05rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;border:none;
           background:linear-gradient(135deg,${T.accent},${T.accentLight});
           box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
-          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s;animation:m4-breath 2.6s ease-in-out infinite}
-        .m4-cta::after{content:"→";font-size:1.3rem;margin-left:4px}
+          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s}
         .m4-cta:active{transform:scale(.97)}
+        .m4-cta::after{content:"→";font-size:1.3rem;margin-left:4px}
+        .m4-cta.disabled{opacity:.6;cursor:not-allowed}
+        .m4-cta.idle{animation:m4-breath 2.6s ease-in-out infinite}
         .m4-replay{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:14px;margin-top:10px;border-radius:14px;
           font:inherit;font-size:.82rem;font-weight:700;color:#fff;text-decoration:none;cursor:pointer;
           background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);opacity:.7;transition:opacity .2s}
@@ -174,32 +226,12 @@ export function M4Scratch({
 
         .m4-cta-sub{margin:10px 0 0;font-size:.74rem;text-align:center;opacity:.7}
 
-        @keyframes m4-halo-pulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
-        @keyframes m4-lock-crack{
-          0%{transform:rotate(0) scale(1);opacity:1}
-          40%{transform:rotate(-20deg) scale(1.15);opacity:1}
-          100%{transform:rotate(60deg) scale(.3);opacity:0}
-        }
-        @keyframes m4-vault-open{
-          0%{transform:scale(1) rotate(0)}
-          30%{transform:scale(1.08) rotate(-3deg)}
-          60%{transform:scale(1.04) rotate(2deg)}
-          100%{transform:scale(1.05) rotate(0)}
-        }
-        @keyframes m4-handle-spin{from{transform:rotate(0)}to{transform:rotate(180deg)}}
-        @keyframes m4-amount-reveal{
-          0%{opacity:0;transform:scale(.6)}
-          60%{opacity:1;transform:scale(1.1)}
-          100%{opacity:1;transform:scale(1)}
-        }
-        @keyframes m4-burst{
-          0%{opacity:1;transform:translate(0,0) scale(1)}
-          100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.2)}
-        }
+        @keyframes m4-light-pulse{0%,100%{opacity:.7;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+        @keyframes m4-reveal-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
         @keyframes m4-breath{0%,100%{box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 56px ${T.accentLight},0 14px 30px ${T.accent}99,inset 0 1px 0 rgba(255,255,255,.6)}}
 
         @media (prefers-reduced-motion:reduce){
-          .m4-vault-halo,.m4-cta{animation:none !important}
+          .m4-cta.idle,.m4-chest-light{animation:none !important}
         }
       `}</style>
 
@@ -215,89 +247,80 @@ export function M4Scratch({
           </div>
         ) : null}
 
-        <p className="m4-label">Forge ta clé</p>
+        <p className="m4-label">Loot Box</p>
         <h2 className="m4-headline">
-          {opened ? <>Coffre <em>déverrouillé !</em></> : <>Casse les <em>3 cadenas</em></>}
+          {phase === "revealed" ? <>🎉 <em>Jackpot débloqué !</em></> :
+           phase === "rolling" ? <>🎰 <em>En rotation...</em></> :
+           phase === "opening" ? <>📦 <em>Ouverture...</em></> :
+           <>Ouvre le <em>coffre du jour</em></>}
         </h2>
 
-        <div className="m4-vault-wrap">
-          <div className="m4-vault-halo" />
-          <div className={`m4-vault ${opened ? "opened" : ""}`}>
-            <div className="m4-vault-handle">{opened ? "✓" : "🔒"}</div>
-            <div className="m4-vault-amount">
-              <div className="m4-vault-amount-label">+BONUS</div>
-              <div className="m4-vault-amount-val">{bon || "100%"}</div>
-            </div>
+        {/* Coffre visuel */}
+        <div className="m4-chest-wrap">
+          <div className={`m4-chest ${phase !== "idle" ? "opened" : ""}`}>
+            <div className="m4-chest-light" />
+            <div className="m4-chest-body" />
+            <div className="m4-chest-lid" />
           </div>
+        </div>
 
-          {!opened ? [0, 1, 2].map((i) => (
-            <motion.button
-              key={i}
-              type="button"
-              className={`m4-lock m4-lock-${i + 1} ${cracked[i] ? "cracked" : ""}`}
-              onClick={() => crackLock(i)}
-              aria-label={`Cadenas ${i + 1}`}
-              whileTap={{ scale: 0.9 }}
-            >
-              <svg viewBox="0 0 64 64" fill="none">
-                <defs>
-                  <linearGradient id={`lockGrad${i}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={T.accentLight} />
-                    <stop offset="50%" stopColor={T.accent} />
-                    <stop offset="100%" stopColor="#5a4015" />
-                  </linearGradient>
-                </defs>
-                {/* Anse */}
-                <path d="M20 30 L20 22 a12 12 0 0 1 24 0 L44 30" stroke={`url(#lockGrad${i})`} strokeWidth="6" strokeLinecap="round" fill="none" />
-                {/* Corps */}
-                <rect x="14" y="30" width="36" height="26" rx="5" fill={`url(#lockGrad${i})`} stroke="#1a0f08" strokeWidth="2" />
-                {/* Trou de serrure */}
-                <circle cx="32" cy="40" r="3" fill="#1a0f08" />
-                <rect x="30.5" y="42" width="3" height="7" rx="1" fill="#1a0f08" />
-              </svg>
-            </motion.button>
-          )) : null}
-
-          {/* Particules burst au open */}
-          <div className="m4-particles" aria-hidden>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <span key={i} className="m4-particle"
-                style={{ left: "50%", top: "50%", marginLeft: "-4px", marginTop: "-4px" }}
-              />
+        {/* Rail défilant */}
+        <div className="m4-rail-wrap">
+          <motion.div ref={railRef} className="m4-rail" animate={railControls} initial={{ x: 0 }}>
+            {railItems.map((item, i) => (
+              <div key={i} className={`m4-rail-item ${item.rarity}`} style={{ background: rarityBg[item.rarity], borderColor: rarityColor[item.rarity] }}>
+                <div className="m4-rail-item-icon">{item.icon}</div>
+                <div className="m4-rail-item-label" style={item.rarity !== "legendary" ? { color: rarityColor[item.rarity] } : undefined}>{item.label}</div>
+              </div>
             ))}
+          </motion.div>
+          <div className="m4-rail-indicator" aria-hidden />
+        </div>
+
+        {phase === "revealed" ? (
+          <div className="m4-reveal">
+            <p className="m4-reveal-label">Tu as gagné</p>
+            <div className="m4-reveal-val">{bon || "JACKPOT"}</div>
+            <p className="m4-reveal-sub">de bonus offert · Crédité instantanément</p>
           </div>
-        </div>
+        ) : null}
 
-        <div className="m4-progress">
-          {cracked.map((c, i) => <div key={i} className={`m4-progress-dot ${c ? "done" : ""}`} />)}
-        </div>
-
-        <div className="m4-status">
-          {!allCracked && !opened ? <span>{cracked.filter(Boolean).length} / 3 cadenas brisés</span> : null}
-          {opened ? <span style={{ color: T.accent }}>✨ {bon ? `+${bon} bonus déverrouillé` : "Bonus 100% déverrouillé"}</span> : null}
-        </div>
-
-        {opened ? (
+        {phase === "idle" ? (
+          <motion.button
+            type="button"
+            className="m4-cta idle"
+            onClick={startOpening}
+            whileTap={{ scale: 0.97 }}
+          >
+            📦 OUVRIR LE COFFRE
+          </motion.button>
+        ) : phase === "revealed" ? (
           <>
             <V3MagneticButton href={safeAffi} onClick={onCta} className="m4-cta v3-cta">
               🚀 RÉCLAMER {bon || "MON BONUS"}
             </V3MagneticButton>
             <button type="button" className="m4-replay" onClick={reset}>↻ Rejouer</button>
-            <p className="m4-cta-sub">Dépose {dep || "10€"} · Crédit instantané · 30s</p>
           </>
         ) : (
-          <p className="m4-cta-sub">Tape sur chaque cadenas pour le briser. Une fois les 3 cassés, le coffre s'ouvre.</p>
+          <button type="button" className="m4-cta disabled" disabled>
+            ⏳ {phase === "opening" ? "Ouverture..." : "Rotation..."}
+          </button>
         )}
+
+        <p className="m4-cta-sub">
+          {phase === "idle" ? `Dépose ${dep || "10€"} pour débloquer ton bonus garanti` : ""}
+          {phase === "revealed" ? "Inscription en 30s · Crédit instantané" : ""}
+        </p>
       </div>
 
       <V3OfferPopup
         open={popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={bon ? `+${bon}` : "Bonus"}
+        score={bon ? `+${bon}` : "JACKPOT"}
         depositAmount={dep}
         bonusAmount={bon}
-        steps={["Validation du coffre", "Préparation du bonus", "Lien d'inscription prêt"]}
+        steps={["Validation du loot", "Préparation du bonus", "Lien d'inscription prêt"]}
         href={safeAffi}
       />
 

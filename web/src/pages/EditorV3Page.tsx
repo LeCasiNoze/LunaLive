@@ -638,7 +638,7 @@ function WizardQuickView({
               {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards promo + reviews)"}
               {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants couleur)"}
               {inputs.modelKind === "M3" && "M3 = Roue à tourner — segments néon, bonus à l'arrivée"}
-              {inputs.modelKind === "M4" && "M4 = Crack the Vault — 3 cadenas à briser, coffre s'ouvre avec burst dorées"}
+              {inputs.modelKind === "M4" && "M4 = Loot Box Opening — coffre s'ouvre, rail d'items défile et stoppe sur ton bonus (style case CSGO)"}
               {inputs.modelKind === "M5" && "M5 = Slot Machine 3×3 — ligne bonus centrale"}
               {inputs.modelKind === "M6" && "M6 = Mines 3×3 sans bombe"}
               {inputs.modelKind === "M7" && "M7 = Lucky Cards — 5 cartes face cachée, retourne-les pour accumuler multiplier, cash out avant BUST"}
