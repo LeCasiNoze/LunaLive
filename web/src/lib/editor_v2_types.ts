@@ -246,6 +246,8 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   gameImageUrl?: string;
   gameLabel?: string;
   gameBonusPct?: string;
+  pseudoVariant?: "cyclope" | "neon" | "metal" | "flat" | "holo";
+  pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   /** Style typographique du pseudo (font/size/color/weight/glow).
    *  Type V3LineStyle structurellement compatible (lazy any pour éviter
    *  un import circulaire avec editor_v3_quick_builder). */

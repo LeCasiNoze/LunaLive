@@ -1,17 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M13 — "Ticket Scratch" : grand ticket de loterie style rétro à gratter.
-// Hero ticket avec perforations, numero de tirage, encart "BONUS GAGNE", zone
-// scratch interactive (revele Y€), section barcode + footer perfo. CTA =
-// "ENCAISSER MAINTENANT".
+// M13 — "Urgency Scarcity" : landing conversion brutale.
+// Hero countdown XL (24h), barre de places restantes (35/50), live activity
+// feed (gens qui reclament en temps reel), trust badges, double CTA bonus
+// standard + section VIP capture email inline.
+//
+// Levers conversion :
+//   - urgence temporelle (timer compte a rebours visible toujours)
+//   - rarete (places restantes diminuent)
+//   - preuve sociale (live feed de reservations)
+//   - autorite (badges licence, paiement)
+//   - capture VIP inline → recontact gros joueurs
 //
 // Respecte regles V3 : theme/pseudoStyle/X/Y/V3OfferPopup/V3SocialProof.
-// Pas d'images embarquees : illustration full-CSS (perfos = radial-gradients).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { motion, useMotionValue, useTransform } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3InlineVipForm } from "./V3InlineVipForm";
 import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 
 export type M13TicketProps = {
@@ -30,6 +37,11 @@ export type M13TicketProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
+const ACTIVITY_NAMES = [
+  "Marc L.", "Sofia R.", "Karim B.", "Léa M.", "Yanis D.", "Inès K.",
+  "Théo P.", "Nora S.", "Rayan T.", "Camille H.", "Mehdi A.", "Anaïs G.",
+];
+
 export function M13Ticket({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
 }: M13TicketProps) {
@@ -37,8 +49,8 @@ export function M13Ticket({
     accent:      theme?.accent      || "#FFD700",
     accentLight: theme?.accentLight || "#FFC200",
     accentGlow:  theme?.accentGlow  || "rgba(255,214,0,.5)",
-    bgPage:      theme?.bgPage      || "#1a0f08",
-    bgCard:      theme?.bgCard      || "#2a1810",
+    bgPage:      theme?.bgPage      || "#080212",
+    bgCard:      theme?.bgCard      || "#150821",
   };
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -47,50 +59,59 @@ export function M13Ticket({
   const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus");
 
   const [popupOpen, setPopupOpen] = React.useState(false);
-  const [scratchPct, setScratchPct] = React.useState(0);
-  const revealed = scratchPct >= 60;
-
-  // Scratch interaction : track pointer movement % of canvas
-  const scratchRef = React.useRef<HTMLDivElement>(null);
-  const cellsRef = React.useRef<Set<number>>(new Set());
-  const GRID = 20; // 20x20 cellules
-
-  const onPointer = (e: React.PointerEvent) => {
-    if (e.buttons === 0 && e.type !== "pointerdown") return;
-    const el = scratchRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - r.left) / r.width) * GRID);
-    const y = Math.floor(((e.clientY - r.top) / r.height) * GRID);
-    if (x < 0 || y < 0 || x >= GRID || y >= GRID) return;
-    // marque la cellule + voisines (effet brosse)
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const cx = x + dx, cy = y + dy;
-        if (cx >= 0 && cy >= 0 && cx < GRID && cy < GRID) {
-          cellsRef.current.add(cy * GRID + cx);
-        }
-      }
-    }
-    const pct = Math.round((cellsRef.current.size / (GRID * GRID)) * 100);
-    setScratchPct(pct);
-  };
-
-  const revealAll = () => {
-    cellsRef.current = new Set(Array.from({ length: GRID * GRID }, (_, i) => i));
-    setScratchPct(100);
-  };
-
   const onCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
 
-  const tilt = useMotionValue(0);
-  const tiltY = useTransform(tilt, [-50, 50], [4, -4]);
-  const tiltX = useTransform(tilt, [-50, 50], [-2, 2]);
+  // ─── Countdown 24h ─────────────────────────────────────────────────────────
+  const targetMs = React.useMemo(() => {
+    // Cible : minuit prochain + offset aleatoire 0-6h pour effet "expire bientot"
+    const d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime() - Math.floor(Math.random() * 6 * 3600 * 1000);
+  }, []);
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  const remain = Math.max(0, targetMs - now);
+  const hh = Math.floor(remain / 3600000);
+  const mm = Math.floor((remain % 3600000) / 60000);
+  const ss = Math.floor((remain % 60000) / 1000);
 
-  // Tirage du jour : date + numero pseudo-random stable
-  const drawNumber = React.useMemo(() => {
-    const today = new Date();
-    return `#${today.getFullYear()}${String(today.getMonth()+1).padStart(2,"0")}${String(today.getDate()).padStart(2,"0")}-${String(Math.floor(Math.random()*9000)+1000)}`;
+  // ─── Places restantes : decremente lentement ───────────────────────────────
+  const [seatsLeft, setSeatsLeft] = React.useState(() => 28 + Math.floor(Math.random() * 12));
+  const TOTAL_SEATS = 50;
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      setSeatsLeft((s) => Math.max(7, s - (Math.random() < 0.3 ? 1 : 0)));
+    }, 18000);
+    return () => window.clearInterval(id);
+  }, []);
+  const seatsPct = (seatsLeft / TOTAL_SEATS) * 100;
+
+  // ─── Live activity feed ────────────────────────────────────────────────────
+  const [activities, setActivities] = React.useState<Array<{ id: number; name: string; amount: number; ago: string }>>(() => {
+    return Array.from({ length: 3 }).map((_, i) => ({
+      id: i,
+      name: ACTIVITY_NAMES[Math.floor(Math.random() * ACTIVITY_NAMES.length)],
+      amount: 50 + Math.floor(Math.random() * 450),
+      ago: `${i * 2 + 1} min`,
+    }));
+  });
+  React.useEffect(() => {
+    let nextId = 100;
+    const id = window.setInterval(() => {
+      setActivities((prev) => {
+        const newItem = {
+          id: nextId++,
+          name: ACTIVITY_NAMES[Math.floor(Math.random() * ACTIVITY_NAMES.length)],
+          amount: 50 + Math.floor(Math.random() * 450),
+          ago: "à l'instant",
+        };
+        return [newItem, ...prev.map((p, i) => ({ ...p, ago: i === 0 ? "1 min" : `${i * 2 + 1} min` }))].slice(0, 4);
+      });
+    }, 6500);
+    return () => window.clearInterval(id);
   }, []);
 
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
@@ -98,190 +119,227 @@ export function M13Ticket({
   return (
     <div className="m13-root">
       <style>{`
-        .m13-root{position:relative;min-height:100vh;padding:32px 16px 160px;background:
-          radial-gradient(140% 60% at 50% -10%,${T.accent}1a,transparent 65%),
-          radial-gradient(80% 50% at 50% 100%,${T.accent}14,transparent 70%),
+        .m13-root{position:relative;min-height:100vh;padding:0 0 160px;background:
+          radial-gradient(80% 50% at 50% -5%,${T.accent}22 0%,transparent 60%),
           ${T.bgPage};
-          font-family:"Courier New","Courier",monospace;color:#1a0f08}
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff}
 
-        .m13-stage{max-width:420px;margin:0 auto;perspective:1200px}
+        /* ─── Top urgency banner ─── */
+        .m13-top{padding:16px;background:linear-gradient(135deg,#dc2626,#ef4444);text-align:center;
+          box-shadow:0 4px 18px rgba(220,38,38,.45);position:sticky;top:0;z-index:30}
+        .m13-top-label{font-size:.66rem;letter-spacing:.34em;text-transform:uppercase;font-weight:800;opacity:.9;margin:0 0 6px}
+        .m13-top-timer{display:flex;justify-content:center;gap:6px;align-items:center}
+        .m13-top-cell{display:flex;flex-direction:column;align-items:center;justify-content:center;width:54px;height:54px;border-radius:10px;
+          background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.18);font-variant-numeric:tabular-nums}
+        .m13-top-cell-num{font-size:1.35rem;font-weight:900;line-height:1;letter-spacing:-.02em}
+        .m13-top-cell-lbl{font-size:.5rem;letter-spacing:.18em;opacity:.7;text-transform:uppercase;margin-top:3px}
+        .m13-top-sep{font-size:1.3rem;opacity:.5;font-weight:900;animation:m13-blink 1s ease-in-out infinite}
 
-        /* Ticket : papier creme legerement texture */
-        .m13-ticket{position:relative;background:linear-gradient(180deg,#fdf6e3 0%,#f5ebd0 100%);
-          padding:28px 22px;border-radius:6px;color:#2a1810;
-          box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 0 0 1px rgba(0,0,0,.08);
-          transform-style:preserve-3d;will-change:transform}
-        .m13-ticket::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:6px;
-          background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='2.5' numOctaves='1'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.18'/></svg>");
-          mix-blend-mode:multiply;opacity:.4}
-
-        /* Perforations top/bottom (radial-gradient pattern) */
-        .m13-perfo{position:relative;height:18px;margin:14px -22px;background:
-          radial-gradient(circle 7px at 12px 50%,${T.bgPage} 98%,transparent 100%) 0 0/24px 18px repeat-x}
-        .m13-perfo::before{content:"";position:absolute;left:22px;right:22px;top:50%;border-top:1.5px dashed rgba(42,24,16,.4)}
-
-        .m13-masthead{text-align:center;margin-bottom:14px}
-        .m13-brand{font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:1.6rem;letter-spacing:.18em;margin:0;color:#1a0f08}
-        .m13-tagline{font-size:.62rem;letter-spacing:.34em;text-transform:uppercase;margin:4px 0 0;opacity:.5}
-
-        .m13-row{display:flex;justify-content:space-between;align-items:center;margin:6px 0;font-size:.68rem;text-transform:uppercase;letter-spacing:.12em}
-        .m13-row strong{font-weight:700;color:#1a0f08}
-        .m13-row span{opacity:.65}
-
-        .m13-pseudo-wrap{display:flex;align-items:center;gap:12px;padding:10px;margin:10px 0 14px;border:1px solid rgba(42,24,16,.25);border-radius:4px;background:rgba(0,0,0,.03)}
-        .m13-pseudo-avatar{width:42px;height:42px;border-radius:50%;overflow:hidden;flex-shrink:0;border:2px solid ${T.accent};background:#fff}
-        .m13-pseudo-avatar img{width:100%;height:100%;object-fit:cover}
-        .m13-pseudo-avatar-empty{display:flex;align-items:center;justify-content:center;height:100%;font-size:1.2rem;opacity:.4;color:#1a0f08}
-        .m13-pseudo-meta{flex:1;min-width:0}
-        .m13-pseudo-label{font-size:.58rem;letter-spacing:.2em;opacity:.55;text-transform:uppercase;margin:0}
-        .m13-pseudo-name{margin:2px 0 0;line-height:1}
-
-        .m13-prize-box{padding:16px 18px;margin:14px 0;border:2px dashed rgba(42,24,16,.5);border-radius:6px;text-align:center;background:rgba(255,255,255,.5)}
-        .m13-prize-label{font-size:.66rem;letter-spacing:.28em;text-transform:uppercase;margin:0;opacity:.65}
-        .m13-prize-amount{margin:6px 0 0;font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:3.2rem;line-height:.95;letter-spacing:.02em;
-          background:linear-gradient(180deg,${T.accent} 0%,${T.accentLight} 60%,#8a6724 100%);
+        /* ─── Hero ─── */
+        .m13-hero{padding:26px 18px 14px;max-width:460px;margin:0 auto;text-align:center}
+        .m13-avatar{width:68px;height:68px;border-radius:50%;margin:0 auto 12px;overflow:hidden;border:2.5px solid ${T.accent};
+          box-shadow:0 0 0 3px rgba(0,0,0,.4),0 10px 28px ${T.accentGlow}}
+        .m13-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+        .m13-avatar-empty{display:flex;align-items:center;justify-content:center;height:100%;font-size:1.4rem;opacity:.4}
+        .m13-pseudo{margin:0;line-height:1.1}
+        .m13-pre{margin:14px 0 6px;font-size:.7rem;letter-spacing:.3em;text-transform:uppercase;opacity:.6;color:${T.accentLight}}
+        .m13-headline{margin:0;font-size:clamp(1.9rem,7vw,2.6rem);line-height:1.05;font-weight:900;letter-spacing:-.025em}
+        .m13-headline em{font-style:normal;background:linear-gradient(180deg,${T.accent},${T.accentLight});
           -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
-          filter:drop-shadow(0 2px 0 rgba(0,0,0,.18))}
-        .m13-prize-sub{margin:4px 0 0;font-size:.7rem;letter-spacing:.15em;opacity:.6;text-transform:uppercase}
+          filter:drop-shadow(0 2px 14px ${T.accentGlow})}
 
-        /* Scratch area */
-        .m13-scratch-wrap{position:relative;margin:14px 0;border-radius:8px;overflow:hidden;border:1px solid rgba(42,24,16,.2);background:#fff}
-        .m13-scratch-reveal{padding:28px 18px;text-align:center;background:linear-gradient(135deg,#fff5cc,#fffaf0)}
-        .m13-scratch-pre{font-size:.62rem;letter-spacing:.28em;opacity:.6;text-transform:uppercase;margin:0}
-        .m13-scratch-amount{margin:6px 0 4px;font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:2.8rem;line-height:1;color:${T.accent};
-          text-shadow:0 2px 0 rgba(0,0,0,.12)}
-        .m13-scratch-hint{font-size:.68rem;opacity:.65;margin:0}
-        .m13-scratch-overlay{position:absolute;inset:0;cursor:crosshair;touch-action:none;
-          background:repeating-linear-gradient(45deg,#8a8580 0 6px,#a8a39c 6px 12px);
-          transition:opacity .4s ease}
-        .m13-scratch-overlay.gone{opacity:0;pointer-events:none}
-        .m13-scratch-overlay::after{content:"GRATTE ICI";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-          color:rgba(255,255,255,.85);font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:1.4rem;letter-spacing:.25em;
-          text-shadow:0 2px 0 rgba(0,0,0,.3)}
-        .m13-scratch-grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(${GRID},1fr);grid-template-rows:repeat(${GRID},1fr)}
-        .m13-scratch-cell{background:transparent;transition:opacity .15s ease}
-        .m13-scratch-cell.gone{opacity:0;background:transparent}
-        .m13-scratch-pct{position:absolute;top:8px;right:10px;font-size:.7rem;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);z-index:2}
+        /* ─── Prize card ─── */
+        .m13-prize{margin:22px auto 0;max-width:420px;padding:24px 22px;border-radius:22px;text-align:center;
+          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});border:1.5px solid ${T.accent}55;
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 60px ${T.accentGlow}80}
+        .m13-prize-label{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;opacity:.65;margin:0}
+        .m13-prize-dep{margin:8px 0 0;font-size:.86rem;font-weight:700;opacity:.85}
+        .m13-prize-dep strong{color:${T.accent};font-weight:900}
+        .m13-prize-amount{margin:10px 0 0;font-size:clamp(3.4rem,12vw,4.6rem);font-weight:900;line-height:.95;letter-spacing:-.035em;
+          background:linear-gradient(180deg,#fff,${T.accent} 60%,${T.accentLight} 100%);
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 4px 24px ${T.accentGlow})}
+        .m13-prize-sub{margin:6px 0 0;font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;opacity:.6}
 
-        .m13-cta{display:flex;align-items:center;justify-content:center;width:100%;padding:18px;margin-top:14px;border-radius:6px;
-          font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:1.4rem;letter-spacing:.14em;color:#1a0f08;text-decoration:none;cursor:pointer;
-          background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);
-          border:2px solid #1a0f08;box-shadow:4px 4px 0 #1a0f08;transition:transform .12s,box-shadow .12s}
-        .m13-cta:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #1a0f08}
-        .m13-cta:disabled,.m13-cta.dim{opacity:.45;cursor:not-allowed;filter:grayscale(.5)}
+        /* ─── Seats bar ─── */
+        .m13-seats{margin:18px auto 0;max-width:420px;padding:14px 16px;border-radius:14px;
+          background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.08)}
+        .m13-seats-top{display:flex;justify-content:space-between;align-items:center;font-size:.74rem;font-weight:700;margin-bottom:8px}
+        .m13-seats-top-label{opacity:.7;letter-spacing:.05em;display:flex;align-items:center;gap:6px}
+        .m13-seats-top-label::before{content:"";width:7px;height:7px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;animation:m13-blink 1.2s ease-in-out infinite}
+        .m13-seats-count{color:#ef4444;font-weight:900;font-size:.82rem;font-variant-numeric:tabular-nums}
+        .m13-seats-track{position:relative;height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden}
+        .m13-seats-fill{position:absolute;top:0;left:0;height:100%;border-radius:99px;
+          background:linear-gradient(90deg,${T.accent},${T.accentLight});transition:width .6s ease;
+          box-shadow:0 0 12px ${T.accentGlow}}
 
-        .m13-barcode{display:flex;gap:2px;justify-content:center;align-items:flex-end;height:48px;margin:18px 0 6px}
-        .m13-barcode span{display:inline-block;width:2px;background:#1a0f08;border-radius:1px}
-        .m13-barcode-num{text-align:center;font-size:.72rem;letter-spacing:.4em;opacity:.6}
+        /* ─── CTA principal ─── */
+        .m13-cta-wrap{padding:20px 16px 8px;max-width:420px;margin:0 auto}
+        .m13-cta{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:22px;border-radius:18px;
+          font-family:inherit;font-size:1.1rem;font-weight:900;letter-spacing:.05em;color:#000;text-decoration:none;cursor:pointer;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 40px ${T.accentGlow},0 18px 40px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
+          animation:m13-breath 2.2s ease-in-out infinite;text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s}
+        .m13-cta:active{transform:scale(.97)}
+        .m13-cta::after{content:"→";font-size:1.3rem;margin-left:4px}
+        .m13-cta-sub{margin:10px 0 0;font-size:.72rem;text-align:center;opacity:.65}
 
-        .m13-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:14px 16px 18px;
-          background:linear-gradient(to top,${T.bgPage} 50%,${T.bgPage}dd 85%,transparent)}
-        .m13-sticky-cta{display:flex;align-items:center;justify-content:center;width:100%;max-width:400px;margin:0 auto;padding:18px;border-radius:8px;
-          font-family:"Bebas Neue","Anton","Impact",sans-serif;font-size:1.3rem;letter-spacing:.12em;color:#1a0f08;text-decoration:none;
-          background:linear-gradient(180deg,${T.accentLight},${T.accent});
-          border:2px solid ${T.accent};box-shadow:0 0 36px ${T.accentGlow},0 12px 28px ${T.accent}66}
+        /* ─── Live activity ─── */
+        .m13-live{padding:20px 16px;max-width:460px;margin:0 auto}
+        .m13-live-title{display:flex;align-items:center;justify-content:center;gap:8px;font-size:.7rem;letter-spacing:.3em;text-transform:uppercase;opacity:.7;margin:0 0 14px}
+        .m13-live-title::before{content:"";width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;animation:m13-blink 1.3s ease-in-out infinite}
+        .m13-live-list{display:flex;flex-direction:column;gap:8px}
+        .m13-live-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:14px;
+          background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:.85rem}
+        .m13-live-ava{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;font-size:.82rem;flex-shrink:0;border:1.5px solid rgba(255,255,255,.9)}
+        .m13-live-text{flex:1;min-width:0}
+        .m13-live-text strong{font-weight:700}
+        .m13-live-text em{font-style:normal;color:${T.accent};font-weight:800}
+        .m13-live-time{font-size:.7rem;opacity:.5;white-space:nowrap}
 
-        .m13-footer{padding:20px 18px 14px;text-align:center;opacity:.55;font-size:.68rem;line-height:1.6;max-width:420px;margin:0 auto;color:#fff;font-family:'Inter',sans-serif}
+        /* ─── Trust strip ─── */
+        .m13-trust{padding:14px 16px;max-width:460px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+        .m13-trust-item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;
+          background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:.74rem;font-weight:600}
+        .m13-trust-icon{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          background:${T.accent}22;color:${T.accent};font-size:.85rem;flex-shrink:0}
+
+        /* ─── VIP section ─── */
+        .m13-vip-section{padding:8px 16px 16px;max-width:480px;margin:0 auto}
+
+        /* ─── Footer ─── */
+        .m13-footer{padding:18px 22px 10px;text-align:center;opacity:.5;font-size:.66rem;line-height:1.7;max-width:460px;margin:0 auto}
         .m13-footer strong{color:#fff;font-weight:700}
+
+        /* ─── Sticky CTA ─── */
+        .m13-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px 14px 16px;
+          background:linear-gradient(to top,${T.bgPage} 55%,${T.bgPage}dd 85%,transparent)}
+        .m13-sticky-cta{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;max-width:420px;margin:0 auto;padding:16px;border-radius:16px;
+          font-family:inherit;font-size:.98rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 36px ${T.accentGlow},0 12px 28px ${T.accent}55;text-shadow:0 1px 0 rgba(255,255,255,.3)}
+
+        @keyframes m13-blink{0%,100%{opacity:1}50%{opacity:.4}}
+        @keyframes m13-breath{0%,100%{box-shadow:0 0 40px ${T.accentGlow},0 18px 40px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 60px ${T.accentLight},0 18px 40px ${T.accent}99,inset 0 1px 0 rgba(255,255,255,.6)}}
+
+        @media (prefers-reduced-motion:reduce){
+          .m13-top-sep,.m13-cta{animation:none !important}
+        }
       `}</style>
 
-      <div className="m13-stage">
-        <motion.div
-          className="m13-ticket"
-          style={{ rotateX: tiltX, rotateY: tiltY }}
-          onPointerMove={(e) => {
-            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            tilt.set(((e.clientX - r.left) / r.width - 0.5) * 100);
-          }}
-          onPointerLeave={() => tilt.set(0)}
-        >
-          {/* Masthead */}
-          <div className="m13-masthead">
-            <h1 className="m13-brand">LUNA CASINO</h1>
-            <div className="m13-tagline">Ticket Bonus · Édition Limitée</div>
+      {/* Top urgency banner */}
+      <div className="m13-top">
+        <p className="m13-top-label">⚡ Cette offre expire dans</p>
+        <div className="m13-top-timer">
+          <div className="m13-top-cell">
+            <div className="m13-top-cell-num">{String(hh).padStart(2,"0")}</div>
+            <div className="m13-top-cell-lbl">Heures</div>
           </div>
-
-          <div className="m13-perfo" />
-
-          <div className="m13-row"><span>Tirage</span><strong>{drawNumber}</strong></div>
-          <div className="m13-row"><span>Validité</span><strong>24H</strong></div>
-          {dep ? <div className="m13-row"><span>Dépôt requis</span><strong>{dep}</strong></div> : null}
-
-          {/* Pseudo */}
-          <div className="m13-pseudo-wrap">
-            <div className="m13-pseudo-avatar">
-              {profileImageUrl ? (
-                <img src={profileImageUrl} alt={pseudo || ""} />
-              ) : (
-                <div className="m13-pseudo-avatar-empty">👤</div>
-              )}
-            </div>
-            <div className="m13-pseudo-meta">
-              <p className="m13-pseudo-label">Bénéficiaire</p>
-              <h2 className="m13-pseudo-name" style={{ ...nameStyle, color: "#1a0f08", textShadow: "none", fontSize: "1.1rem" }}>{pseudo || "Joueur invité"}</h2>
-            </div>
+          <div className="m13-top-sep">:</div>
+          <div className="m13-top-cell">
+            <div className="m13-top-cell-num">{String(mm).padStart(2,"0")}</div>
+            <div className="m13-top-cell-lbl">Min</div>
           </div>
-
-          {/* Prize box */}
-          <div className="m13-prize-box">
-            <p className="m13-prize-label">Bonus à gagner</p>
-            <div className="m13-prize-amount">{bon || "BONUS"}</div>
-            <p className="m13-prize-sub">+ Free Spins inclus</p>
+          <div className="m13-top-sep">:</div>
+          <div className="m13-top-cell">
+            <div className="m13-top-cell-num">{String(ss).padStart(2,"0")}</div>
+            <div className="m13-top-cell-lbl">Sec</div>
           </div>
-
-          {/* Scratch area */}
-          <div className="m13-scratch-wrap" ref={scratchRef} onPointerDown={onPointer} onPointerMove={onPointer}>
-            <div className="m13-scratch-reveal">
-              <p className="m13-scratch-pre">Ton code bonus</p>
-              <div className="m13-scratch-amount">{bon || "BONUS-100"}</div>
-              <p className="m13-scratch-hint">Présente ce ticket pour activer</p>
-            </div>
-            {!revealed ? (
-              <div className="m13-scratch-overlay">
-                <div className="m13-scratch-grid">
-                  {Array.from({ length: GRID * GRID }).map((_, i) => (
-                    <div key={i} className={`m13-scratch-cell ${cellsRef.current.has(i) ? "gone" : ""}`}
-                      style={{ background: cellsRef.current.has(i) ? "transparent" : "linear-gradient(45deg,#8a8580 25%,#a8a39c 25%,#a8a39c 50%,#8a8580 50%,#8a8580 75%,#a8a39c 75%)", backgroundSize: "8px 8px" }}
-                    />
-                  ))}
-                </div>
-                <div className="m13-scratch-pct">{scratchPct}%</div>
-              </div>
-            ) : null}
-          </div>
-
-          {!revealed ? (
-            <button type="button" className="m13-cta dim" onClick={revealAll}>
-              GRATTE OU CLIQUE POUR RÉVÉLER
-            </button>
-          ) : (
-            <a className="m13-cta v3-cta" href={safeAffi} onClick={onCta}>
-              ENCAISSER {bon || "LE BONUS"}
-            </a>
-          )}
-
-          <div className="m13-perfo" />
-
-          {/* Barcode */}
-          <div className="m13-barcode">
-            {Array.from({ length: 48 }).map((_, i) => (
-              <span key={i} style={{ height: `${20 + Math.floor((Math.sin(i * 1.3) + 1) * 14)}px`, width: i % 5 === 0 ? "3px" : "2px" }} />
-            ))}
-          </div>
-          <div className="m13-barcode-num">{drawNumber.replace("#", "")}</div>
-        </motion.div>
-
-        <footer className="m13-footer">
-          <p>
-            Jeu réservé aux 18+. Jouer comporte des risques.
-            Aide : <strong>09 74 75 13 13</strong> · <strong>joueurs-info-service.fr</strong>
-          </p>
-        </footer>
+        </div>
       </div>
+
+      {/* Hero */}
+      <section className="m13-hero">
+        <div className="m13-avatar">
+          {profileImageUrl ? <img src={profileImageUrl} alt={pseudo || ""} /> : <div className="m13-avatar-empty">👤</div>}
+        </div>
+        {pseudo ? <h1 className="m13-pseudo" style={nameStyle}>{pseudo}</h1> : null}
+        <p className="m13-pre">Offre exclusive partenaire</p>
+        <h2 className="m13-headline">Réclame ton<br /><em>bonus avant minuit</em></h2>
+
+        <div className="m13-prize">
+          <p className="m13-prize-label">Tu reçois</p>
+          {dep ? <p className="m13-prize-dep">Dépose seulement <strong>{dep}</strong></p> : null}
+          <div className="m13-prize-amount">+{bon || "BONUS"}</div>
+          <p className="m13-prize-sub">Crédité instantanément</p>
+        </div>
+
+        <div className="m13-seats">
+          <div className="m13-seats-top">
+            <span className="m13-seats-top-label">Places restantes aujourd'hui</span>
+            <span className="m13-seats-count">{seatsLeft} / {TOTAL_SEATS}</span>
+          </div>
+          <div className="m13-seats-track">
+            <div className="m13-seats-fill" style={{ width: `${seatsPct}%` }} />
+          </div>
+        </div>
+      </section>
+
+      {/* CTA principal */}
+      <section className="m13-cta-wrap">
+        <a className="m13-cta v3-cta" href={safeAffi} onClick={onCta}>
+          RÉCLAMER {bon || "MON BONUS"} MAINTENANT
+        </a>
+        <p className="m13-cta-sub">Inscription en 30s · 100% sécurisé · Sans CB requise</p>
+      </section>
+
+      {/* Live activity feed */}
+      <section className="m13-live">
+        <p className="m13-live-title">En direct sur la page</p>
+        <div className="m13-live-list">
+          <AnimatePresence initial={false}>
+            {activities.map((a) => (
+              <motion.div
+                key={a.id}
+                className="m13-live-item"
+                initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, height: 0, padding: 0, margin: 0 }}
+                transition={{ duration: 0.35, ease: [0.2, 0.7, 0.2, 1] }}
+              >
+                <div className="m13-live-ava">{a.name[0]}</div>
+                <div className="m13-live-text">
+                  <strong>{a.name}</strong> a réclamé <em>+{a.amount}€</em>
+                </div>
+                <div className="m13-live-time">{a.ago}</div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </section>
+
+      {/* Trust badges */}
+      <div className="m13-trust">
+        <div className="m13-trust-item"><span className="m13-trust-icon">✓</span> Licence officielle</div>
+        <div className="m13-trust-item"><span className="m13-trust-icon">🔒</span> Paiement sécurisé</div>
+        <div className="m13-trust-item"><span className="m13-trust-icon">⚡</span> Retrait sous 24h</div>
+        <div className="m13-trust-item"><span className="m13-trust-icon">👥</span> +12K joueurs</div>
+      </div>
+
+      {/* VIP capture section */}
+      <section className="m13-vip-section">
+        <V3InlineVipForm
+          accent={T.accent}
+          accentLight={T.accentLight}
+          accentGlow={T.accentGlow}
+          href={safeAffi}
+          title="Tu déposes plus de 100€ par mois ?"
+          subtitle="Active ton statut VIP — un host dédié t'accompagne avec bonus exclusifs, cashback augmenté et retraits prioritaires."
+          ctaLabel="Activer mon VIP"
+        />
+      </section>
+
+      <footer className="m13-footer">
+        <p>
+          Jeu réservé aux 18+. Les jeux d'argent comportent des risques.
+          Aide : <strong>09 74 75 13 13</strong> · <strong>joueurs-info-service.fr</strong>
+        </p>
+      </footer>
 
       <div className="m13-sticky">
         <a className="m13-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
-          ENCAISSER {bon || "LE BONUS"}
+          🚀 RÉCLAMER {bon || "MON BONUS"}
         </a>
       </div>
 
@@ -292,7 +350,7 @@ export function M13Ticket({
         score={rewardScore}
         depositAmount={dep}
         bonusAmount={bon}
-        steps={["Validation du ticket", "Génération du code", "Activation prête"]}
+        steps={["Réservation de ta place", "Validation du bonus", "Lien d'inscription prêt"]}
         href={safeAffi}
       />
 

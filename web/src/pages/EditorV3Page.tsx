@@ -641,6 +641,39 @@ function WizardQuickView({
                   2e ligne en cream solide letterspaced, sous la ligne chrome.
                 </div>
               </div>
+              {inputs.modelKind === "M10" ? (
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={labelStyle}>Style du pseudo</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {([
+                        { k: "cyclope", l: "Cyclope (original)" },
+                        { k: "neon",    l: "Néon" },
+                        { k: "metal",   l: "Métal chromé" },
+                        { k: "flat",    l: "Plat couleur unie" },
+                        { k: "holo",    l: "Holographique" },
+                      ] as const).map((v) => (
+                        <Chip key={v.k} active={(inputs.pseudoVariant || "cyclope") === v.k}
+                          onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={labelStyle}>Animation du pseudo</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {([
+                        { k: "none",  l: "Aucune" },
+                        { k: "pulse", l: "Pulse" },
+                        { k: "float", l: "Float" },
+                        { k: "glow",  l: "Glow pulse" },
+                      ] as const).map((a) => (
+                        <Chip key={a.k} active={(inputs.pseudoAnimation || "none") === a.k}
+                          onClick={() => update({ pseudoAnimation: a.k })}>{a.l}</Chip>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : null}
               {token ? <SocialProfileLoader token={token} update={update} /> : null}
             </>
           ) : null}

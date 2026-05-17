@@ -55,6 +55,10 @@ export type M10CyclopeProps = {
     weight?: string;
     glow?: boolean;
   };
+  /** Variante visuelle du pseudo (preset look). */
+  pseudoVariant?: "cyclope" | "neon" | "metal" | "flat" | "holo";
+  /** Animation appliquee au pseudo. */
+  pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   /** Callback editeur : appelée au clic sur un élément éditable.
    *  Si undefined (rendu final), le clic est inert (sauf CTA). */
   onEditField?: (field: M10EditField) => void;
@@ -120,6 +124,8 @@ export function M10Cyclope({
   affiLink,
   theme,
   pseudoStyle,
+  pseudoVariant,
+  pseudoAnimation,
   onEditField,
 }: M10CyclopeProps) {
   // Plumbing click-to-edit (a wirer dans une prochaine iteration sur chaque element)
@@ -206,7 +212,17 @@ export function M10Cyclope({
         .m10-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
-        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
+        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em}
+        /* Variantes visuelles du pseudo */
+        .m10-name-cyclope{background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
+        .m10-name-neon{color:${C.accentHot};text-shadow:0 0 8px ${C.accentHot},0 0 18px ${C.accentHot},0 0 32px ${C.accentWarm},0 0 60px ${C.accentHot}}
+        .m10-name-metal{background:linear-gradient(180deg,#fff 0%,#e2e8f0 25%,#94a3b8 50%,#475569 70%,#cbd5e1 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 3px 0 rgba(0,0,0,.4)) drop-shadow(0 0 8px rgba(255,255,255,.3))}
+        .m10-name-flat{color:${C.accentWarm};text-shadow:0 2px 0 ${C.accentHot}55}
+        .m10-name-holo{background:linear-gradient(120deg,${C.accentHot} 0%,${C.accentWarm} 25%,#22d3ee 50%,#a855f7 75%,${C.accentHot} 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 0 16px ${C.accentHot}80);animation:m10-name-holo-shift 5s linear infinite}
+        /* Animations */
+        .m10-anim-pulse{animation:m10-name-pulse 1.8s ease-in-out infinite}
+        .m10-anim-float{animation:m10-name-float 3s ease-in-out infinite}
+        .m10-anim-glow{filter:drop-shadow(0 0 12px ${C.accentHot}99);animation:m10-name-glow 2.2s ease-in-out infinite}
         /* Ligne 2 : SOLIDE cream + letterspaced + small (style exact source Cyclope) */
         .m10-name-line2{margin:2px 0 0;font-family:'Space Grotesk',sans-serif;font-size:.8rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80}
         .m10-pill{margin-top:12px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid ${C.accentWarm}66;box-shadow:0 2px 14px ${C.glow}26;font-size:.72rem;font-weight:600;color:#fff}
@@ -278,6 +294,10 @@ export function M10Cyclope({
 
         /* ─── Animations ─── */
         @keyframes m10-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes m10-name-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+        @keyframes m10-name-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+        @keyframes m10-name-glow{0%,100%{filter:drop-shadow(0 0 12px ${C.accentHot}99)}50%{filter:drop-shadow(0 0 26px ${C.accentWarm}) drop-shadow(0 0 8px ${C.accentHot})}}
+        @keyframes m10-name-holo-shift{from{background-position:0% 50%}to{background-position:300% 50%}}
         @keyframes m10-aura{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.95;transform:scale(1.08)}}
         @keyframes m10-title-pulse{0%,100%{transform:scale(1);text-shadow:0 0 18px ${C.accentWarm}80}50%{transform:scale(1.04);text-shadow:0 0 28px ${C.accentWarm}e6,0 0 8px ${C.accentHot}99}}
         @keyframes m10-dot{0%,100%{opacity:1}50%{opacity:.3}}
@@ -301,7 +321,14 @@ export function M10Cyclope({
               )}
             </div>
           </div>
-          {pseudo ? <h1 className="m10-name" style={pseudoOverride}>{pseudo}</h1> : null}
+          {pseudo ? (
+            <h1
+              className={`m10-name m10-name-${pseudoVariant || "cyclope"} m10-anim-${pseudoAnimation || "none"}`}
+              style={pseudoOverride}
+            >
+              {pseudo}
+            </h1>
+          ) : null}
           {pseudoSub ? <div className="m10-name-line2">{pseudoSub}</div> : null}
           {(socialHandle || followersCount) ? (
             <div className="m10-pill">

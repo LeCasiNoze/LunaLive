@@ -173,6 +173,9 @@ export interface V3QuickInputs {
   gameImageUrl?: string;
   gameLabel?: string;
   gameBonusPct?: string;
+  /** Style/animation du pseudo M10 (preset visuel — override le gradient default). */
+  pseudoVariant?: "cyclope" | "neon" | "metal" | "flat" | "holo";
+  pseudoAnimation?: "none" | "pulse" | "float" | "glow";
 }
 
 export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {
@@ -210,6 +213,8 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
     gameLabel: "🐔 JEU DU POULET",
     gameBonusPct: "550%",
+    pseudoVariant: "cyclope",
+    pseudoAnimation: "none",
   };
 }
 
@@ -501,6 +506,8 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           gameImageUrl: inputs.gameImageUrl,
           gameLabel: inputs.gameLabel,
           gameBonusPct: inputs.gameBonusPct,
+          pseudoVariant: inputs.pseudoVariant,
+          pseudoAnimation: inputs.pseudoAnimation,
           pseudoStyle: pseudoStyleResolved,
         } as any,
       ],
