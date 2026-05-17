@@ -12,9 +12,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { V3SocialProof } from "./V3SocialProof";
+import { V3OfferPopup } from "./V3OfferPopup";
 import { pseudoTextStyle, pseudoAnimationClass } from "../lib/v3_pseudo_style";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
 
 export type M10CyclopeProps = {
   /** Pseudo principal (gros titre, gradient chrome). */
@@ -196,14 +197,17 @@ export function M10Cyclope({
   const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
 
   const [openFaq, setOpenFaq] = React.useState<number | null>(0);
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const [vipPopupOpen, setVipPopupOpen] = React.useState(false);
 
   // Feed gains : double la liste pour anim scroll infini
   const gainsLoop = React.useMemo(() => [...FAKE_GAINS, ...FAKE_GAINS], []);
 
-  // Click direct sur lien affi (popup retire pour reduire les frictions).
-  // L'attribut href + target="_blank" est applique en dur sur les <a>.
-  const onCtaClick = undefined as ((e: React.MouseEvent) => void) | undefined;
-  void onCtaClick;
+  // Click gated par V3_POPUP_ENABLED. False = redirect direct affi, True = popup.
+  const onCtaClick = V3_POPUP_ENABLED
+    ? (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); }
+    : undefined;
+  void openAffiLink;
 
   return (
     <div className="m10-root">
@@ -310,6 +314,22 @@ export function M10Cyclope({
         .m10-cta{position:relative;display:flex;align-items:center;justify-content:center;width:100%;padding:20px;border-radius:18px;overflow:hidden;font-family:'Bagel Fat One',cursive;font-size:1.4rem;letter-spacing:.05em;color:#fff;background:linear-gradient(135deg,${C.accentHot} 0%,${C.accentSoft} 50%,${C.accentWarm} 100%);border:2px solid #fff;box-shadow:0 0 40px ${C.glow}cc,0 14px 32px ${C.accentHot}73,inset 0 1px 0 rgba(255,255,255,.9);text-shadow:0 2px 0 rgba(155,28,53,.55);text-decoration:none;cursor:pointer;transition:transform .12s ease;font-weight:400}
         .m10-cta:active{transform:scale(.97)}
         .m10-cta-sub{margin-top:10px;text-align:center;font-size:.72rem;font-weight:600;color:${C.cream}}
+        /* VIP teaser (remplace l'inscription 30s) : visible, glow, click ouvre popup VIP */
+        .m10-vip-teaser{display:flex;align-items:center;justify-content:center;gap:8px;margin:12px auto 0;padding:10px 18px;
+          border:none;cursor:pointer;font-family:inherit;
+          background:linear-gradient(135deg,${C.accentWarm}22,${C.accentHot}22);
+          border:1px solid ${C.accentWarm}88;border-radius:999px;
+          color:${C.cream};font-size:.78rem;font-weight:800;letter-spacing:.04em;
+          text-shadow:0 0 12px ${C.accentWarm}99;
+          transition:transform .15s,background .25s,border-color .25s,box-shadow .25s;
+          box-shadow:0 4px 18px ${C.glow}55,inset 0 1px 0 rgba(255,255,255,.15)}
+        .m10-vip-teaser:hover{transform:translateY(-1px);
+          background:linear-gradient(135deg,${C.accentWarm}44,${C.accentHot}44);
+          box-shadow:0 8px 24px ${C.accentWarm}aa,inset 0 1px 0 rgba(255,255,255,.25)}
+        .m10-vip-teaser-crown{font-size:1rem;animation:m10-vip-crown 2.4s ease-in-out infinite}
+        .m10-vip-teaser-arrow{font-size:.95rem;opacity:.8;transition:transform .2s}
+        .m10-vip-teaser:hover .m10-vip-teaser-arrow{transform:translateX(3px)}
+        @keyframes m10-vip-crown{0%,100%{transform:rotate(-6deg) scale(1)}50%{transform:rotate(6deg) scale(1.12)}}
 
         /* ─── Sticky mobile CTA ─── */
         .m10-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px 16px 18px;background:linear-gradient(to top,${C.bgDeep} 55%,${C.bgDeep}d9 85%,transparent)}
@@ -382,7 +402,7 @@ export function M10Cyclope({
 
         {/* Hero — copie exacte de CyclopeHero.tsx (overlay bas) */}
         <section className="m10-hero">
-          <a className="m10-hero-card v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
+          <a className="m10-hero-card v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer" onClick={onCtaClick}>
             {gameImageUrl ? (
               <img className="m10-hero-img" src={gameImageUrl} alt="Jeu bonus" />
             ) : (
@@ -444,10 +464,18 @@ export function M10Cyclope({
         {/* Final CTA */}
         <section className="m10-final">
           <div className="m10-final-inner">
-            <a className="m10-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
+            <a className="m10-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer" onClick={onCtaClick}>
               🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
             </a>
-            <p className="m10-cta-sub">Inscription en 30s · Bonus crédité automatiquement</p>
+            <button
+              type="button"
+              className="m10-vip-teaser"
+              onClick={() => setVipPopupOpen(true)}
+            >
+              <span className="m10-vip-teaser-crown">👑</span>
+              Vous êtes un gros joueur ? Demandez votre traitement spécial
+              <span className="m10-vip-teaser-arrow">→</span>
+            </button>
           </div>
         </section>
 
@@ -471,13 +499,43 @@ export function M10Cyclope({
 
       {/* Sticky CTA mobile */}
       <div className="m10-sticky">
-        <a className="m10-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
+        <a className="m10-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer" onClick={onCtaClick}>
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
         <p className="m10-sticky-sub">Inscription gratuite · 30s</p>
       </div>
 
-      <V3SocialProof accent={C.accentWarm} accentGlow={C.glow} />
+      {/* Popup conserve via flag V3_POPUP_ENABLED. Flippe pour reactiver. */}
+      <V3OfferPopup
+        open={V3_POPUP_ENABLED && popupOpen}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: C.accentHot, accentLight: C.accentWarm, accentGlow: C.glow, bgCard: C.bgCard }}
+        score={rewardScore}
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
+
+      {/* Popup VIP gros joueur : declenche par le teaser "Vous etes un gros joueur ?" */}
+      <V3OfferPopup
+        open={vipPopupOpen}
+        onClose={() => setVipPopupOpen(false)}
+        theme={{ accent: C.accentWarm, accentLight: C.cream, accentGlow: C.glow, bgCard: C.bgCard }}
+        score="👑"
+        depositAmount=""
+        bonusAmount=""
+        steps={[]}
+        href={safeAffi}
+        showOffer={false}
+        title="Programme VIP exclusif"
+        body="Tu déposes entre 500€ et 1 000€ par mois (ou plus) ? Tu mérites un traitement à la hauteur."
+        vipForced={true}
+        vipFormTitle={<>👑 Club VIP — gros joueurs <em style={{ color: C.accentWarm, fontStyle: "normal" }}>500€+ / mois</em></>}
+        vipFormSubtitle="Laisse ton email — un host VIP dédié te contacte sous 24h avec une offre personnalisée : cashback augmenté, bonus exclusifs, retraits prioritaires, ligne directe support."
+      />
+
+      {/* V3SocialProof retire — les toasts 'X a debloque' parasitaient l'attention */}
       <V3PseudoKeyframes />
     </div>
   );

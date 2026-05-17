@@ -17,10 +17,11 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
+import { V3OfferPopup } from "./V3OfferPopup";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { extendPalette } from "../lib/v3_palette";
+import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
 import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
@@ -119,14 +120,18 @@ export function M12Chat({
   const selectedBonus = Math.round(selected.deposit * selected.bonusMult);
   const selectedReceived = selected.deposit + selectedBonus; // total recu apres bonus
 
-  // Popup retiree : click direct sur lien affi pour reduire les frictions.
-  // Click sur un tier : selectionne + ouvre le lien affi dans un nouvel onglet.
+  // Click handlers gated par V3_POPUP_ENABLED. Si flag false = redirect direct.
+  // Si flag true (future) = popup avec animation reveal.
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const triggerCta = () => {
+    if (V3_POPUP_ENABLED) setPopupOpen(true);
+    else openAffiLink(safeAffi);
+  };
   const onTierClick = (key: string) => {
     setSelectedKey(key);
-    if (typeof window !== "undefined") {
-      try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
-    }
+    triggerCta();
   };
+  const isBigPlayer = selected.highlight || selected.vip;
 
   // Countdown 24h depuis le mount (relance a chaque visite — illusion d'urgence)
   const [now, setNow] = React.useState(() => Date.now());
@@ -264,6 +269,16 @@ export function M12Chat({
         .m12-cta:active{transform:scale(.97)}
         .m12-cta::after{content:"→";margin-left:8px;font-size:1.2rem}
         .m12-cta-sub{margin:10px 0 0;font-size:.76rem;opacity:.78;font-weight:600;letter-spacing:.03em}
+        /* VIP teaser sous le CTA principal : discret mais visible, click = scroll vers form VIP */
+        .m12-vip-teaser{display:inline-flex;align-items:center;gap:8px;margin:12px auto 0;padding:8px 16px;border-radius:999px;
+          background:linear-gradient(135deg,${T.accent}22,${T.accentLight}22);
+          border:1px solid ${T.accent}66;color:${T.accent};font-family:inherit;font-size:.78rem;font-weight:800;letter-spacing:.04em;
+          cursor:pointer;transition:transform .15s,background .25s,border-color .25s;
+          text-shadow:0 0 8px ${T.accentGlow}}
+        .m12-vip-teaser:hover{background:linear-gradient(135deg,${T.accent}44,${T.accentLight}44);border-color:${T.accent};transform:translateY(-1px)}
+        .m12-vip-teaser-crown{font-size:.95rem}
+        .m12-vip-teaser-arrow{font-size:.9rem;opacity:.7;transition:transform .2s}
+        .m12-vip-teaser:hover .m12-vip-teaser-arrow{transform:translateX(3px)}
 
         /* ─── Trust strip (grid 2x2 plus visible) ─── */
         .m12-trust{padding:16px;max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
@@ -380,10 +395,22 @@ export function M12Chat({
             Dépose <em>{selected.deposit}€</em> · Reçois <em>{selectedReceived}€</em>
           </p>
         </div>
-        <V3MagneticButton href={safeAffi} className="m12-cta v3-cta">
+        <V3MagneticButton
+          href={safeAffi}
+          onClick={V3_POPUP_ENABLED ? (e) => { e.preventDefault(); setPopupOpen(true); } : undefined}
+          className="m12-cta v3-cta"
+        >
           {selected.vip ? "DEVENIR VIP" : `RÉCLAMER MES ${selectedReceived}€`}
         </V3MagneticButton>
-        <p className="m12-cta-sub">Inscription en 30s · Bonus crédité instantanément</p>
+        <button
+          type="button"
+          className="m12-vip-teaser"
+          onClick={() => vipRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        >
+          <span className="m12-vip-teaser-crown">👑</span>
+          Tu es un gros joueur ? Accès VIP
+          <span className="m12-vip-teaser-arrow">→</span>
+        </button>
       </section>
 
       {/* ─── Trust strip (badges visuels) ─── */}
@@ -416,12 +443,38 @@ export function M12Chat({
       </div>
 
       <div className="m12-sticky">
-        <a className="m12-sticky-cta v3-cta" href={safeAffi} target="_blank" rel="noopener noreferrer">
+        <a
+          className="m12-sticky-cta v3-cta"
+          href={safeAffi}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={V3_POPUP_ENABLED ? (e) => { e.preventDefault(); setPopupOpen(true); } : undefined}
+        >
           {selected.vip ? "👑 DEVENIR VIP" : `🚀 RÉCLAMER ${selectedReceived}€`}
         </a>
       </div>
 
-      <V3SocialProof accent={T.accent} accentGlow={T.accentGlow} />
+      {/* Popup conserve avec flag V3_POPUP_ENABLED — flippe pour reactiver l'experience reveal animee */}
+      <V3OfferPopup
+        open={V3_POPUP_ENABLED && popupOpen}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        score={`+${selectedBonus}€`}
+        depositAmount={`${selected.deposit}€`}
+        bonusAmount={`${selectedBonus}€`}
+        steps={["Validation du palier " + selected.label, "Préparation du bonus", "Lien d'inscription prêt"]}
+        href={safeAffi}
+        vipForced={isBigPlayer}
+        vipFormTitle={isBigPlayer ? (
+          <>👑 Palier {selected.label} — Tu es un <em style={{ color: T.accent, fontStyle: "normal" }}>gros joueur</em></>
+        ) : undefined}
+        vipFormSubtitle={isBigPlayer
+          ? `Avec un dépôt de ${selected.deposit}€, on t'attribue automatiquement un host VIP dédié. Laisse ton email — il te contacte sous 24h avec une offre personnalisée.`
+          : undefined
+        }
+      />
+
+      {/* V3SocialProof retire de M12 : les toasts 'X a debloque' gachaient l'attention sur les paliers */}
       <V3PseudoKeyframes />
     </div>
   );

@@ -1155,109 +1155,114 @@ function mergeDailySeries(seriesList: AffiDailyPoint[][]): AffiDailyPoint[] {
   });
 }
 
-function DailyChart({ series, color, label }: { series: AffiDailyPoint[]; color: string; label: string }) {
+type ChartSeries = { label: string; color: string; data: AffiDailyPoint[] };
+
+function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {
   const W = 720;
-  const H = 220;
+  const H = 240;
   const PADDING = { top: 18, right: 14, bottom: 24, left: 34 };
   const innerW = W - PADDING.left - PADDING.right;
   const innerH = H - PADDING.top - PADDING.bottom;
-  const maxVal = Math.max(1, ...series.map((s) => Math.max(s.views, s.clicks)));
-  const stepX = series.length > 1 ? innerW / (series.length - 1) : innerW;
+  const valid = seriesList.filter((s) => s.data.length > 0);
+  const ref = valid[0]?.data || [];
+  // max sur views ET clicks de TOUTES les series
+  let maxVal = 1;
+  for (const s of valid) for (const p of s.data) {
+    if (p.views > maxVal) maxVal = p.views;
+    if (p.clicks > maxVal) maxVal = p.clicks;
+  }
+  const stepX = ref.length > 1 ? innerW / (ref.length - 1) : innerW;
   const xAt = (i: number) => PADDING.left + i * stepX;
   const yAt = (v: number) => PADDING.top + innerH - (v / maxVal) * innerH;
-
-  const pathFor = (key: "views" | "clicks") => series.map((s, i) =>
-    `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(s[key]).toFixed(1)}`
-  ).join(" ");
+  const pathFor = (data: AffiDailyPoint[], key: "views" | "clicks") =>
+    data.map((s, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(s[key]).toFixed(1)}`).join(" ");
 
   const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
-
-  // Ticks Y (4)
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((p) => ({
     y: PADDING.top + innerH * (1 - p),
     label: Math.round(maxVal * p),
   }));
-  // Ticks X (jalons : J-30 / J-15 / J0)
-  const xTicks = [0, Math.floor((series.length - 1) / 2), series.length - 1].filter((i) => i >= 0 && i < series.length);
+  const xTicks = [0, Math.floor((ref.length - 1) / 2), ref.length - 1].filter((i) => i >= 0 && i < ref.length);
 
   return (
     <div style={{ position: "relative", width: "100%" }}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", height: "auto", display: "block" }}
-        onMouseLeave={() => setHoverIdx(null)}
-      >
-        {/* Grille horizontale */}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}
+        onMouseLeave={() => setHoverIdx(null)}>
         {yTicks.map((t, i) => (
           <g key={i}>
             <line x1={PADDING.left} y1={t.y} x2={W - PADDING.right} y2={t.y}
               stroke="rgba(255,255,255,.06)" strokeDasharray="2 4" />
-            <text x={PADDING.left - 6} y={t.y + 3} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="end" fontFamily="monospace">
-              {t.label}
-            </text>
+            <text x={PADDING.left - 6} y={t.y + 3} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="end" fontFamily="monospace">{t.label}</text>
           </g>
         ))}
-        {/* Ticks X dates */}
         {xTicks.map((idx) => {
-          const d = new Date(series[idx].date);
+          if (!ref[idx]) return null;
+          const d = new Date(ref[idx].date);
           const fmt = `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
           return (
-            <text key={idx} x={xAt(idx)} y={H - 6} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="middle" fontFamily="monospace">
-              {fmt}
-            </text>
+            <text key={idx} x={xAt(idx)} y={H - 6} fontSize="10" fill="rgba(148,163,184,.7)" textAnchor="middle" fontFamily="monospace">{fmt}</text>
           );
         })}
-        {/* Aire sous courbe vues */}
-        <path d={`${pathFor("views")} L ${xAt(series.length - 1).toFixed(1)} ${(PADDING.top + innerH).toFixed(1)} L ${xAt(0).toFixed(1)} ${(PADDING.top + innerH).toFixed(1)} Z`}
-          fill={color} opacity={0.12} />
-        {/* Courbe vues */}
-        <path d={pathFor("views")} fill="none" stroke={color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />
-        {/* Courbe clics (pointillé) */}
-        <path d={pathFor("clicks")} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 4" opacity={0.85} />
-        {/* Points par jour + hover hitboxes */}
-        {series.map((s, i) => (
-          <g key={i}>
-            <circle cx={xAt(i)} cy={yAt(s.views)} r={hoverIdx === i ? 5 : 3} fill={color} stroke="#0f172a" strokeWidth="1.5" />
-            <circle cx={xAt(i)} cy={yAt(s.clicks)} r={hoverIdx === i ? 4.5 : 2.5} fill="#0f172a" stroke={color} strokeWidth="1.5" />
-            <rect x={xAt(i) - stepX / 2} y={PADDING.top} width={stepX} height={innerH} fill="transparent"
-              onMouseEnter={() => setHoverIdx(i)} style={{ cursor: "crosshair" }} />
+        {/* Une courbe par serie : views (plein) + clics (pointille) */}
+        {valid.map((s, si) => (
+          <g key={si}>
+            <path d={pathFor(s.data, "views")} fill="none" stroke={s.color} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" opacity={hoverIdx !== null ? 0.5 : 1} />
+            <path d={pathFor(s.data, "clicks")} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray="4 4" opacity={hoverIdx !== null ? 0.45 : 0.75} />
+            {s.data.map((pt, i) => (
+              <g key={i}>
+                <circle cx={xAt(i)} cy={yAt(pt.views)} r={hoverIdx === i ? 4.5 : 2.5} fill={s.color} stroke="#0f172a" strokeWidth="1.5" />
+                <circle cx={xAt(i)} cy={yAt(pt.clicks)} r={hoverIdx === i ? 4 : 2} fill="#0f172a" stroke={s.color} strokeWidth="1.5" />
+              </g>
+            ))}
           </g>
         ))}
-        {/* Vertical hover line */}
+        {/* Hitboxes mutualisees */}
+        {ref.map((_, i) => (
+          <rect key={i} x={xAt(i) - stepX / 2} y={PADDING.top} width={stepX} height={innerH} fill="transparent"
+            onMouseEnter={() => setHoverIdx(i)} style={{ cursor: "crosshair" }} />
+        ))}
         {hoverIdx !== null ? (
           <line x1={xAt(hoverIdx)} y1={PADDING.top} x2={xAt(hoverIdx)} y2={PADDING.top + innerH}
             stroke="rgba(255,255,255,.18)" strokeDasharray="2 3" />
         ) : null}
       </svg>
-      {/* Tooltip */}
-      {hoverIdx !== null && series[hoverIdx] ? (
+      {hoverIdx !== null && ref[hoverIdx] ? (
         <div style={{
           position: "absolute",
-          left: `${(xAt(hoverIdx) / W) * 100}%`,
-          top: 6,
+          left: `${(xAt(hoverIdx) / W) * 100}%`, top: 6,
           transform: "translateX(-50%)",
-          background: "rgba(2,6,23,.92)",
-          border: `1px solid ${color}`,
-          borderRadius: 8,
-          padding: "6px 10px",
-          fontSize: 11,
-          color: "#fff",
-          whiteSpace: "nowrap",
-          pointerEvents: "none",
-          boxShadow: `0 4px 14px rgba(0,0,0,.5),0 0 12px ${color}55`,
+          background: "rgba(2,6,23,.94)",
+          border: `1px solid rgba(255,255,255,.12)`,
+          borderRadius: 8, padding: "6px 10px", fontSize: 11, color: "#fff",
+          whiteSpace: "nowrap", pointerEvents: "none",
+          boxShadow: `0 4px 14px rgba(0,0,0,.6)`,
         }}>
-          <div style={{ fontWeight: 700, marginBottom: 2 }}>
-            {new Date(series[hoverIdx].date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            {new Date(ref[hoverIdx].date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <span style={{ color }}>● {series[hoverIdx].views} vues</span>
-            <span style={{ color: "rgba(226,232,240,.85)" }}>○ {series[hoverIdx].clicks} clics</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {valid.map((s, i) => {
+              const pt = s.data[hoverIdx];
+              if (!pt) return null;
+              return (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ color: s.color, fontWeight: 700, minWidth: 70, fontSize: 10 }}>{s.label}</span>
+                  <span style={{ color: "#fff" }}>{pt.views}v</span>
+                  <span style={{ color: "rgba(226,232,240,.7)" }}>{pt.clicks}c</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}
-      <div style={{ display: "flex", gap: 14, fontSize: 11, color: "rgba(148,163,184,.8)", marginTop: 6, paddingLeft: 8 }}>
-        <span><span style={{ color, fontWeight: 700 }}>━</span> Vues · {label}</span>
-        <span><span style={{ color }}>┄</span> Clics CTA</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11, color: "rgba(148,163,184,.85)", marginTop: 8, paddingLeft: 8 }}>
+        {valid.map((s, i) => (
+          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <span style={{ color: s.color, fontWeight: 700 }}>━</span>
+            <span>{s.label}</span>
+          </span>
+        ))}
+        <span style={{ marginLeft: "auto", color: "rgba(148,163,184,.5)" }}>━ vues · ┄ clics</span>
       </div>
     </div>
   );
@@ -1485,13 +1490,12 @@ function StatsRankingSection({
                 // Etat de chargement global : si AU MOINS une page est loading → loading
                 const anyLoading = pageIds.some((id) => dailyCache[id] === "loading");
                 const allReady = pageIds.every((id) => Array.isArray(dailyCache[id]));
-                // Couleur de la courbe = couleur de la page la plus active (top views) du groupe
-                const topPage = g.pages.slice().sort((a, b) => b.stats.views - a.stats.views)[0];
-                const curveColor = pageColor(topPage.page);
-                // Fusion daily-stats si toutes les pages chargees
-                const mergedSeries = allReady
-                  ? mergeDailySeries(pageIds.map((id) => dailyCache[id] as AffiDailyPoint[]))
-                  : null;
+                // Multi-courbes : une serie par page (couleur = couleur du modele)
+                const chartSeriesList: ChartSeries[] = allReady ? g.pages.map((p) => ({
+                  label: p.meta.modelLabel,
+                  color: pageColor(p.page),
+                  data: dailyCache[p.page.id] as AffiDailyPoint[],
+                })) : [];
                 return (
                   <React.Fragment key={g.key}>
                   <tr
@@ -1572,9 +1576,12 @@ function StatsRankingSection({
                           <div style={{ color: T.textMute, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Chargement de l'évolution…</div>
                         ) : !allReady ? (
                           <div style={{ color: T.danger, fontSize: 12, padding: "20px 0", textAlign: "center" }}>Erreur de chargement</div>
-                        ) : mergedSeries ? (
+                        ) : chartSeriesList.length > 0 ? (
                           <>
-                            <DailyChart series={mergedSeries} color={curveColor} label={`${g.brandName} · ${g.pages.length} page${g.pages.length > 1 ? "s" : ""} fusionnées`} />
+                            <div style={{ fontSize: 11, color: T.textMute, marginBottom: 10, letterSpacing: ".04em" }}>
+                              {g.brandName} · {g.pages.length} page{g.pages.length > 1 ? "s" : ""} · une courbe par modèle (comparaison)
+                            </div>
+                            <MultiDailyChart seriesList={chartSeriesList} />
                             {/* Liste des pages de la personne */}
                             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
                               {g.pages.map((p) => (

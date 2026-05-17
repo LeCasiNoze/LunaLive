@@ -9,8 +9,10 @@ import { sfx } from "../lib/v3_sound";
 import { V3SocialProof } from "./V3SocialProof";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3MeshBg, V3AuroraBg, V3GrainBg } from "./V3AmbientFx";
+import { V3OfferPopup } from "./V3OfferPopup";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 import { extendPalette } from "../lib/v3_palette";
+import { V3_POPUP_ENABLED } from "../lib/v3_popup_flag";
 
 export type M3WheelProps = {
   pseudo?: string;
@@ -64,7 +66,11 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
   };
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "won">("idle");
   const [angle, setAngle] = React.useState(0);
-  const openAffi = () => { if (typeof window !== "undefined") { try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ } } };
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const openAffi = () => {
+    if (V3_POPUP_ENABLED) { setPopupOpen(true); return; }
+    if (typeof window !== "undefined") { try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ } }
+  };
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -299,6 +305,17 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       )}
 
       <div className="m3-info"><span className="dot" />247 joueurs en ligne · Bonus crédité en 30s</div>
+
+      <V3OfferPopup
+        open={V3_POPUP_ENABLED && popupOpen && phase === "won"}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        score={rewardScore}
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

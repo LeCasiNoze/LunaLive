@@ -13,6 +13,7 @@ import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
 import { V3SocialProof } from "./V3SocialProof";
 
 export type M9CrossyProps = {
@@ -121,7 +122,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
         window.setTimeout(() => {
           setPhase("dead");
           sfx.tension(500);
-          window.setTimeout(() => { sfx.win(); setPopupOpen(true); }, 1200);
+          window.setTimeout(() => { sfx.win(); (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi)); }, 1200);
         }, 460);
       }
     }, CAR_ARRIVAL_MS);
@@ -132,7 +133,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
     if (step < SAFE_PALIER) return;
     sfx.click(); sfx.coin(); sfx.win();
     setPhase("collected");
-    setTimeout(() => setPopupOpen(true), 500);
+    setTimeout(() => (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi)), 500);
   };
 
   const reset = () => {
@@ -455,7 +456,7 @@ export function M9Crossy({ pseudo, profileImageUrl, depositAmount, bonusAmount, 
       </div>
 
       <V3OfferPopup
-        open={popupOpen && (phase === "dead" || phase === "collected")}
+        open={V3_POPUP_ENABLED && popupOpen && (phase === "dead" || phase === "collected")}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard, borderColor: T.borderColor }}
         score={(depositAmount != null && bonusAmount != null && bonusAmount - depositAmount > 0) ? `+${bonusAmount - depositAmount}€` : (bon ? `+${bon}` : "100%")}

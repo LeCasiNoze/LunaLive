@@ -3,6 +3,7 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { getPenaltyTeam, V3_PENALTY_TEAMS, type V3PenaltyTeamKey } from "../lib/v3_penalty_teams";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3NeonBg } from "./V3NeonBg";
 
@@ -139,7 +140,7 @@ export function M8Penalty({
         setGoalsScored((g) => g + 1);
         if (isLastShot) {
           setPhase("won");
-          window.setTimeout(() => setPopupOpen(true), 1200);
+          window.setTimeout(() => (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi)), 1200);
         } else {
           setPhase("scored");
           window.setTimeout(() => {
@@ -513,7 +514,7 @@ export function M8Penalty({
       {phase === "idle" ? (
         <button className="m8-cta" disabled>👆 Clique dans la cage pour tirer</button>
       ) : phase === "won" ? (
-        <button className="m8-cta" onClick={() => setPopupOpen(true)}>Voir mon bonus {currentPct}%</button>
+        <button className="m8-cta" onClick={() => (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi))}>Voir mon bonus {currentPct}%</button>
       ) : phase === "shooting" ? (
         <button className="m8-cta" disabled>Frappe en cours…</button>
       ) : phase === "missed" ? (
@@ -523,7 +524,7 @@ export function M8Penalty({
       )}
 
       <V3OfferPopup
-        open={phase === "won" && popupOpen}
+        open={V3_POPUP_ENABLED && phase === "won" && popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{
           accent: T.accent,

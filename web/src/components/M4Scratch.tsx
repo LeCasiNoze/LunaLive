@@ -16,8 +16,10 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3MagneticButton } from "./V3MagneticButton";
+import { V3OfferPopup } from "./V3OfferPopup";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 import { extendPalette } from "../lib/v3_palette";
+import { V3_POPUP_ENABLED } from "../lib/v3_popup_flag";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -128,7 +130,10 @@ export function M4Scratch({
     setFlash(false);
   };
 
-  // Popup retiree : V3MagneticButton ouvre href en _blank natif
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const onCta = V3_POPUP_ENABLED
+    ? (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); }
+    : undefined;
 
   const rarityColor: Record<LootItem["rarity"], string> = {
     common: "#a0a0aa",
@@ -423,7 +428,7 @@ export function M4Scratch({
           </motion.button>
         ) : phase === "revealed" ? (
           <>
-            <V3MagneticButton href={safeAffi} className="m4-cta v3-cta">
+            <V3MagneticButton href={safeAffi} onClick={onCta} className="m4-cta v3-cta">
               🚀 RÉCLAMER {winLabel}
             </V3MagneticButton>
             <button type="button" className="m4-replay" onClick={reset}>↻ Rejouer</button>
@@ -440,6 +445,17 @@ export function M4Scratch({
            "Le rail s'arrête sur ton butin..."}
         </p>
       </div>
+
+      <V3OfferPopup
+        open={V3_POPUP_ENABLED && popupOpen}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        score={bon ? `+${bon}` : "JACKPOT"}
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={["Validation du loot", "Préparation du bonus", "Lien d'inscription prêt"]}
+        href={safeAffi}
+      />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
       <V3PseudoKeyframes />

@@ -8,6 +8,7 @@ import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3_POPUP_ENABLED, openAffiLink } from "../lib/v3_popup_flag";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3NeonBg } from "./V3NeonBg";
 
@@ -93,7 +94,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       const tmo = setTimeout(() => {
         sfx.win();
         setWinType("all");
-        setPopupOpen(true);
+        (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi));
       }, 600);
       return () => clearTimeout(tmo);
     }
@@ -116,7 +117,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
     }
   }, [closedCount, cells, winType]);
 
-  const collect = () => { if (!canCollect) return; sfx.coin(); sfx.win(); setWinType("collect"); setPopupOpen(true); };
+  const collect = () => { if (!canCollect) return; sfx.coin(); sfx.win(); setWinType("collect"); (V3_POPUP_ENABLED ? setPopupOpen(true) : openAffiLink(safeAffi)); };
   const reset = () => { setCells(Array(9).fill("closed")); setWinType(null); setPopupOpen(false); };
 
   // Tier system pour bannière + popup
@@ -281,7 +282,7 @@ export function M6Chest({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       {winType ? <button className="m6-cta ghost" onClick={reset}>Rejouer</button> : null}
 
       <V3OfferPopup
-        open={popupOpen && !!winType}
+        open={V3_POPUP_ENABLED && popupOpen && !!winType}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
         score={rewardScore}
