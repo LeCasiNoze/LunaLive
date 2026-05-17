@@ -200,8 +200,8 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     followersCount: "",
     socialHandle: "",
     gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
-    gameLabel: "",
-    gameBonusPct: "",
+    gameLabel: "🐔 JEU DU POULET",
+    gameBonusPct: "550%",
   };
 }
 

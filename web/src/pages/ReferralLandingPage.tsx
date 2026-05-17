@@ -884,17 +884,17 @@ function trackAffiEvent(slug: string, event: "view" | "click_cta") {
       utmCampaign: params.get("utm_campaign") || null,
     });
     const url = `${ANALYTICS_BASE}/api/public/affi-events`;
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      const blob = new Blob([body], { type: "application/json" });
-      navigator.sendBeacon(url, blob);
-    } else {
-      fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      }).catch(() => {});
-    }
+    // Note : pas de sendBeacon — il envoie les credentials par defaut, ce qui
+    // declenche un CORS 'credentials include / origin: *' bloque. fetch avec
+    // credentials:"omit" est cross-origin propre.
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      credentials: "omit",
+      mode: "cors",
+      keepalive: true,
+    }).catch(() => {});
   } catch { /* noop */ }
 }
 

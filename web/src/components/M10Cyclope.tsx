@@ -104,6 +104,7 @@ export function M10Cyclope({
   followersCount,
   socialHandle,
   gameImageUrl,
+  gameLabel,
   gameBonusPct,
   depositAmount,
   bonusAmount,
@@ -171,8 +172,10 @@ export function M10Cyclope({
         .m10-pill-count em{font-style:normal;font-size:.6rem;letter-spacing:.16em;font-weight:700;color:${C.cream}b3;margin-left:4px}
 
         /* ─── Hero section (copie EXACTE de la source Cyclope) ─── */
-        .m10-hero{width:100%;padding:8px 20px 24px}
+        .m10-hero{width:100%;padding:8px 20px 20px}
         .m10-hero-card{position:relative;display:block;max-width:380px;margin:0 auto;border-radius:28px;overflow:hidden;border:2px solid rgba(255,185,48,.45);box-shadow:0 20px 60px rgba(255,75,110,.55),0 0 0 3px rgba(255,255,255,.08),0 0 70px rgba(255,185,48,.45);cursor:pointer;transition:transform .12s ease}
+        /* Sticker top-left tilté (source Cyclope) */
+        .m10-hero-sticker{position:absolute;top:12px;left:12px;padding:6px 12px;border-radius:999px;background:#fff;border:1.5px solid rgba(255,75,110,.45);box-shadow:0 4px 12px rgba(255,75,110,.25);transform:rotate(-6deg);font-family:'Space Grotesk',sans-serif;font-weight:800;font-size:.78rem;color:#B91C3C;letter-spacing:.1em;z-index:3}
         .m10-hero-card:active{transform:scale(.98)}
         .m10-hero-img{width:100%;aspect-ratio:1/1;object-fit:cover;display:block}
         .m10-hero-placeholder{width:100%;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.28);font-size:3.5rem;background:radial-gradient(circle at 50% 40%,${C.accentHot}33,transparent 60%),${C.bgCard}}
@@ -183,7 +186,7 @@ export function M10Cyclope({
         .m10-hero-sub{margin:6px 0 0;text-align:center;font-family:'Space Grotesk',sans-serif;font-size:.65rem;font-weight:600;letter-spacing:.1em;color:rgba(255,233,214,.65)}
 
         /* ─── Gains feed ─── */
-        .m10-gains{width:100%;padding:32px 20px}
+        .m10-gains{width:100%;padding:8px 20px 24px}
         .m10-gains-inner{max-width:380px;margin:0 auto}
         .m10-gains-title-wrap{position:relative;display:flex;justify-content:center;margin-bottom:20px}
         .m10-gains-aura{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
@@ -278,6 +281,7 @@ export function M10Cyclope({
             ) : (
               <div className="m10-hero-placeholder">🎰</div>
             )}
+            {gameLabel ? <div className="m10-hero-sticker">{gameLabel}</div> : null}
             <div className="m10-hero-overlay">
               <p className="m10-hero-pre">{dep ? `DÉPOSE ${dep} → REÇOIS` : "RÉCLAME TON BONUS"}</p>
               <p className="m10-hero-prize">{bon ? `${bon} GRATUITS` : "BONUS"}</p>
