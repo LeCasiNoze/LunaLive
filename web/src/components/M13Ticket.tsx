@@ -15,11 +15,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
-import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3MeshBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MagneticButton } from "./V3MagneticButton";
+import { extendPalette } from "../lib/v3_palette";
+import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
 export type M13TicketProps = {
   pseudo?: string;
@@ -45,12 +49,10 @@ const ACTIVITY_NAMES = [
 export function M13Ticket({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
 }: M13TicketProps) {
+  const P = extendPalette(theme, "#FFD700");
   const T = {
-    accent:      theme?.accent      || "#FFD700",
-    accentLight: theme?.accentLight || "#FFC200",
-    accentGlow:  theme?.accentGlow  || "rgba(255,214,0,.5)",
-    bgPage:      theme?.bgPage      || "#080212",
-    bgCard:      theme?.bgCard      || "#150821",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
   };
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -116,13 +118,20 @@ export function M13Ticket({
 
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
 
+  // Parallax orbs hero
+  const { scrollYProgress } = useScroll();
+  const orbY1 = useTransform(scrollYProgress, [0, 1], [0, -160]);
+  const orbY2 = useTransform(scrollYProgress, [0, 1], [0, 120]);
+
   return (
     <div className="m13-root">
       <style>{`
-        .m13-root{position:relative;min-height:100vh;padding:0 0 160px;background:
-          radial-gradient(80% 50% at 50% -5%,${T.accent}22 0%,transparent 60%),
-          ${T.bgPage};
-          font-family:'Inter','Space Grotesk',sans-serif;color:#fff}
+        .m13-root{position:relative;min-height:100vh;padding:0 0 160px;background:${T.bgPage};
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow-x:hidden}
+        .m13-layer{position:relative;z-index:10}
+        .m13-orb{position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;opacity:.45;z-index:1}
+        .m13-orb-1{width:280px;height:280px;background:${T.accent};top:15%;left:-12%}
+        .m13-orb-2{width:220px;height:220px;background:${T.accentAlt};top:35%;right:-10%;opacity:.35}
 
         /* ─── Top urgency banner ─── */
         .m13-top{padding:16px;background:linear-gradient(135deg,#dc2626,#ef4444);text-align:center;
@@ -149,9 +158,15 @@ export function M13Ticket({
           filter:drop-shadow(0 2px 14px ${T.accentGlow})}
 
         /* ─── Prize card ─── */
-        .m13-prize{margin:22px auto 0;max-width:420px;padding:24px 22px;border-radius:22px;text-align:center;
-          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});border:1.5px solid ${T.accent}55;
-          box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 60px ${T.accentGlow}80}
+        .m13-prize{position:relative;margin:22px auto 0;max-width:420px;padding:24px 22px;border-radius:22px;text-align:center;
+          background:linear-gradient(160deg,${T.bgCard}cc,${T.bgPage}cc);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+          border:1.5px solid ${T.accent}55;box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 60px ${T.accentGlow}80;overflow:hidden}
+        .m13-prize::before{content:"";position:absolute;inset:-1px;border-radius:22px;padding:1.5px;pointer-events:none;
+          background:conic-gradient(from var(--a13,0deg),${T.accent},${T.accentLight},${T.accentAlt},${T.accent});
+          -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+          animation:m13-border-spin 5s linear infinite}
+        @property --a13{syntax:'<angle>';inherits:false;initial-value:0deg}
+        @keyframes m13-border-spin{to{--a13:360deg}}
         .m13-prize-label{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;opacity:.65;margin:0}
         .m13-prize-dep{margin:8px 0 0;font-size:.86rem;font-weight:700;opacity:.85}
         .m13-prize-dep strong{color:${T.accent};font-weight:900}
@@ -190,7 +205,8 @@ export function M13Ticket({
         .m13-live-title::before{content:"";width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;animation:m13-blink 1.3s ease-in-out infinite}
         .m13-live-list{display:flex;flex-direction:column;gap:8px}
         .m13-live-item{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:14px;
-          background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:.85rem}
+          background:rgba(255,255,255,.05);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+          border:1px solid rgba(255,255,255,.08);font-size:.85rem;box-shadow:0 4px 18px rgba(0,0,0,.25)}
         .m13-live-ava{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;
           background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;font-weight:900;font-size:.82rem;flex-shrink:0;border:1.5px solid rgba(255,255,255,.9)}
         .m13-live-text{flex:1;min-width:0}
@@ -201,7 +217,8 @@ export function M13Ticket({
         /* ─── Trust strip ─── */
         .m13-trust{padding:14px 16px;max-width:460px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
         .m13-trust-item{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;
-          background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);font-size:.74rem;font-weight:600}
+          background:rgba(255,255,255,.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+          border:1px solid rgba(255,255,255,.06);font-size:.74rem;font-weight:600}
         .m13-trust-icon{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;
           background:${T.accent}22;color:${T.accent};font-size:.85rem;flex-shrink:0}
 
@@ -228,6 +245,10 @@ export function M13Ticket({
         }
       `}</style>
 
+      {/* Couches ambient (mesh + aurora + grain) */}
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.55} fixed={false} />
+
+      <div className="m13-layer">
       {/* Top urgency banner */}
       <div className="m13-top">
         <p className="m13-top-label">⚡ Cette offre expire dans</p>
@@ -250,11 +271,18 @@ export function M13Ticket({
       </div>
 
       {/* Hero */}
-      <section className="m13-hero">
-        <div className="m13-avatar">
-          {profileImageUrl ? <img src={profileImageUrl} alt={pseudo || ""} /> : <div className="m13-avatar-empty">👤</div>}
-        </div>
-        {pseudo ? <h1 className="m13-pseudo" style={nameStyle}>{pseudo}</h1> : null}
+      <section className="m13-hero" style={{ position: "relative" }}>
+        <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.45} size={380} />
+        <motion.div className="m13-orb m13-orb-1" style={{ y: orbY1 }} />
+        <motion.div className="m13-orb m13-orb-2" style={{ y: orbY2 }} />
+        {profileImageUrl ? (
+          <div className="m13-avatar">
+            <img src={profileImageUrl} alt={pseudo || ""} />
+          </div>
+        ) : null}
+        {pseudo ? (
+          <h1 className={`m13-pseudo ${pseudoAnimationClass(pseudoStyle)}`} style={nameStyle}>{pseudo}</h1>
+        ) : null}
         <p className="m13-pre">Offre exclusive partenaire</p>
         <h2 className="m13-headline">Réclame ton<br /><em>bonus avant minuit</em></h2>
 
@@ -278,9 +306,9 @@ export function M13Ticket({
 
       {/* CTA principal */}
       <section className="m13-cta-wrap">
-        <a className="m13-cta v3-cta" href={safeAffi} onClick={onCta}>
+        <V3MagneticButton href={safeAffi} onClick={onCta} className="m13-cta v3-cta">
           RÉCLAMER {bon || "MON BONUS"} MAINTENANT
-        </a>
+        </V3MagneticButton>
         <p className="m13-cta-sub">Inscription en 30s · 100% sécurisé · Sans CB requise</p>
       </section>
 
@@ -336,6 +364,7 @@ export function M13Ticket({
           Aide : <strong>09 74 75 13 13</strong> · <strong>joueurs-info-service.fr</strong>
         </p>
       </footer>
+      </div>{/* /m13-layer */}
 
       <div className="m13-sticky">
         <a className="m13-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
@@ -355,6 +384,7 @@ export function M13Ticket({
       />
 
       <V3SocialProof accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

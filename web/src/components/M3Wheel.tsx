@@ -7,8 +7,11 @@
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
 import { V3SocialProof } from "./V3SocialProof";
-import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
+import { V3MeshBg, V3AuroraBg, V3GrainBg } from "./V3AmbientFx";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { extendPalette } from "../lib/v3_palette";
 
 export type M3WheelProps = {
   pseudo?: string;
@@ -54,13 +57,11 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
 }
 
 export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M3WheelProps) {
+  const P = extendPalette(theme, "#d4a843");
   const T = {
-    accent:      theme?.accent      || "#d4a843",
-    accentLight: theme?.accentLight || "#f0c84a",
-    accentDark:  "#8a6724",
-    accentGlow:  theme?.accentGlow  || "rgba(212,168,67,.4)",
-    bgPage:      theme?.bgPage      || "#0a0712",
-    bgCard:      theme?.bgCard      || "#15101a",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentDark: "#8a6724",
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
   };
   const [phase, setPhase] = React.useState<"idle" | "spinning" | "won">("idle");
   const [angle, setAngle] = React.useState(0);
@@ -184,11 +185,15 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       <span className="m3-particle p5" />
       <span className="m3-particle p6" />
 
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.4} />
+      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.25} />
+      <V3GrainBg opacity={0.04} />
+
       <div className="m3-header">
         {profileImageUrl ? <div className="m3-avatar"><img src={profileImageUrl} alt="" /></div> : null}
         {pseudo ? (
           <div className="m3-pseudo-wrap">
-            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+            <div className={pseudoAnimationClass(pseudoStyle)} style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
               {pseudo}
             </div>
           </div>
@@ -308,6 +313,7 @@ export function M3Wheel({ pseudo, profileImageUrl, depositAmount, bonusAmount, a
       />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

@@ -16,11 +16,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { useInView } from "framer-motion";
+import { motion, useInView, useMotionValue, useTransform, useSpring, useScroll } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
-import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3MeshBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MagneticButton } from "./V3MagneticButton";
+import { extendPalette } from "../lib/v3_palette";
+import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
 export type M14MagazineProps = {
   pseudo?: string;
@@ -58,12 +62,10 @@ function useCountUp(target: number, inView: boolean, ms = 1600): number {
 export function M14Magazine({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
 }: M14MagazineProps) {
+  const P = extendPalette(theme, "#FFD700");
   const T = {
-    accent:      theme?.accent      || "#FFD700",
-    accentLight: theme?.accentLight || "#FFEFA8",
-    accentGlow:  theme?.accentGlow  || "rgba(255,214,0,.45)",
-    bgPage:      theme?.bgPage      || "#0a0908",
-    bgCard:      theme?.bgCard      || "#15110d",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
   };
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
@@ -92,14 +94,36 @@ export function M14Magazine({
     vipRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // Tilt 3D sur win card
+  const tiltMx = useMotionValue(0);
+  const tiltMy = useMotionValue(0);
+  const tiltSpringX = useSpring(tiltMx, { stiffness: 120, damping: 20 });
+  const tiltSpringY = useSpring(tiltMy, { stiffness: 120, damping: 20 });
+  const rotateY = useTransform(tiltSpringX, [-50, 50], [-8, 8]);
+  const rotateX = useTransform(tiltSpringY, [-50, 50], [6, -6]);
+  const onWinMove = (e: React.MouseEvent) => {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    tiltMx.set(((e.clientX - r.left) / r.width - 0.5) * 100);
+    tiltMy.set(((e.clientY - r.top) / r.height - 0.5) * 100);
+  };
+  const onWinLeave = () => { tiltMx.set(0); tiltMy.set(0); };
+
+  // Parallax scroll : orbs
+  const { scrollYProgress } = useScroll();
+  const orbY1 = useTransform(scrollYProgress, [0, 1], [0, -180]);
+  const orbY2 = useTransform(scrollYProgress, [0, 1], [0, 130]);
+
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
 
   return (
     <div className="m14-root">
       <style>{`
-        .m14-root{position:relative;min-height:100vh;padding:0 0 160px;background:
-          radial-gradient(80% 50% at 50% -5%,${T.accent}1e 0%,transparent 65%),
-          ${T.bgPage};color:#f3eee7;font-family:'Inter','Space Grotesk',sans-serif;overflow-x:hidden}
+        .m14-root{position:relative;min-height:100vh;padding:0 0 160px;background:${T.bgPage};
+          color:#f3eee7;font-family:'Inter','Space Grotesk',sans-serif;overflow-x:hidden}
+        .m14-layer{position:relative;z-index:10}
+        .m14-orb{position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;opacity:.4;z-index:1}
+        .m14-orb-1{width:300px;height:300px;background:${T.accent};top:8%;left:-12%}
+        .m14-orb-2{width:220px;height:220px;background:${T.accentAlt};top:35%;right:-10%;opacity:.32}
 
         /* ─── Tag bar ─── */
         .m14-tag{display:flex;justify-content:center;gap:10px;padding:14px 16px;font-size:.62rem;letter-spacing:.32em;text-transform:uppercase;
@@ -120,9 +144,12 @@ export function M14Magazine({
         .m14-place{margin:6px 0 0;font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;opacity:.55}
 
         /* ─── Win display ─── */
-        .m14-win{margin:24px auto 0;max-width:440px;padding:28px 22px;border-radius:24px;text-align:center;
-          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});border:1.5px solid ${T.accent}55;
-          box-shadow:0 0 0 1px ${T.accent}22 inset,0 28px 70px ${T.accentGlow}90;position:relative;overflow:hidden}
+        .m14-win-wrap{margin:24px auto 0;max-width:440px;perspective:1200px}
+        .m14-win{padding:28px 22px;border-radius:24px;text-align:center;
+          background:linear-gradient(160deg,${T.bgCard}cc,${T.bgPage}cc);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+          border:1.5px solid ${T.accent}55;
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 28px 70px ${T.accentGlow}90;position:relative;overflow:hidden;
+          transform-style:preserve-3d;will-change:transform;cursor:crosshair}
         .m14-win::before{content:"";position:absolute;inset:-1px;border-radius:24px;padding:1.5px;pointer-events:none;
           background:conic-gradient(from var(--a,0deg),${T.accent},${T.accentLight},${T.accent});
           -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
@@ -143,8 +170,10 @@ export function M14Magazine({
 
         /* ─── Offer card ─── */
         .m14-offer{margin:24px auto 0;max-width:440px;padding:26px 22px;border-radius:22px;
-          background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(0,0,0,.3));
-          border:1px solid ${T.accent}40;text-align:center}
+          background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(0,0,0,.4));
+          backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+          border:1px solid ${T.accent}40;text-align:center;
+          box-shadow:0 18px 50px ${T.accentGlow}55,0 0 0 1px ${T.accent}20 inset}
         .m14-offer-tag{display:inline-block;padding:5px 12px;border-radius:999px;background:${T.accent};color:#000;font-size:.62rem;font-weight:900;letter-spacing:.22em;text-transform:uppercase;margin-bottom:14px}
         .m14-offer-title{margin:0;font-size:1.15rem;font-weight:700;letter-spacing:-.01em}
         .m14-offer-dep{margin:14px 0 6px;font-size:.78rem;letter-spacing:.06em;opacity:.7}
@@ -170,7 +199,9 @@ export function M14Magazine({
 
         /* ─── Stats row ─── */
         .m14-stats{padding:30px 18px 16px;max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
-        .m14-stat{padding:18px 8px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+        .m14-stat{padding:18px 8px;border-radius:14px;background:rgba(255,255,255,.04);
+          backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+          border:1px solid rgba(255,255,255,.08);box-shadow:0 6px 20px rgba(0,0,0,.25)}
         .m14-stat-val{font-size:clamp(1.4rem,5vw,1.8rem);font-weight:900;letter-spacing:-.02em;line-height:1;
           background:linear-gradient(180deg,#fff,${T.accent});-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;font-variant-numeric:tabular-nums}
         .m14-stat-suf{font-size:.85rem;color:${T.accent};font-weight:700;margin-left:2px}
@@ -181,7 +212,8 @@ export function M14Magazine({
         .m14-trust-title{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;opacity:.5;text-align:center;margin:0 0 14px}
         .m14-trust-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
         .m14-trust-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;
-          background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);font-size:.74rem;font-weight:600}
+          background:rgba(255,255,255,.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+          border:1px solid rgba(255,255,255,.07);font-size:.74rem;font-weight:600}
         .m14-trust-icon{width:26px;height:26px;border-radius:50%;background:${T.accent}1f;color:${T.accent};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0}
 
         /* ─── VIP section ─── */
@@ -208,6 +240,10 @@ export function M14Magazine({
         }
       `}</style>
 
+      {/* Couches ambient (mesh + aurora + grain) */}
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.55} fixed={false} />
+
+      <div className="m14-layer">
       {/* Tag bar */}
       <div className="m14-tag">
         <span>Témoignage vérifié</span>
@@ -215,22 +251,36 @@ export function M14Magazine({
       </div>
 
       {/* Hero */}
-      <section className="m14-hero">
-        <div className="m14-portrait-wrap">
-          <div className="m14-portrait-ring" />
-          <div className="m14-portrait">
-            {profileImageUrl ? <img src={profileImageUrl} alt={winnerName} /> : <div className="m14-portrait-empty">👤</div>}
+      <section className="m14-hero" style={{ position: "relative" }}>
+        <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.4} size={400} />
+        <motion.div className="m14-orb m14-orb-1" style={{ y: orbY1 }} />
+        <motion.div className="m14-orb m14-orb-2" style={{ y: orbY2 }} />
+        {profileImageUrl ? (
+          <div className="m14-portrait-wrap">
+            <div className="m14-portrait-ring" />
+            <div className="m14-portrait">
+              <img src={profileImageUrl} alt={winnerName} />
+            </div>
+            <div className="m14-verified" title="Compte vérifié">✓</div>
           </div>
-          <div className="m14-verified" title="Compte vérifié">✓</div>
-        </div>
+        ) : null}
 
-        <h1 className="m14-name" style={nameStyle}>{winnerName}</h1>
+        {pseudo || profileImageUrl ? (
+          <h1 className={`m14-name ${pseudoAnimationClass(pseudoStyle)}`} style={nameStyle}>{winnerName}</h1>
+        ) : null}
         <p className="m14-place">Joueur vérifié · France</p>
 
-        <div className="m14-win">
-          <p className="m14-win-label">A gagné en 30 jours</p>
-          <div className="m14-win-amount">+{winAmount.toLocaleString("fr-FR")}€</div>
-          <p className="m14-win-sub">Retiré sur compte bancaire · Capture vérifiée</p>
+        <div className="m14-win-wrap">
+          <motion.div
+            className="m14-win"
+            style={{ rotateX, rotateY, transformPerspective: 1200 }}
+            onMouseMove={onWinMove}
+            onMouseLeave={onWinLeave}
+          >
+            <p className="m14-win-label">A gagné en 30 jours</p>
+            <div className="m14-win-amount">+{winAmount.toLocaleString("fr-FR")}€</div>
+            <p className="m14-win-sub">Retiré sur compte bancaire · Capture vérifiée</p>
+          </motion.div>
         </div>
       </section>
 
@@ -250,9 +300,9 @@ export function M14Magazine({
         {dep ? <p className="m14-offer-dep">Dépose seulement <strong>{dep}</strong> → reçois</p> : null}
         <div className="m14-offer-bonus">+{bon || "BONUS"}</div>
         <p className="m14-offer-sub">Crédité instantanément · Sans engagement</p>
-        <a className="m14-cta-primary v3-cta" href={safeAffi} onClick={onCta}>
+        <V3MagneticButton href={safeAffi} onClick={onCta} className="m14-cta-primary v3-cta">
           RÉCLAMER MON BONUS
-        </a>
+        </V3MagneticButton>
         <a className="m14-cta-vip" href="#vip" onClick={scrollToVip}>
           Je suis gros joueur → Devenir VIP
         </a>
@@ -305,6 +355,7 @@ export function M14Magazine({
           Aide : <strong>09 74 75 13 13</strong> · <strong>joueurs-info-service.fr</strong>
         </p>
       </footer>
+      </div>{/* /m14-layer */}
 
       <div className="m14-sticky">
         <a className="m14-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
@@ -324,6 +375,7 @@ export function M14Magazine({
       />
 
       <V3SocialProof accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

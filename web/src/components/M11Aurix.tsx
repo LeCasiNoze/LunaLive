@@ -22,7 +22,8 @@ import Lenis from "lenis";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { extendPalette } from "../lib/v3_palette";
-import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
 export type M11AurixProps = {
   pseudo?: string;
@@ -470,38 +471,31 @@ export function M11Aurix({
           <motion.div className="m11-orb m11-orb-3" style={{ y: useTransform(scrollYProgress, [0, 1], [0, -100]) }} />
 
           <motion.div style={{ scale: heroScale, opacity: heroOpacity, position: "relative", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center" }}>
-            {/* Avatar */}
-            <motion.div
-              className="m11-avatar-wrap"
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8, ease: [0.2, 0.7, 0.2, 1] }}
-            >
-              <div className="m11-avatar-ring" />
-              <div className="m11-avatar">
-                {profileImageUrl ? (
+            {/* Avatar (optionnel) */}
+            {profileImageUrl ? (
+              <motion.div
+                className="m11-avatar-wrap"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8, ease: [0.2, 0.7, 0.2, 1] }}
+              >
+                <div className="m11-avatar-ring" />
+                <div className="m11-avatar">
                   <img src={profileImageUrl} alt={pseudo || "Avatar"} />
-                ) : (
-                  <div className="m11-avatar-empty">👤</div>
-                )}
-              </div>
-            </motion.div>
+                </div>
+              </motion.div>
+            ) : null}
 
             {pseudo ? (
               <motion.h1
-                className="m11-pseudo"
+                className={`m11-pseudo ${pseudoAnimationClass(pseudoStyle)}`}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.9, delay: 0.15, ease: [0.2, 0.7, 0.2, 1] }}
-                style={pseudoStyle?.color || pseudoStyle?.font ? {
-                  fontFamily: pseudoStyle.font ? `"${pseudoStyle.font}", Inter, sans-serif` : undefined,
-                  background: pseudoStyle.color ? "none" : undefined,
-                  WebkitBackgroundClip: pseudoStyle.color ? ("border-box" as any) : undefined,
-                  WebkitTextFillColor: pseudoStyle.color || undefined,
-                  color: pseudoStyle.color || undefined,
-                  filter: pseudoStyle.glow ? `drop-shadow(0 0 18px ${pseudoStyle.color || C.accent1}99)` : undefined,
-                  animation: pseudoStyle.color ? "none" : undefined,
-                } : undefined}
+                style={pseudoStyle ? pseudoTextStyle(
+                  { ...pseudoStyle, size: pseudoStyle.size || "xxl" },
+                  C.accent1
+                ) : undefined}
               >
                 {pseudo}
               </motion.h1>
@@ -666,6 +660,7 @@ export function M11Aurix({
       />
 
       <V3SocialProof accent={C.accent2} accentGlow={C.glow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

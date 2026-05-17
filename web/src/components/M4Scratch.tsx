@@ -1,16 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M4 — Mystery Boxes : design loot-box réaliste.
-// 3 coffres en bois/métal avec depth, ombres réalistes, animation d'ouverture
-// crédible (lid se soulève + glow interne). Pas de "✦ Mystery ✦" framing AI.
-// (Fichier reste M4Scratch pour rétrocompat saves.)
+// M4 — "Crash Game" (remplacement de l'ancien Mystery Boxes).
+// Format viral connu de Stake / casino crypto : un multiplier monte (1.00x →
+// 2.0x → 5x → ...), le joueur clique CASH OUT avant que ça crash. Si timing
+// reussi, bonus * multiplier. Sinon, "tu as failli !" et CTA replay menant
+// au CTA principal.
+//
+// Conversion : urgence + skill perceived + replay loop = engagement maximal.
+// Fichier reste M4Scratch.tsx pour retrocompat saves (export name preserve).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { motion, useMotionValue, animate as fmAnimate } from "framer-motion";
 import { sfx } from "../lib/v3_sound";
-import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
-import { V3NeonBg } from "./V3NeonBg";
+import { V3MeshBg, V3AuroraBg, V3GrainBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MagneticButton } from "./V3MagneticButton";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { extendPalette } from "../lib/v3_palette";
 
 export type M4ScratchProps = {
   pseudo?: string;
@@ -29,305 +37,260 @@ export type M4ScratchProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-type BoxSpec = { prize: string; win: boolean; sub: string };
+type Phase = "idle" | "running" | "cashed" | "crashed";
 
-// Lots "presque-gagnants" — pas de 0% pour éviter le sentiment de "perte" ;
-// 10% et 50% donnent l'impression que TOUTES les cartes étaient bonnes,
-// mais celle choisie était LA meilleure.
-const LOSERS: Array<{ prize: string; sub: string }> = [
-  { prize: "10%", sub: "Lot mineur" },
-  { prize: "50%", sub: "Bon lot" },
-];
-
-// SVG coffre fermé — bois + bande métal + cadenas
-const ClosedChest = ({ accent, accentDark }: { accent: string; accentDark: string }) => (
-  <svg viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg" style={{ width: "78%", height: "auto", display: "block" }}>
-    <defs>
-      <linearGradient id={`wood-${accent.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#7a4f2a" />
-        <stop offset=".5" stopColor="#5d3a1f" />
-        <stop offset="1" stopColor="#3a2410" />
-      </linearGradient>
-      <linearGradient id={`metal-${accent.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor={accent} />
-        <stop offset="1" stopColor={accentDark} />
-      </linearGradient>
-    </defs>
-    {/* Corps */}
-    <rect x="8" y="38" width="84" height="50" rx="3" fill={`url(#wood-${accent.replace("#","")})`} stroke="#1f1408" strokeWidth="1.5" />
-    {/* Couvercle (semi-elliptique pour effet bombé) */}
-    <path d="M8 38 Q8 12 50 12 Q92 12 92 38 Z" fill={`url(#wood-${accent.replace("#","")})`} stroke="#1f1408" strokeWidth="1.5" />
-    {/* Bandes métalliques */}
-    <rect x="6" y="36" width="88" height="5" fill={`url(#metal-${accent.replace("#","")})`} stroke="#1f1408" strokeWidth=".5" />
-    <rect x="6" y="62" width="88" height="4" fill={`url(#metal-${accent.replace("#","")})`} stroke="#1f1408" strokeWidth=".5" />
-    {/* Cadenas central */}
-    <rect x="44" y="42" width="12" height="14" rx="1.5" fill={accentDark} stroke="#1f1408" strokeWidth=".8" />
-    <path d="M47 42 L47 38 Q47 34 50 34 Q53 34 53 38 L53 42" fill="none" stroke={accentDark} strokeWidth="1.5" strokeLinecap="round" />
-    <circle cx="50" cy="48" r="1" fill="#1f1408" />
-    {/* Highlights bois (rainures) */}
-    <line x1="20" y1="38" x2="20" y2="86" stroke="rgba(0,0,0,.25)" strokeWidth="1" />
-    <line x1="38" y1="38" x2="38" y2="86" stroke="rgba(0,0,0,.25)" strokeWidth="1" />
-    <line x1="62" y1="38" x2="62" y2="86" stroke="rgba(0,0,0,.25)" strokeWidth="1" />
-    <line x1="80" y1="38" x2="80" y2="86" stroke="rgba(0,0,0,.25)" strokeWidth="1" />
-  </svg>
-);
-
-export function M4Scratch({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M4ScratchProps) {
+export function M4Scratch({
+  pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
+}: M4ScratchProps) {
+  const P = extendPalette(theme, "#FFD700");
   const T = {
-    accent:      theme?.accent      || "#d4a843",
-    accentLight: theme?.accentLight || "#f0c84a",
-    accentDark:  "#8a6724",
-    bgPage:      theme?.bgPage      || "#0a0712",
-    bgCard:      theme?.bgCard      || "#15101a",
-    chrome:      "#3a3a42",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
   };
-
-  const [picked, setPicked] = React.useState<number>(-1);
-  // revealedSet : ordre dans lequel les boxes ont été flippées (build suspense)
-  const [revealedSet, setRevealedSet] = React.useState<Set<number>>(new Set());
-  // phase : étape narrative pour adapter texte + animations
-  const [phase, setPhase] = React.useState<"idle" | "tension1" | "tension2" | "won">("idle");
-  const [popupOpen, setPopupOpen] = React.useState(false);
-
-  // Lots 10% et 50% mélangés (l'un sur chaque non-picked)
-  const [losers] = React.useState<BoxSpec[]>(() => {
-    const shuffled = [...LOSERS].sort(() => Math.random() - 0.5);
-    return shuffled.map((p) => ({ prize: p.prize, sub: p.sub, win: false }));
-  });
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
-  const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100%");
+
+  const [phase, setPhase] = React.useState<Phase>("idle");
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const mult = useMotionValue(1.0);
+  const [displayMult, setDisplayMult] = React.useState(1.0);
+  const [crashAt, setCrashAt] = React.useState(0);
+  const cashedAtRef = React.useRef(0);
+
+  // Subscribe motion value → setState for render
+  React.useEffect(() => {
+    return mult.on("change", (v) => setDisplayMult(v));
+  }, [mult]);
+
+  const start = () => {
+    if (phase === "running") return;
+    // Crash target : random entre 1.3x et 8.0x, biais vers 2-3x (effet "presque")
+    const target = 1.3 + Math.pow(Math.random(), 1.6) * 7.0;
+    setCrashAt(target);
+    setPhase("running");
+    mult.set(1.0);
+    sfx.tick();
+    // Animation duration scale avec le crash target
+    const duration = 1.6 + (target - 1.3) * 0.9;
+    fmAnimate(mult, target, {
+      duration,
+      ease: [0.15, 0.05, 0.25, 1],
+      onComplete: () => {
+        // CRASH si pas cashed
+        if (cashedAtRef.current === 0) {
+          setPhase("crashed");
+          sfx.loss();
+        }
+      },
+    });
+  };
+
+  const cashOut = () => {
+    if (phase !== "running") return;
+    const v = mult.get();
+    cashedAtRef.current = v;
+    mult.stop();
+    setPhase("cashed");
+    sfx.win();
+  };
+
+  // Reset après crash : laisse 1.5s pour digest puis revient idle
+  React.useEffect(() => {
+    if (phase !== "crashed") return;
+    const id = window.setTimeout(() => {
+      setPhase("idle");
+      cashedAtRef.current = 0;
+      mult.set(1.0);
+    }, 2400);
+    return () => window.clearTimeout(id);
+  }, [phase, mult]);
+
+  const onMainCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+
+  const finalMult = phase === "cashed" ? cashedAtRef.current : displayMult;
+  const wonBonus = bonusAmount != null ? Math.round(bonusAmount * finalMult) : null;
+
+  // Couleur dynamique du multiplier selon phase + valeur
+  const multColor =
+    phase === "crashed" ? "#ef4444" :
+    phase === "cashed" ? "#22c55e" :
+    displayMult > 5 ? T.accentHot :
+    displayMult > 2.5 ? T.accentLight :
+    T.accent;
+
   const popupSteps = React.useMemo(() => [
-    "Verification du coffre choisi",
+    "Validation de ton score",
     "Preparation de l'offre",
     "Lien bonus pret",
   ], []);
 
-  const boxes: BoxSpec[] = React.useMemo(() => {
-    const winBox: BoxSpec = { prize: "100%", sub: "MEGA BONUS", win: true };
-    const arr: BoxSpec[] = [];
-    let loserIdx = 0;
-    for (let i = 0; i < 3; i++) {
-      if (i === picked) arr.push(winBox);
-      else arr.push(losers[loserIdx++] || losers[0]);
-    }
-    return arr;
-  }, [picked, losers]);
-
-  const pick = (i: number) => {
-    if (picked !== -1) return;
-    sfx.click();
-    setPicked(i);
-
-    // Les 2 cartes NON sélectionnées flippent une par une pour build le suspense.
-    // La carte choisie flippe en DERNIER avec l'animation celebrate (climax).
-    const others = [0, 1, 2].filter((idx) => idx !== i);
-    const [firstOther, secondOther] = others;
-
-    // --- 1ère carte non choisie : flip rapide + shake (t=0.7s)
-    setTimeout(() => setPhase("tension1"), 600);
-    setTimeout(() => {
-      setRevealedSet((s) => new Set(s).add(firstOther));
-      sfx.loss();
-    }, 900);
-
-    // --- 2ème carte non choisie : flip plus lent + tension audio (t=2.5s)
-    setTimeout(() => {
-      setPhase("tension2");
-      sfx.tension(1100);
-    }, 2200);
-    setTimeout(() => {
-      setRevealedSet((s) => new Set(s).add(secondOther));
-      sfx.loss();
-    }, 3000);
-
-    // --- Carte choisie : flip avec celebration (t=3.8s)
-    setTimeout(() => {
-      setRevealedSet((s) => new Set(s).add(i));
-      sfx.win();
-    }, 3700);
-
-    setTimeout(() => {
-      setPhase("won");
-      setPopupOpen(true);
-    }, 4500);
-  };
-
-  const reset = () => {
-    setPicked(-1);
-    setRevealedSet(new Set());
-    setPhase("idle");
-    setPopupOpen(false);
-  };
-
-  const allOthersRevealed = picked !== -1
-    && [0, 1, 2].filter((idx) => idx !== picked).every((idx) => revealedSet.has(idx));
-
   return (
-    <div className="m4-root" style={{ color: "#f5f1e6" }}>
+    <div className="m4-root">
       <style>{`
-        .m4-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
+        .m4-root{position:relative;min-height:100vh;padding:24px 18px 160px;background:${T.bgPage};
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow:hidden;
+          --c-accent:${T.accent};--c-light:${T.accentLight};--c-alt:${T.accentAlt};--c-hot:${T.accentHot};--c-glow:${T.accentGlow}}
+        .m4-layer{position:relative;z-index:10;max-width:440px;margin:0 auto}
 
-        .m4-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
-        .m4-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+        .m4-header{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+        .m4-avatar{width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid ${T.accent};
+          box-shadow:0 0 0 3px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
         .m4-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m4-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
-        .m4-promo{position:relative;z-index:2;display:inline-block;padding:9px 20px;margin-bottom:14px;background:rgba(10,5,25,.7);border:1px solid ${T.accent};border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.92);box-shadow:0 0 20px ${T.accent}55}
-        .m4-promo strong{color:${T.accentLight};font-weight:800;text-shadow:0 0 10px ${T.accent}}
+        .m4-game-card{position:relative;padding:34px 24px 28px;border-radius:24px;text-align:center;overflow:hidden;
+          background:linear-gradient(160deg,${T.bgCard}ee,${T.bgPage}ee);
+          backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+          border:1.5px solid ${T.accent}55;
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 70px ${T.accentGlow}99}
+        .m4-game-card::before{content:"";position:absolute;inset:-1px;border-radius:24px;padding:1.5px;pointer-events:none;
+          background:conic-gradient(from var(--ang,0deg),${T.accent},${T.accentLight},${T.accentAlt},${T.accent});
+          -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+          animation:m4-spin 5s linear infinite}
+        @property --ang{syntax:'<angle>';inherits:false;initial-value:0deg}
+        @keyframes m4-spin{to{--ang:360deg}}
 
-        .m4-step{position:relative;z-index:2;font-size:.88rem;color:rgba(245,241,230,.7);margin-bottom:20px;text-align:center;font-weight:500}
-        .m4-step strong{color:${T.accent};font-weight:700}
+        .m4-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.6;margin:0}
 
-        .m4-grid{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;width:min(94vw,400px);margin-bottom:28px}
+        .m4-mult-display{margin:18px 0 6px;font-size:clamp(4.5rem,18vw,7rem);font-weight:900;line-height:.9;letter-spacing:-.06em;
+          color:var(--m-color,${T.accent});font-variant-numeric:tabular-nums;
+          text-shadow:0 0 30px var(--m-color,${T.accent}),0 4px 16px rgba(0,0,0,.5);
+          transition:color .25s ease}
+        .m4-mult-x{font-size:.5em;opacity:.7;font-weight:700;margin-left:6px}
 
-        .m4-box{position:relative;aspect-ratio:.9/1;cursor:pointer;perspective:1200px}
-        .m4-box.disabled{cursor:default}
-        .m4-box.dim{opacity:.55;filter:grayscale(.35)}
-        .m4-inner{position:relative;width:100%;height:100%;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.4,1.6,.6,1)}
-        .m4-box.opened .m4-inner{transform:rotateY(180deg)}
-        /* 2ème non-choisie : flip plus lent pour build tension */
-        .m4-box.tense .m4-inner{transition:transform 1.2s cubic-bezier(.34,1.56,.64,1)}
-        /* Carte choisie : flip dramatique avec celebrate */
-        .m4-box.celebrate .m4-inner{transition:transform .9s cubic-bezier(.34,1.8,.64,1);animation:m4-celebrate-pop .8s ease-out .9s both}
-        /* Shake léger sur 1ère carte qui se révèle */
-        .m4-box.shake .m4-inner{animation:m4-shake .35s ease-in-out .55s 2}
-        /* Pulsing glow pendant la tension sur 2ème carte */
-        .m4-box.tense{animation:m4-tense-glow .6s ease-in-out infinite alternate}
-        .m4-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px}
+        .m4-bonus-preview{margin:8px 0 0;font-size:.95rem;font-weight:700;opacity:.85;font-variant-numeric:tabular-nums}
+        .m4-bonus-preview strong{color:var(--m-color,${T.accent})}
 
-        /* Face fermée */
-        .m4-face-front{background:linear-gradient(180deg,#2a1d12,#1a1108);border:1px solid ${T.accent}66;box-shadow:0 6px 16px rgba(0,0,0,.55),inset 0 0 0 1px ${T.accent}22,0 0 14px ${T.accent}22}
-        .m4-box.idle:hover .m4-face-front{border-color:${T.accent};transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.06)}
-        .m4-box.idle .m4-face-front{transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
-        .m4-front-num{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-size:.65rem;font-weight:700;letter-spacing:.12em;color:rgba(245,241,230,.35)}
+        .m4-status{margin:14px 0 18px;min-height:32px;font-size:.85rem;font-weight:700;letter-spacing:.04em}
+        .m4-status.running{color:${T.accentLight}}
+        .m4-status.cashed{color:#22c55e;animation:m4-pop 0.5s cubic-bezier(.4,1.6,.5,1) both}
+        .m4-status.crashed{color:#ef4444;animation:m4-shake 0.5s ease-in-out both}
+        .m4-status .reveal{opacity:.6;font-weight:500;margin-left:6px}
 
-        /* Face ouverte */
-        .m4-face-back{transform:rotateY(180deg);background:linear-gradient(180deg,#15101a,#0a070f);border:1px solid #2a1d12;color:#f5f1e6;box-shadow:0 6px 16px rgba(0,0,0,.55)}
-        .m4-face-back.win{background:radial-gradient(circle at 50% 50%,${T.accent}55,transparent 70%),linear-gradient(180deg,#1a1408,#0a070f);border-color:${T.accent};box-shadow:0 0 32px ${T.accent}66,inset 0 0 24px ${T.accent}22}
-        .m4-back-prize{font-family:'Playfair Display',serif;font-size:1.7rem;font-weight:700;line-height:1;color:rgba(245,241,230,.55)}
-        .m4-face-back.win .m4-back-prize{color:${T.accent}}
-        .m4-back-sub{font-size:.62rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;margin-top:6px;color:rgba(245,241,230,.45)}
-        .m4-face-back.win .m4-back-sub{color:${T.accentLight}}
+        .m4-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:20px;border-radius:16px;
+          font-family:inherit;font-size:1.05rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;border:none;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
+          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s;animation:m4-breath 2.6s ease-in-out infinite}
+        .m4-action:active{transform:scale(.97)}
+        .m4-action.cashout{background:linear-gradient(135deg,#22c55e,#86efac);box-shadow:0 0 36px rgba(34,197,94,.55),0 14px 30px rgba(34,197,94,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+        .m4-action.disabled{opacity:.5;cursor:not-allowed;animation:none}
 
-        .m4-cta{display:block;width:min(94vw,400px);padding:16px 24px;background:${T.accent};color:#0e0a05;font-weight:700;text-transform:uppercase;letter-spacing:.16em;font-size:.92rem;border:none;border-radius:4px;cursor:pointer;box-shadow:0 4px 0 ${T.accentDark},0 6px 20px rgba(0,0,0,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease;position:relative;z-index:2}
-        .m4-cta:not(:disabled):hover{background:${T.accentLight};transform:translateY(1px);box-shadow:0 3px 0 ${T.accentDark}}
-        .m4-cta:disabled{background:${T.chrome};color:rgba(255,255,255,.5);cursor:not-allowed;box-shadow:0 2px 0 rgba(0,0,0,.4)}
-        .m4-cta.ghost{background:transparent;color:rgba(245,241,230,.5);border:1px solid rgba(245,241,230,.15);box-shadow:none;font-size:.78rem;padding:10px 18px;width:auto;margin-top:10px;letter-spacing:.1em}
+        .m4-hint{margin:10px 0 0;font-size:.7rem;opacity:.55;text-align:center;letter-spacing:.04em}
 
-        .m4-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m4-fade .2s ease-out}
-        .m4-popup{position:relative;background:${T.bgCard};border-top:3px solid ${T.accent};border-radius:6px;padding:32px 26px 24px;text-align:center;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:m4-pop .35s cubic-bezier(.17,.84,.34,1.27)}
-        .m4-popup-close{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:4px;background:transparent;border:none;color:rgba(245,241,230,.5);font-size:20px;cursor:pointer}
-        .m4-popup-close:hover{color:#fff;background:rgba(255,255,255,.06)}
-        .m4-popup-eyebrow{font-size:.72rem;font-weight:600;letter-spacing:.18em;color:${T.accent};text-transform:uppercase;margin-bottom:8px}
-        .m4-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:700;margin:0 0 14px;color:#f5f1e6;line-height:1.1}
-        .m4-popup h2 span{color:${T.accent}}
-        .m4-popup .reward-box{background:rgba(0,0,0,.4);border:1px solid ${T.accent}55;border-radius:4px;padding:14px 16px;margin:16px 0 22px}
-        .m4-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
-        .m4-popup .reward-box .val{font-weight:700;color:#f5f1e6}
-        .m4-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
-        .m4-popup .m4-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
+        .m4-history{display:flex;justify-content:center;gap:6px;margin-top:18px;flex-wrap:wrap}
+        .m4-history-pill{padding:4px 9px;border-radius:999px;font-size:.7rem;font-weight:700;font-variant-numeric:tabular-nums;
+          background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
 
-        @keyframes m4-fade{from{opacity:0}to{opacity:1}}
-        @keyframes m4-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
-        @keyframes m4-shake{0%,100%{transform:rotateY(180deg) translateX(0)}25%{transform:rotateY(180deg) translateX(-4px) rotateZ(-1deg)}75%{transform:rotateY(180deg) translateX(4px) rotateZ(1deg)}}
-        @keyframes m4-tense-glow{from{filter:none}to{filter:drop-shadow(0 0 12px ${T.accent}88)}}
-        @keyframes m4-celebrate-pop{0%{transform:rotateY(180deg) scale(1)}40%{transform:rotateY(180deg) scale(1.12)}100%{transform:rotateY(180deg) scale(1)}}
+        .m4-cta-final{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:22px;margin-top:22px;border-radius:18px;
+          font-size:1.1rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 40px ${T.accentGlow},0 16px 36px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
+          text-shadow:0 1px 0 rgba(255,255,255,.3)}
+        .m4-cta-final::after{content:"→";font-size:1.3rem;margin-left:4px}
+        .m4-cta-sub{margin-top:10px;text-align:center;font-size:.72rem;opacity:.65}
+
+        @keyframes m4-pop{from{transform:scale(.8)}to{transform:scale(1)}}
+        @keyframes m4-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+        @keyframes m4-breath{0%,100%{box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 56px ${T.accentLight},0 14px 30px ${T.accent}99,inset 0 1px 0 rgba(255,255,255,.6)}}
+        @media (prefers-reduced-motion:reduce){.m4-game-card::before,.m4-action,.m4-status{animation:none !important}}
       `}</style>
 
-      <V3NeonBg accent={T.accent} accentGlow={`${T.accent}66`} />
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.42} />
+      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.16} />
+      <V3GrainBg opacity={0.05} />
 
-      <div className="m4-header">
-        {profileImageUrl ? <div className="m4-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? (
-          <div className="m4-pseudo-wrap">
-            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
-              {pseudo}
-            </div>
+      <div className="m4-layer">
+        {/* Header optionnel */}
+        {(profileImageUrl || pseudo) ? (
+          <div className="m4-header">
+            {profileImageUrl ? <div className="m4-avatar"><img src={profileImageUrl} alt="" /></div> : null}
+            {pseudo ? (
+              <div className={pseudoAnimationClass(pseudoStyle)} style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+                {pseudo}
+              </div>
+            ) : null}
           </div>
         ) : null}
-      </div>
 
-      <div className="m4-promo">Choisis ton coffre · <strong>1 essai</strong></div>
-
-      <div className="m4-step">
-        {picked === -1
-          ? <>Derrière l'une de ces cartes se cache une <strong>grosse récompense</strong>, bonne chance</>
-          : phase === "tension1"
-            ? <strong>Ouverture des autres cartes…</strong>
-            : phase === "tension2"
-              ? <strong>Plus que ta carte… suspense</strong>
-              : revealedSet.has(picked)
-                ? <strong>🎉 Tu as choisi la bonne carte</strong>
-                : <strong>Préparation…</strong>}
-      </div>
-
-      <div className="m4-grid">
-        {boxes.map((b, i) => {
-          const isOpened = revealedSet.has(i);
-          const isPicked = picked === i;
-          const isDimmed = picked !== -1 && !isPicked && !isOpened;
-          const isShake = !isPicked && isOpened && phase === "tension1";
-          const isTense = !isPicked && phase === "tension2" && !isOpened;
-          const isCelebrate = isPicked && isOpened;
-          return (
-            <div
-              key={i}
-              className={[
-                "m4-box",
-                picked === -1 ? "idle" : "disabled",
-                isOpened ? "opened" : "",
-                isDimmed ? "dim" : "",
-                isShake ? "shake" : "",
-                isTense ? "tense" : "",
-                isCelebrate ? "celebrate" : "",
-              ].filter(Boolean).join(" ")}
-              onClick={() => pick(i)}
-            >
-              <div className="m4-inner">
-                <div className="m4-face m4-face-front">
-                  <span className="m4-front-num">N°{i + 1}</span>
-                  <ClosedChest accent={T.accent} accentDark={T.accentDark} />
-                </div>
-                <div className={`m4-face m4-face-back ${b.win ? "win" : ""}`}>
-                  <div className="m4-back-prize">{b.prize}</div>
-                  <div className="m4-back-sub">{b.sub}</div>
-                </div>
-              </div>
+        {/* Game card */}
+        <div style={{ position: "relative" }}>
+          <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.45} size={360} />
+          <div className="m4-game-card">
+            <p className="m4-label">Cash out avant le crash</p>
+            <div className="m4-mult-display" style={{ ["--m-color" as any]: multColor } as any}>
+              {finalMult.toFixed(2)}<span className="m4-mult-x">x</span>
             </div>
-          );
-        })}
+            {bonusAmount != null ? (
+              <p className="m4-bonus-preview" style={{ ["--m-color" as any]: multColor } as any}>
+                Bonus = <strong>+{wonBonus}€</strong>
+              </p>
+            ) : null}
+            <div className={`m4-status ${phase}`}>
+              {phase === "idle"    && <span>Prêt à jouer · {dep ? `dépose ${dep}` : "bonus disponible"}</span>}
+              {phase === "running" && <span>EN VOL · cash out maintenant ?</span>}
+              {phase === "cashed"  && <span>✓ ENCAISSÉ {finalMult.toFixed(2)}x<span className="reveal"> · crash prévu {crashAt.toFixed(2)}x</span></span>}
+              {phase === "crashed" && <span>💥 CRASH à {crashAt.toFixed(2)}x — réessaie !</span>}
+            </div>
+            {phase === "idle" || phase === "crashed" ? (
+              <motion.button
+                type="button"
+                className={`m4-action ${phase === "crashed" ? "disabled" : ""}`}
+                onClick={start}
+                disabled={phase === "crashed"}
+                whileTap={{ scale: 0.97 }}
+              >
+                ▶ LANCER
+              </motion.button>
+            ) : phase === "running" ? (
+              <motion.button
+                type="button"
+                className="m4-action cashout"
+                onClick={cashOut}
+                whileTap={{ scale: 0.95 }}
+              >
+                💰 CASH OUT
+              </motion.button>
+            ) : (
+              <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m4-action">
+                🚀 RÉCLAMER {wonBonus ? `+${wonBonus}€` : "MON BONUS"}
+              </V3MagneticButton>
+            )}
+            <p className="m4-hint">{phase === "running" ? "Plus tu attends, plus le bonus monte… mais ça peut crasher !" : "Multiplier 1.00x → ∞. Crash imprévisible."}</p>
+          </div>
+        </div>
+
+        {/* Historique paliers (statique pour social proof) */}
+        <div className="m4-history">
+          <span className="m4-history-pill" style={{ color: "#ef4444" }}>1.21x</span>
+          <span className="m4-history-pill" style={{ color: "#22c55e" }}>2.45x</span>
+          <span className="m4-history-pill" style={{ color: "#22c55e" }}>3.80x</span>
+          <span className="m4-history-pill" style={{ color: "#22c55e" }}>5.12x</span>
+          <span className="m4-history-pill" style={{ color: "#ef4444" }}>1.05x</span>
+          <span className="m4-history-pill" style={{ color: "#22c55e" }}>7.66x</span>
+        </div>
+
+        {/* Final CTA (toujours visible) */}
+        <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m4-cta-final v3-cta">
+          {bon ? `RÉCLAMER ${bon} BONUS` : "RÉCLAMER MON BONUS"}
+        </V3MagneticButton>
+        <p className="m4-cta-sub">Inscription en 30s · Crédit instantané</p>
       </div>
-
-      {picked === -1 ? (
-        <button className="m4-cta" disabled>Sélectionne un coffre</button>
-      ) : !revealedSet.has(picked) ? (
-        <button className="m4-cta" disabled>
-          {phase === "tension2" ? "Suspense…" : "Ouverture…"}
-        </button>
-      ) : (
-        <a href={safeAffi} target="_blank" rel="noreferrer" className="m4-cta v3-cta">
-          Récupérer mon bonus
-        </a>
-      )}
-
-      {allOthersRevealed ? <button className="m4-cta ghost" onClick={reset}>Rejouer</button> : null}
 
       <V3OfferPopup
-        open={popupOpen && revealedSet.has(picked)}
+        open={popupOpen}
         onClose={() => setPopupOpen(false)}
-        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: `${T.accent}66`, bgCard: T.bgCard }}
-        score={rewardScore}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        score={phase === "cashed" ? `${finalMult.toFixed(2)}x` : (bon ? `+${bon}` : "Bonus")}
         depositAmount={dep}
-        bonusAmount={bon}
+        bonusAmount={wonBonus != null ? `${wonBonus}€` : bon}
         steps={popupSteps}
         href={safeAffi}
       />
 
-      <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={`${T.accent}66`} />
+      <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

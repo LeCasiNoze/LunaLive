@@ -1,14 +1,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M7 — Plinko : bille qui tombe à travers des pegs, atterrit toujours sur le
-// slot JACKPOT (centre). Animation par étapes avec son "tic" à chaque peg.
+// M7 — "Reaction Tap" (remplacement de l'ancien Plinko).
+// Une barre defile en boucle de gauche a droite. Une zone "JACKPOT" doree
+// marque le sweet spot. Le joueur tape au moment ou le curseur entre dans la
+// zone. Plus le timing est centre, plus le multiplier est eleve (1.5x → 5x).
+//
+// Skill-based, viral, parfait pour ig/tiktok : "regarde si tu peux faire 5x".
+// Fichier reste M7Plinko.tsx pour retrocompat saves (export name preserve).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { motion } from "framer-motion";
 import { sfx } from "../lib/v3_sound";
-import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
-import { V3NeonBg } from "./V3NeonBg";
+import { V3MeshBg, V3AuroraBg, V3GrainBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MagneticButton } from "./V3MagneticButton";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { extendPalette } from "../lib/v3_palette";
 
 export type M7PlinkoProps = {
   pseudo?: string;
@@ -27,207 +36,251 @@ export type M7PlinkoProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-// Layout : 9 rangées de pegs, 9 slots en bas
-const ROWS = 9;
-const SLOT_COUNT = 9;
-const TARGET_SLOT = 4;  // slot du milieu = JACKPOT (toujours rigged)
+type Phase = "idle" | "playing" | "result";
+const ZONES = [
+  { from: 5,  to: 18, mult: 1.5, label: "1.5x" },
+  { from: 32, to: 42, mult: 2.5, label: "2.5x" },
+  { from: 47, to: 53, mult: 5.0, label: "5x", jackpot: true },
+  { from: 58, to: 68, mult: 2.5, label: "2.5x" },
+  { from: 82, to: 95, mult: 1.5, label: "1.5x" },
+];
 
-// Multiplicateurs des slots (du gauche au droite). Center = 100x.
-const SLOT_MULTIPLIERS = ["5x", "10x", "20x", "50x", "100x", "50x", "20x", "10x", "5x"];
-
-// Pré-calcule un chemin "zigzag-ish" qui atterrit pile sur TARGET_SLOT.
-// Ball commence en haut au-dessus du centre. À chaque rangée elle bouge de
-// ±0.5 colonne. Sur ROWS rangées, déplacement total signé doit donner
-// TARGET_SLOT - START_COL = 0 (puisque target = centre = start).
-function computePath(): number[] {
-  // L'idée : alternance gauche/droite avec petite asymétrie pour visuel
-  // varié, mais somme = 0 pour finir au centre.
-  const moves = [-1, +1, +1, -1, -1, +1, -1, +1, 0];  // 4 left, 4 right, 1 stay (= 0 sum)
-  const positions: number[] = [TARGET_SLOT];  // start position = center
-  let x = TARGET_SLOT;
-  for (const m of moves) {
-    x = Math.max(0, Math.min(SLOT_COUNT - 1, x + m * 0.5));
-    positions.push(x);
-  }
-  return positions;
-}
-
-export function M7Plinko({ pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle }: M7PlinkoProps) {
+export function M7Plinko({
+  pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
+}: M7PlinkoProps) {
+  const P = extendPalette(theme, "#FFD700");
   const T = {
-    accent:      theme?.accent      || "#d4a843",
-    accentLight: theme?.accentLight || "#f0c84a",
-    accentDark:  "#8a6724",
-    accentGlow:  theme?.accentGlow  || "rgba(212,168,67,.5)",
-    bgPage:      theme?.bgPage      || "#0a0712",
-    bgCard:      theme?.bgCard      || "#15101a",
-    chrome:      "#3a3a42",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
   };
-
-  const [phase, setPhase] = React.useState<"idle" | "falling" | "won">("idle");
-  const [pathIdx, setPathIdx] = React.useState(0);  // index dans le path (= rangée actuelle)
-  const [popupOpen, setPopupOpen] = React.useState(false);
-  const path = React.useMemo(computePath, [phase === "falling"]);  // recalc à chaque drop
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
-  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
-  const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "100x");
-  const popupSteps = React.useMemo(() => [
-    "Verification de la chute",
-    "Validation du palier central",
-    "Lien bonus pret",
-  ], []);
 
-  const drop = () => {
-    if (phase !== "idle") return;
-    sfx.click();
-    setPhase("falling");
-    setPathIdx(0);
+  const [phase, setPhase] = React.useState<Phase>("idle");
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const [cursorPos, setCursorPos] = React.useState(0);
+  const cursorRef = React.useRef(0);
+  const dirRef = React.useRef(1);
+  const rafRef = React.useRef(0);
+  const [hit, setHit] = React.useState<{ mult: number; label: string; pos: number } | null>(null);
 
-    // Anime la bille à travers les rangées. 280ms par rangée → ~2.5s total.
-    let step = 0;
-    const STEP_MS = 280;
+  React.useEffect(() => {
+    if (phase !== "playing") return;
+    const SPEED = 1.4;
     const tick = () => {
-      step++;
-      sfx.tick();
-      setPathIdx(step);
-      if (step < path.length - 1) {
-        setTimeout(tick, STEP_MS);
-      } else {
-        // Atterrissage final
-        setTimeout(() => {
-          sfx.win();
-          setPhase("won");
-          setPopupOpen(true);
-        }, 400);
-      }
+      cursorRef.current += dirRef.current * SPEED;
+      if (cursorRef.current >= 100) { cursorRef.current = 100; dirRef.current = -1; }
+      if (cursorRef.current <= 0)   { cursorRef.current = 0;   dirRef.current = 1; }
+      setCursorPos(cursorRef.current);
+      rafRef.current = requestAnimationFrame(tick);
     };
-    setTimeout(tick, STEP_MS);
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [phase]);
+
+  const start = () => {
+    setHit(null);
+    setPhase("playing");
+    cursorRef.current = 0;
+    dirRef.current = 1;
+    sfx.tick();
   };
 
-  // Position visuelle de la bille (x en %, y en %)
-  const ballX = phase === "idle" ? 50 : (path[pathIdx] / (SLOT_COUNT - 1)) * 100;
-  const ballY = phase === "idle" ? 4 : 4 + ((pathIdx) / (ROWS)) * 88;
+  const tap = () => {
+    if (phase !== "playing") return;
+    cancelAnimationFrame(rafRef.current);
+    const pos = cursorRef.current;
+    const zone = ZONES.find((z) => pos >= z.from && pos <= z.to);
+    if (zone) {
+      const center = (zone.from + zone.to) / 2;
+      const offset = Math.abs(pos - center) / ((zone.to - zone.from) / 2);
+      const finalMult = zone.jackpot ? zone.mult : Math.max(1.0, zone.mult * (1 - offset * 0.25));
+      setHit({ mult: finalMult, label: zone.label, pos });
+      sfx.win();
+    } else {
+      setHit({ mult: 1.0, label: "Raté", pos });
+      sfx.loss();
+    }
+    setPhase("result");
+  };
+
+  const reset = () => {
+    setPhase("idle");
+    setHit(null);
+    cursorRef.current = 0;
+  };
+
+  const onMainCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+
+  const wonBonus = hit && bonusAmount != null ? Math.round(bonusAmount * hit.mult) : null;
+  const popupSteps = React.useMemo(() => ["Validation du score", "Preparation de l'offre", "Lien bonus pret"], []);
 
   return (
-    <div className="m7-root" style={{ color: "#f5f1e6" }}>
+    <div className="m7-root">
       <style>{`
-        .m7-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 48px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
+        .m7-root{position:relative;min-height:100vh;padding:24px 18px 160px;background:${T.bgPage};
+          font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow:hidden}
+        .m7-layer{position:relative;z-index:10;max-width:440px;margin:0 auto}
 
-        .m7-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;position:relative;z-index:2}
-        .m7-avatar{width:72px;height:72px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+        .m7-header{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+        .m7-avatar{width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid ${T.accent};
+          box-shadow:0 0 0 3px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
         .m7-avatar img{width:100%;height:100%;object-fit:cover;display:block}
-        .m7-pseudo-wrap{display:flex;justify-content:center;margin-top:2px}
 
-        .m7-promo{position:relative;z-index:2;display:inline-block;padding:9px 20px;margin-bottom:20px;background:rgba(10,5,25,.78);border:1px solid ${T.accent};border-radius:999px;font-size:.78rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:rgba(245,241,230,.95);box-shadow:0 0 22px ${T.accentGlow}}
-        .m7-promo strong{color:${T.accentLight};font-weight:800;text-shadow:0 0 10px ${T.accentGlow}}
+        .m7-game-card{position:relative;padding:28px 22px 24px;border-radius:24px;text-align:center;overflow:hidden;
+          background:linear-gradient(160deg,${T.bgCard}ee,${T.bgPage}ee);
+          backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+          border:1.5px solid ${T.accent}55;
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 70px ${T.accentGlow}99}
 
-        .m7-stage{position:relative;width:min(92vw,360px);aspect-ratio:.92/1;background:linear-gradient(180deg,${T.bgCard},#0a070f);border:2px solid ${T.accent}55;border-radius:14px;padding:14px 14px 0;margin-bottom:22px;box-shadow:0 12px 32px rgba(0,0,0,.5),0 0 28px ${T.accent}22,inset 0 0 0 1px ${T.accent}22,inset 0 1px 0 rgba(255,255,255,.05);overflow:hidden;z-index:2}
-        .m7-stage::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,${T.accentGlow}40,transparent 50%);pointer-events:none}
+        .m7-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.6;margin:0 0 18px}
 
-        .m7-field{position:relative;width:100%;height:88%}
-        .m7-peg{position:absolute;width:8px;height:8px;background:radial-gradient(circle at 30% 30%,#fff,${T.accent} 55%,${T.accentDark});border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 2px rgba(0,0,0,.6),0 0 6px ${T.accent}66}
-        .m7-ball{position:absolute;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,${T.accentLight},${T.accent} 50%,${T.accentDark});box-shadow:0 0 16px ${T.accentGlow},inset 0 -2px 4px rgba(0,0,0,.3),inset 0 2px 0 rgba(255,255,255,.4);transform:translate(-50%,-50%);transition:left .28s cubic-bezier(.5,.1,.3,1),top .28s cubic-bezier(.4,.5,.3,1.1);z-index:3}
+        .m7-bar-wrap{position:relative;height:54px;border-radius:14px;background:rgba(0,0,0,.45);overflow:hidden;
+          border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 2px 8px rgba(0,0,0,.5)}
+        .m7-zone{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
+          font-size:.62rem;font-weight:800;letter-spacing:.06em;color:rgba(255,255,255,.55);overflow:hidden}
+        .m7-zone.normal{background:linear-gradient(180deg,${T.accent}40,${T.accent}20)}
+        .m7-zone.jackpot{background:linear-gradient(180deg,${T.accentLight},${T.accent});color:#000;font-size:.7rem;font-weight:900;
+          box-shadow:0 0 24px ${T.accentGlow},inset 0 0 0 1px rgba(255,255,255,.4);
+          animation:m7-jackpot-pulse 1.4s ease-in-out infinite}
+        .m7-cursor{position:absolute;top:-6px;bottom:-6px;width:5px;border-radius:3px;background:#fff;
+          box-shadow:0 0 14px #fff,0 0 24px ${T.accent},0 0 36px ${T.accent};will-change:left;pointer-events:none;z-index:5}
+        .m7-cursor::after{content:"";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);width:0;height:0;
+          border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #fff}
 
-        .m7-slots{position:absolute;bottom:0;left:0;right:0;display:grid;grid-template-columns:repeat(${SLOT_COUNT},1fr);gap:1px;padding:0 14px;height:34px}
-        .m7-slot{display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;letter-spacing:.04em;color:${T.accent}cc;background:linear-gradient(180deg,#1a1a1d,#0d0d10);border:1px solid ${T.accent}33;border-top:none;text-shadow:0 0 6px ${T.accent}44}
-        .m7-slot.jackpot{background:linear-gradient(180deg,${T.accent},${T.accentDark});color:#0e0a05;border-color:${T.accent};font-weight:900}
-        .m7-slot.jackpot.lit{box-shadow:0 0 16px ${T.accentGlow},inset 0 0 8px ${T.accentLight};animation:m7-jackpot-pulse .8s ease-in-out infinite alternate}
+        .m7-result{margin:18px 0 0;min-height:74px}
+        .m7-result-mult{font-size:clamp(2.5rem,9vw,3.4rem);font-weight:900;line-height:1;letter-spacing:-.04em;
+          font-variant-numeric:tabular-nums;text-shadow:0 4px 16px rgba(0,0,0,.5)}
+        .m7-result-mult.win{color:${T.accentLight};text-shadow:0 0 24px ${T.accentLight},0 4px 16px rgba(0,0,0,.5)}
+        .m7-result-mult.jackpot{background:linear-gradient(180deg,${T.accent},${T.accentLight} 60%,${T.accentHot});
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 0 28px ${T.accentGlow})}
+        .m7-result-mult.miss{color:#ef4444}
+        .m7-result-sub{margin:4px 0 0;font-size:.85rem;opacity:.85;font-weight:600}
+        .m7-result-bonus{font-size:1.4rem;font-weight:900;color:${T.accent};margin-top:6px}
 
-        .m7-cta{display:block;width:min(92vw,360px);padding:16px 24px;background:${T.accent};color:#0e0a05;font-weight:700;text-transform:uppercase;letter-spacing:.16em;font-size:.92rem;border:none;border-radius:4px;cursor:pointer;box-shadow:0 4px 0 ${T.accentDark},0 6px 20px rgba(0,0,0,.4);text-decoration:none;text-align:center;font-family:inherit;transition:transform .1s ease;position:relative;z-index:2}
-        .m7-cta:not(:disabled):hover{background:${T.accentLight};transform:translateY(1px);box-shadow:0 3px 0 ${T.accentDark}}
-        .m7-cta:disabled{background:${T.chrome};color:rgba(255,255,255,.5);cursor:not-allowed;box-shadow:0 2px 0 rgba(0,0,0,.4)}
+        .m7-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:20px;margin-top:18px;border-radius:16px;
+          font-family:inherit;font-size:1.05rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;border:none;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
+          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s;animation:m7-breath 2.6s ease-in-out infinite}
+        .m7-action:active{transform:scale(.97)}
+        .m7-action.tap{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.3);
+          box-shadow:0 0 36px rgba(239,68,68,.6),0 14px 30px rgba(239,68,68,.4);animation:m7-tap-pulse .6s ease-in-out infinite}
+        .m7-action.replay{background:rgba(255,255,255,.08);color:#fff;text-shadow:none;border:1px solid rgba(255,255,255,.18);
+          box-shadow:0 8px 20px rgba(0,0,0,.3);animation:none;margin-top:10px}
 
-        .m7-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:9999;animation:m7-fade .2s ease-out}
-        .m7-popup{position:relative;background:${T.bgCard};border-top:3px solid ${T.accent};border-radius:6px;padding:32px 22px 22px;text-align:center;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:m7-pop .35s cubic-bezier(.17,.84,.34,1.27);box-sizing:border-box}
-        .m7-popup-close{position:absolute;top:10px;right:10px;width:30px;height:30px;border-radius:4px;background:transparent;border:none;color:rgba(245,241,230,.5);font-size:20px;cursor:pointer}
-        .m7-popup-close:hover{color:#fff;background:rgba(255,255,255,.06)}
-        .m7-popup-eyebrow{font-size:.72rem;font-weight:600;letter-spacing:.18em;color:${T.accent};text-transform:uppercase;margin-bottom:8px}
-        .m7-popup h2{font-family:'Playfair Display',serif;font-size:1.9rem;font-weight:700;margin:0 0 14px;color:#f5f1e6;line-height:1.1}
-        .m7-popup h2 span{color:${T.accent}}
-        .m7-popup .reward-box{background:rgba(0,0,0,.4);border:1px solid ${T.accent}55;border-radius:4px;padding:14px 16px;margin:16px 0 22px}
-        .m7-popup .reward-box .lbl{font-size:.7rem;color:rgba(245,241,230,.6);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
-        .m7-popup .reward-box .val{font-weight:700;color:#f5f1e6}
-        .m7-popup .reward-box .val strong{color:${T.accent};font-size:1.1rem}
-        .m7-popup .m7-cta{width:100%;font-size:.88rem;padding:14px 16px;letter-spacing:.12em}
+        .m7-cta-final{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:22px;margin-top:18px;border-radius:18px;
+          font-size:1.1rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;
+          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+          box-shadow:0 0 40px ${T.accentGlow},0 16px 36px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
+          text-shadow:0 1px 0 rgba(255,255,255,.3)}
+        .m7-cta-final::after{content:"→";font-size:1.3rem;margin-left:4px}
+        .m7-cta-sub{margin-top:10px;text-align:center;font-size:.72rem;opacity:.65}
 
-        @keyframes m7-jackpot-pulse{from{box-shadow:0 0 16px ${T.accentGlow},inset 0 0 8px ${T.accentLight}}to{box-shadow:0 0 28px ${T.accentGlow},inset 0 0 14px ${T.accentLight}}}
-        @keyframes m7-fade{from{opacity:0}to{opacity:1}}
-        @keyframes m7-pop{0%{transform:translateY(20px);opacity:0}100%{transform:translateY(0);opacity:1}}
+        @keyframes m7-jackpot-pulse{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 0 1px rgba(255,255,255,.4)}50%{box-shadow:0 0 44px ${T.accentLight},inset 0 0 0 1px rgba(255,255,255,.6)}}
+        @keyframes m7-tap-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+        @keyframes m7-breath{0%,100%{box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 56px ${T.accentLight},0 14px 30px ${T.accent}99,inset 0 1px 0 rgba(255,255,255,.6)}}
+        @media (prefers-reduced-motion:reduce){.m7-zone.jackpot,.m7-action{animation:none !important}}
       `}</style>
 
-      <V3NeonBg accent={T.accent} accentGlow={T.accentGlow} />
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.42} />
+      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.16} />
+      <V3GrainBg opacity={0.05} />
 
-      <div className="m7-header">
-        {profileImageUrl ? <div className="m7-avatar"><img src={profileImageUrl} alt="" /></div> : null}
-        {pseudo ? (
-          <div className="m7-pseudo-wrap">
-            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
-              {pseudo}
-            </div>
+      <div className="m7-layer">
+        {(profileImageUrl || pseudo) ? (
+          <div className="m7-header">
+            {profileImageUrl ? <div className="m7-avatar"><img src={profileImageUrl} alt="" /></div> : null}
+            {pseudo ? (
+              <div className={pseudoAnimationClass(pseudoStyle)} style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+                {pseudo}
+              </div>
+            ) : null}
           </div>
         ) : null}
-      </div>
 
-      <div className="m7-promo">Plinko · <strong>1 bille gratuite</strong></div>
+        <div style={{ position: "relative" }}>
+          <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.4} size={340} />
+          <div className="m7-game-card">
+            <p className="m7-label">Tape pile sur le JACKPOT</p>
 
-      <div className="m7-stage">
-        <div className="m7-field">
-          {/* Pegs en pyramide */}
-          {Array.from({ length: ROWS }).map((_, r) => {
-            const pegsInRow = 5 + r;
-            const rowY = 6 + (r / (ROWS - 1)) * 80;  // % vertical
-            const startX = 50 - ((pegsInRow - 1) * 100) / (2 * SLOT_COUNT * 2);
-            const stepX = 100 / (SLOT_COUNT * 2);
-            return Array.from({ length: pegsInRow }).map((_, p) => (
-              <div
-                key={`${r}-${p}`}
-                className="m7-peg"
-                style={{ left: `${startX + p * stepX}%`, top: `${rowY}%` }}
-              />
-            ));
-          })}
-          {/* La bille */}
-          <div
-            className="m7-ball"
-            style={{ left: `${ballX}%`, top: `${ballY}%` }}
-          />
-        </div>
-
-        {/* Slots en bas */}
-        <div className="m7-slots">
-          {SLOT_MULTIPLIERS.map((m, i) => (
-            <div
-              key={i}
-              className={`m7-slot ${i === TARGET_SLOT ? "jackpot" : ""} ${i === TARGET_SLOT && phase === "won" ? "lit" : ""}`}
-            >
-              {m}
+            <div className="m7-bar-wrap">
+              {ZONES.map((z, i) => (
+                <div
+                  key={i}
+                  className={`m7-zone ${z.jackpot ? "jackpot" : "normal"}`}
+                  style={{ left: `${z.from}%`, width: `${z.to - z.from}%` }}
+                >
+                  {z.label}
+                </div>
+              ))}
+              {phase === "playing" ? (
+                <div className="m7-cursor" style={{ left: `calc(${cursorPos}% - 2.5px)` }} />
+              ) : null}
+              {phase === "result" && hit ? (
+                <div className="m7-cursor" style={{ left: `calc(${hit.pos}% - 2.5px)`, background: hit.mult > 1 ? T.accentLight : "#ef4444" }} />
+              ) : null}
             </div>
-          ))}
-        </div>
-      </div>
 
-      {phase === "idle" ? (
-        <button className="m7-cta" onClick={drop}>Lâcher la bille</button>
-      ) : phase === "falling" ? (
-        <button className="m7-cta" disabled>Chute en cours…</button>
-      ) : (
-        <button className="m7-cta" onClick={() => setPopupOpen(true)}>Voir mon gain</button>
-      )}
+            <div className="m7-result">
+              {phase === "result" && hit ? (
+                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+                  <div className={`m7-result-mult ${hit.mult >= 5 ? "jackpot" : hit.mult > 1 ? "win" : "miss"}`}>
+                    {hit.mult >= 5 ? "🎰 JACKPOT" : `${hit.mult.toFixed(2)}x`}
+                  </div>
+                  <p className="m7-result-sub">{hit.mult >= 5 ? "Tu as touché le sweet spot !" : hit.mult > 1 ? `Bien joué — ${hit.label}` : "Trop tôt ou trop tard, réessaie !"}</p>
+                  {wonBonus != null && hit.mult > 1 ? <p className="m7-result-bonus">+{wonBonus}€ bonus</p> : null}
+                </motion.div>
+              ) : phase === "playing" ? (
+                <p style={{ fontSize: ".88rem", opacity: 0.8 }}>Cible la zone dorée et tape !</p>
+              ) : (
+                <p style={{ fontSize: ".88rem", opacity: 0.7 }}>{dep ? `Dépose ${dep} → joue pour ${bon || "ton bonus"}` : "Lance le jeu pour booster ton bonus"}</p>
+              )}
+            </div>
+
+            {phase === "idle" ? (
+              <motion.button type="button" className="m7-action" onClick={start} whileTap={{ scale: 0.97 }}>
+                ▶ LANCER
+              </motion.button>
+            ) : phase === "playing" ? (
+              <motion.button type="button" className="m7-action tap" onClick={tap} whileTap={{ scale: 0.94 }}>
+                🎯 TAPE !
+              </motion.button>
+            ) : (
+              <>
+                <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m7-action">
+                  🚀 RÉCLAMER {wonBonus != null && hit && hit.mult > 1 ? `+${wonBonus}€` : (bon ? `+${bon}` : "MON BONUS")}
+                </V3MagneticButton>
+                <button type="button" className="m7-action replay" onClick={reset}>
+                  ↻ Rejouer
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m7-cta-final v3-cta">
+          {bon ? `RÉCLAMER ${bon} BONUS` : "RÉCLAMER MON BONUS"}
+        </V3MagneticButton>
+        <p className="m7-cta-sub">Inscription en 30s · Crédit instantané</p>
+      </div>
 
       <V3OfferPopup
-        open={phase === "won" && popupOpen}
+        open={popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={rewardScore}
+        score={hit && hit.mult > 1 ? `${hit.mult.toFixed(2)}x` : (bon ? `+${bon}` : "Bonus")}
         depositAmount={dep}
-        bonusAmount={bon}
+        bonusAmount={wonBonus != null ? `${wonBonus}€` : bon}
         steps={popupSteps}
         href={safeAffi}
       />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

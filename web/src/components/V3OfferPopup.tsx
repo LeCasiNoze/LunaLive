@@ -32,6 +32,19 @@ export type V3OfferPopupProps = {
   ctaLabel?: string;
   autoRedirectMs?: number;
   showVipBanner?: boolean;
+  /** Titre principal du bloc VIP (collapsed). Defaut : "Vous etes un gros joueur ?" */
+  vipTitle?: React.ReactNode;
+  /** Sous-titre du bloc VIP (collapsed). Defaut : "500-1K/mois ? Host VIP dedie..." */
+  vipSubtitle?: React.ReactNode;
+  /** Label du bouton VIP (collapsed). Defaut : "Demander mon host VIP". */
+  vipCtaLabel?: string;
+  /** Titre du formulaire VIP (expanded). */
+  vipFormTitle?: React.ReactNode;
+  /** Sous-titre du formulaire VIP (expanded). */
+  vipFormSubtitle?: React.ReactNode;
+  /** Si true, ouvre directement le formulaire VIP en mode etendu (skip le
+   *  banner collapsed). Use case : palier Gold/Diamond → on push direct le mail. */
+  vipForced?: boolean;
 };
 
 // Durees irregulieres pour chaque etape (effet "chargement reel")
@@ -61,12 +74,22 @@ export function V3OfferPopup({
   ctaLabel = "Recuperer mon bonus",
   autoRedirectMs = 5000,
   showVipBanner = true,
+  vipTitle,
+  vipSubtitle,
+  vipCtaLabel,
+  vipFormTitle,
+  vipFormSubtitle,
+  vipForced = false,
 }: V3OfferPopupProps) {
   const [stepIndex, setStepIndex] = React.useState(0);
   const [stepProgress, setStepProgress] = React.useState(0);
   const [autoRedirect, setAutoRedirect] = React.useState<{ remaining: number; total: number } | null>(null);
   const [cancelled, setCancelled] = React.useState(false);
-  const [vipMode, setVipMode] = React.useState<"closed" | "form" | "sending" | "sent">("closed");
+  const [vipMode, setVipMode] = React.useState<"closed" | "form" | "sending" | "sent">(vipForced ? "form" : "closed");
+  // Si vipForced change pendant que le popup est ouvert, re-sync.
+  React.useEffect(() => {
+    if (open) setVipMode((m) => (vipForced && m === "closed" ? "form" : m));
+  }, [open, vipForced]);
   const [vipEmail, setVipEmail] = React.useState("");
   const [vipError, setVipError] = React.useState<string | null>(null);
 
@@ -159,6 +182,40 @@ export function V3OfferPopup({
     }, 1600);
   };
 
+  // ─── Fix containing block (editor preview transformed parent) ──────────────
+  // Hook DOIT etre place AVANT toute early-return pour respecter Rules of Hooks.
+  const overlayRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    let scroller: HTMLElement | null = overlay.parentElement;
+    while (scroller && scroller !== document.body && scroller !== document.documentElement) {
+      const cs = getComputedStyle(scroller);
+      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
+        break;
+      }
+      scroller = scroller.parentElement;
+    }
+    if (!scroller || scroller === document.body || scroller === document.documentElement) {
+      return;
+    }
+    const update = () => {
+      overlay.style.position = "absolute";
+      overlay.style.top = `${scroller!.scrollTop}px`;
+      overlay.style.left = "0";
+      overlay.style.right = "0";
+      overlay.style.height = `${scroller!.clientHeight}px`;
+    };
+    update();
+    scroller.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      scroller!.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   if (!open) return null;
 
   const accent = theme?.accent || "#f7c948";
@@ -178,6 +235,7 @@ export function V3OfferPopup({
 
   return (
     <div
+      ref={overlayRef}
       className="v3p-overlay"
       onClick={onClose}
       style={{
@@ -337,14 +395,14 @@ export function V3OfferPopup({
           <div className="v3p-vip-card" onClick={(e) => e.stopPropagation()}>
             <div className="v3p-vip-crown">👑</div>
             <div className="v3p-vip-content">
-              <div className="v3p-vip-title">Vous êtes un <em>gros joueur</em> ?</div>
-              <div className="v3p-vip-sub">500€–1K€ de dépôt par mois ? Un host dédié + bonus exclusifs t'attendent.</div>
+              <div className="v3p-vip-title">{vipTitle || <>Vous êtes un <em>gros joueur</em> ?</>}</div>
+              <div className="v3p-vip-sub">{vipSubtitle || "500€–1K€ de dépôt par mois ? Un host dédié + bonus exclusifs t'attendent."}</div>
               <button
                 type="button"
                 className="v3p-vip-action"
                 onClick={(e) => { e.stopPropagation(); setVipMode("form"); }}
               >
-                Demander mon host VIP
+                {vipCtaLabel || "Demander mon host VIP"}
               </button>
             </div>
           </div>
@@ -352,8 +410,8 @@ export function V3OfferPopup({
 
         {showVipBanner && (vipMode === "form" || vipMode === "sending") ? (
           <form className="v3p-vip-form" onClick={(e) => e.stopPropagation()} onSubmit={submitVipEmail}>
-            <div className="v3p-vip-form-title">👑 Club VIP — gros joueurs (500€–1K€ / mois)</div>
-            <div className="v3p-vip-form-sub">Laisse ton email, un host dédié te contacte sous 24h : bonus exclusifs + suivi perso.</div>
+            <div className="v3p-vip-form-title">{vipFormTitle || "👑 Club VIP — gros joueurs (500€–1K€ / mois)"}</div>
+            <div className="v3p-vip-form-sub">{vipFormSubtitle || "Laisse ton email, un host dédié te contacte sous 24h : bonus exclusifs + suivi perso."}</div>
             <div className="v3p-vip-form-row">
               <input
                 type="email"

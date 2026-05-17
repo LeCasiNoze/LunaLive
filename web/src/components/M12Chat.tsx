@@ -16,14 +16,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
-import { V3MeshBg, V3AuroraBg, V3GrainBg, V3Spotlight } from "./V3AmbientFx";
+import { V3MeshBg } from "./V3AmbientFx";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { extendPalette } from "../lib/v3_palette";
-import { pseudoTextStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
 export type M12ChatProps = {
   pseudo?: string;
@@ -122,13 +123,16 @@ export function M12Chat({
   const [popupOpen, setPopupOpen] = React.useState(false);
   const onCta = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (selected.vip) {
-      // Diamond : scroll vers le form VIP, ne pas ouvrir popup
-      vipRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
     setPopupOpen(true);
   };
+  // Click sur un tier : selectionne + ouvre directement le popup. Le popup
+  // adapte sa section VIP selon le tier (gold/diamond = preset "gros joueur").
+  const onTierClick = (key: string) => {
+    setSelectedKey(key);
+    setPopupOpen(true);
+  };
+  // Le palier selectionne est-il considere "gros joueur" ? (Gold + Diamond)
+  const isBigPlayer = selected.highlight || selected.vip;
 
   // Countdown 24h depuis le mount (relance a chaque visite — illusion d'urgence)
   const [now, setNow] = React.useState(() => Date.now());
@@ -146,11 +150,6 @@ export function M12Chat({
   const heroRef = React.useRef<HTMLElement>(null);
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
 
-  // Parallax scroll : orbs behind hero
-  const { scrollYProgress } = useScroll();
-  const orbY1 = useTransform(scrollYProgress, [0, 1], [0, -180]);
-  const orbY2 = useTransform(scrollYProgress, [0, 1], [0, 140]);
-
   return (
     <div className="m12-root">
       <style>{`
@@ -166,59 +165,70 @@ export function M12Chat({
         .m12-urgency-icon{animation:m12-pulse 1.4s ease-in-out infinite}
         .m12-urgency-timer{font-variant-numeric:tabular-nums;font-weight:900;letter-spacing:.06em;background:rgba(0,0,0,.18);padding:3px 9px;border-radius:6px}
 
-        /* ─── Hero ─── */
-        .m12-hero{padding:24px 18px 14px;max-width:460px;margin:0 auto;text-align:center}
-        .m12-avatar{width:74px;height:74px;border-radius:50%;margin:0 auto 14px;overflow:hidden;border:2.5px solid ${T.accent};
-          box-shadow:0 0 0 3px rgba(0,0,0,.4),0 12px 32px ${T.accentGlow};background:linear-gradient(135deg,${T.bgCard},${T.bgPage})}
+        /* ─── Hero (compact pour above-the-fold) ─── */
+        .m12-hero{padding:16px 18px 8px;max-width:460px;margin:0 auto;text-align:center}
+        .m12-avatar{position:relative;z-index:5;width:74px;height:74px;border-radius:50%;margin:0 auto 6px;overflow:hidden;border:2.5px solid ${T.accent};
+          box-shadow:0 0 0 3px ${T.bgPage},0 6px 16px rgba(0,0,0,.45);background:${T.bgCard}}
         .m12-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m12-avatar-empty{display:flex;align-items:center;justify-content:center;height:100%;font-size:1.6rem;opacity:.4}
         .m12-pseudo{margin:0;line-height:1.1}
-        .m12-pre{margin:14px 0 4px;font-size:.74rem;letter-spacing:.28em;text-transform:uppercase;opacity:.7}
-        .m12-headline{margin:0;font-size:clamp(1.5rem,5.2vw,2rem);font-weight:900;letter-spacing:-.02em;line-height:1.15}
+        .m12-pre{margin:10px 0 3px;font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;opacity:.62}
+        .m12-headline{margin:0;font-size:clamp(1.35rem,4.6vw,1.8rem);font-weight:900;letter-spacing:-.02em;line-height:1.12}
         .m12-headline em{font-style:normal;background:linear-gradient(180deg,${T.accent},${T.accentLight});-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 14px ${T.accentGlow})}
 
-        /* ─── Tiers grid ─── */
-        .m12-tiers{padding:18px 16px 8px;max-width:520px;margin:0 auto}
-        .m12-tiers-label{font-size:.7rem;letter-spacing:.3em;text-transform:uppercase;opacity:.55;text-align:center;margin:0 0 12px}
-        .m12-tiers-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-        .m12-tier{position:relative;padding:18px 14px 16px;border-radius:18px;cursor:pointer;text-align:left;
-          background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(0,0,0,.35));
-          backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-          border:1.5px solid rgba(255,255,255,.08);transition:transform .2s cubic-bezier(.2,.7,.2,1),border-color .2s,box-shadow .2s,background .3s;
-          overflow:hidden;display:flex;flex-direction:column;gap:8px;color:#fff;font-family:inherit}
+        /* ─── Tiers grid (cards visibles intégralement + auto-row height) ─── */
+        .m12-tiers{padding:12px 14px 10px;max-width:560px;margin:0 auto}
+        .m12-tiers-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-items:stretch;grid-auto-rows:1fr}
+        .m12-tier{position:relative;padding:14px 12px 14px;border-radius:18px;cursor:pointer;text-align:center;
+          /* Bg solide theme-aware pour BLOQUER le mesh de bleed-through */
+          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
+          border:1.5px solid rgba(255,255,255,.08);transition:transform .25s cubic-bezier(.2,.7,.2,1),border-color .25s,box-shadow .25s,background .35s;
+          display:flex;flex-direction:column;gap:6px;color:#fff;font-family:inherit;font:inherit;min-height:0;
+          isolation:isolate}
         /* Conic-gradient border anime sur les paliers VIP / Highlight */
-        .m12-tier.vip::before,.m12-tier.highlight::before{content:"";position:absolute;inset:-1px;border-radius:18px;padding:1.5px;pointer-events:none;
-          background:conic-gradient(from var(--a,0deg),var(--tier-color),#fff,var(--tier-color));
+        .m12-tier.vip::before,.m12-tier.highlight::before{content:"";position:absolute;inset:-1.5px;border-radius:20px;padding:1.5px;pointer-events:none;
+          background:conic-gradient(from var(--a,0deg),var(--tier-color),#fff,var(--tier-color),var(--tier-color));
           -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
-          animation:m12-border-spin 5s linear infinite;opacity:.85}
-        .m12-tier.vip{background:linear-gradient(160deg,rgba(255,255,255,.1),rgba(0,0,0,.5))}
+          animation:m12-border-spin 5s linear infinite;opacity:.9}
+        .m12-tier.vip::before{animation-duration:3.5s}
+        /* Diamond tier : bg cyan glassmorphic distinct */
+        .m12-tier.vip{background:linear-gradient(160deg,#0a4250,${T.bgPage})}
         @property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
         @keyframes m12-border-spin{to{--a:360deg}}
         .m12-tier:hover{transform:translateY(-3px)}
-        .m12-tier.selected{border-color:var(--tier-color);box-shadow:0 0 0 2px var(--tier-color)55,0 18px 50px var(--tier-color)44;
-          background:linear-gradient(160deg,var(--tier-color)22,rgba(0,0,0,.4))}
-        .m12-tier-badge{position:absolute;top:-10px;left:50%;transform:translateX(-50%);padding:3px 10px;border-radius:999px;
-          background:var(--tier-color);color:#000;font-size:.6rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;
-          box-shadow:0 4px 14px var(--tier-color)80;white-space:nowrap}
-        .m12-tier-vip{position:absolute;top:-10px;right:10px;padding:3px 8px;border-radius:6px;background:#fff;color:#000;font-size:.55rem;font-weight:900;letter-spacing:.16em;text-transform:uppercase}
-        .m12-tier-top{display:flex;align-items:center;gap:10px}
-        .m12-tier-icon{font-size:1.6rem;line-height:1}
-        .m12-tier-meta{flex:1;min-width:0}
-        .m12-tier-label{margin:0;font-size:.92rem;font-weight:900;letter-spacing:.02em}
-        .m12-tier-dep{margin:1px 0 0;font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;opacity:.55}
-        .m12-tier-bonus{font-size:1.8rem;font-weight:900;line-height:1;letter-spacing:-.02em;
-          background:linear-gradient(180deg,#fff,var(--tier-color));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
-        .m12-tier-bonus span{font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;opacity:.65;display:block;margin-top:2px;-webkit-text-fill-color:initial;color:rgba(255,255,255,.55)}
-        .m12-tier-perks{display:flex;flex-direction:column;gap:3px;margin-top:auto}
-        .m12-tier-perk{font-size:.7rem;opacity:.78;display:flex;align-items:center;gap:6px}
-        .m12-tier-perk::before{content:"✓";color:var(--tier-color);font-weight:900;font-size:.78rem}
+        .m12-tier.selected{transform:translateY(-4px) scale(1.02);
+          border-color:var(--tier-color);
+          box-shadow:0 0 0 2px var(--tier-color)66,0 24px 60px var(--tier-color)44,inset 0 1px 0 rgba(255,255,255,.18)}
+        .m12-tier-badge{position:absolute;top:-11px;left:50%;transform:translateX(-50%);padding:4px 12px;border-radius:999px;
+          background:linear-gradient(135deg,var(--tier-color),#fff);color:#1a0f08;font-size:.62rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;
+          box-shadow:0 6px 16px var(--tier-color)cc,inset 0 1px 0 rgba(255,255,255,.5);white-space:nowrap;z-index:2}
+        .m12-tier-vip{position:absolute;top:-9px;right:10px;padding:4px 9px;border-radius:6px;background:linear-gradient(135deg,#fff,#e0e0e0);color:#1a0f08;font-size:.55rem;font-weight:900;letter-spacing:.18em;text-transform:uppercase;box-shadow:0 4px 12px rgba(255,255,255,.3);z-index:2}
+        /* Header : icone + label sur 1 ligne centree */
+        .m12-tier-head{display:flex;align-items:center;justify-content:center;gap:8px}
+        .m12-tier-icon{font-size:1.5rem;line-height:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+        .m12-tier-label{margin:0;font-size:.95rem;font-weight:900;letter-spacing:.02em;line-height:1}
+        /* DÉPOSE X = info principale qui guide le choix (accent color + gros) */
+        .m12-tier-dep{margin:6px 0 2px;font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;font-weight:700;opacity:.7}
+        .m12-tier-dep-amount{display:block;margin-top:2px;font-size:1.5rem;font-weight:900;color:var(--tier-color);letter-spacing:-.02em;line-height:1;font-variant-numeric:tabular-nums;
+          text-shadow:0 0 18px var(--tier-color)55}
+        /* +X€ = recompense, le plus gros */
+        .m12-tier-arrow{font-size:.85rem;opacity:.5;margin:2px 0 0}
+        .m12-tier-bonus{margin:0 0 4px;font-size:clamp(1.7rem,6vw,2.2rem);font-weight:900;line-height:1;letter-spacing:-.03em;
+          background:linear-gradient(180deg,#fff,var(--tier-color));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 2px 14px var(--tier-color)80);font-variant-numeric:tabular-nums}
+        .m12-tier-bonus span{font-size:.55rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;opacity:.65;display:block;margin-top:2px;-webkit-text-fill-color:initial;color:rgba(255,255,255,.55);filter:none}
+        .m12-tier-perks{display:flex;flex-direction:column;gap:3px;margin-top:auto;padding-top:6px;text-align:left}
+        .m12-tier-perk{font-size:.68rem;opacity:.82;display:flex;align-items:center;gap:6px;font-weight:500;line-height:1.25}
+        .m12-tier-perk::before{content:"✓";color:var(--tier-color);font-weight:900;font-size:.72rem;flex-shrink:0}
 
         /* ─── Selected resume + CTA ─── */
-        .m12-cta-wrap{padding:18px 16px 10px;max-width:460px;margin:0 auto;text-align:center}
-        .m12-cta-resume{padding:14px 16px;margin-bottom:12px;border-radius:14px;background:rgba(0,0,0,.4);border:1px solid var(--c-accent)55}
-        .m12-cta-resume-label{font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;opacity:.55;margin:0}
-        .m12-cta-resume-line{margin:6px 0 0;font-size:1.02rem;font-weight:700}
-        .m12-cta-resume-line em{font-style:normal;color:var(--c-accent);font-weight:900}
+        .m12-cta-wrap{padding:22px 16px 12px;max-width:460px;margin:0 auto;text-align:center}
+        .m12-cta-resume{padding:16px 18px;margin-bottom:14px;border-radius:16px;background:rgba(0,0,0,.45);
+          backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+          border:1.5px solid var(--c-accent)55;box-shadow:0 0 0 1px var(--c-accent)22 inset,0 10px 30px var(--c-accent)33}
+        .m12-cta-resume-label{font-size:.68rem;letter-spacing:.28em;text-transform:uppercase;opacity:.7;margin:0;font-weight:700;color:var(--c-accent)}
+        .m12-cta-resume-line{margin:6px 0 0;font-size:1.12rem;font-weight:700;letter-spacing:.01em}
+        .m12-cta-resume-line em{font-style:normal;color:var(--c-accent);font-weight:900;font-variant-numeric:tabular-nums}
         .m12-cta{position:relative;display:flex;align-items:center;justify-content:center;width:100%;padding:20px;border-radius:18px;
           font-family:inherit;font-size:1.05rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;
           background:linear-gradient(135deg,${T.accent},${T.accentLight});
@@ -226,12 +236,15 @@ export function M12Chat({
           animation:m12-breath 2.4s ease-in-out infinite;text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s}
         .m12-cta:active{transform:scale(.97)}
         .m12-cta::after{content:"→";margin-left:8px;font-size:1.2rem}
-        .m12-cta-sub{margin:8px 0 0;font-size:.7rem;opacity:.6}
+        .m12-cta-sub{margin:10px 0 0;font-size:.76rem;opacity:.78;font-weight:600;letter-spacing:.03em}
 
-        /* ─── Trust strip ─── */
-        .m12-trust{padding:16px;max-width:460px;margin:0 auto;display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
-        .m12-trust-item{display:flex;align-items:center;gap:6px;font-size:.66rem;opacity:.68;letter-spacing:.04em}
-        .m12-trust-item::before{content:"";width:6px;height:6px;border-radius:50%;background:#34d399;box-shadow:0 0 6px #34d399}
+        /* ─── Trust strip (grid 2x2 plus visible) ─── */
+        .m12-trust{padding:16px;max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+        .m12-trust-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;
+          background:rgba(255,255,255,.04);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+          border:1px solid rgba(255,255,255,.07);font-size:.76rem;font-weight:600;opacity:.95}
+        .m12-trust-icon{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          background:${T.accent}1a;color:${T.accent};font-size:.9rem;flex-shrink:0}
 
         /* ─── VIP form section ─── */
         .m12-vip-section{padding:24px 16px;max-width:480px;margin:0 auto}
@@ -240,10 +253,7 @@ export function M12Chat({
         .m12-footer{padding:20px 22px 10px;text-align:center;opacity:.5;font-size:.66rem;line-height:1.7;max-width:460px;margin:0 auto}
         .m12-footer strong{color:#fff;font-weight:700}
 
-        /* ─── Parallax orbs hero ─── */
-        .m12-orb{position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;opacity:.5;z-index:1}
-        .m12-orb-1{width:260px;height:260px;background:${T.accent};top:8%;left:-12%}
-        .m12-orb-2{width:200px;height:200px;background:${T.accentAlt};top:30%;right:-10%;opacity:.4}
+        /* Orbs supprimés : creaient un halo fog autour du contenu */
 
         /* ─── Sticky CTA mobile ─── */
         .m12-sticky{position:fixed;left:0;right:0;bottom:0;z-index:50;padding:12px 14px 16px;
@@ -262,9 +272,7 @@ export function M12Chat({
       `}</style>
 
       {/* ─── Couches ambient (mesh + aurora + grain) ─── */}
-      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} />
-      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.35} />
-      <V3GrainBg opacity={0.05} />
+      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.3} fixed={false} />
 
       <div className="m12-layer">
       {/* ─── Urgency bar ─── */}
@@ -276,20 +284,19 @@ export function M12Chat({
 
       {/* ─── Hero ─── */}
       <section className="m12-hero" ref={heroRef} style={{ position: "relative" }}>
-        <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.5} size={420} />
-        <motion.div className="m12-orb m12-orb-1" style={{ y: orbY1 }} />
-        <motion.div className="m12-orb m12-orb-2" style={{ y: orbY2 }} />
-        <div className="m12-avatar">
-          {profileImageUrl ? <img src={profileImageUrl} alt={pseudo || ""} /> : <div className="m12-avatar-empty">👤</div>}
-        </div>
-        {pseudo ? <h1 className="m12-pseudo" style={nameStyle}>{pseudo}</h1> : null}
-        <p className="m12-pre">Choisis ton palier</p>
-        <h2 className="m12-headline">Plus tu déposes,<br /><em>plus ton bonus explose</em></h2>
+        {profileImageUrl ? (
+          <div className="m12-avatar">
+            <img src={profileImageUrl} alt={pseudo || ""} />
+          </div>
+        ) : null}
+        {pseudo ? (
+          <h1 className={`m12-pseudo ${pseudoAnimationClass(pseudoStyle)}`} style={nameStyle}>{pseudo}</h1>
+        ) : null}
+        <h2 className="m12-headline">Plus tu déposes, <em>plus ton bonus explose</em></h2>
       </section>
 
       {/* ─── Tiers grid ─── */}
       <section className="m12-tiers">
-        <p className="m12-tiers-label">— Sélectionne ton bonus —</p>
         <div className="m12-tiers-grid">
           {tiers.map((t) => {
             const bonus = Math.round(t.deposit * t.bonusMult);
@@ -297,23 +304,25 @@ export function M12Chat({
               <motion.button
                 key={t.key}
                 type="button"
-                className={`m12-tier ${selectedKey === t.key ? "selected" : ""}`}
-                onClick={() => setSelectedKey(t.key)}
+                className={`m12-tier ${selectedKey === t.key ? "selected" : ""} ${t.vip ? "vip" : ""} ${t.highlight ? "highlight" : ""}`}
+                onClick={() => onTierClick(t.key)}
                 style={{ ["--tier-color" as any]: t.color }}
                 whileTap={{ scale: 0.97 }}
+                whileHover={{ y: -3 }}
               >
                 {t.highlight ? <div className="m12-tier-badge">⭐ Recommandé</div> : null}
                 {t.vip ? <div className="m12-tier-vip">VIP</div> : null}
-                <div className="m12-tier-top">
+                <div className="m12-tier-head">
                   <div className="m12-tier-icon">{t.icon}</div>
-                  <div className="m12-tier-meta">
-                    <p className="m12-tier-label">{t.label}</p>
-                    <p className="m12-tier-dep">Dépose {t.deposit}€</p>
-                  </div>
+                  <p className="m12-tier-label">{t.label}</p>
+                </div>
+                <div className="m12-tier-dep">
+                  Dépose
+                  <span className="m12-tier-dep-amount">{t.deposit}€</span>
                 </div>
                 <div className="m12-tier-bonus">
                   +{bonus}€
-                  <span>de bonus offert</span>
+                  <span>bonus offert</span>
                 </div>
                 <div className="m12-tier-perks">
                   {t.perks.map((p, i) => <div key={i} className="m12-tier-perk">{p}</div>)}
@@ -332,18 +341,18 @@ export function M12Chat({
             Dépose <em>{selected.deposit}€</em> · Reçois <em>+{selectedBonus}€</em>
           </p>
         </div>
-        <a className="m12-cta v3-cta" href={safeAffi} onClick={onCta}>
+        <V3MagneticButton href={safeAffi} onClick={onCta} className="m12-cta v3-cta">
           {selected.vip ? "DEVENIR VIP" : `RÉCLAMER MES ${selectedBonus}€`}
-        </a>
+        </V3MagneticButton>
         <p className="m12-cta-sub">Inscription en 30s · Bonus crédité instantanément</p>
       </section>
 
-      {/* ─── Trust strip ─── */}
+      {/* ─── Trust strip (badges visuels) ─── */}
       <div className="m12-trust">
-        <div className="m12-trust-item">Licence officielle</div>
-        <div className="m12-trust-item">Paiement sécurisé</div>
-        <div className="m12-trust-item">Retrait sous 24h</div>
-        <div className="m12-trust-item">+ 12 000 joueurs</div>
+        <div className="m12-trust-item"><span className="m12-trust-icon">🛡️</span> Licence officielle</div>
+        <div className="m12-trust-item"><span className="m12-trust-icon">🔒</span> Paiement sécurisé</div>
+        <div className="m12-trust-item"><span className="m12-trust-icon">⚡</span> Retrait sous 24h</div>
+        <div className="m12-trust-item"><span className="m12-trust-icon">👥</span> +12 000 joueurs</div>
       </div>
 
       {/* ─── VIP form section (toujours visible — capture meme sans clic Diamond) ─── */}
@@ -365,6 +374,7 @@ export function M12Chat({
           Aide : <strong>09 74 75 13 13</strong> · <strong>joueurs-info-service.fr</strong>
         </p>
       </footer>
+      </div>
 
       <div className="m12-sticky">
         <a className="m12-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
@@ -381,9 +391,25 @@ export function M12Chat({
         bonusAmount={`${selectedBonus}€`}
         steps={["Validation du palier " + selected.label, "Préparation du bonus", "Lien d'inscription prêt"]}
         href={safeAffi}
+        // ─── Section VIP adaptee au palier (Gold/Diamond = preset "gros joueur") ─
+        vipForced={isBigPlayer}
+        vipFormTitle={isBigPlayer ? (
+          <>👑 Palier {selected.label} — Tu es un <em style={{ color: T.accent, fontStyle: "normal" }}>gros joueur</em></>
+        ) : undefined}
+        vipFormSubtitle={isBigPlayer
+          ? `Avec un dépôt de ${selected.deposit}€, on t'attribue automatiquement un host VIP dédié. Laisse ton email — il te contacte sous 24h avec une offre personnalisée (cashback augmenté, bonus exclusifs, retraits prioritaires).`
+          : undefined
+        }
+        vipTitle={isBigPlayer ? <>Palier {selected.label} = <em>statut VIP</em></> : undefined}
+        vipSubtitle={isBigPlayer
+          ? "Host dédié, cashback augmenté, bonus exclusifs t'attendent."
+          : undefined
+        }
+        vipCtaLabel={isBigPlayer ? "Activer mon host VIP" : undefined}
       />
 
       <V3SocialProof accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

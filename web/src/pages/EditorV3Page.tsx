@@ -17,7 +17,7 @@ import { RenderV2Page } from "../lib/editor_v2_render";
 import {
   buildV3PageDispatch,
   defaultV3QuickInputs,
-  V3_FONT_PRESETS,
+  V3_FONT_PRESETS, V3_ANIMATION_PRESETS, V3_EFFECT_PRESETS,
   V3_COLOR_PRESETS,
   V3_SIZE_SCALE,
   V3_WEIGHT_PRESETS,
@@ -197,13 +197,24 @@ function LineStylePicker({
 
       <div style={{ marginBottom: 10 }}>
         <div style={{ ...labelStyle, marginBottom: 4 }}>Police</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <select
+          value={v.font || ""}
+          onChange={(e) => onChange({ ...v, font: e.target.value || undefined })}
+          style={{
+            ...inputStyle,
+            appearance: "none", WebkitAppearance: "none", MozAppearance: "none",
+            paddingRight: 32,
+            backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23999' stroke-width='1.6'><path d='M2 4l4 4 4-4'/></svg>\")",
+            backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center", backgroundSize: "12px",
+            cursor: "pointer",
+            fontFamily: v.font ? `"${v.font}", system-ui` : undefined,
+          }}
+        >
+          <option value="">— Défaut —</option>
           {V3_FONT_PRESETS.map((f) => (
-            <Chip key={f.key} active={v.font === f.family} onClick={() => onChange({ ...v, font: f.family })}>
-              <span style={{ fontFamily: `"${f.family}", system-ui` }}>{f.label}</span>
-            </Chip>
+            <option key={f.key} value={f.family} style={{ fontFamily: `"${f.family}", system-ui` }}>{f.label}</option>
           ))}
-        </div>
+        </select>
       </div>
 
       {hideColor ? null : (
@@ -245,6 +256,43 @@ function LineStylePicker({
               <Chip key={w.key} active={(v.weight || "black") === w.key} onClick={() => onChange({ ...v, weight: w.key })}>{w.label}</Chip>
             ))}
           </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+        <div>
+          <div style={{ ...labelStyle, marginBottom: 4 }}>Habillage texte</div>
+          <select
+            value={v.effect || "plain"}
+            onChange={(e) => onChange({ ...v, effect: e.target.value as any })}
+            style={{
+              ...inputStyle,
+              appearance: "none", WebkitAppearance: "none", MozAppearance: "none", paddingRight: 28,
+              backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23999' stroke-width='1.6'><path d='M2 4l4 4 4-4'/></svg>\")",
+              backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center", backgroundSize: "11px", cursor: "pointer",
+            }}
+          >
+            {V3_EFFECT_PRESETS.map((eff) => (
+              <option key={eff.key} value={eff.key}>{eff.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <div style={{ ...labelStyle, marginBottom: 4 }}>Animation</div>
+          <select
+            value={v.animation || "none"}
+            onChange={(e) => onChange({ ...v, animation: e.target.value as any })}
+            style={{
+              ...inputStyle,
+              appearance: "none", WebkitAppearance: "none", MozAppearance: "none", paddingRight: 28,
+              backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23999' stroke-width='1.6'><path d='M2 4l4 4 4-4'/></svg>\")",
+              backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center", backgroundSize: "11px", cursor: "pointer",
+            }}
+          >
+            {V3_ANIMATION_PRESETS.map((a) => (
+              <option key={a.key} value={a.key}>{a.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -586,21 +634,21 @@ function WizardQuickView({
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
-            <div style={{ fontSize: 11, color: T.textDim, marginTop: 6 }}>
-              {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards)"}
-              {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants)"}
-              {inputs.modelKind === "M3" && "M3 = Roue à tourner — rendu bonus premium"}
-              {inputs.modelKind === "M4" && "M4 = Mystery Boxes — choisis 1 coffre parmi 3"}
-              {inputs.modelKind === "M5" && "M5 = Démo slot 3x3 — ligne bonus centrale"}
-              {inputs.modelKind === "M6" && "M6 = Mines — grille 3x3 sans bombe"}
-              {inputs.modelKind === "M7" && "M7 = Plinko — bille qui rebondit sur les pegs"}
-              {inputs.modelKind === "M8" && "M8 = Penalty — ambiance coupe du monde, thème d'équipe"}
-              {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
-              {inputs.modelKind === "M10" && "M10 = Landing Cyclope — page statique style storytelling (header halo, hero card, gains direct, FAQ)"}
-              {inputs.modelKind === "M11" && "M11 = Aurix premium — aurora mesh + spotlight curseur + parallax + magnetic CTA + compteurs animés (vitrine V3)"}
-              {inputs.modelKind === "M12" && "M12 = Paliers VIP — 4 cards Bronze/Silver/Gold/Diamond, bonus scalé selon dépôt, capture email VIP inline (conversion + upsell)"}
-              {inputs.modelKind === "M13" && "M13 = Urgency — countdown 24h XL + places limitées + live activity feed + capture email VIP inline (conversion maximale)"}
-              {inputs.modelKind === "M14" && "M14 = Témoignage — case study gros gagnant + portrait vérifié + stats animées + double CTA bonus standard ou VIP"}
+            <div style={{ fontSize: 11, color: T.textDim, marginTop: 6, lineHeight: 1.5 }}>
+              {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards promo + reviews)"}
+              {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants couleur)"}
+              {inputs.modelKind === "M3" && "M3 = Roue à tourner — segments néon, bonus à l'arrivée"}
+              {inputs.modelKind === "M4" && "M4 = Crash Game — multiplier monte, cash out avant le crash (1.0x → 8x)"}
+              {inputs.modelKind === "M5" && "M5 = Slot Machine 3×3 — ligne bonus centrale"}
+              {inputs.modelKind === "M6" && "M6 = Mines 3×3 sans bombe"}
+              {inputs.modelKind === "M7" && "M7 = Reaction Tap — barre défile, tape pile sur la zone JACKPOT (jusqu'à 5x)"}
+              {inputs.modelKind === "M8" && "M8 = Penalty — thème d'équipe configurable"}
+              {inputs.modelKind === "M9" && "M9 = Crossy Road — checkpoint 100%"}
+              {inputs.modelKind === "M10" && "M10 = Cyclope — storytelling rose/or (halo, hero card, FAQ)"}
+              {inputs.modelKind === "M11" && "M11 = Aurix — aurora + spotlight + parallax + magnetic CTA"}
+              {inputs.modelKind === "M12" && "M12 = Paliers VIP — Bronze→Diamond, bonus scalé + email VIP inline"}
+              {inputs.modelKind === "M13" && "M13 = Urgency — countdown 24h + places + live feed + VIP capture"}
+              {inputs.modelKind === "M14" && "M14 = Témoignage — case study gros gagnant + double CTA standard/VIP"}
             </div>
           </div>
 
@@ -905,40 +953,6 @@ function WizardQuickView({
                   open={openSection === "pseudo"} onToggle={() => toggleSection("pseudo")}
                 >
                   <LineStylePicker label="" value={inputs.pseudoStyle} onChange={(s) => update({ pseudoStyle: s })} hideColor={inputs.m1UseTheme !== false} />
-                  {inputs.modelKind === "M10" ? (
-                    <>
-                      <div style={{ marginTop: 14 }}>
-                        <label style={labelStyle}>Habillage du texte</label>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {([
-                            { k: "fade",    l: "Fade chrome (défaut Cyclope)" },
-                            { k: "gold",    l: "Doré sticker" },
-                            { k: "outline", l: "Outline (contour)" },
-                            { k: "3d",      l: "3D pop (relief)" },
-                            { k: "neon",    l: "Néon glow" },
-                            { k: "stamp",   l: "Tampon (incliné)" },
-                          ] as const).map((v) => (
-                            <Chip key={v.k} active={(inputs.pseudoVariant || "fade") === v.k}
-                              onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ marginTop: 14 }}>
-                        <label style={labelStyle}>Animation</label>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {([
-                            { k: "none",  l: "Aucune" },
-                            { k: "pulse", l: "Pulse" },
-                            { k: "float", l: "Float" },
-                            { k: "glow",  l: "Glow pulse" },
-                          ] as const).map((a) => (
-                            <Chip key={a.k} active={(inputs.pseudoAnimation || "none") === a.k}
-                              onClick={() => update({ pseudoAnimation: a.k })}>{a.l}</Chip>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
                 </Accordion>
               ) : null}
 

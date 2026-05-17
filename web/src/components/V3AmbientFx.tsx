@@ -31,19 +31,22 @@ export function V3MeshBg({ colors, fixed = true, opacity = 1 }: {
   return (
     <div className={`v3mesh ${fixed ? "v3mesh-fixed" : ""}`} aria-hidden>
       <style>{`
-        .v3mesh{position:absolute;inset:-20%;z-index:0;pointer-events:none;opacity:${opacity};
+        /* Mesh discret : blobs colores diffus dans les COINS uniquement, fade fort
+           au centre, blur leger, AUCUNE saturation boost. Doit etre une ambiance
+           subtile en arriere-plan, JAMAIS un voile sur le contenu central. */
+        .v3mesh{position:absolute;inset:-15%;z-index:0;pointer-events:none;opacity:${opacity};
           background:
-            radial-gradient(45% 35% at 20% 30%, ${colors.accent}55 0%, transparent 60%),
-            radial-gradient(40% 30% at 80% 20%, ${colors.accentAlt}40 0%, transparent 60%),
-            radial-gradient(50% 40% at 60% 80%, ${colors.accentLight}45 0%, transparent 60%),
-            radial-gradient(30% 25% at 30% 70%, ${colors.accentHot}35 0%, transparent 60%);
-          filter:blur(40px) saturate(1.25);
+            radial-gradient(35% 30% at 8% 12%, ${colors.accent}33 0%, transparent 75%),
+            radial-gradient(30% 25% at 92% 10%, ${colors.accentAlt}28 0%, transparent 78%),
+            radial-gradient(40% 30% at 90% 92%, ${colors.accentLight}30 0%, transparent 76%),
+            radial-gradient(25% 22% at 8% 88%, ${colors.accentHot}22 0%, transparent 78%);
+          filter:blur(20px);
           animation:v3mesh-drift 18s ease-in-out infinite alternate}
         .v3mesh-fixed{position:fixed}
         @keyframes v3mesh-drift{
           0%{transform:translate(0,0) scale(1)}
-          50%{transform:translate(3%,-2%) scale(1.05)}
-          100%{transform:translate(-2%,3%) scale(1.02)}
+          50%{transform:translate(2%,-1.5%) scale(1.03)}
+          100%{transform:translate(-1.5%,2%) scale(1.01)}
         }
         @media (prefers-reduced-motion:reduce){.v3mesh{animation:none}}
       `}</style>
@@ -73,11 +76,15 @@ export function V3AuroraBg({ colors, fixed = true, opacity = 0.45 }: {
   );
 }
 
-export function V3GrainBg({ fixed = true, opacity = 0.06 }: { fixed?: boolean; opacity?: number }) {
+export function V3GrainBg({ fixed = true, opacity = 0.03 }: { fixed?: boolean; opacity?: number }) {
+  // Si opacity <= 0, ne rien rendre (evite tout grain qui creerait du flou).
+  if (opacity <= 0) return null;
   return (
     <div className={`v3grain ${fixed ? "v3grain-fixed" : ""}`} aria-hidden>
       <style>{`
-        .v3grain{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:${opacity};mix-blend-mode:overlay;
+        /* Grain TRES discret, blend-mode soft-light (au lieu d'overlay qui floute)
+           et opacity tres faible. Pour la texture, pas pour creer un voile. */
+        .v3grain{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:${opacity};mix-blend-mode:soft-light;
           background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>")}
         .v3grain-fixed{position:fixed}
       `}</style>

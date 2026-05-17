@@ -26,19 +26,38 @@ import { getPenaltyThemeColors, type V3PenaltyTeamKey } from "./v3_penalty_teams
 
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
+// IMPORTANT : la valeur `family` est le NOM nu de la font (sans quotes, sans
+// fallback). Le helper pseudoTextStyle se charge d'ajouter les quotes + fallback
+// CSS. Stocker "'X', cursive" ici donne un double-wrap CSS invalide.
+//
+// Toutes ces polices DOIVENT etre chargees dans index.html (Google Fonts link).
 export const V3_FONT_PRESETS = [
-  // Polices "default" (already loaded)
-  { key: "poppins",      label: "Poppins",       family: "Poppins" },
+  // Sans-serif modernes
   { key: "inter",        label: "Inter",         family: "Inter" },
+  { key: "poppins",      label: "Poppins",       family: "Poppins" },
+  { key: "montser",      label: "Montserrat",    family: "Montserrat" },
+  { key: "dmSans",       label: "DM Sans",       family: "DM Sans" },
+  { key: "spaceGrotesk", label: "Space Grotesk", family: "Space Grotesk" },
+  // Display / impact
   { key: "bebas",        label: "Bebas Neue",    family: "Bebas Neue" },
   { key: "anton",        label: "Anton",         family: "Anton" },
-  { key: "montser",      label: "Montserrat",    family: "Montserrat" },
-  // Polices Lovable (chargées via index.html Google Fonts)
-  { key: "bagel",        label: "Bagel Fat One", family: "'Bagel Fat One', cursive" },
-  { key: "spaceGrotesk", label: "Space Grotesk", family: "'Space Grotesk', sans-serif" },
-  { key: "chakra",       label: "Chakra Petch",  family: "'Chakra Petch', sans-serif" },
-  { key: "dmSans",       label: "DM Sans",       family: "'DM Sans', sans-serif" },
-  { key: "syne",         label: "Syne",          family: "Syne, sans-serif" },
+  { key: "oswald",       label: "Oswald",        family: "Oswald" },
+  { key: "russo",        label: "Russo One",     family: "Russo One" },
+  { key: "blackops",     label: "Black Ops One", family: "Black Ops One" },
+  // Cursive / display fun
+  { key: "bagel",        label: "Bagel Fat One", family: "Bagel Fat One" },
+  { key: "lobster",      label: "Lobster",       family: "Lobster" },
+  { key: "fredoka",      label: "Fredoka",       family: "Fredoka" },
+  { key: "righteous",    label: "Righteous",     family: "Righteous" },
+  { key: "permanent",    label: "Permanent Marker", family: "Permanent Marker" },
+  // Tech / sci-fi
+  { key: "chakra",       label: "Chakra Petch",  family: "Chakra Petch" },
+  { key: "orbitron",     label: "Orbitron",      family: "Orbitron" },
+  { key: "audiowide",    label: "Audiowide",     family: "Audiowide" },
+  { key: "syne",         label: "Syne",          family: "Syne" },
+  // Serif editorial
+  { key: "playfair",     label: "Playfair Display", family: "Playfair Display" },
+  { key: "dmSerif",      label: "DM Serif Display", family: "DM Serif Display" },
 ] as const;
 
 export const V3_COLOR_PRESETS = [
@@ -73,7 +92,32 @@ export interface V3LineStyle {
   size?: V3SizeKey;
   weight?: V3WeightKey;
   glow?: boolean;         // applique un textShadow doux de la couleur
+  /** Animation continue appliquee au pseudo. */
+  animation?: "none" | "pulse" | "float" | "shimmer" | "glow-breath" | "bounce";
+  /** Habillage typo (gradient chrome / outline / neon / metal / etc). */
+  effect?: "plain" | "shadow" | "outline" | "chrome" | "neon" | "metal" | "sticker" | "pop3d" | "stamp";
 }
+
+export const V3_ANIMATION_PRESETS = [
+  { key: "none",        label: "Aucune" },
+  { key: "pulse",       label: "Pulse" },
+  { key: "float",       label: "Float" },
+  { key: "shimmer",     label: "Shimmer" },
+  { key: "glow-breath", label: "Glow breath" },
+  { key: "bounce",      label: "Bounce" },
+] as const;
+
+export const V3_EFFECT_PRESETS = [
+  { key: "plain",   label: "Texte simple" },
+  { key: "shadow",  label: "Ombre portée" },
+  { key: "outline", label: "Contour noir" },
+  { key: "chrome",  label: "Chrome doré" },
+  { key: "neon",    label: "Néon glow" },
+  { key: "metal",   label: "Métal argenté" },
+  { key: "sticker", label: "Doré sticker" },
+  { key: "pop3d",   label: "3D pop (relief)" },
+  { key: "stamp",   label: "Tampon (incliné)" },
+] as const;
 
 // ─── Catalogue d'images jeu ─────────────────────────────────────────────────
 

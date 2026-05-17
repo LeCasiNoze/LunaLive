@@ -9,9 +9,12 @@
 
 import * as React from "react";
 import { sfx } from "../lib/v3_sound";
-import { pseudoTextStyle, pseudoPillStyle, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { V3MeshBg, V3AuroraBg, V3GrainBg } from "./V3AmbientFx";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { extendPalette } from "../lib/v3_palette";
 
 export type M5SlotProps = {
   pseudo?: string;
@@ -75,12 +78,10 @@ export function M5Slot({
   theme,
   pseudoStyle,
 }: M5SlotProps) {
+  const P = extendPalette(theme, "#f7c948");
   const T = {
-    accent: theme?.accent || "#f7c948",
-    accentLight: theme?.accentLight || "#fde68a",
-    accentGlow: theme?.accentGlow || "rgba(247,201,72,.42)",
-    bgPage: theme?.bgPage || "#060811",
-    bgCard: theme?.bgCard || "#0f172a",
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
     borderColor: theme?.borderColor || "rgba(253,230,138,.26)",
   };
 
@@ -241,10 +242,13 @@ export function M5Slot({
       <div className="m5-bg-mesh" />
 
       <div className="m5-header">
+        <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.4} />
+        <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.25} />
+        <V3GrainBg opacity={0.04} />
         {profileImageUrl ? <div className="m5-avatar"><img src={profileImageUrl} alt="" /></div> : null}
         {pseudo ? (
           <div className="m5-pseudo-wrap">
-            <div style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+            <div className={pseudoAnimationClass(pseudoStyle)} style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
               {pseudo}
             </div>
           </div>
@@ -315,6 +319,7 @@ export function M5Slot({
       />
 
       <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }

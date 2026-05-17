@@ -1,11 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// V3 Pseudo style helper — partagé entre M3/M4/M5/M6.
+// V3 Pseudo style helper — partage entre tous les modeles V3 (M3-M14).
 //
 // Transforme la V3LineStyle (saved dans inputs.pseudoStyle) en CSS style
-// object pour le rendu pill du pseudo dans les modèles mini-jeux.
+// object + nom de classe d'animation pour le rendu du pseudo.
+//
+// IMPORTANT : chaque effect doit CLEAR les proprietes conflictuelles
+// (background, WebkitTextFillColor, color, filter) pour s'imposer face au CSS
+// natif des modeles (m11-pseudo a son propre gradient, m10-name aussi, etc.).
+//
+// Lisibilite : drop-shadow noir leger par defaut sauf effets qui ont leur
+// propre filter/background.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type * as React from "react";
+
+export type V3PseudoAnimation = "none" | "pulse" | "float" | "shimmer" | "glow-breath" | "bounce";
+export type V3PseudoEffect = "plain" | "shadow" | "outline" | "chrome" | "neon" | "metal" | "sticker" | "pop3d" | "stamp";
 
 export type V3LineStyleLike = {
   font?: string;
@@ -13,15 +23,17 @@ export type V3LineStyleLike = {
   size?: "xs" | "s" | "m" | "l" | "xl" | "xxl";
   weight?: "regular" | "bold" | "black";
   glow?: boolean;
+  animation?: V3PseudoAnimation;
+  effect?: V3PseudoEffect;
 };
 
 const SIZE_MAP: Record<string, string> = {
   xs:  "0.95rem",
-  s:   "1.1rem",
-  m:   "1.3rem",
-  l:   "1.55rem",
-  xl:  "1.85rem",
-  xxl: "2.2rem",
+  s:   "1.15rem",
+  m:   "1.45rem",
+  l:   "1.85rem",
+  xl:  "clamp(2.2rem, 6vw, 2.8rem)",
+  xxl: "clamp(2.8rem, 9vw, 4rem)",
 };
 const WEIGHT_MAP: Record<string, number> = {
   regular: 500,
@@ -29,23 +41,176 @@ const WEIGHT_MAP: Record<string, number> = {
   black:   900,
 };
 
-/** Style CSS pour le texte du pseudo (font/size/color/weight/glow). */
+const ANIM_CLASS: Record<V3PseudoAnimation, string> = {
+  "none":         "",
+  "pulse":        "v3p-anim-pulse",
+  "float":        "v3p-anim-float",
+  "shimmer":      "v3p-anim-shimmer",
+  "glow-breath":  "v3p-anim-glow",
+  "bounce":       "v3p-anim-bounce",
+};
+
 export function pseudoTextStyle(s: V3LineStyleLike | undefined, defaultColor: string): React.CSSProperties {
   const size = SIZE_MAP[s?.size || "l"] || "1.55rem";
   const weight = WEIGHT_MAP[s?.weight || "bold"] || 700;
   const color = s?.color || defaultColor;
-  return {
-    fontFamily: `"${s?.font || "Playfair Display"}", "Inter", serif`,
+  const effect = s?.effect || "plain";
+
+  // Family : wrap CSS-safe.
+  const rawFont = s?.font || "Playfair Display";
+  const fontFamilyCss = /[",]/.test(rawFont) ? rawFont : `"${rawFont}", "Inter", system-ui, sans-serif`;
+
+  // Base typo seulement (font/size/weight/spacing). Reset chrome-related
+  // SEULEMENT pour les effets qui ne prennent PAS le fond (sinon ils heritent
+  // d'un eventuel gradient laisse par une classe native .m11-pseudo / .m10-name).
+  const takesOverBackground = effect === "chrome" || effect === "metal" || effect === "sticker";
+  const base: React.CSSProperties = {
+    fontFamily: fontFamilyCss,
     fontSize: size,
     fontWeight: weight,
-    color,
     letterSpacing: ".01em",
     lineHeight: 1.1,
-    textShadow: s?.glow ? `0 0 14px ${color}66` : undefined,
+    color,
   };
+  if (!takesOverBackground) {
+    // Reset les heritages chrome/gradient des classes natives, mais ne touche
+    // PAS au background/border/padding/boxShadow (pour preserver pseudoPillStyle
+    // sur M3/M5 qui combine pill + text).
+    (base as any).WebkitTextFillColor = color;
+    base.color = color;
+    base.filter = "none";
+  }
+
+  // ─── Drop-shadow base pour lisibilite (sauf effects avec leur propre filter) ─
+  const shadows: string[] = [];
+  const hasBgEffect = effect === "chrome" || effect === "metal" || effect === "sticker";
+  if (!hasBgEffect) {
+    shadows.push("0 2px 8px rgba(0,0,0,.55)");
+  }
+
+  // ─── Glow optionnel (cumulable avec n'importe quel effect) ─────────────────
+  if (s?.glow) {
+    shadows.push(`0 0 16px ${color}aa, 0 0 32px ${color}66`);
+  }
+
+  // ─── Effects ────────────────────────────────────────────────────────────────
+
+  if (effect === "shadow") {
+    // Ombre portee dure
+    shadows.push("0 3px 0 rgba(0,0,0,.55)", "0 6px 14px rgba(0,0,0,.45)");
+  }
+
+  if (effect === "outline") {
+    // Contour noir net + leger ombre dessous
+    shadows.push(
+      "-1.5px -1.5px 0 #000",
+      " 1.5px -1.5px 0 #000",
+      "-1.5px  1.5px 0 #000",
+      " 1.5px  1.5px 0 #000",
+      "0 3px 6px rgba(0,0,0,.55)"
+    );
+  }
+
+  if (effect === "chrome") {
+    base.background = `linear-gradient(180deg,#ffffff 0%,#fff7d6 20%,${color} 45%,#5a4015 65%,${color} 80%,#ffffff 100%)`;
+    (base as any).backgroundSize = "100% 100%";
+    base.backgroundClip = "text" as any;
+    (base as any).WebkitBackgroundClip = "text";
+    (base as any).WebkitTextFillColor = "transparent";
+    base.color = "transparent";
+    base.filter = `drop-shadow(0 3px 8px rgba(0,0,0,.5)) drop-shadow(0 0 24px ${color}66)`;
+    base.animation = "none";
+  }
+
+  if (effect === "metal") {
+    base.background = `linear-gradient(180deg,#f0f0f0 0%,#ffffff 18%,#9a9a9a 38%,#ffffff 50%,#a8a8a8 60%,#4a4a4a 78%,#cfcfcf 100%)`;
+    (base as any).backgroundSize = "100% 100%";
+    base.backgroundClip = "text" as any;
+    (base as any).WebkitBackgroundClip = "text";
+    (base as any).WebkitTextFillColor = "transparent";
+    base.color = "transparent";
+    base.filter = "drop-shadow(0 3px 6px rgba(0,0,0,.55))";
+    base.animation = "none";
+  }
+
+  if (effect === "neon") {
+    // Neon : couleur unie + double halo (couleur + couleur claire) + leger blanc inner.
+    shadows.push(
+      `0 0 6px #fff`,
+      `0 0 12px ${color}`,
+      `0 0 24px ${color}`,
+      `0 0 42px ${color}aa`,
+      `0 0 70px ${color}55`
+    );
+  }
+
+  if (effect === "pop3d") {
+    // 3D pop : ombre stackee avec teinte du color en bas (effet relief)
+    const darker = `${color}`;
+    shadows.push(
+      `1px 1px 0 ${darker}`,
+      `2px 2px 0 ${darker}`,
+      `3px 3px 0 ${darker}`,
+      `4px 4px 0 ${darker}`,
+      `5px 5px 0 ${darker}`,
+      `6px 6px 0 rgba(0,0,0,.6)`,
+      `7px 7px 12px rgba(0,0,0,.55)`
+    );
+    // Garde la couleur de base (pas de fill transparent)
+  }
+
+  if (effect === "stamp") {
+    // Tampon : couleur, outline epais, rotation, opacite faible (encre).
+    shadows.push(
+      "-2px -2px 0 rgba(0,0,0,.85)",
+      " 2px -2px 0 rgba(0,0,0,.85)",
+      "-2px  2px 0 rgba(0,0,0,.85)",
+      " 2px  2px 0 rgba(0,0,0,.85)",
+      "0 6px 12px rgba(0,0,0,.4)"
+    );
+    base.transform = "rotate(-5deg)";
+    base.display = "inline-block";
+    base.opacity = 0.92;
+  }
+
+  if (effect === "sticker") {
+    base.background = `linear-gradient(180deg,${color},${shade(color, -0.12)})`;
+    (base as any).backgroundSize = "100% 100%";
+    base.color = "#1a0f08";
+    (base as any).WebkitTextFillColor = "#1a0f08";
+    base.backgroundClip = "border-box" as any;
+    (base as any).WebkitBackgroundClip = "border-box";
+    base.padding = ".15em .45em";
+    base.borderRadius = ".22em";
+    base.border = ".08em solid #fff";
+    base.boxShadow = `0 .25em .7em rgba(0,0,0,.4), 0 0 .9em ${color}66, inset 0 .05em 0 rgba(255,255,255,.55)`;
+    base.display = "inline-block";
+    base.filter = "none";
+    base.animation = "none";
+  }
+
+  base.textShadow = shadows.length ? shadows.join(", ") : "none";
+  return base;
 }
 
-/** Style CSS du conteneur "pill" autour du pseudo (frame + bg + border). */
+/** Helper : assombrit/eclaircit une couleur hex de pct (-1..1). */
+function shade(hex: string, pct: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const f = pct < 0 ? 0 : 255;
+  const p = Math.abs(pct);
+  const nr = Math.round((f - r) * p + r);
+  const ng = Math.round((f - g) * p + g);
+  const nb = Math.round((f - b) * p + b);
+  return `#${[nr, ng, nb].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function pseudoAnimationClass(s: V3LineStyleLike | undefined): string {
+  return ANIM_CLASS[s?.animation || "none"] || "";
+}
+
 export function pseudoPillStyle(accent: string): React.CSSProperties {
   return {
     display: "inline-block",

@@ -14,6 +14,8 @@
 import * as React from "react";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
+import { pseudoTextStyle, pseudoAnimationClass } from "../lib/v3_pseudo_style";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 
 export type M10CyclopeProps = {
   /** Pseudo principal (gros titre, gradient chrome). */
@@ -46,14 +48,17 @@ export type M10CyclopeProps = {
     bgCard?: string;
     borderColor?: string;
   };
-  /** Style du pseudo (font / color / size / weight / glow). Si fourni,
-   *  override le font/color Cyclope par défaut. */
+  /** Style du pseudo (font / color / size / weight / glow / effect / animation).
+   *  Si effect ou animation set, M10 utilise le rendu V3 commun (au lieu de
+   *  son chrome cyclope natif). */
   pseudoStyle?: {
     font?: string;
     color?: string;
-    size?: string;
-    weight?: string;
+    size?: "xs" | "s" | "m" | "l" | "xl" | "xxl";
+    weight?: "regular" | "bold" | "black";
     glow?: boolean;
+    animation?: "none" | "pulse" | "float" | "shimmer" | "glow-breath" | "bounce";
+    effect?: "plain" | "shadow" | "outline" | "chrome" | "neon" | "metal" | "sticker" | "pop3d" | "stamp";
   };
   /** Habillage visuel du pseudo (effet texte). */
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
@@ -154,11 +159,26 @@ export function M10Cyclope({
   const bgRgb2 = hexToRgba(C.accentWarm, 0.18);
   const bgRgb3 = hexToRgba(C.accentHot, 0.22);
 
-  // Style typo override : SEULEMENT font/size/weight. La couleur et le rendu
-  // visuel sont entierement controles par pseudoVariant (habillage), sinon
-  // le color picker wipait le fade chrome → texte illisible en rose plat.
+  // Rendu pseudo : si pseudoStyle.effect ou .animation est set par l'editeur V3,
+  // on utilise les helpers communs (pseudoTextStyle + pseudoAnimationClass) pour
+  // appliquer l'effet/animation. Sinon, on garde le rendu cyclope natif (fade
+  // chrome multi-stop) via les classes m10-name-cyclope / m10-anim-*.
+  const useV3Style = !!(pseudoStyle?.effect && pseudoStyle.effect !== "plain") ||
+                     !!(pseudoStyle?.animation && pseudoStyle.animation !== "none") ||
+                     !!pseudoStyle?.color;
+  const v3PseudoStyle = useV3Style
+    ? { ...pseudoTextStyle({ ...pseudoStyle, size: pseudoStyle?.size || "xxl" }, C.accentHot), lineHeight: 1.05 }
+    : null;
+  const v3PseudoAnim = useV3Style ? pseudoAnimationClass(pseudoStyle) : "";
+
+  // Override fallback (mode legacy/cyclope) : SEULEMENT font/size/weight.
   const pseudoOverride: React.CSSProperties = {};
-  if (pseudoStyle?.font) pseudoOverride.fontFamily = pseudoStyle.font;
+  if (pseudoStyle?.font) {
+    // Si la family contient deja quotes/virgules → tel quel, sinon wrap propre.
+    pseudoOverride.fontFamily = /[",]/.test(pseudoStyle.font)
+      ? pseudoStyle.font
+      : `"${pseudoStyle.font}", "Inter", system-ui, sans-serif`;
+  }
   if (pseudoStyle?.weight === "bold")    pseudoOverride.fontWeight = 700;
   if (pseudoStyle?.weight === "black")   pseudoOverride.fontWeight = 900;
   if (pseudoStyle?.weight === "regular") pseudoOverride.fontWeight = 500;
@@ -198,14 +218,14 @@ export function M10Cyclope({
         .m10-layer{position:relative;z-index:10}
 
         /* ─── Header ─── */
-        .m10-header{position:relative;width:100%;padding:40px 20px 16px;display:flex;flex-direction:column;align-items:center;text-align:center}
+        .m10-header{position:relative;width:100%;padding:24px 20px 14px;display:flex;flex-direction:column;align-items:center;text-align:center}
         .m10-avatar-wrap{position:relative;width:100px;height:100px}
         .m10-avatar-halo{position:absolute;inset:-12px;border-radius:50%;background:conic-gradient(from 0deg,${C.accentHot},${C.accentWarm},${C.accentHot},${C.accentSoft},${C.accentHot});filter:blur(14px);opacity:.9;animation:m10-spin 8s linear infinite;pointer-events:none}
         .m10-avatar{position:relative;width:100%;height:100%;border-radius:50%;overflow:hidden;border:3px solid #fff;box-shadow:0 0 0 2px ${C.accentHot},0 10px 30px ${C.glow};background:linear-gradient(135deg,${C.bgCard},${C.bgDeep})}
         .m10-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
-        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em}
+        .m10-name{margin:8px 0 0;line-height:.95;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;padding-bottom:.1em}
         /* === fade : gradient chrome blanc → cream → or → rose → blanc.
             Recopie EXACTE de la source Cyclope (Lovable). === */
         .m10-name-fade{
@@ -229,7 +249,16 @@ export function M10Cyclope({
         .m10-anim-float{animation:m10-name-float 3s ease-in-out infinite}
         .m10-anim-glow{filter:drop-shadow(0 0 12px ${C.accentHot}99);animation:m10-name-glow 2.2s ease-in-out infinite}
         /* Ligne 2 : SOLIDE cream + letterspaced + small (style exact source Cyclope) */
-        .m10-name-line2{margin:2px 0 0;font-family:'Space Grotesk',sans-serif;font-size:.8rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80}
+        /* Sub inline DANS le h1 → font-size en em = ratio fixe vs pseudo,
+           peu importe la taille du pseudo (xs ou xxl). */
+        .m10-name-line2-inline{display:block;margin-top:.45em;font-family:'Space Grotesk',sans-serif;
+          font-size:.3em;font-weight:800;letter-spacing:.3em;text-transform:uppercase;
+          color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80;line-height:1;
+          /* Si parent h1 a un effet chrome/gradient, on rend la sub en couleur unie */
+          background:none;-webkit-background-clip:border-box;background-clip:border-box;
+          -webkit-text-fill-color:${C.cream};filter:none;animation:none}
+        /* Legacy class encore utilisee si pseudoSub est rendu separement */
+        .m10-name-line2{margin:.35em 0 0;font-family:'Space Grotesk',sans-serif;font-size:.85rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80;line-height:1}
         .m10-pill{margin-top:12px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid ${C.accentWarm}66;box-shadow:0 2px 14px ${C.glow}26;font-size:.72rem;font-weight:600;color:#fff}
         .m10-pill-dot{width:4px;height:4px;border-radius:50%;background:${C.cream}66}
         .m10-pill-count{font-weight:800;font-size:.78rem;color:#fff}
@@ -316,25 +345,30 @@ export function M10Cyclope({
       <div className="m10-layer">
         {/* Header */}
         <header className="m10-header">
-          <div className="m10-avatar-wrap">
-            <div className="m10-avatar-halo" />
-            <div className="m10-avatar">
-              {profileImageUrl ? (
+          {profileImageUrl ? (
+            <div className="m10-avatar-wrap">
+              <div className="m10-avatar-halo" />
+              <div className="m10-avatar">
                 <img src={profileImageUrl} alt={pseudo || "Avatar"} />
-              ) : (
-                <div className="m10-avatar-empty">👤</div>
-              )}
+              </div>
             </div>
-          </div>
-          {pseudo ? (
-            <h1
-              className={`m10-name m10-name-${pseudoVariant || "fade"} m10-anim-${pseudoAnimation || "none"}`}
-              style={pseudoOverride}
-            >
-              {pseudo}
-            </h1>
           ) : null}
-          {pseudoSub ? <div className="m10-name-line2">{pseudoSub}</div> : null}
+          {pseudo ? (
+            useV3Style ? (
+              <h1 className={`m10-name ${v3PseudoAnim}`} style={v3PseudoStyle || undefined}>
+                {pseudo}
+                {pseudoSub ? <span className="m10-name-line2-inline">{pseudoSub}</span> : null}
+              </h1>
+            ) : (
+              <h1
+                className={`m10-name m10-name-${pseudoVariant || "fade"} m10-anim-${pseudoAnimation || "none"}`}
+                style={pseudoOverride}
+              >
+                {pseudo}
+                {pseudoSub ? <span className="m10-name-line2-inline">{pseudoSub}</span> : null}
+              </h1>
+            )
+          ) : null}
           {(socialHandle || followersCount) ? (
             <div className="m10-pill">
               {socialHandle ? <span>{socialHandle}</span> : null}
@@ -457,6 +491,7 @@ export function M10Cyclope({
       />
 
       <V3SocialProof accent={C.accentWarm} accentGlow={C.glow} />
+      <V3PseudoKeyframes />
     </div>
   );
 }
