@@ -27,11 +27,18 @@ import { getPenaltyThemeColors, type V3PenaltyTeamKey } from "./v3_penalty_teams
 // ─── Presets style "rapide" ─────────────────────────────────────────────────
 
 export const V3_FONT_PRESETS = [
-  { key: "poppins",   label: "Poppins",     family: "Poppins" },
-  { key: "inter",     label: "Inter",       family: "Inter" },
-  { key: "bebas",     label: "Bebas Neue",  family: "Bebas Neue" },
-  { key: "anton",     label: "Anton",       family: "Anton" },
-  { key: "montser",   label: "Montserrat",  family: "Montserrat" },
+  // Polices "default" (already loaded)
+  { key: "poppins",      label: "Poppins",       family: "Poppins" },
+  { key: "inter",        label: "Inter",         family: "Inter" },
+  { key: "bebas",        label: "Bebas Neue",    family: "Bebas Neue" },
+  { key: "anton",        label: "Anton",         family: "Anton" },
+  { key: "montser",      label: "Montserrat",    family: "Montserrat" },
+  // Polices Lovable (chargées via index.html Google Fonts)
+  { key: "bagel",        label: "Bagel Fat One", family: "'Bagel Fat One', cursive" },
+  { key: "spaceGrotesk", label: "Space Grotesk", family: "'Space Grotesk', sans-serif" },
+  { key: "chakra",       label: "Chakra Petch",  family: "'Chakra Petch', sans-serif" },
+  { key: "dmSans",       label: "DM Sans",       family: "'DM Sans', sans-serif" },
+  { key: "syne",         label: "Syne",          family: "Syne, sans-serif" },
 ] as const;
 
 export const V3_COLOR_PRESETS = [
@@ -120,7 +127,7 @@ export interface V3QuickInputs {
    *   - M6 = Mines (grille 3x3 diamants/bombe)
    *   - M7 = Plinko (bille à travers les pegs)
    *   - M8 = Penalty (tir au but, vise une zone) */
-  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10";
+  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11";
   /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
   m5Variant?: M5V1Variant;
   /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
@@ -189,9 +196,10 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     m5ChestUrl: "",
     m5JeuxUrl: "",
     m5BackgroundUrl: "",
-    // M1 theme defaults
+    // M1 theme defaults — pour M10 on demarre sur "cyclope" (rose/or),
+    // sinon "gold" (defaut historique des autres modeles).
     m1UseTheme: true,
-    m1Theme: "gold",
+    m1Theme: modelKind === "M10" as any ? "cyclope" : "gold",
     m1CustomBgPage: "",
     penaltyTeam: "france",
     // M10 defaults (Cyclope). L'image poulet est mise par defaut (modifiable
@@ -437,7 +445,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 // très simple : un V2Page minimaliste avec une seule zone (cards) contenant
 // ce bloc.
 export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
-  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10";
+  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11";
   const useTheme = inputs.m1UseTheme !== false;
   const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
   const baseThemeColors = theme ? {
@@ -499,9 +507,9 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
       belowCards: [],
       reviews: [],
       faq: [],
-      footer: kind === "M10" ? [] : [
-        // M10 (Cyclope) a son propre footer + sticky CTA integres, pas besoin
-        // du M4V1LowerSections qui injectait un 2e CTA "JOUER MAINTENANT".
+      footer: (kind === "M10" || kind === "M11") ? [] : [
+        // M10 (Cyclope) et M11 (Aurix) ont leur propre footer + sticky CTA integres,
+        // pas besoin du M4V1LowerSections qui injectait un 2e CTA "JOUER MAINTENANT".
         {
           id: makeV2BlockId("m4V1LowerSections"),
           type: "m4V1LowerSections",

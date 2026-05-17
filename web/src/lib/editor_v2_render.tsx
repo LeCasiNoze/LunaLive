@@ -34,6 +34,7 @@ import { M7Plinko } from "../components/M7Plinko";
 import { M8Penalty } from "../components/M8Penalty";
 import { M9Crossy } from "../components/M9Crossy";
 import { M10Cyclope } from "../components/M10Cyclope";
+import { M11Aurix } from "../components/M11Aurix";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -390,6 +391,17 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     case "M9": return <M9Crossy {...props} />;
     case "M10": return (
       <M10Cyclope
+        {...props}
+        pseudoSub={b.pseudoSub}
+        followersCount={b.followersCount}
+        socialHandle={b.socialHandle}
+        gameImageUrl={b.gameImageUrl}
+        gameLabel={b.gameLabel}
+        gameBonusPct={b.gameBonusPct}
+      />
+    );
+    case "M11": return (
+      <M11Aurix
         {...props}
         pseudoSub={b.pseudoSub}
         followersCount={b.followersCount}

@@ -582,7 +582,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -597,6 +597,7 @@ function WizardQuickView({
               {inputs.modelKind === "M8" && "M8 = Penalty — ambiance coupe du monde, thème d'équipe"}
               {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
               {inputs.modelKind === "M10" && "M10 = Landing Cyclope — page statique style storytelling (header halo, hero card, gains direct, FAQ)"}
+              {inputs.modelKind === "M11" && "M11 = Aurix premium — aurora mesh + spotlight curseur + parallax + magnetic CTA + compteurs animés (vitrine V3)"}
             </div>
           </div>
 
@@ -623,12 +624,12 @@ function WizardQuickView({
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>
-              Pseudo (optionnel){inputs.modelKind === "M10" ? " · ligne 1" : ""}
+              Pseudo (optionnel){(inputs.modelKind === "M10" || inputs.modelKind === "M11") ? " · ligne 1" : ""}
             </label>
-            <input type="text" value={inputs.pseudo || ""} onChange={(e) => update({ pseudo: e.target.value })} style={inputStyle} placeholder={inputs.modelKind === "M10" ? "ex: CYCLOPE" : "ex: Jimmy"} />
+            <input type="text" value={inputs.pseudo || ""} onChange={(e) => update({ pseudo: e.target.value })} style={inputStyle} placeholder={inputs.modelKind === "M10" ? "ex: CYCLOPE" : inputs.modelKind === "M11" ? "ex: AURIX" : "ex: Jimmy"} />
           </div>
 
-          {inputs.modelKind === "M10" ? (
+          {(inputs.modelKind === "M10" || inputs.modelKind === "M11") ? (
             <>
               <div style={{ marginBottom: 14 }}>
                 <label style={labelStyle}>Pseudo ligne 2 (optionnel)</label>
@@ -766,7 +767,7 @@ function WizardQuickView({
                   </div>
                 ) : null}
 
-                {inputs.modelKind === "M10" ? (
+                {(inputs.modelKind === "M10" || inputs.modelKind === "M11") ? (
                   <>
                     <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div>

@@ -114,18 +114,17 @@ export function M10Cyclope({
 }: M10CyclopeProps) {
   // Plumbing click-to-edit (a wirer dans une prochaine iteration sur chaque element)
   void onEditField;
-  // Palette Cyclope EXACTE (Lovable source). Pas d'override theme : ce modele
-  // est concu visuellement complet, le bg M1Theme ne doit pas s'y appliquer.
+  // Palette : default = Cyclope (rose/or/navy). Si un theme M1 est passe
+  // (gold/ruby/emerald/...), on l'utilise pour permettre de re-skin le modele.
   const C = {
-    accentHot:  "#FF4B6E",  // rose vif
-    accentWarm: "#FFB930",  // or
-    accentSoft: "#FF8A4B",  // orange
+    accentHot:  theme?.accent      || "#FF4B6E",
+    accentWarm: theme?.accentLight || "#FFB930",
+    accentSoft: "#FF8A4B",
     cream:      "#FFE9D6",
-    bgDeep:     "#0B1530",
-    bgCard:     "#0F1B3D",
-    glow:       "rgba(255,75,110,.55)",
+    bgDeep:     theme?.bgPage      || "#0B1530",
+    bgCard:     theme?.bgCard      || "#0F1B3D",
+    glow:       theme?.accentGlow  || "rgba(255,75,110,.55)",
   };
-  void theme;
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
