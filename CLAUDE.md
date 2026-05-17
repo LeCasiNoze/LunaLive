@@ -1,5 +1,119 @@
 # CLAUDE.md — LunaLive
 
+## Stack visuelle V3 (EditorFSN V3 — modeles M10+) — OBLIGATOIRE
+
+Pour **chaque nouveau modele V3** (M10+, landings affiliees / mini-jeux),
+exploiter au MAXIMUM les outils installes. Ne jamais livrer un modele
+"plat" qui n'utilise qu'une partie du stack — l'objectif est un rendu
+toujours premium et original.
+
+### Librairies disponibles (deja installees, web/package.json)
+- **framer-motion** : animations, transitions, useScroll/useTransform,
+  useSpring, useInView, AnimatePresence, layout animations, gestures,
+  magnetic effects, scroll-driven parallax. C'est la base de toute
+  animation React — l'utiliser au lieu de simples transitions CSS.
+- **lenis** : smooth scroll. ATTENTION : a desactiver dans l'iframe
+  preview de l'editeur (intercepte la molette). OK pour la page
+  publiee /r/<slug>. Si utilise, conditionner sur
+  prefers-reduced-motion + detecter le contexte preview.
+
+### Patterns visuels a appliquer systematiquement
+A choisir selon le concept du modele (varier d'un modele a l'autre, ne
+pas tous les empiler dans un seul) :
+
+- **Mesh gradient anime** (radial-gradients multi-couches + animation
+  CSS) au lieu de fond plat
+- **Aurora beams** (gradients lineaires flous animes diagonalement)
+- **Spotlight curseur** (radial-gradient suivant la souris via
+  useMotionValue + useSpring)
+- **Parallax scroll** (useScroll + useTransform sur translateY)
+- **Conic-gradient anime** avec `@property --angle` pour bordures
+  rotatives premium
+- **Glassmorphism** (backdrop-filter:blur + bg rgba transparent +
+  border subtile)
+- **Magnetic CTA** (bouton qui suit le curseur via useMotionValue +
+  useSpring, deplacement subtil 18-22%)
+- **Tilt 3D** (rotateX/rotateY en fonction de la position curseur)
+- **Compteurs animes** (count-up sur useInView, easing cubic-out)
+- **Marquee / infinite scroll** (CSS keyframes translateY/X infinis)
+- **Shimmer / shine** sur texte (gradient mask traveling)
+- **Reveal on scroll** (useInView + opacity/translateY transition)
+- **Grain texture** (SVG turbulence noise en overlay, mix-blend-mode
+  overlay)
+- **Breathing button** (box-shadow keyframes alternees)
+- **Border gradient anime** avec `@property --a` + mask composite
+
+### Polices
+Toujours exploiter les polices Google Fonts deja chargees dans
+`index.html` (Lovable fonts) :
+- "Bagel Fat One" (display cursive playful)
+- "Space Grotesk" (sans display)
+- "Chakra Petch" (sci-fi)
+- "Syne" (alt display)
+- "DM Sans" (sans body)
+- "Playfair Display" (serif editorial)
+- "Bebas Neue" / "Anton" (condensed display)
+- Poppins / Inter / Montserrat (sans base)
+Varier les polices entre les modeles pour identite visuelle distincte.
+
+### Regles d'or pour chaque nouveau modele V3
+1. **Concept fort et distinct** des modeles existants (visuellement +
+   format). Pas de copie cosmetique d'un modele voisin.
+2. **Au moins 4-5 patterns visuels du catalogue ci-dessus** combines
+   de facon coherente avec le concept.
+3. **Theme-aware obligatoire** : accent / accentLight / accentGlow /
+   bgPage / bgCard recus via prop `theme` et appliques partout. Les
+   8 M1Theme (or, rubis, emeraude, saphir, amethyst, obsidian, rose,
+   jade, cyclope) doivent rendre de facon premium sans casse.
+4. **pseudoStyle respecte** via helpers `pseudoTextStyle()` /
+   `pseudoPillStyle()` de `v3_pseudo_style.ts`.
+5. **prefers-reduced-motion** desactive toutes les animations
+   continues (spin, breath, marquee, shimmer).
+6. **Test sur les 8 themes** mentalement : si une couleur fonce le
+   texte devient illisible → ajuster avec text-shadow ou couleur
+   safe.
+
+## Regles conversion / leads (V3 landings affiliees)
+
+Les landings V3 (M10+) sont en bio Instagram/TikTok/Twitch ou
+description video. **L'objectif absolu est le taux de conversion +
+maximiser le montant depose.** Chaque nouveau modele doit integrer :
+
+### Leviers conversion obligatoires (choisir 3+ par modele)
+- **Urgence temporelle** : countdown HH:MM:SS visible (banner top
+  sticky idealement)
+- **Rarete** : "places restantes" / "stock limite" qui decremente
+- **Preuve sociale live** : feed activity temps reel (faux mais
+  credible, prenoms+montants random toutes les X secondes via
+  setInterval)
+- **Trust badges** : licence, SSL, retrait 24h, +X joueurs
+- **Anchoring montant** : afficher le bonus en HUGE (>3rem), depot
+  requis en plus petit
+- **Anti-friction** : "inscription en 30s", "sans CB requise",
+  "credit instantane"
+- **Upsell deposit** : paliers, multiplicateur bonus visible, badge
+  "recommande" sur palier moyen-haut
+
+### Capture VIP email (OBLIGATOIRE)
+Chaque modele V3 doit integrer une **capture email VIP inline** dans
+la landing (pas seulement le popup V3OfferPopup). Cible : gros
+joueurs (500€+/mois) → leur attribuer un host VIP pour recontact.
+
+- Composant pret a l'emploi : `<V3InlineVipForm />` de
+  `web/src/components/V3InlineVipForm.tsx`
+- Le POST va vers le meme endpoint que le VIP banner du popup :
+  `/api/public/affi-vip-leads` (slug + email + referrer)
+- postMessage `v3-vip-lead` pour l'editor preview
+- Placer dans une section dediee bas de page, **toujours visible**
+  meme si l'user n'a pas clique le CTA principal
+- Customiser titre/subtitle/ctaLabel selon le concept du modele
+
+### Double CTA recommande (segmentation)
+Quand pertinent, prevoir 2 CTA distincts :
+- CTA principal → V3OfferPopup (joueurs standards)
+- CTA secondaire "Devenir VIP" → scroll vers V3InlineVipForm (gros
+  joueurs)
+
 ## Contexte produit
 LunaLive est une plateforme française autour du streaming casino, des pages casinos, des profils streamers, des événements et d’une communauté.  
 Le site est actuellement une SPA React/Vite avec une couche SEO hybride (HTML statique + scripts de build + seo-update.js + génération de routes statiques).

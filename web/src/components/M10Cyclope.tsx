@@ -55,8 +55,8 @@ export type M10CyclopeProps = {
     weight?: string;
     glow?: boolean;
   };
-  /** Variante visuelle du pseudo (preset look). */
-  pseudoVariant?: "cyclope" | "neon" | "metal" | "flat" | "holo";
+  /** Habillage visuel du pseudo (effet texte). */
+  pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "engraved" | "stamp";
   /** Animation appliquee au pseudo. */
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   /** Callback editeur : appelée au clic sur un élément éditable.
@@ -212,13 +212,20 @@ export function M10Cyclope({
         .m10-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
-        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
-        /* Variantes de fade chrome — meme structure (blanc top → 2 accents → blanc bottom) avec drop-shadow accent */
-        .m10-name-cyclope{background:linear-gradient(180deg,#fff 0%,#FFE9D6 25%,#FFB930 55%,#FF4B6E 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(255,75,110,.55)) drop-shadow(0 0 14px rgba(255,185,48,.5))}
-        .m10-name-neon{background:linear-gradient(180deg,#fff 0%,#DBEAFE 25%,#22D3EE 55%,#3B82F6 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(59,130,246,.55)) drop-shadow(0 0 14px rgba(34,211,238,.5))}
-        .m10-name-metal{background:linear-gradient(180deg,#fff 0%,#D9F99D 25%,#84CC16 55%,#15803D 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(21,128,61,.55)) drop-shadow(0 0 14px rgba(132,204,22,.5))}
-        .m10-name-flat{background:linear-gradient(180deg,#FEF3C7 0%,#FBBF24 25%,#F97316 55%,#DC2626 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(220,38,38,.55)) drop-shadow(0 0 14px rgba(251,146,60,.5))}
-        .m10-name-holo{background:linear-gradient(180deg,#fff 0%,#E0E7FF 25%,#6366F1 55%,#A855F7 85%,#fff 100%);filter:drop-shadow(0 2px 0 rgba(168,85,247,.55)) drop-shadow(0 0 14px rgba(99,102,241,.5))}
+        .m10-name{margin:16px 0 0;line-height:1.1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em}
+        /* Habillages de texte (effets différents, pas juste palette) */
+        /* fade : gradient chrome blanc → cream → or → rose → blanc (default Cyclope) */
+        .m10-name-fade{background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
+        /* outline : couleur unie + contour épais */
+        .m10-name-outline{color:#fff;-webkit-text-stroke:3px ${C.accentHot};text-shadow:0 0 18px ${C.accentHot}80}
+        /* 3d : multi-layered shadow donne profondeur sculptée */
+        .m10-name-3d{color:${C.accentWarm};text-shadow:1px 1px 0 ${C.accentHot},2px 2px 0 ${C.accentHot},3px 3px 0 ${C.accentHot},4px 4px 0 ${C.accentHot},5px 5px 0 ${C.accentHot},6px 6px 0 rgba(0,0,0,.6),0 0 22px ${C.accentWarm}88}
+        /* neon : halo lumineux multi-stop */
+        .m10-name-neon{color:#fff;text-shadow:0 0 6px #fff,0 0 14px ${C.accentHot},0 0 28px ${C.accentHot},0 0 50px ${C.accentHot},0 0 80px ${C.accentWarm}}
+        /* engraved : effet gravé (lumière haut, ombre bas inset) */
+        .m10-name-engraved{color:${C.cream};text-shadow:0 -2px 0 rgba(0,0,0,.7),0 1px 0 rgba(255,255,255,.25)}
+        /* stamp : impression tampon — couleur opaque + ombre dure décalée */
+        .m10-name-stamp{color:${C.accentHot};text-shadow:6px 6px 0 ${C.accentWarm},6px 6px 12px rgba(0,0,0,.5);transform:rotate(-2deg);transform-origin:center;display:inline-block}
         /* Animations */
         .m10-anim-pulse{animation:m10-name-pulse 1.8s ease-in-out infinite}
         .m10-anim-float{animation:m10-name-float 3s ease-in-out infinite}
@@ -323,7 +330,7 @@ export function M10Cyclope({
           </div>
           {pseudo ? (
             <h1
-              className={`m10-name m10-name-${pseudoVariant || "cyclope"} m10-anim-${pseudoAnimation || "none"}`}
+              className={`m10-name m10-name-${pseudoVariant || "fade"} m10-anim-${pseudoAnimation || "none"}`}
               style={pseudoOverride}
             >
               {pseudo}

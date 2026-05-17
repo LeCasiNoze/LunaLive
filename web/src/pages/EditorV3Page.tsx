@@ -908,16 +908,17 @@ function WizardQuickView({
                   {inputs.modelKind === "M10" ? (
                     <>
                       <div style={{ marginTop: 14 }}>
-                        <label style={labelStyle}>Variante de fade (gradient)</label>
+                        <label style={labelStyle}>Habillage du texte</label>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {([
-                            { k: "cyclope", l: "Cyclope (rose/or)" },
-                            { k: "neon",    l: "Saphir (cyan/bleu)" },
-                            { k: "metal",   l: "Émeraude (lime/vert)" },
-                            { k: "flat",    l: "Volcan (or/rouge)" },
-                            { k: "holo",    l: "Glacial (bleu/violet)" },
+                            { k: "fade",     l: "Fade chrome (défaut Cyclope)" },
+                            { k: "outline",  l: "Outline (contour)" },
+                            { k: "3d",       l: "3D pop (relief)" },
+                            { k: "neon",     l: "Néon glow" },
+                            { k: "engraved", l: "Gravé" },
+                            { k: "stamp",    l: "Tampon (incliné)" },
                           ] as const).map((v) => (
-                            <Chip key={v.k} active={(inputs.pseudoVariant || "cyclope") === v.k}
+                            <Chip key={v.k} active={(inputs.pseudoVariant || "fade") === v.k}
                               onClick={() => update({ pseudoVariant: v.k })}>{v.l}</Chip>
                           ))}
                         </div>
