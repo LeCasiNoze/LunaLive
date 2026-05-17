@@ -167,9 +167,9 @@ export function M10Cyclope({
         .m10-avatar img{width:100%;height:100%;object-fit:cover;display:block}
         .m10-avatar-empty{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:2.4rem;color:rgba(255,255,255,.25)}
 
-        .m10-name{margin-top:16px;line-height:1;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
+        .m10-name{margin:16px 0 0;line-height:1.05;font-family:'Bagel Fat One',cursive;font-size:2.6rem;letter-spacing:.02em;padding-bottom:.08em;background:linear-gradient(180deg,#fff 0%,${C.cream} 25%,${C.accentWarm} 55%,${C.accentHot} 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 0 ${C.accentHot}88) drop-shadow(0 0 14px ${C.accentWarm}80)}
         /* Ligne 2 : SOLIDE cream + letterspaced + small (style exact source Cyclope) */
-        .m10-name-line2{margin-top:-2px;font-family:'Space Grotesk',sans-serif;font-size:.8rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80}
+        .m10-name-line2{margin:-6px 0 0;font-family:'Space Grotesk',sans-serif;font-size:.8rem;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:${C.cream};text-shadow:0 0 12px ${C.accentWarm}80}
         .m10-pill{margin-top:12px;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.08);backdrop-filter:blur(10px);border:1px solid ${C.accentWarm}66;box-shadow:0 2px 14px ${C.glow}26;font-size:.72rem;font-weight:600;color:#fff}
         .m10-pill-dot{width:4px;height:4px;border-radius:50%;background:${C.cream}66}
         .m10-pill-count{font-weight:800;font-size:.78rem;color:#fff}
