@@ -622,9 +622,21 @@ function WizardQuickView({
           ) : null}
 
           <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>Pseudo (optionnel)</label>
-            <input type="text" value={inputs.pseudo || ""} onChange={(e) => update({ pseudo: e.target.value })} style={inputStyle} placeholder="ex: Jimmy" />
+            <label style={labelStyle}>
+              Pseudo (optionnel){inputs.modelKind === "M10" ? " · ligne 1" : ""}
+            </label>
+            <input type="text" value={inputs.pseudo || ""} onChange={(e) => update({ pseudo: e.target.value })} style={inputStyle} placeholder={inputs.modelKind === "M10" ? "ex: CYCLOPE" : "ex: Jimmy"} />
           </div>
+
+          {inputs.modelKind === "M10" ? (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Pseudo ligne 2 (optionnel)</label>
+              <input type="text" value={inputs.pseudoSub || ""} onChange={(e) => update({ pseudoSub: e.target.value })} style={inputStyle} placeholder="ex: L'HÉRITIER (laisser vide si pseudo sur 1 ligne)" />
+              <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+                2e ligne affichée sous la ligne 1, même style chrome gradient (un peu plus petite).
+              </div>
+            </div>
+          ) : null}
 
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Lien d'affiliation *</label>
@@ -754,14 +766,6 @@ function WizardQuickView({
                 {inputs.modelKind === "M10" ? (
                   <>
                     <SocialProfileLoader token={token} update={update} />
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={labelStyle}>Sous-titre pseudo (sous le grand nom)</label>
-                      <input type="text" value={inputs.pseudoSub || ""}
-                        onChange={(e) => update({ pseudoSub: e.target.value })}
-                        placeholder="ex: L'HÉRITIER (laisser vide pour rien)"
-                        style={inputStyle}
-                      />
-                    </div>
                     <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div>
                         <label style={labelStyle}>Handle social (pill)</label>
