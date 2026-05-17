@@ -118,6 +118,7 @@ export function M12Chat({
   const [selectedKey, setSelectedKey] = React.useState<string>("gold");
   const selected = tiers.find((t) => t.key === selectedKey) || tiers[2];
   const selectedBonus = Math.round(selected.deposit * selected.bonusMult);
+  const selectedReceived = selected.deposit + selectedBonus; // total recu apres bonus
 
   const [popupOpen, setPopupOpen] = React.useState(false);
   const onCta = (e: React.MouseEvent) => {
@@ -244,10 +245,11 @@ export function M12Chat({
           text-shadow:0 0 18px var(--tier-color)55}
         /* +X€ = recompense, le plus gros */
         .m12-tier-arrow{font-size:.85rem;opacity:.5;margin:2px 0 0}
-        .m12-tier-bonus{margin:0 0 4px;font-size:clamp(1.7rem,6vw,2.2rem);font-weight:900;line-height:1;letter-spacing:-.03em;
+        .m12-tier-bonus{margin:0 0 4px;display:flex;flex-direction:column;align-items:center;
+          font-size:clamp(1.7rem,6vw,2.2rem);font-weight:900;line-height:1;letter-spacing:-.03em;
           background:linear-gradient(180deg,#fff,var(--tier-color));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
           filter:drop-shadow(0 2px 14px var(--tier-color)80);font-variant-numeric:tabular-nums}
-        .m12-tier-bonus span{font-size:.55rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;opacity:.65;display:block;margin-top:2px;-webkit-text-fill-color:initial;color:rgba(255,255,255,.55);filter:none}
+        .m12-tier-bonus-label{font-size:.7rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;opacity:.7;-webkit-text-fill-color:initial;color:rgba(255,255,255,.7);filter:none;margin-bottom:2px;background:none}
         .m12-tier-perks{display:flex;flex-direction:column;gap:3px;margin-top:auto;padding-top:6px;text-align:left}
         .m12-tier-perk{font-size:.68rem;opacity:.82;display:flex;align-items:center;gap:6px;font-weight:500;line-height:1.25}
         .m12-tier-perk::before{content:"✓";color:var(--tier-color);font-weight:900;font-size:.72rem;flex-shrink:0}
@@ -342,6 +344,7 @@ export function M12Chat({
         <div className="m12-tiers-grid">
           {tiers.map((t) => {
             const bonus = Math.round(t.deposit * t.bonusMult);
+            const received = t.deposit + bonus; // total avec bonus 100%
             return (
               <motion.button
                 key={t.key}
@@ -363,8 +366,8 @@ export function M12Chat({
                   <span className="m12-tier-dep-amount">{t.deposit}€</span>
                 </div>
                 <div className="m12-tier-bonus">
-                  +{bonus}€
-                  <span>bonus offert</span>
+                  <span className="m12-tier-bonus-label">Reçois</span>
+                  {received}€
                 </div>
                 <div className="m12-tier-perks">
                   {t.perks.map((p, i) => <div key={i} className="m12-tier-perk">{p}</div>)}
@@ -380,11 +383,11 @@ export function M12Chat({
         <div className="m12-cta-resume">
           <p className="m12-cta-resume-label">Ton choix</p>
           <p className="m12-cta-resume-line">
-            Dépose <em>{selected.deposit}€</em> · Reçois <em>+{selectedBonus}€</em>
+            Dépose <em>{selected.deposit}€</em> · Reçois <em>{selectedReceived}€</em>
           </p>
         </div>
         <V3MagneticButton href={safeAffi} onClick={onCta} className="m12-cta v3-cta">
-          {selected.vip ? "DEVENIR VIP" : `RÉCLAMER MES ${selectedBonus}€`}
+          {selected.vip ? "DEVENIR VIP" : `RÉCLAMER MES ${selectedReceived}€`}
         </V3MagneticButton>
         <p className="m12-cta-sub">Inscription en 30s · Bonus crédité instantanément</p>
       </section>
@@ -420,7 +423,7 @@ export function M12Chat({
 
       <div className="m12-sticky">
         <a className="m12-sticky-cta v3-cta" href={safeAffi} onClick={onCta}>
-          {selected.vip ? "👑 DEVENIR VIP" : `🚀 RÉCLAMER +${selectedBonus}€`}
+          {selected.vip ? "👑 DEVENIR VIP" : `🚀 RÉCLAMER ${selectedReceived}€`}
         </a>
       </div>
 
