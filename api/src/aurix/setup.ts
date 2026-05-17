@@ -608,6 +608,8 @@ async function postRulesPanel(
           "  – **Auto-affiliation** : créer un compte casino sous ton propre lien d'affiliation pour toucher la commission sur tes propres dépôts.",
           "  – **Multi-comptes** : un de tes affiliés qui crée plusieurs comptes, ou des comptes ouverts uniquement pour gonfler tes stats.",
           "  – **Faux justificatifs / dashboards trafiqués / dépôts gonflés**.",
+          "",
+          "• **Rentabilité du deal** : Aurix se réserve le droit de **rompre le contrat sans préavis** si le **total des dépôts générés** par ton trafic reste durablement **inférieur aux commissions versées** (CPA, refills, bonus). L'agence est **intransigeante sur la rentabilité** : on ne te demande pas un ratio précis, mais un deal structurellement déficitaire ne peut pas être maintenu.",
         ].join("\n"),
       },
       {
