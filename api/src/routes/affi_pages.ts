@@ -523,7 +523,7 @@ function formatFollowerCount(n: number | null): string {
 async function fetchInstagramProfile(handle: string): Promise<{ handle: string; displayName: string | null; followers: number | null } | null> {
   const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 12_000);
+  const t = setTimeout(() => controller.abort(), 15_000);
   try {
     const res = await fetch(url, {
       signal: controller.signal,
@@ -531,13 +531,58 @@ async function fetchInstagramProfile(handle: string): Promise<{ handle: string; 
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
     if (!res.ok) return null;
     const html = await res.text();
-    const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+
+    let followers: number | null = null;
+
+    // (1) og:description et meta description — anciennement contenait les followers
+    const metas = [
+      html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i),
+      html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i),
+    ];
+    for (const m of metas) {
+      if (m && !followers) followers = parseFollowerCount(m[1]);
+    }
+
+    // (2) Schema.org ld+json (Person/Organization avec InteractionStatistic)
+    if (followers == null) {
+      const ldJsons = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+      for (const m of ldJsons) {
+        try {
+          const data = JSON.parse(m[1]);
+          const items = Array.isArray(data) ? data : [data];
+          for (const it of items) {
+            const stats = it?.interactionStatistic || it?.["@graph"]?.flatMap?.((g: any) => g?.interactionStatistic || []) || [];
+            const list = Array.isArray(stats) ? stats : [stats];
+            for (const s of list) {
+              const type = String(s?.interactionType?.["@type"] || s?.interactionType || "");
+              if (type.toLowerCase().includes("follow")) {
+                const n = Number(s?.userInteractionCount ?? s?.value);
+                if (Number.isFinite(n) && n > 0) { followers = n; break; }
+              }
+            }
+            if (followers) break;
+          }
+        } catch { /* noop */ }
+      }
+    }
+
+    // (3) Recherche brute dans le HTML d'un pattern "edge_followed_by":{"count":N}
+    if (followers == null) {
+      const edge = html.match(/edge_followed_by["']?\s*:\s*\{\s*["']?count["']?\s*:\s*(\d+)/i);
+      if (edge) followers = Number(edge[1]) || null;
+    }
+    // (4) Pattern "follower_count":N (autre variant)
+    if (followers == null) {
+      const fc = html.match(/follower_count["']?\s*:\s*(\d+)/i);
+      if (fc) followers = Number(fc[1]) || null;
+    }
+
     const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-    const followers = ogDesc ? parseFollowerCount(ogDesc[1]) : null;
     const titleStr = ogTitle?.[1] || "";
     const displayName = titleStr.split("(")[0].trim() || null;
     return { handle, displayName, followers };
