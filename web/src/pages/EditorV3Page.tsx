@@ -513,7 +513,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -527,6 +527,7 @@ function WizardQuickView({
               {inputs.modelKind === "M7" && "M7 = Plinko — bille qui rebondit sur les pegs"}
               {inputs.modelKind === "M8" && "M8 = Penalty — ambiance coupe du monde, thème d'équipe"}
               {inputs.modelKind === "M9" && "M9 = Crossy Road — avance, ne perds pas le 100% au checkpoint"}
+              {inputs.modelKind === "M10" && "M10 = Landing Cyclope — page statique style storytelling (header halo, hero card, gains direct, FAQ)"}
             </div>
           </div>
 
@@ -679,6 +680,71 @@ function WizardQuickView({
                       ))}
                     </div>
                   </div>
+                ) : null}
+
+                {inputs.modelKind === "M10" ? (
+                  <>
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={labelStyle}>Sous-titre pseudo (sous le grand nom)</label>
+                      <input type="text" value={inputs.pseudoSub || ""}
+                        onChange={(e) => update({ pseudoSub: e.target.value })}
+                        placeholder="ex: L'HÉRITIER (laisser vide pour rien)"
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div>
+                        <label style={labelStyle}>Handle social (pill)</label>
+                        <input type="text" value={inputs.socialHandle || ""}
+                          onChange={(e) => update({ socialHandle: e.target.value })}
+                          placeholder="@pseudo"
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Nb followers (pill)</label>
+                        <input type="text" value={inputs.followersCount || ""}
+                          onChange={(e) => update({ followersCount: e.target.value })}
+                          placeholder="250K"
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 14 }}>
+                      <label style={labelStyle}>Image hero du jeu (URL)</label>
+                      <input type="url" value={inputs.gameImageUrl || ""}
+                        onChange={(e) => update({ gameImageUrl: e.target.value })}
+                        placeholder="https://… (vide = placeholder 🎰)"
+                        style={inputStyle}
+                      />
+                      {inputs.gameImageUrl ? (
+                        <div style={{ marginTop: 8 }}>
+                          <img src={inputs.gameImageUrl} alt="" style={{ width: "100%", maxWidth: 200, aspectRatio: "1/1", objectFit: "cover", borderRadius: 12, border: "1px solid #FFB930" }} />
+                        </div>
+                      ) : null}
+                    </div>
+                    <div style={{ marginBottom: 14, display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 8 }}>
+                      <div>
+                        <label style={labelStyle}>Sticker top hero</label>
+                        <input type="text" value={inputs.gameLabel || ""}
+                          onChange={(e) => update({ gameLabel: e.target.value })}
+                          placeholder="🐔 JEU DU POULET"
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>% bonus inclus</label>
+                        <input type="text" value={inputs.gameBonusPct || ""}
+                          onChange={(e) => update({ gameBonusPct: e.target.value })}
+                          placeholder="550%"
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textDim, marginBottom: 14 }}>
+                      Tous les champs sont optionnels. Vides = masqués / placeholder neutre.
+                    </div>
+                  </>
                 ) : null}
 
                 {inputs.modelKind === "M8" ? (

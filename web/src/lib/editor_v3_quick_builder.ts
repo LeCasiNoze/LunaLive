@@ -120,7 +120,7 @@ export interface V3QuickInputs {
    *   - M6 = Mines (grille 3x3 diamants/bombe)
    *   - M7 = Plinko (bille à travers les pegs)
    *   - M8 = Penalty (tir au but, vise une zone) */
-  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9";
+  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10";
   /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
   m5Variant?: M5V1Variant;
   /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
@@ -159,6 +159,13 @@ export interface V3QuickInputs {
   bonusLineStyle?: V3LineStyle;
   /** M8 seulement: palette d'équipe appliquée au stade, au gardien et au CTA. */
   penaltyTeam?: V3PenaltyTeamKey;
+  /** M10 seulement (landing Cyclope). */
+  pseudoSub?: string;
+  followersCount?: string;
+  socialHandle?: string;
+  gameImageUrl?: string;
+  gameLabel?: string;
+  gameBonusPct?: string;
 }
 
 export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {
@@ -187,6 +194,13 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     m1Theme: "gold",
     m1CustomBgPage: "",
     penaltyTeam: "france",
+    // M10 defaults (Cyclope) — vides pour que l'editeur impose ses propres images/textes
+    pseudoSub: "",
+    followersCount: "",
+    socialHandle: "",
+    gameImageUrl: "",
+    gameLabel: "",
+    gameBonusPct: "",
   };
 }
 
@@ -422,7 +436,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 // très simple : un V2Page minimaliste avec une seule zone (cards) contenant
 // ce bloc.
 export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
-  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9";
+  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10";
   const useTheme = inputs.m1UseTheme !== false;
   const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
   const baseThemeColors = theme ? {
@@ -471,6 +485,13 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           affiLink: inputs.affiLink,
           theme: themeColors,
           penaltyTeam: inputs.penaltyTeam,
+          // M10 (Cyclope) — passe les champs uniquement quand pertinent
+          pseudoSub: inputs.pseudoSub,
+          followersCount: inputs.followersCount,
+          socialHandle: inputs.socialHandle,
+          gameImageUrl: inputs.gameImageUrl,
+          gameLabel: inputs.gameLabel,
+          gameBonusPct: inputs.gameBonusPct,
           pseudoStyle: pseudoStyleResolved,
         } as any,
       ],

@@ -224,7 +224,7 @@ export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
 
 // ─── V3 Game Models (M3-M6) — preset interactif pleine page ──────────────────
 
-export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9";
+export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10";
 
 /** Bloc preset full-page pour les modèles V3 interactifs (roue, scratch, slot,
  *  coffre). Ce bloc rend l'intégralité de la landing : hero pseudo + profil,
@@ -239,6 +239,13 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   affiLink: string;
   theme?: M4ThemeColors;
   penaltyTeam?: string;
+  /** Champs M10 (Cyclope landing). */
+  pseudoSub?: string;
+  followersCount?: string;
+  socialHandle?: string;
+  gameImageUrl?: string;
+  gameLabel?: string;
+  gameBonusPct?: string;
   /** Style typographique du pseudo (font/size/color/weight/glow).
    *  Type V3LineStyle structurellement compatible (lazy any pour éviter
    *  un import circulaire avec editor_v3_quick_builder). */
