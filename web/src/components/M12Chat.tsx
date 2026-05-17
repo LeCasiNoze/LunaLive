@@ -20,7 +20,6 @@ import { motion } from "framer-motion";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
 import { V3InlineVipForm } from "./V3InlineVipForm";
-import { V3MeshBg } from "./V3AmbientFx";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { extendPalette } from "../lib/v3_palette";
 import { pseudoTextStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
@@ -55,8 +54,9 @@ type Tier = {
 };
 
 export function M12Chat({
-  pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
+  pseudo, profileImageUrl, depositAmount, bonusAmount: _bonusAmount, affiLink, theme, pseudoStyle,
 }: M12ChatProps) {
+  void _bonusAmount;
   const P = extendPalette(theme, "#FFD700");
   const T = {
     accent:      P.accent,
@@ -69,11 +69,10 @@ export function M12Chat({
   };
   const safeAffi = affiLink || "#";
 
-  // Palier 1 (Bronze) base sur X/Y fournis. Si depositAmount est null, on
-  // utilise un default raisonnable. Les autres paliers scalent depuis ce base.
-  const baseDep = depositAmount ?? 20;
-  const baseBon = bonusAmount ?? Math.round(baseDep * 1.5);
-  const baseMult = baseBon / Math.max(baseDep, 1);
+  // Bonus = 100% du depot (×2) pour tous les paliers. Pas de faux gonflage.
+  // Palier base = X fourni (defaut 10€). Les autres scalent : ×2.5, ×5, ×25.
+  const baseDep = depositAmount ?? 10;
+  const bonusMult = 1; // 100% bonus = depot × (1+mult) avec mult=1 → reception = depot×2
 
   const tiers: Tier[] = React.useMemo(() => ([
     {
@@ -81,8 +80,8 @@ export function M12Chat({
       label: "Bronze",
       icon: "🥉",
       deposit: baseDep,
-      bonusMult: baseMult,
-      perks: ["Bonus standard", "Inscription instantanée"],
+      bonusMult,
+      perks: ["Bonus 100% standard", "Inscription instantanée"],
       color: "#CD7F32",
     },
     {
@@ -90,8 +89,8 @@ export function M12Chat({
       label: "Silver",
       icon: "🥈",
       deposit: Math.round(baseDep * 2.5),
-      bonusMult: baseMult * 1.2,
-      perks: ["Bonus boosté +20%", "20 free spins offerts"],
+      bonusMult,
+      perks: ["Bonus 100%", "20 free spins offerts"],
       color: "#C0C0C0",
     },
     {
@@ -99,8 +98,8 @@ export function M12Chat({
       label: "Gold",
       icon: "🥇",
       deposit: Math.round(baseDep * 5),
-      bonusMult: baseMult * 1.6,
-      perks: ["Bonus XL +60%", "50 free spins", "Cashback 10%"],
+      bonusMult,
+      perks: ["Bonus 100%", "50 free spins", "Cashback 10%"],
       highlight: true,
       color: T.accent,
     },
@@ -109,12 +108,12 @@ export function M12Chat({
       label: "Diamond VIP",
       icon: "💎",
       deposit: Math.round(baseDep * 25),
-      bonusMult: baseMult * 2.5,
-      perks: ["Bonus MAX +150%", "Free spins illimités", "Cashback 20%", "Host VIP dédié 24/7"],
+      bonusMult,
+      perks: ["Bonus 100%", "Free spins illimités", "Cashback 20%", "Host VIP dédié 24/7"],
       vip: true,
       color: "#B5FFFC",
     },
-  ]), [baseDep, baseMult, T.accent]);
+  ]), [baseDep, T.accent]);
 
   const [selectedKey, setSelectedKey] = React.useState<string>("gold");
   const selected = tiers.find((t) => t.key === selectedKey) || tiers[2];
@@ -146,6 +145,17 @@ export function M12Chat({
   const mm = Math.floor((remain % 3600000) / 60000);
   const ss = Math.floor((remain % 60000) / 1000);
 
+  // Places restantes : decremente lentement (rarete)
+  const [seatsLeft, setSeatsLeft] = React.useState(() => 28 + Math.floor(Math.random() * 12));
+  const TOTAL_SEATS = 50;
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      setSeatsLeft((s) => Math.max(7, s - (Math.random() < 0.3 ? 1 : 0)));
+    }, 18000);
+    return () => window.clearInterval(id);
+  }, []);
+  const seatsPct = (seatsLeft / TOTAL_SEATS) * 100;
+
   const vipRef = React.useRef<HTMLDivElement>(null);
   const heroRef = React.useRef<HTMLElement>(null);
   const nameStyle = pseudoTextStyle(pseudoStyle, T.accent);
@@ -153,7 +163,14 @@ export function M12Chat({
   return (
     <div className="m12-root">
       <style>{`
-        .m12-root{position:relative;min-height:100vh;padding:0 0 160px;background:${T.bgPage};
+        .m12-root{position:relative;min-height:100vh;padding:0 0 160px;
+          /* Bg multi-couches : radials accent dans les coins + base sombre.
+             Donne de la profondeur sans bleed sur le contenu (cards opaques). */
+          background:
+            radial-gradient(70% 50% at 0% 0%, ${T.accent}1f, transparent 65%),
+            radial-gradient(60% 40% at 100% 0%, ${T.accentAlt}1a, transparent 70%),
+            radial-gradient(80% 50% at 50% 100%, ${T.accentHot}14, transparent 75%),
+            linear-gradient(180deg, ${T.bgPage}, ${T.bgCard} 70%, ${T.bgPage});
           font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow-x:hidden;
           --c-accent:${T.accent};--c-light:${T.accentLight};--c-alt:${T.accentAlt};--c-hot:${T.accentHot};--c-glow:${T.accentGlow}}
         .m12-layer{position:relative;z-index:10}
@@ -175,6 +192,20 @@ export function M12Chat({
         .m12-pre{margin:10px 0 3px;font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;opacity:.62}
         .m12-headline{margin:0;font-size:clamp(1.35rem,4.6vw,1.8rem);font-weight:900;letter-spacing:-.02em;line-height:1.12}
         .m12-headline em{font-style:normal;background:linear-gradient(180deg,${T.accent},${T.accentLight});-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 2px 14px ${T.accentGlow})}
+
+        /* ─── Places restantes (rarete) ─── */
+        .m12-seats{margin:10px auto 4px;max-width:420px;padding:10px 14px;border-radius:14px;
+          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
+          border:1px solid rgba(255,255,255,.08)}
+        .m12-seats-top{display:flex;justify-content:space-between;align-items:center;font-size:.72rem;font-weight:700;margin-bottom:6px}
+        .m12-seats-top-label{opacity:.72;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+        .m12-seats-top-label::before{content:"";width:7px;height:7px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;animation:m12-blink 1.2s ease-in-out infinite}
+        .m12-seats-count{color:#ef4444;font-weight:900;font-size:.8rem;font-variant-numeric:tabular-nums}
+        .m12-seats-track{position:relative;height:6px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden}
+        .m12-seats-fill{position:absolute;top:0;left:0;height:100%;border-radius:99px;
+          background:linear-gradient(90deg,${T.accent},${T.accentLight});transition:width .6s ease;
+          box-shadow:0 0 12px ${T.accentGlow}}
+        @keyframes m12-blink{0%,100%{opacity:1}50%{opacity:.4}}
 
         /* ─── Tiers grid (cards visibles intégralement + auto-row height) ─── */
         .m12-tiers{padding:12px 14px 10px;max-width:560px;margin:0 auto}
@@ -271,8 +302,8 @@ export function M12Chat({
         }
       `}</style>
 
-      {/* ─── Couches ambient (mesh + aurora + grain) ─── */}
-      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.3} fixed={false} />
+      {/* Bg ambiance via gradients radiaux dans .m12-root (cf style). Pas de
+          couche supplementaire = zero bleed sur les cards opaques. */}
 
       <div className="m12-layer">
       {/* ─── Urgency bar ─── */}
@@ -294,6 +325,17 @@ export function M12Chat({
         ) : null}
         <h2 className="m12-headline">Plus tu déposes, <em>plus ton bonus explose</em></h2>
       </section>
+
+      {/* ─── Places restantes ─── */}
+      <div className="m12-seats">
+        <div className="m12-seats-top">
+          <span className="m12-seats-top-label">Places restantes aujourd'hui</span>
+          <span className="m12-seats-count">{seatsLeft} / {TOTAL_SEATS}</span>
+        </div>
+        <div className="m12-seats-track">
+          <div className="m12-seats-fill" style={{ width: `${seatsPct}%` }} />
+        </div>
+      </div>
 
       {/* ─── Tiers grid ─── */}
       <section className="m12-tiers">

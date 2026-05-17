@@ -1,10 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// M7 — "Reaction Tap" (remplacement de l'ancien Plinko).
-// Une barre defile en boucle de gauche a droite. Une zone "JACKPOT" doree
-// marque le sweet spot. Le joueur tape au moment ou le curseur entre dans la
-// zone. Plus le timing est centre, plus le multiplier est eleve (1.5x → 5x).
+// M7 — "Lucky Cards" (concept original V3, remplace l'ancien Plinko).
+// 5 cartes face cachee. Le joueur retourne une carte a la fois, chacune
+// revele un multiplier (×0.5 / ×1 / ×1.5 / ×2 / ×3 / BUST). Le multiplier
+// s'accumule (additionne ou multiplie selon design — ici on cumule mult).
+// A tout moment, le joueur peut STOP pour cash out le multiplier total
+// accumule. Continuer = risque de tomber sur BUST (perd le multiplier).
 //
-// Skill-based, viral, parfait pour ig/tiktok : "regarde si tu peux faire 5x".
+// Decision = engagement = conversion. Skill perceived + tension.
+//
 // Fichier reste M7Plinko.tsx pour retrocompat saves (export name preserve).
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -14,7 +17,6 @@ import { sfx } from "../lib/v3_sound";
 import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
 import { V3OfferPopup } from "./V3OfferPopup";
 import { V3SocialProof } from "./V3SocialProof";
-import { V3MeshBg, V3AuroraBg, V3GrainBg, V3Spotlight } from "./V3AmbientFx";
 import { V3MagneticButton } from "./V3MagneticButton";
 import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
 import { extendPalette } from "../lib/v3_palette";
@@ -36,14 +38,23 @@ export type M7PlinkoProps = {
   pseudoStyle?: V3LineStyleLike;
 };
 
-type Phase = "idle" | "playing" | "result";
-const ZONES = [
-  { from: 5,  to: 18, mult: 1.5, label: "1.5x" },
-  { from: 32, to: 42, mult: 2.5, label: "2.5x" },
-  { from: 47, to: 53, mult: 5.0, label: "5x", jackpot: true },
-  { from: 58, to: 68, mult: 2.5, label: "2.5x" },
-  { from: 82, to: 95, mult: 1.5, label: "1.5x" },
+// Pool de valeurs possibles. Plus de bons que de BUST → percu comme accessible.
+type CardValue = { mult: number; label: string; kind: "win" | "bust" };
+const POOL: CardValue[] = [
+  { mult: 0.5, label: "+0.5x", kind: "win" },
+  { mult: 1.0, label: "+1x",   kind: "win" },
+  { mult: 1.0, label: "+1x",   kind: "win" },
+  { mult: 1.5, label: "+1.5x", kind: "win" },
+  { mult: 2.0, label: "+2x",   kind: "win" },
+  { mult: 3.0, label: "+3x",   kind: "win" },
+  { mult: 0,   label: "BUST",  kind: "bust" },
 ];
+
+function pickValue(): CardValue {
+  return POOL[Math.floor(Math.random() * POOL.length)];
+}
+
+type Phase = "idle" | "playing" | "busted" | "cashed";
 
 export function M7Plinko({
   pseudo, profileImageUrl, depositAmount, bonusAmount, affiLink, theme, pseudoStyle,
@@ -58,137 +69,134 @@ export function M7Plinko({
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
   const safeAffi = affiLink || "#";
 
+  // 5 cards : valeurs fixees au mount (mais cachees) pour stabilite.
+  const [cards, setCards] = React.useState<CardValue[]>(() => Array.from({ length: 5 }, pickValue));
+  const [revealed, setRevealed] = React.useState<boolean[]>([false, false, false, false, false]);
   const [phase, setPhase] = React.useState<Phase>("idle");
   const [popupOpen, setPopupOpen] = React.useState(false);
-  const [cursorPos, setCursorPos] = React.useState(0);
-  const cursorRef = React.useRef(0);
-  const dirRef = React.useRef(1);
-  const rafRef = React.useRef(0);
-  const [hit, setHit] = React.useState<{ mult: number; label: string; pos: number } | null>(null);
 
-  React.useEffect(() => {
-    if (phase !== "playing") return;
-    const SPEED = 1.4;
-    const tick = () => {
-      cursorRef.current += dirRef.current * SPEED;
-      if (cursorRef.current >= 100) { cursorRef.current = 100; dirRef.current = -1; }
-      if (cursorRef.current <= 0)   { cursorRef.current = 0;   dirRef.current = 1; }
-      setCursorPos(cursorRef.current);
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [phase]);
-
-  const start = () => {
-    setHit(null);
-    setPhase("playing");
-    cursorRef.current = 0;
-    dirRef.current = 1;
-    sfx.tick();
+  const revealCard = (idx: number) => {
+    if (revealed[idx] || phase === "busted" || phase === "cashed") return;
+    if (phase === "idle") setPhase("playing");
+    const value = cards[idx];
+    setRevealed((arr) => arr.map((r, i) => (i === idx ? true : r)));
+    if (value.kind === "bust") {
+      sfx.loss();
+      setPhase("busted");
+    } else {
+      sfx.tick();
+      // Si toutes les cards revelees sans bust → auto cash
+      if (revealed.filter(Boolean).length + 1 === 5) {
+        setPhase("cashed");
+        sfx.win();
+      }
+    }
   };
 
-  const tap = () => {
+  const cashOut = () => {
     if (phase !== "playing") return;
-    cancelAnimationFrame(rafRef.current);
-    const pos = cursorRef.current;
-    const zone = ZONES.find((z) => pos >= z.from && pos <= z.to);
-    if (zone) {
-      const center = (zone.from + zone.to) / 2;
-      const offset = Math.abs(pos - center) / ((zone.to - zone.from) / 2);
-      const finalMult = zone.jackpot ? zone.mult : Math.max(1.0, zone.mult * (1 - offset * 0.25));
-      setHit({ mult: finalMult, label: zone.label, pos });
-      sfx.win();
-    } else {
-      setHit({ mult: 1.0, label: "Raté", pos });
-      sfx.loss();
-    }
-    setPhase("result");
+    setPhase("cashed");
+    sfx.win();
   };
 
   const reset = () => {
+    setCards(Array.from({ length: 5 }, pickValue));
+    setRevealed([false, false, false, false, false]);
     setPhase("idle");
-    setHit(null);
-    cursorRef.current = 0;
   };
 
-  const onMainCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+  // Multiplier total accumule (sur les cards revealed qui ne sont pas BUST)
+  const totalMult = revealed.reduce((acc, r, i) => {
+    if (!r) return acc;
+    const v = cards[i];
+    return v.kind === "bust" ? 0 : acc + v.mult;
+  }, 0);
+  // Si bust : total = 0. Si cashed : on garde le total avant cash.
+  const finalMult = phase === "busted" ? 0 : totalMult;
+  const wonBonus = bonusAmount != null ? Math.round(bonusAmount * finalMult) : null;
 
-  const wonBonus = hit && bonusAmount != null ? Math.round(bonusAmount * hit.mult) : null;
-  const popupSteps = React.useMemo(() => ["Validation du score", "Preparation de l'offre", "Lien bonus pret"], []);
+  const onCta = (e: React.MouseEvent) => { e.preventDefault(); setPopupOpen(true); };
+
+  const popupSteps = React.useMemo(() => ["Validation du score", "Préparation de l'offre", "Lien bonus prêt"], []);
 
   return (
     <div className="m7-root">
       <style>{`
-        .m7-root{position:relative;min-height:100vh;padding:24px 18px 160px;background:${T.bgPage};
+        .m7-root{position:relative;min-height:100vh;padding:24px 18px 160px;
+          background:
+            radial-gradient(70% 50% at 0% 0%, ${T.accent}1f, transparent 65%),
+            radial-gradient(60% 40% at 100% 0%, ${T.accentAlt}1a, transparent 70%),
+            radial-gradient(80% 50% at 50% 100%, ${T.accentHot}14, transparent 75%),
+            linear-gradient(180deg, ${T.bgPage}, ${T.bgCard} 70%, ${T.bgPage});
           font-family:'Inter','Space Grotesk',sans-serif;color:#fff;overflow:hidden}
         .m7-layer{position:relative;z-index:10;max-width:440px;margin:0 auto}
 
-        .m7-header{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+        .m7-header{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;margin-bottom:14px}
         .m7-avatar{width:64px;height:64px;border-radius:50%;overflow:hidden;border:2px solid ${T.accent};
-          box-shadow:0 0 0 3px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
+          box-shadow:0 0 0 3px ${T.bgPage},0 6px 16px rgba(0,0,0,.45);background:${T.bgCard}}
         .m7-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+        .m7-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.62;margin:6px 0 0}
+        .m7-headline{margin:4px 0 0;font-size:clamp(1.5rem,5vw,1.95rem);font-weight:900;letter-spacing:-.02em;line-height:1.1}
+        .m7-headline em{font-style:normal;color:${T.accent};text-shadow:0 0 18px ${T.accentGlow}}
 
-        .m7-game-card{position:relative;padding:28px 22px 24px;border-radius:24px;text-align:center;overflow:hidden;
-          background:linear-gradient(160deg,${T.bgCard}ee,${T.bgPage}ee);
-          backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+        /* ─── Multiplier display (toujours visible) ─── */
+        .m7-mult-box{margin:16px auto 0;padding:14px 18px;border-radius:16px;text-align:center;
+          background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
           border:1.5px solid ${T.accent}55;
-          box-shadow:0 0 0 1px ${T.accent}22 inset,0 22px 70px ${T.accentGlow}99}
-
-        .m7-label{font-size:.66rem;letter-spacing:.32em;text-transform:uppercase;opacity:.6;margin:0 0 18px}
-
-        .m7-bar-wrap{position:relative;height:54px;border-radius:14px;background:rgba(0,0,0,.45);overflow:hidden;
-          border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 2px 8px rgba(0,0,0,.5)}
-        .m7-zone{position:absolute;top:0;bottom:0;display:flex;align-items:center;justify-content:center;
-          font-size:.62rem;font-weight:800;letter-spacing:.06em;color:rgba(255,255,255,.55);overflow:hidden}
-        .m7-zone.normal{background:linear-gradient(180deg,${T.accent}40,${T.accent}20)}
-        .m7-zone.jackpot{background:linear-gradient(180deg,${T.accentLight},${T.accent});color:#000;font-size:.7rem;font-weight:900;
-          box-shadow:0 0 24px ${T.accentGlow},inset 0 0 0 1px rgba(255,255,255,.4);
-          animation:m7-jackpot-pulse 1.4s ease-in-out infinite}
-        .m7-cursor{position:absolute;top:-6px;bottom:-6px;width:5px;border-radius:3px;background:#fff;
-          box-shadow:0 0 14px #fff,0 0 24px ${T.accent},0 0 36px ${T.accent};will-change:left;pointer-events:none;z-index:5}
-        .m7-cursor::after{content:"";position:absolute;left:50%;bottom:-12px;transform:translateX(-50%);width:0;height:0;
-          border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #fff}
-
-        .m7-result{margin:18px 0 0;min-height:74px}
-        .m7-result-mult{font-size:clamp(2.5rem,9vw,3.4rem);font-weight:900;line-height:1;letter-spacing:-.04em;
-          font-variant-numeric:tabular-nums;text-shadow:0 4px 16px rgba(0,0,0,.5)}
-        .m7-result-mult.win{color:${T.accentLight};text-shadow:0 0 24px ${T.accentLight},0 4px 16px rgba(0,0,0,.5)}
-        .m7-result-mult.jackpot{background:linear-gradient(180deg,${T.accent},${T.accentLight} 60%,${T.accentHot});
+          box-shadow:0 0 0 1px ${T.accent}22 inset,0 12px 30px ${T.accentGlow}66}
+        .m7-mult-label{font-size:.66rem;letter-spacing:.28em;text-transform:uppercase;opacity:.7;margin:0;font-weight:700;color:${T.accent}}
+        .m7-mult-val{margin:4px 0 0;font-size:clamp(2rem,7vw,2.6rem);font-weight:900;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums;
+          background:linear-gradient(180deg,#fff,${T.accent} 60%);
           -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
-          filter:drop-shadow(0 0 28px ${T.accentGlow})}
-        .m7-result-mult.miss{color:#ef4444}
-        .m7-result-sub{margin:4px 0 0;font-size:.85rem;opacity:.85;font-weight:600}
-        .m7-result-bonus{font-size:1.4rem;font-weight:900;color:${T.accent};margin-top:6px}
+          filter:drop-shadow(0 2px 14px ${T.accentGlow})}
+        .m7-mult-val.busted{background:#ef4444;-webkit-background-clip:initial;background-clip:initial;-webkit-text-fill-color:#ef4444;color:#ef4444;filter:none}
+        .m7-mult-bonus{margin:4px 0 0;font-size:.85rem;font-weight:700;opacity:.85}
+        .m7-mult-bonus strong{color:${T.accent}}
 
-        .m7-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:20px;margin-top:18px;border-radius:16px;
-          font-family:inherit;font-size:1.05rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;border:none;
-          background:linear-gradient(135deg,${T.accent},${T.accentLight});
+        /* ─── Cards grid (5 cards en ligne) ─── */
+        .m7-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:18px auto 0;max-width:420px;perspective:1000px}
+        .m7-card{position:relative;aspect-ratio:2/3;cursor:pointer;border:none;background:none;padding:0;
+          transform-style:preserve-3d;transition:transform .5s cubic-bezier(.4,.7,.3,1.2)}
+        .m7-card.revealed{transform:rotateY(180deg)}
+        .m7-card-face{position:absolute;inset:0;border-radius:10px;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+          display:flex;align-items:center;justify-content:center;font-weight:900;text-align:center;
+          box-shadow:0 4px 14px rgba(0,0,0,.5)}
+        .m7-card-back{background:
+            repeating-linear-gradient(45deg,${T.accent}66 0 6px,${T.accentLight}66 6px 12px),
+            linear-gradient(135deg,${T.accent},${T.accentLight});
+          border:1.5px solid ${T.accentLight};color:#1a0f08;font-size:1.5rem}
+        .m7-card-back::after{content:"?";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+          font-family:'Bagel Fat One',cursive;font-size:2rem;color:#1a0f08;
+          background:radial-gradient(circle,${T.accentLight} 0%,transparent 70%);
+          border-radius:10px}
+        .m7-card:not(.revealed):hover .m7-card-back{transform:translateY(-3px);transition:transform .15s}
+        .m7-card-front{background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
+          border:2px solid ${T.accent};color:#fff;font-size:.95rem;
+          transform:rotateY(180deg);
+          text-shadow:0 0 14px ${T.accent}}
+        .m7-card-front.bust{border-color:#ef4444;color:#ef4444;text-shadow:0 0 14px #ef4444;
+          background:linear-gradient(160deg,#3a0a0a,${T.bgPage})}
+        .m7-card-front.win{background:linear-gradient(160deg,${T.bgCard},${T.bgPage});
+          box-shadow:inset 0 0 22px ${T.accentGlow}}
+
+        /* ─── Actions ─── */
+        .m7-actions{display:flex;gap:8px;margin:18px 0 0}
+        .m7-action{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:18px;border-radius:14px;
+          font-family:inherit;font-size:.95rem;font-weight:900;letter-spacing:.04em;text-decoration:none;cursor:pointer;border:none;
+          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s}
+        .m7-action.cash{background:linear-gradient(135deg,#22c55e,#86efac);color:#0a3320;
+          box-shadow:0 0 36px rgba(34,197,94,.55),0 14px 30px rgba(34,197,94,.4),inset 0 1px 0 rgba(255,255,255,.5)}
+        .m7-action.cta{background:linear-gradient(135deg,${T.accent},${T.accentLight});color:#000;
           box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
-          text-shadow:0 1px 0 rgba(255,255,255,.3);transition:transform .12s;animation:m7-breath 2.6s ease-in-out infinite}
+          animation:m7-breath 2.6s ease-in-out infinite}
+        .m7-action.replay{background:rgba(255,255,255,.08);color:#fff;text-shadow:none;border:1px solid rgba(255,255,255,.15)}
         .m7-action:active{transform:scale(.97)}
-        .m7-action.tap{background:linear-gradient(135deg,#ef4444,#f87171);color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.3);
-          box-shadow:0 0 36px rgba(239,68,68,.6),0 14px 30px rgba(239,68,68,.4);animation:m7-tap-pulse .6s ease-in-out infinite}
-        .m7-action.replay{background:rgba(255,255,255,.08);color:#fff;text-shadow:none;border:1px solid rgba(255,255,255,.18);
-          box-shadow:0 8px 20px rgba(0,0,0,.3);animation:none;margin-top:10px}
 
-        .m7-cta-final{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:22px;margin-top:18px;border-radius:18px;
-          font-size:1.1rem;font-weight:900;letter-spacing:.04em;color:#000;text-decoration:none;cursor:pointer;
-          background:linear-gradient(135deg,${T.accent},${T.accentLight});
-          box-shadow:0 0 40px ${T.accentGlow},0 16px 36px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5);
-          text-shadow:0 1px 0 rgba(255,255,255,.3)}
-        .m7-cta-final::after{content:"→";font-size:1.3rem;margin-left:4px}
-        .m7-cta-sub{margin-top:10px;text-align:center;font-size:.72rem;opacity:.65}
+        .m7-cta-sub{margin:12px 0 0;text-align:center;font-size:.74rem;opacity:.7}
 
-        @keyframes m7-jackpot-pulse{0%,100%{box-shadow:0 0 24px ${T.accentGlow},inset 0 0 0 1px rgba(255,255,255,.4)}50%{box-shadow:0 0 44px ${T.accentLight},inset 0 0 0 1px rgba(255,255,255,.6)}}
-        @keyframes m7-tap-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
         @keyframes m7-breath{0%,100%{box-shadow:0 0 36px ${T.accentGlow},0 14px 30px ${T.accent}66,inset 0 1px 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 56px ${T.accentLight},0 14px 30px ${T.accent}99,inset 0 1px 0 rgba(255,255,255,.6)}}
-        @media (prefers-reduced-motion:reduce){.m7-zone.jackpot,.m7-action{animation:none !important}}
+        @media (prefers-reduced-motion:reduce){.m7-card,.m7-action.cta{animation:none !important;transition:none !important}}
       `}</style>
-
-      <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.42} />
-      <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.16} />
-      <V3GrainBg opacity={0.05} />
 
       <div className="m7-layer">
         {(profileImageUrl || pseudo) ? (
@@ -202,77 +210,87 @@ export function M7Plinko({
           </div>
         ) : null}
 
-        <div style={{ position: "relative" }}>
-          <V3Spotlight accent={T.accent} accentAlt={T.accentAlt} intensity={0.4} size={340} />
-          <div className="m7-game-card">
-            <p className="m7-label">Tape pile sur le JACKPOT</p>
+        <p className="m7-label">Tente ta chance</p>
+        <h2 className="m7-headline">
+          {phase === "busted" ? <>💥 <em>BUST !</em></> :
+           phase === "cashed" ? <>✨ <em>Cash out réussi</em></> :
+           <>Retourne les cartes, <em>évite le BUST</em></>}
+        </h2>
 
-            <div className="m7-bar-wrap">
-              {ZONES.map((z, i) => (
-                <div
-                  key={i}
-                  className={`m7-zone ${z.jackpot ? "jackpot" : "normal"}`}
-                  style={{ left: `${z.from}%`, width: `${z.to - z.from}%` }}
-                >
-                  {z.label}
-                </div>
-              ))}
-              {phase === "playing" ? (
-                <div className="m7-cursor" style={{ left: `calc(${cursorPos}% - 2.5px)` }} />
-              ) : null}
-              {phase === "result" && hit ? (
-                <div className="m7-cursor" style={{ left: `calc(${hit.pos}% - 2.5px)`, background: hit.mult > 1 ? T.accentLight : "#ef4444" }} />
-              ) : null}
-            </div>
-
-            <div className="m7-result">
-              {phase === "result" && hit ? (
-                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-                  <div className={`m7-result-mult ${hit.mult >= 5 ? "jackpot" : hit.mult > 1 ? "win" : "miss"}`}>
-                    {hit.mult >= 5 ? "🎰 JACKPOT" : `${hit.mult.toFixed(2)}x`}
-                  </div>
-                  <p className="m7-result-sub">{hit.mult >= 5 ? "Tu as touché le sweet spot !" : hit.mult > 1 ? `Bien joué — ${hit.label}` : "Trop tôt ou trop tard, réessaie !"}</p>
-                  {wonBonus != null && hit.mult > 1 ? <p className="m7-result-bonus">+{wonBonus}€ bonus</p> : null}
-                </motion.div>
-              ) : phase === "playing" ? (
-                <p style={{ fontSize: ".88rem", opacity: 0.8 }}>Cible la zone dorée et tape !</p>
-              ) : (
-                <p style={{ fontSize: ".88rem", opacity: 0.7 }}>{dep ? `Dépose ${dep} → joue pour ${bon || "ton bonus"}` : "Lance le jeu pour booster ton bonus"}</p>
-              )}
-            </div>
-
-            {phase === "idle" ? (
-              <motion.button type="button" className="m7-action" onClick={start} whileTap={{ scale: 0.97 }}>
-                ▶ LANCER
-              </motion.button>
-            ) : phase === "playing" ? (
-              <motion.button type="button" className="m7-action tap" onClick={tap} whileTap={{ scale: 0.94 }}>
-                🎯 TAPE !
-              </motion.button>
-            ) : (
-              <>
-                <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m7-action">
-                  🚀 RÉCLAMER {wonBonus != null && hit && hit.mult > 1 ? `+${wonBonus}€` : (bon ? `+${bon}` : "MON BONUS")}
-                </V3MagneticButton>
-                <button type="button" className="m7-action replay" onClick={reset}>
-                  ↻ Rejouer
-                </button>
-              </>
-            )}
+        {/* Multiplier accumule */}
+        <div className="m7-mult-box">
+          <p className="m7-mult-label">Multiplier accumulé</p>
+          <div className={`m7-mult-val ${phase === "busted" ? "busted" : ""}`}>
+            ×{finalMult.toFixed(1)}
           </div>
+          {wonBonus != null && finalMult > 0 ? (
+            <p className="m7-mult-bonus">Bonus = <strong>+{wonBonus}€</strong></p>
+          ) : phase === "busted" ? (
+            <p className="m7-mult-bonus" style={{ opacity: 0.6 }}>Tout perdu — réessaie</p>
+          ) : (
+            <p className="m7-mult-bonus" style={{ opacity: 0.6 }}>Retourne une carte pour commencer</p>
+          )}
         </div>
 
-        <V3MagneticButton href={safeAffi} onClick={onMainCta} className="m7-cta-final v3-cta">
-          {bon ? `RÉCLAMER ${bon} BONUS` : "RÉCLAMER MON BONUS"}
-        </V3MagneticButton>
-        <p className="m7-cta-sub">Inscription en 30s · Crédit instantané</p>
+        {/* Grid 5 cartes */}
+        <div className="m7-cards">
+          {cards.map((c, i) => {
+            const isRevealed = revealed[i];
+            return (
+              <motion.button
+                key={i}
+                type="button"
+                className={`m7-card ${isRevealed ? "revealed" : ""}`}
+                onClick={() => revealCard(i)}
+                whileTap={{ scale: 0.94 }}
+                disabled={isRevealed || phase === "busted" || phase === "cashed"}
+              >
+                <div className="m7-card-face m7-card-back" />
+                <div className={`m7-card-face m7-card-front ${c.kind === "bust" ? "bust" : "win"}`}>
+                  {c.kind === "bust" ? "💥" : c.label}
+                </div>
+              </motion.button>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div className="m7-actions">
+          {phase === "idle" || phase === "playing" ? (
+            <>
+              {phase === "playing" && finalMult > 0 ? (
+                <motion.button type="button" className="m7-action cash" onClick={cashOut} whileTap={{ scale: 0.96 }}>
+                  💰 CASH OUT ×{finalMult.toFixed(1)}
+                </motion.button>
+              ) : (
+                <div className="m7-action replay" style={{ opacity: 0.5, cursor: "default" }}>
+                  Choisis une carte
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <V3MagneticButton href={safeAffi} onClick={onCta} className="m7-action cta">
+                🚀 RÉCLAMER {wonBonus != null && finalMult > 0 ? `+${wonBonus}€` : (bon ? `+${bon}` : "MON BONUS")}
+              </V3MagneticButton>
+              <button type="button" className="m7-action replay" onClick={reset}>↻</button>
+            </>
+          )}
+        </div>
+
+        <p className="m7-cta-sub">
+          {phase === "playing" ? "Continue (×X) ou cash out tes gains. Une carte BUST = tout perdu." :
+           phase === "cashed" ? `Bravo — Dépose ${dep || "10€"} pour réclamer ton bonus` :
+           phase === "busted" ? "Pas de chance, rejoue ou réclame ton bonus standard" :
+           "Sur 5 cartes : multiplier ou BUST. Multiplier × bonus de base."}
+        </p>
       </div>
 
       <V3OfferPopup
         open={popupOpen}
         onClose={() => setPopupOpen(false)}
         theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
-        score={hit && hit.mult > 1 ? `${hit.mult.toFixed(2)}x` : (bon ? `+${bon}` : "Bonus")}
+        score={finalMult > 0 ? `×${finalMult.toFixed(1)}` : (bon ? `+${bon}` : "Bonus")}
         depositAmount={dep}
         bonusAmount={wonBonus != null ? `${wonBonus}€` : bon}
         steps={popupSteps}

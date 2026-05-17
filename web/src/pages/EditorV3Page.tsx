@@ -630,7 +630,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M14"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -638,17 +638,15 @@ function WizardQuickView({
               {inputs.modelKind === "M1" && "M1 = M4 V1 (offre VIP doublée + cards promo + reviews)"}
               {inputs.modelKind === "M2" && "M2 = M5 V1 (golden chance, 8 variants couleur)"}
               {inputs.modelKind === "M3" && "M3 = Roue à tourner — segments néon, bonus à l'arrivée"}
-              {inputs.modelKind === "M4" && "M4 = Crash Game — multiplier monte, cash out avant le crash (1.0x → 8x)"}
+              {inputs.modelKind === "M4" && "M4 = Crack the Vault — 3 cadenas à briser, coffre s'ouvre avec burst dorées"}
               {inputs.modelKind === "M5" && "M5 = Slot Machine 3×3 — ligne bonus centrale"}
               {inputs.modelKind === "M6" && "M6 = Mines 3×3 sans bombe"}
-              {inputs.modelKind === "M7" && "M7 = Reaction Tap — barre défile, tape pile sur la zone JACKPOT (jusqu'à 5x)"}
+              {inputs.modelKind === "M7" && "M7 = Lucky Cards — 5 cartes face cachée, retourne-les pour accumuler multiplier, cash out avant BUST"}
               {inputs.modelKind === "M8" && "M8 = Penalty — thème d'équipe configurable"}
               {inputs.modelKind === "M9" && "M9 = Crossy Road — checkpoint 100%"}
               {inputs.modelKind === "M10" && "M10 = Cyclope — storytelling rose/or (halo, hero card, FAQ)"}
               {inputs.modelKind === "M11" && "M11 = Aurix — aurora + spotlight + parallax + magnetic CTA"}
-              {inputs.modelKind === "M12" && "M12 = Paliers VIP — Bronze→Diamond, bonus scalé + email VIP inline"}
-              {inputs.modelKind === "M13" && "M13 = Urgency — countdown 24h + places + live feed + VIP capture"}
-              {inputs.modelKind === "M14" && "M14 = Témoignage — case study gros gagnant + double CTA standard/VIP"}
+              {inputs.modelKind === "M12" && "M12 = Paliers VIP — Bronze→Diamond, bonus 100% scalé + places restantes + capture email VIP gros joueurs"}
             </div>
           </div>
 

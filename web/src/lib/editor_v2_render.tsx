@@ -36,8 +36,6 @@ import { M9Crossy } from "../components/M9Crossy";
 import { M10Cyclope } from "../components/M10Cyclope";
 import { M11Aurix } from "../components/M11Aurix";
 import { M12Chat } from "../components/M12Chat";
-import { M13Ticket } from "../components/M13Ticket";
-import { M14Magazine } from "../components/M14Magazine";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -417,8 +415,6 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
       />
     );
     case "M12": return <M12Chat {...props} />;
-    case "M13": return <M13Ticket {...props} />;
-    case "M14": return <M14Magazine {...props} />;
   }
 }
 

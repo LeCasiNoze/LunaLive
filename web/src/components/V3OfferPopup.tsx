@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 
 type PopupTheme = {
   accent?: string;
@@ -182,40 +183,6 @@ export function V3OfferPopup({
     }, 1600);
   };
 
-  // ─── Fix containing block (editor preview transformed parent) ──────────────
-  // Hook DOIT etre place AVANT toute early-return pour respecter Rules of Hooks.
-  const overlayRef = React.useRef<HTMLDivElement>(null);
-  React.useEffect(() => {
-    if (!open) return;
-    const overlay = overlayRef.current;
-    if (!overlay) return;
-    let scroller: HTMLElement | null = overlay.parentElement;
-    while (scroller && scroller !== document.body && scroller !== document.documentElement) {
-      const cs = getComputedStyle(scroller);
-      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
-        break;
-      }
-      scroller = scroller.parentElement;
-    }
-    if (!scroller || scroller === document.body || scroller === document.documentElement) {
-      return;
-    }
-    const update = () => {
-      overlay.style.position = "absolute";
-      overlay.style.top = `${scroller!.scrollTop}px`;
-      overlay.style.left = "0";
-      overlay.style.right = "0";
-      overlay.style.height = `${scroller!.clientHeight}px`;
-    };
-    update();
-    scroller.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      scroller!.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, [open]);
-
   if (!open) return null;
 
   const accent = theme?.accent || "#f7c948";
@@ -233,9 +200,11 @@ export function V3OfferPopup({
     ?? (pct != null && pct > 0 ? `Ton offre de ${pct}% bonus !` : "Ton offre");
   const computedTitle = (title !== undefined ? title : (pct != null && pct > 0 ? `${pct}% bonus débloqué` : "Bonus débloqué"));
 
-  return (
+  // Portal vers document.body : echappe tout containing block transforme
+  // (editor preview translateZ(0)) → position:fixed marche relatif au viewport.
+  if (typeof document === "undefined") return null;
+  return createPortal((
     <div
-      ref={overlayRef}
       className="v3p-overlay"
       onClick={onClose}
       style={{
@@ -444,5 +413,5 @@ export function V3OfferPopup({
         ) : null}
       </div>
     </div>
-  );
+  ), document.body);
 }
