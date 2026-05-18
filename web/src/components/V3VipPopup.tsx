@@ -33,7 +33,7 @@ export type V3VipPopupProps = {
 type Mode = "idle" | "sending" | "sent" | "error";
 
 export function V3VipPopup({
-  open, onClose, href, theme,
+  open, onClose, href: _href, theme,
   title = "Programme VIP exclusif",
   subtitle = "Tu déposes entre 500€ et 1 000€ par mois (ou plus) ? Tu mérites un traitement à la hauteur.",
 }: V3VipPopupProps) {
@@ -85,11 +85,8 @@ export function V3VipPopup({
     } catch { /* lead perdu mais on continue */ }
     try { window.parent?.postMessage({ type: "v3-vip-lead", email: v, slug }, "*"); } catch { /* noop */ }
     setMode("sent");
-    if (href && href !== "#") {
-      window.setTimeout(() => {
-        try { window.open(href, "_blank", "noopener,noreferrer"); } catch { /* noop */ }
-      }, 1800);
-    }
+    // Pas d'auto-redirect : l'user doit lire les infos mail (boite/spam/promo)
+    // avant de fermer. Il ferme la popup quand il veut via la croix.
   };
 
   return createPortal((
@@ -172,12 +169,28 @@ export function V3VipPopup({
         .v3vip-trust span::before{content:"";width:5px;height:5px;border-radius:50%;background:#34d399;box-shadow:0 0 6px #34d399}
 
         /* Success state */
-        .v3vip-success{display:flex;flex-direction:column;align-items:center;padding:30px 10px 10px;animation:v3vip-success-in .4s cubic-bezier(.2,1.4,.5,1) both}
+        .v3vip-success{display:flex;flex-direction:column;align-items:center;padding:24px 8px 8px;animation:v3vip-success-in .4s cubic-bezier(.2,1.4,.5,1) both}
         .v3vip-success-check{width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#86efac);
           display:flex;align-items:center;justify-content:center;color:#0a3320;font-size:2rem;font-weight:900;
           box-shadow:0 0 0 6px rgba(34,197,94,.18),0 12px 30px rgba(34,197,94,.5)}
         .v3vip-success-title{margin:14px 0 0;font-size:1.15rem;font-weight:900;color:#86EFAC}
         .v3vip-success-sub{margin:6px 0 0;font-size:.85rem;opacity:.85;line-height:1.5}
+        /* Carte mail : explique au user qu'un mail vient d'arriver dans sa boite */
+        .v3vip-mail-card{margin:18px 0 8px;width:100%;padding:14px 16px;border-radius:14px;text-align:left;
+          background:linear-gradient(135deg,${accent}1f,${accentLight}14);
+          border:1.5px solid ${accent}66;
+          box-shadow:0 6px 20px ${accentGlow}55, inset 0 1px 0 rgba(255,255,255,.08)}
+        .v3vip-mail-icon{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;
+          background:linear-gradient(135deg,${accent},${accentLight});color:#1a0f08;font-size:1.1rem;flex-shrink:0;
+          box-shadow:0 4px 10px ${accentGlow}}
+        .v3vip-mail-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+        .v3vip-mail-head-title{font-size:.95rem;font-weight:900;color:#fff;letter-spacing:.01em}
+        .v3vip-mail-meta{font-size:.78rem;line-height:1.55;color:rgba(255,255,255,.85)}
+        .v3vip-mail-meta strong{color:${accent};font-weight:800}
+        .v3vip-mail-meta code{background:rgba(0,0,0,.4);padding:1px 6px;border-radius:4px;font-size:.74rem;color:#fff;font-family:'SF Mono','Consolas',monospace}
+        .v3vip-mail-hint{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+        .v3vip-mail-folder{font-size:.7rem;font-weight:700;padding:4px 9px;border-radius:6px;
+          background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;letter-spacing:.02em}
 
         @keyframes v3vip-fade{from{opacity:0}to{opacity:1}}
         @keyframes v3vip-pop{from{opacity:0;transform:scale(.85) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}
@@ -197,8 +210,28 @@ export function V3VipPopup({
         {mode === "sent" ? (
           <div className="v3vip-success">
             <div className="v3vip-success-check">✓</div>
-            <h3 className="v3vip-success-title">Demande envoyée !</h3>
-            <p className="v3vip-success-sub">Un host VIP dédié te contacte sous 24h.<br />Redirection vers ton bonus…</p>
+            <h3 className="v3vip-success-title">Demande reçue !</h3>
+            <p className="v3vip-success-sub">Un host VIP dédié te contacte sous 24h sur Telegram.</p>
+
+            {/* Indication mail auto envoyé — guide l'user vers sa boîte */}
+            <div className="v3vip-mail-card">
+              <div className="v3vip-mail-head">
+                <span className="v3vip-mail-icon">📨</span>
+                <div className="v3vip-mail-head-title">Un email vient de t'être envoyé</div>
+              </div>
+              <div className="v3vip-mail-meta">
+                Expéditeur&nbsp;: <strong>Aurix VIP</strong> &lt;<code>aurixvip@gmail.com</code>&gt;<br />
+                Objet&nbsp;: 👑 Bienvenue au Club VIP Celsius Casino
+              </div>
+              <div className="v3vip-mail-hint">
+                <span className="v3vip-mail-folder">📥 Boîte de réception</span>
+                <span className="v3vip-mail-folder">📣 Promotions</span>
+                <span className="v3vip-mail-folder">⚠️ Spam</span>
+              </div>
+              <p className="v3vip-mail-meta" style={{ marginTop: "10px", fontSize: ".75rem", opacity: 0.75 }}>
+                Pense à vérifier les <strong>3 dossiers</strong>. Il contient les instructions complètes + le lien direct vers ton host.
+              </p>
+            </div>
           </div>
         ) : (
           <>
