@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth } from "../auth.js";
 import { requireFsbAccess } from "./fsb_guard.js";
+import { notifyVipLeadAsync } from "../utils/vipNotify.js";
 
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
@@ -353,11 +354,21 @@ publicAffiPagesRouter.post(
     );
     const pageId = pageRows[0]?.id ?? null;
 
+    const cleanEmail = input.data.email.toLowerCase().trim();
     await pool.query(
       `INSERT INTO affi_vip_leads (page_id, slug, email, ip_hash, user_agent, referrer)
        VALUES ($1,$2,$3,$4,$5,$6)`,
-      [pageId, slug, input.data.email.toLowerCase().trim(), hashIp(ip), ua, input.data.referrer || null]
+      [pageId, slug, cleanEmail, hashIp(ip), ua, input.data.referrer || null]
     );
+
+    // Notif async (mail welcome + Discord webhook). Ne bloque PAS la reponse.
+    notifyVipLeadAsync({
+      email: cleanEmail,
+      slug,
+      pageId,
+      referrer: input.data.referrer || null,
+    });
+
     return res.json({ ok: true });
   })
 );
