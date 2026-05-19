@@ -707,6 +707,23 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
       embeds: [embed],
       allowedMentions: { roles: mentions.length ? [roleDirectionId, roleModerateurId].filter((x): x is string => !!x) : [] },
     });
+
+    // Envoi parallele au manager via Telegram (best-effort, ne bloque pas le cutoff).
+    try {
+      const { sendRefillBatchToTelegram } = await import("./telegram.js");
+      const cutoffLocal = fmtFull(batch.cutoff_at, tz());
+      await sendRefillBatchToTelegram({
+        batchId: batch.id,
+        cutoffLocal,
+        zone: tz(),
+        managerMention,
+        plainList: plain,
+        fixedAmount: cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
+        count: reqs.length,
+      });
+    } catch (e) {
+      log("Telegram send failed:", e);
+    }
   }
 
   await ensureOpenBatch(guild);
