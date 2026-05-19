@@ -388,7 +388,9 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
         />
 
         {canChooseQuality && (
-          <div ref={menuRef} style={{ position: "absolute", right: 10, bottom: 10 }}>
+          // Positionné en haut à droite pour ne pas chevaucher la barre de contrôles
+          // native du <video controls> (qui occupe bottom-right).
+          <div ref={menuRef} style={{ position: "absolute", right: 10, top: 10, zIndex: 5 }}>
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
@@ -408,7 +410,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
             {menuOpen && (
               <div style={{
-                position: "absolute", right: 0, bottom: "calc(100% + 10px)",
+                position: "absolute", right: 0, top: "calc(100% + 8px)",
                 minWidth: 180, borderRadius: 14, overflow: "hidden",
                 background: "rgba(10, 10, 18, 0.92)",
                 border: "1px solid rgba(180, 160, 255, 0.25)",
