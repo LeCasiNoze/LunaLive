@@ -11,6 +11,7 @@
     "slots-broadcast:list": "cross-env LIST_ONLY=1 node dlive-slots-broadcaster.js"
   },
   "dependencies": {
+    "playwright-core": "^1.60.0",
     "ws": "^8.14.0"
   },
   "keywords": [],

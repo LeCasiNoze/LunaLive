@@ -675,12 +675,26 @@ async function refreshCookieTick() {
 
     const newUs = extractCookieFromHeaders(setCookieList, "u_s");
 
-    if (r.status === 302 || r.status === 301) {
-      const loc = r.headers.get("location") || "";
-      if (loc.includes("login") || loc.includes("auth")) {
-        console.warn(`[cookie-refresh] u_s expiré (redirect login) — re-login manuel requis`);
-        return;
+    // Détecte expiration : soit redirect login, soit Set-Cookie u_s=deleted
+    const isDeleted = setCookieList.some((sc) => /^u_s=deleted/i.test(String(sc).trim()));
+    const isRedirectLogin = (r.status === 301 || r.status === 302) &&
+      /login|auth/i.test(r.headers.get("location") || "");
+    if (isDeleted || isRedirectLogin) {
+      console.warn(`[cookie-refresh] u_s mort (${isDeleted ? "Set-Cookie:deleted" : "redirect login"}) → tentative re-login auto`);
+      try {
+        const { getFreshCookie } = await import("./rumble-bot-login.js");
+        const freshCookie = await getFreshCookie();
+        if (freshCookie) {
+          const ok = await pushBotCookie(freshCookie);
+          if (ok) console.log(`[cookie-refresh] ✓ re-login auto réussi`);
+          else console.warn(`[cookie-refresh] re-login OK mais push API échoué`);
+        } else {
+          console.warn(`[cookie-refresh] re-login auto échoué — intervention manuelle requise`);
+        }
+      } catch (e) {
+        console.warn(`[cookie-refresh] erreur lors du re-login auto`, e?.message || e);
       }
+      return;
     }
 
     if (!newUs) {
