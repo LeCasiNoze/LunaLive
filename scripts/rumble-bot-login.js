@@ -38,7 +38,12 @@ try {
 } catch {}
 
 function findBrowserExecutable() {
+  // Priorité Opera (demandé par user), puis Brave/Chrome en fallback.
   const candidates = [
+    `${process.env.LOCALAPPDATA}\\Programs\\Opera GX\\opera.exe`,
+    `${process.env.LOCALAPPDATA}\\Programs\\Opera\\opera.exe`,
+    "C:\\Program Files\\Opera GX\\opera.exe",
+    "C:\\Program Files\\Opera\\opera.exe",
     "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
