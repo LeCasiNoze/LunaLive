@@ -33,10 +33,17 @@ function uniqBy<T>(arr: T[], keyFn: (x: T) => string) {
 }
 
 function pickBestCapIndex(levels: any[], maxHeight: number): number {
-  let best = -1, bestH = -1;
+  // Pick the variant with highest BANDWIDTH ≤ maxHeight resolution.
+  // Cas Rumble : 2 variantes en 720p (2.7M vs 3.3M) → on veut le 3.3M, pas le premier 720p.
+  let best = -1, bestH = -1, bestBw = -1;
   for (let i = 0; i < levels.length; i++) {
     const h = Number(levels[i]?.height || 0);
-    if (h > 0 && h <= maxHeight && h >= bestH) { bestH = h; best = i; }
+    const bw = Number(levels[i]?.bitrate || levels[i]?.averageBitrate || 0);
+    if (h <= 0 || h > maxHeight) continue;
+    // Prend la plus haute résolution, et en cas d'égalité de résolution, la plus haute bande passante.
+    if (h > bestH || (h === bestH && bw > bestBw)) {
+      bestH = h; bestBw = bw; best = i;
+    }
   }
   return best;
 }
@@ -141,9 +148,13 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       maxMaxBufferLength: 24,
       maxBufferHole: 0.5,
       maxFragLookUpTolerance: 0.2,
-      // ABR conservateur
-      abrBandWidthFactor: 0.8,
-      abrBandWidthUpFactor: 0.7,
+      // ABR optimiste — Rumble fournit du 720p en 2.7-3.3 Mbps,
+      // valeurs précédentes (0.8/0.7) pickaient trop souvent le 360p.
+      abrBandWidthFactor: 0.95,
+      abrBandWidthUpFactor: 0.9,
+      // Démarrer sur la meilleure variante autorisée par le cap (pas auto)
+      // pour éviter le flou les premières secondes le temps que l'ABR converge.
+      startLevel: -1,
       // retries réseau
       fragLoadingMaxRetry: 6,
       fragLoadingRetryDelay: 1000,
@@ -169,23 +180,36 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       const levels = hls.levels || [];
 
-      const lvls = levels.map((lvl: any, i: number) => ({
-        key: String(i),
-        label: lvl?.height ? `${lvl.height}p` : `Niveau ${i}`,
-        levelIndex: i,
-        height: typeof lvl?.height === "number" ? lvl.height : undefined,
-      }));
-      const unique = uniqBy(lvls, (x) => String(x.height || x.label));
-      unique.sort((a, b) => (b.height || 0) - (a.height || 0));
+      // Build options par INDEX (pas dédoublonné par hauteur) pour qu'on puisse
+      // distinguer 2 variantes à même résolution mais bande passante différente
+      // (Rumble fournit parfois 720p@2.7M + 720p@3.3M → on veut exposer les 2).
+      const lvls = levels.map((lvl: any, i: number) => {
+        const bw = Number(lvl?.bitrate || lvl?.averageBitrate || 0);
+        const mbps = bw > 0 ? (bw / 1_000_000).toFixed(1) : null;
+        const baseLabel = lvl?.height ? `${lvl.height}p` : `Niveau ${i}`;
+        return {
+          key: String(i),
+          label: mbps ? `${baseLabel} (${mbps}M)` : baseLabel,
+          levelIndex: i,
+          height: typeof lvl?.height === "number" ? lvl.height : undefined,
+          bandwidth: bw,
+        };
+      });
+      lvls.sort((a, b) => {
+        const dh = (b.height || 0) - (a.height || 0);
+        if (dh !== 0) return dh;
+        return (b.bandwidth || 0) - (a.bandwidth || 0);
+      });
 
       const capIdx = pickBestCapIndex(levels, 1080);
-      const autoLabel = capIdx >= 0 ? "Auto (max 1080p)" : "Auto (recommandé)";
-      const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...unique];
+      const autoLabel = "Auto";
+      const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...lvls];
 
       setLevelsUI(opts);
-      setCanChooseQuality(unique.length >= 2);
+      // On affiche TOUJOURS le sélecteur dès qu'il y a au moins 2 variantes
+      // (même à résolution identique mais bitrates différents).
+      setCanChooseQuality(levels.length >= 2);
 
-      // Appliquer la qualité sauvegardée ou cap 720p
       const validKeys = new Set(opts.map((o) => o.key));
       const savedQ = localStorage.getItem("ll_quality") || "auto";
       const finalQ = validKeys.has(savedQ) ? savedQ : "auto";
@@ -193,8 +217,12 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
       try {
         if (finalQ === "auto") {
-          hls.currentLevel = -1;
-          hls.autoLevelCapping = capIdx >= 0 ? capIdx : -1;
+          // Force la meilleure variante autorisée pour la phase initiale,
+          // puis l'ABR pourra réajuster (mais avec abrBandWidthFactor=0.95
+          // il devrait rester sur le top niveau si le BW le permet).
+          if (capIdx >= 0) { hls.currentLevel = capIdx; }
+          // Repasser en auto après quelques secondes pour adaptation dynamique
+          setTimeout(() => { try { hls.currentLevel = -1; hls.autoLevelCapping = capIdx >= 0 ? capIdx : -1; } catch {} }, 6000);
         } else {
           const idx = Number(finalQ);
           if (Number.isFinite(idx)) { hls.autoLevelCapping = -1; hls.currentLevel = idx; }
