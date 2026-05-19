@@ -19,3 +19,6 @@ bot/.env.*
 *.log
 .DS_Store
 lecasinoze_*.mp4
+
+# Browser profile pour bot Rumble (cookies, NE PAS commit)
+scripts/.rumble-bot-profile/

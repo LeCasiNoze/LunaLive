@@ -51,11 +51,20 @@ function findBrowserExecutable() {
   return null;
 }
 
+// Profil persistant : une fois logué + MFA validé une seule fois, Rumble
+// "trust" ce device → refreshes suivants sans MFA.
+const PROFILE_DIR = resolve(__dir, ".rumble-bot-profile");
+
 /**
- * Re-login via Playwright + browser local. Retourne le cookie string complet
- * (toutes les paires) ou null si échec.
+ * Récupère un cookie frais. Stratégie :
+ *  1. Ouvre le profil persistant (headless si déjà setup, sinon headed pour MFA)
+ *  2. Visite rumble.com/account
+ *  3. Si redirigé vers login → fait le login + attend MFA (user input requis)
+ *  4. Extrait u_s + autres cookies → return
+ *
+ * Param `forceHeaded` : ouvre le browser visible (pour setup initial / MFA).
  */
-export async function getFreshCookie() {
+export async function getFreshCookie(opts = {}) {
   const email = process.env.RUMBLE_BOT_EMAIL;
   const password = process.env.RUMBLE_BOT_PASSWORD;
   if (!email || !password) {
@@ -68,10 +77,20 @@ export async function getFreshCookie() {
     return null;
   }
 
-  console.log(`[rumble-login] launching ${exe.split("\\").pop()} headless`);
-  const browser = await chromium.launchPersistentContext("", {
+  // Premier run : profil pas encore créé → headed obligatoire pour MFA
+  const isFirstRun = !existsSync(PROFILE_DIR);
+  const headless = opts.forceHeaded ? false : !isFirstRun;
+
+  if (isFirstRun) {
+    console.log(`[rumble-login] ⚠️  Premier setup — ouverture browser visible pour MFA`);
+    console.log(`[rumble-login]    Une fois logué (avec code email), ferme le navigateur, le profil sera sauvegardé.`);
+  } else {
+    console.log(`[rumble-login] launching ${exe.split("\\").pop()} ${headless ? "headless" : "headed"} (profile=${PROFILE_DIR.split("\\").pop()})`);
+  }
+
+  const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
     executablePath: exe,
-    headless: true,
+    headless,
     viewport: { width: 1280, height: 800 },
     userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     locale: "fr-FR",
@@ -81,7 +100,24 @@ export async function getFreshCookie() {
   try {
     const page = await browser.newPage();
 
-    // Va direct sur auth.rumble.com avec redirect_uri (URL utilisée par le bouton login)
+    // Test rapide : si on est DÉJÀ logué (profil contient cookies valides),
+    // on saute le login form et on récupère le cookie directement.
+    await page.goto("https://rumble.com/account", { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    if (!page.url().includes("auth.rumble.com") && !page.url().includes("login")) {
+      const cookies = await browser.cookies();
+      const rumbleCookies = cookies.filter((c) => /rumble\.com$/.test(c.domain) || c.domain === "rumble.com" || c.domain === ".rumble.com");
+      const us = rumbleCookies.find((c) => c.name === "u_s");
+      if (us) {
+        const cookieStr = rumbleCookies.map((c) => `${c.name}=${c.value}`).join("; ");
+        await browser.close();
+        console.log(`[rumble-login] ✓ session existante valide — u_s=${us.value.slice(0, 6)}…${us.value.slice(-4)}`);
+        return cookieStr;
+      }
+    }
+
+    // Sinon : login form
+    console.log(`[rumble-login] session invalide → fill login form`);
     await page.goto("https://auth.rumble.com/?theme=s&redirect_uri=https%3A%2F%2Frumble.com%2F&lang=en_US", {
       waitUntil: "domcontentloaded",
       timeout: 30000,
@@ -108,8 +144,10 @@ export async function getFreshCookie() {
       await passField.press("Enter");
     }
 
-    // Attendre redirect vers rumble.com (login OK) ou rester sur auth (échec)
-    await page.waitForURL((url) => !url.toString().includes("auth.rumble.com"), { timeout: 20000 }).catch(() => {});
+    // Attendre redirect vers rumble.com (login OK) ou rester sur auth (échec / MFA)
+    // En headed mode, on laisse 3 min pour que l'user tape le code email MFA.
+    const waitTimeout = headless ? 25000 : 180_000;
+    await page.waitForURL((url) => !url.toString().includes("auth.rumble.com"), { timeout: waitTimeout }).catch(() => {});
     await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);
 
@@ -119,6 +157,7 @@ export async function getFreshCookie() {
       const captchaEl = await page.locator('iframe[src*="captcha"], iframe[src*="recaptcha"], iframe[src*="cloudflare"], div[class*="captcha"]').count();
       const errorTxt = await page.locator('.error, [class*="error"], [class*="alert"]').first().textContent().catch(() => "");
       console.warn(`[rumble-login] login échec — url=${url} captcha=${captchaEl > 0} err="${(errorTxt || "").slice(0, 100)}"`);
+      console.warn(`[rumble-login] Si MFA requis, relance le script avec --headed (visible) pour taper le code email.`);
       await browser.close();
       return null;
     }
@@ -150,8 +189,9 @@ export async function getFreshCookie() {
 const __isMain = import.meta.url.endsWith("rumble-bot-login.js") &&
   process.argv[1] && process.argv[1].endsWith("rumble-bot-login.js");
 if (__isMain) {
-  console.log("[cli] starting login test...");
-  getFreshCookie().then((c) => {
+  const forceHeaded = process.argv.includes("--headed") || process.argv.includes("--setup");
+  console.log(`[cli] starting login ${forceHeaded ? "(HEADED mode for MFA)" : "test"}...`);
+  getFreshCookie({ forceHeaded }).then((c) => {
     if (c) {
       console.log("[cli] SUCCESS — cookie length:", c.length);
     } else {
