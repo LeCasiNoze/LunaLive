@@ -29,11 +29,11 @@ import {
 import {
   handleRefillCommand,
   handleRefillCancelCommand,
-  handleRefillSentCommand,
   handleCompteCommand,
   handleCompteModal,
   handleFirstRefillEmailModal,
   startCutoffTask,
+  startTelegramRefillHandler,
 } from "./refill.js";
 import { handleConfig, handlePing } from "./admin.js";
 import {
@@ -119,6 +119,7 @@ export async function startAurixBot(): Promise<void> {
     }
 
     startCutoffTask(c);
+    startTelegramRefillHandler(c);
 
     await c.user.setPresence({
       activities: [{ name: `${cfg.BRAND.NAME} ${cfg.EMOJI.diamond}`, type: ActivityType.Watching }],
@@ -239,9 +240,6 @@ export async function startAurixBot(): Promise<void> {
             return;
           case "refill-cancel":
             await handleRefillCancelCommand(ci);
-            return;
-          case "refill-sent":
-            await handleRefillSentCommand(ci);
             return;
           case "compte":
             await handleCompteCommand(ci);

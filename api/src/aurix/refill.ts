@@ -1,4 +1,4 @@
-// Refill : /refill (montant fixe), /refill-cancel, /refill-sent, /compte, cutoff quotidien.
+// Refill : /refill (montant fixe), /refill-cancel, /compte, cutoff quotidien + listener Telegram /done.
 import {
   ActionRowBuilder,
   type ChatInputCommandInteraction,
@@ -536,30 +536,6 @@ export async function handleRefillCancelCommand(interaction: ChatInputCommandInt
   }
 }
 
-// ───────────── /refill-sent ─────────────
-export async function handleRefillSentCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-  const batch = await one<Batch>(
-    "SELECT * FROM aurix_refill_batches WHERE status='locked' ORDER BY id DESC LIMIT 1"
-  );
-  if (!batch) {
-    await interaction.reply({ content: "Aucun batch verrouillé.", ephemeral: true });
-    return;
-  }
-  await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
-  batch.status = "sent";
-  await refreshBatchMessage(interaction.client, batch);
-  await interaction.reply({
-    content: `${cfg.EMOJI.check} Batch #${batch.id} marqué comme envoyé.`,
-    ephemeral: true,
-  });
-  if (interaction.guild) {
-    await logEvent(
-      interaction.guild,
-      `📤 Batch #${batch.id} marqué envoyé par <@${interaction.user.id}>`
-    );
-  }
-}
-
 // ───────────── /compte ─────────────
 export async function handleCompteCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const acc = await getAccount(interaction.user.id);
@@ -700,7 +676,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
         ].join("\n")
       )
       .setColor(cfg.COLOR.WARNING)
-      .setFooter({ text: `${cfg.BRAND.NAME} • Une fois envoyé, fais /refill-sent` });
+      .setFooter({ text: `${cfg.BRAND.NAME} • Manager confirmera via /done sur Telegram` });
 
     await (staffChat as TextChannel).send({
       content: mentions.join(" ") || undefined,
@@ -708,23 +684,181 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
       allowedMentions: { roles: mentions.length ? [roleDirectionId, roleModerateurId].filter((x): x is string => !!x) : [] },
     });
 
-    // Envoi parallele au manager via Telegram (best-effort, ne bloque pas le cutoff).
+    // Construit la liste enrichie avec displayName Discord (nickname > globalName > username).
+    const guildForCutoff = guild;
+    const items = await Promise.all(
+      enriched.map(async (r) => {
+        let displayName = r.username;
+        try {
+          const m = await guildForCutoff.members.fetch(r.user_id);
+          displayName = m.displayName || m.user.globalName || m.user.username;
+        } catch {
+          /* membre parti, on garde le username stocke */
+        }
+        return {
+          ticket_channel_id: r.ticket_channel_id,
+          user_id: r.user_id,
+          displayName,
+          email: r.email,
+          casinoUsername: r.casino_username,
+        };
+      })
+    );
+
+    // Envoi Telegram puis, SI succes, auto-mark batch envoye + notify tickets.
     try {
       const { sendRefillBatchToTelegram } = await import("./telegram.js");
-      const cutoffLocal = fmtFull(batch.cutoff_at, tz());
-      await sendRefillBatchToTelegram({
+      const dayDateFr = fmtDayDateFr(batch.cutoff_at, tz());
+      const res = await sendRefillBatchToTelegram({
         batchId: batch.id,
-        cutoffLocal,
-        zone: tz(),
+        dayDateFr,
         managerMention,
-        plainList: plain,
         fixedAmount: cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
         count: reqs.length,
+        items: items.map((it) => ({
+          displayName: it.displayName,
+          casinoUsername: it.casinoUsername,
+          email: it.email,
+        })),
       });
+
+      if (res.ok) {
+        // Le batch reste 'locked' jusqu'a ce que le manager tape /done sur Telegram.
+        // On notifie juste les streamers que leur demande est transmise.
+        await notifyRequestersTransmitted(guildForCutoff, batch.id, items);
+      } else {
+        log(`Telegram send returned not ok: ${res.reason} — pas de notification ticket.`);
+      }
     } catch (e) {
       log("Telegram send failed:", e);
     }
   }
 
   await ensureOpenBatch(guild);
+}
+
+function fmtDayDateFr(d: Date, zone: string): string {
+  const weekday = new Intl.DateTimeFormat("fr-FR", { weekday: "long", timeZone: zone }).format(d);
+  const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", timeZone: zone }).format(d);
+  const month = new Intl.DateTimeFormat("fr-FR", { month: "2-digit", timeZone: zone }).format(d);
+  const year = new Intl.DateTimeFormat("fr-FR", { year: "numeric", timeZone: zone }).format(d);
+  return `${weekday} ${day}/${month}/${year}`;
+}
+
+async function notifyRequestersTransmitted(
+  guild: Guild,
+  batchId: number,
+  items: Array<{ ticket_channel_id: string | null; user_id: string; displayName: string }>
+): Promise<void> {
+  for (const it of items) {
+    if (!it.ticket_channel_id) continue;
+    const ch = guild.channels.cache.get(it.ticket_channel_id);
+    if (!ch || ch.type !== 0) continue;
+    try {
+      const embed = new EmbedBuilder()
+        .setTitle(`${cfg.EMOJI.check} Demande transmise au manager`)
+        .setDescription(
+          [
+            `Salut <@${it.user_id}> 👋`,
+            "",
+            `Ta demande de refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **transmise au manager**.`,
+            `Il s'occupera du virement sur ton compte casino dès que possible — tu n'as rien à faire de plus.`,
+            "",
+            `À demain pour une nouvelle demande ${cfg.EMOJI.diamond}`,
+          ].join("\n")
+        )
+        .setColor(cfg.COLOR.SUCCESS)
+        .setFooter({ text: `${cfg.BRAND.NAME} • Batch #${batchId}` });
+
+      await (ch as TextChannel).send({
+        content: `<@${it.user_id}>`,
+        embeds: [embed],
+        allowedMentions: { users: [it.user_id] },
+      });
+    } catch (e) {
+      log("notifyRequestersTransmitted failed for ticket", it.ticket_channel_id, e);
+    }
+  }
+}
+
+// ═════════════════════════════════════════════════════════
+// Telegram /done — le manager confirme que les refills sont effectués.
+// On marque le batch sent + on notifie chaque ticket.
+// ═════════════════════════════════════════════════════════
+
+export function startTelegramRefillHandler(client: Client): void {
+  void import("./telegram.js").then(({ startTelegramListener }) => {
+    startTelegramListener(async (text) => {
+      const t = text.trim();
+      if (!/^\/done(@\w+)?$/i.test(t)) return;
+      await processRefillDone(client);
+    });
+  });
+}
+
+async function processRefillDone(client: Client): Promise<void> {
+  const { sendTelegramText } = await import("./telegram.js");
+
+  const batch = await one<Batch>(
+    "SELECT * FROM aurix_refill_batches WHERE status='locked' ORDER BY id DESC LIMIT 1"
+  );
+  if (!batch) {
+    await sendTelegramText(
+      "⚠️ Aucun batch en attente côté Aurix. Rien à marquer comme effectué."
+    );
+    return;
+  }
+
+  await query(
+    "UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1",
+    [batch.id]
+  );
+  batch.status = "sent";
+  await refreshBatchMessage(client, batch);
+
+  const env = loadEnv();
+  let guild: Guild | undefined;
+  if (env.GUILD_ID) guild = client.guilds.cache.get(env.GUILD_ID);
+  if (!guild) guild = client.guilds.cache.first();
+  if (!guild) {
+    await sendTelegramText(`✅ Batch #${batch.id} marqué effectué (impossible de notifier les tickets — guild introuvable).`);
+    return;
+  }
+
+  const reqs = await getRequests(batch.id);
+  let notified = 0;
+  for (const r of reqs) {
+    if (!r.ticket_channel_id) continue;
+    const ch = guild.channels.cache.get(r.ticket_channel_id);
+    if (!ch || ch.type !== 0) continue;
+    try {
+      const embed = new EmbedBuilder()
+        .setTitle(`${cfg.EMOJI.money} Refill effectué !`)
+        .setDescription(
+          [
+            `Salut <@${r.user_id}>,`,
+            "",
+            `Ton refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **effectué** par le manager Aurix.`,
+            `Jette un œil à ton compte casino — c'est crédité (ou ça arrive d'une minute à l'autre).`,
+            "",
+            `Bon stream ${cfg.EMOJI.fire}`,
+          ].join("\n")
+        )
+        .setColor(cfg.COLOR.SUCCESS)
+        .setFooter({ text: `${cfg.BRAND.NAME} • Batch #${batch.id}` });
+
+      await (ch as TextChannel).send({
+        content: `<@${r.user_id}>`,
+        embeds: [embed],
+        allowedMentions: { users: [r.user_id] },
+      });
+      notified++;
+    } catch (e) {
+      log("ticket notify (done) failed:", r.ticket_channel_id, e);
+    }
+  }
+
+  await sendTelegramText(
+    `✅ Batch #${batch.id} marqué effectué — ${notified} streamer(s) notifié(s) sur Discord.`
+  );
 }

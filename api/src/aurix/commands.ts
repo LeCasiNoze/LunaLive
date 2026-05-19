@@ -17,11 +17,6 @@ export const guildCommandDefinitions = [
     description: "Annule ta demande de refill en cours.",
   },
   {
-    name: "refill-sent",
-    description: "(Staff) Marque le dernier batch verrouillé comme envoyé.",
-    default_member_permissions: String(PermissionFlagsBits.ManageMessages),
-  },
-  {
     name: "compte",
     description: "Voir / modifier tes infos (Telegram, email, pseudo joueur).",
   },

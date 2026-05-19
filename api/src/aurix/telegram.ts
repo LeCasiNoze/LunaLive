@@ -80,38 +80,147 @@ export async function sendTelegramText(text: string): Promise<TelegramSendResult
   return { ok: true };
 }
 
+export type RefillTelegramItem = {
+  displayName: string;
+  casinoUsername: string | null;
+  email: string | null;
+};
+
+function buildRefillMessage(args: {
+  dayDateFr: string;
+  managerMention: string;
+  count: number;
+  fixedAmount: string;
+  items: RefillTelegramItem[];
+}): string {
+  const lines: string[] = [];
+  lines.push(`Bonjour ${args.managerMention} 👋`);
+  lines.push("");
+  lines.push(`Voici la liste des refills pour aujourd'hui, ${args.dayDateFr} :`);
+  lines.push("");
+
+  const plural = args.count > 1 ? "s" : "";
+  lines.push(`💰 ${args.count} demande${plural} × ${args.fixedAmount}`);
+  lines.push("");
+
+  args.items.forEach((it, i) => {
+    const extras: string[] = [];
+    if (it.email) extras.push(`email Celsius : ${it.email}`);
+    if (it.casinoUsername) extras.push(`pseudo casino : ${it.casinoUsername}`);
+    const extraStr = extras.length ? `  —  ${extras.join("  ·  ")}` : "";
+    lines.push(`${i + 1}. ${it.displayName}${extraStr}`);
+  });
+
+  lines.push("");
+  lines.push("Merci d'avance pour le traitement.");
+  lines.push("Si tu le souhaites tu peux notifier aux streamers que tu les as refill avec /done :)");
+  lines.push("");
+  lines.push("Bonne journée à vous ! ☀️");
+  lines.push("");
+  lines.push("— Aurix");
+
+  return lines.join("\n");
+}
+
+// ═════════════════════════════════════════════════════════
+// LISTENER long-polling : ecoute les messages dans le chat refill
+// (pour capter /done envoye par le manager).
+// ═════════════════════════════════════════════════════════
+
+export type TelegramTextHandler = (text: string) => Promise<void>;
+
+let listenerStarted = false;
+
+export function startTelegramListener(handler: TelegramTextHandler): void {
+  if (listenerStarted) return;
+  listenerStarted = true;
+  void runListenerLoop(handler);
+  log("Telegram listener démarré (long-polling).");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function runListenerLoop(handler: TelegramTextHandler): Promise<void> {
+  for (;;) {
+    if (!isTelegramConfigured()) {
+      await sleep(60_000);
+      continue;
+    }
+    try {
+      await pollOnce(handler);
+    } catch (e) {
+      logError("listener poll error:", e);
+      await sleep(5_000);
+    }
+  }
+}
+
+async function pollOnce(handler: TelegramTextHandler): Promise<void> {
+  const creds = getCreds();
+  if (!creds) return;
+
+  const { kvGet, kvSet } = await import("./db.js");
+  const offsetStr = await kvGet("telegram_update_offset");
+  const offset = offsetStr ? Number(offsetStr) : 0;
+
+  const url =
+    `${TG_API_BASE}/bot${creds.token}/getUpdates` +
+    `?offset=${offset}&timeout=25&allowed_updates=${encodeURIComponent('["message"]')}`;
+
+  const r = await fetch(url);
+  const j = (await r.json().catch(() => ({}))) as {
+    ok?: boolean;
+    result?: Array<{
+      update_id: number;
+      message?: { text?: string; chat?: { id: number } };
+    }>;
+  };
+
+  if (!j.ok || !Array.isArray(j.result)) return;
+
+  for (const u of j.result) {
+    const newOffset = u.update_id + 1;
+    await kvSet("telegram_update_offset", String(newOffset));
+
+    const msg = u.message;
+    if (!msg || !msg.text || !msg.chat) continue;
+    // Securite: ne traite que les messages venant du chat autorise.
+    if (String(msg.chat.id) !== creds.chatId) continue;
+
+    try {
+      await handler(msg.text);
+    } catch (e) {
+      logError("handler error:", e);
+    }
+  }
+}
+
 /**
  * Construit + envoie le message refill du jour au manager Telegram.
- * No-op + warn log si vars Telegram pas configurees (le cutoff Discord
- * continue de fonctionner normalement).
+ * Retourne { ok } pour que le caller puisse decider de la suite (auto-mark
+ * batch sent, notifier les tickets, etc).
  */
 export async function sendRefillBatchToTelegram(args: {
   batchId: number;
-  cutoffLocal: string;
-  zone: string;
+  dayDateFr: string;
   managerMention: string;
-  plainList: string; // deja formate (buildPlainListForManager)
   fixedAmount: string;
   count: number;
-}): Promise<void> {
+  items: RefillTelegramItem[];
+}): Promise<TelegramSendResult> {
   if (!isTelegramConfigured()) {
     log("Telegram non configure (skip).");
-    return;
+    return { ok: false, reason: "telegram_not_configured" };
   }
 
-  const header = [
-    `🔔 Aurix — Refills du jour`,
-    `Batch #${args.batchId} verrouille a ${args.cutoffLocal} (${args.zone}).`,
-    `Manager: ${args.managerMention}`,
-    `${args.count} demande(s) x ${args.fixedAmount}.`,
-    "",
-  ].join("\n");
-
-  const fullText = header + args.plainList;
-  const res = await sendTelegramText(fullText);
+  const text = buildRefillMessage(args);
+  const res = await sendTelegramText(text);
   if (res.ok) {
     log(`Refill batch #${args.batchId} envoye sur Telegram (${args.count} demandes).`);
   } else {
     logError(`Echec envoi Telegram batch #${args.batchId}: ${res.reason}`);
   }
+  return res;
 }
