@@ -61,15 +61,58 @@ function findBrowserExecutable() {
 const PROFILE_DIR = resolve(__dir, ".rumble-bot-profile");
 
 /**
- * Récupère un cookie frais. Stratégie :
- *  1. Ouvre le profil persistant (headless si déjà setup, sinon headed pour MFA)
- *  2. Visite rumble.com/account
- *  3. Si redirigé vers login → fait le login + attend MFA (user input requis)
- *  4. Extrait u_s + autres cookies → return
- *
- * Param `forceHeaded` : ouvre le browser visible (pour setup initial / MFA).
+ * Stratégie A : connexion à Opera GX déjà ouvert avec --remote-debugging-port=9222.
+ * Lit les cookies depuis la session active de l'utilisateur, aucun login requis.
+ * Retourne null si Opera n'est pas accessible via CDP.
+ */
+export async function getCookieFromRunningOpera() {
+  try {
+    const r = await fetch("http://127.0.0.1:9222/json/version", { signal: AbortSignal.timeout(2000) });
+    if (!r.ok) return null;
+  } catch {
+    return null;
+  }
+  let browser;
+  try {
+    browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
+    const contexts = browser.contexts();
+    if (contexts.length === 0) return null;
+    // Collecte tous les cookies rumble.com de tous les contexts
+    const allCookies = [];
+    for (const ctx of contexts) {
+      const cookies = await ctx.cookies(["https://rumble.com"]);
+      for (const c of cookies) allCookies.push(c);
+    }
+    const us = allCookies.find((c) => c.name === "u_s");
+    if (!us) {
+      console.warn("[rumble-login][CDP] u_s introuvable dans la session Opera ouverte — t'es bien logué à rumble dessus ?");
+      await browser.close();
+      return null;
+    }
+    // Dédup par nom (priorité à u_s frais)
+    const byName = new Map();
+    for (const c of allCookies) byName.set(c.name, c);
+    const cookieStr = [...byName.values()].map((c) => `${c.name}=${c.value}`).join("; ");
+    await browser.close();
+    console.log(`[rumble-login][CDP] ✓ u_s récupéré depuis Opera GX (${us.value.slice(0, 6)}…${us.value.slice(-4)})`);
+    return cookieStr;
+  } catch (e) {
+    console.warn("[rumble-login][CDP] erreur connexion", e?.message || e);
+    try { if (browser) await browser.close(); } catch {}
+    return null;
+  }
+}
+
+/**
+ * Stratégie B (fallback) : ouvre un browser dédié, login form + MFA.
+ *  Param `forceHeaded` : ouvre le browser visible (pour setup initial / MFA).
  */
 export async function getFreshCookie(opts = {}) {
+  // Essai prioritaire : connexion à Opera ouvert avec debug port
+  const opera = await getCookieFromRunningOpera();
+  if (opera) return opera;
+  console.log("[rumble-login] Opera GX pas accessible via CDP → fallback browser dédié");
+
   const email = process.env.RUMBLE_BOT_EMAIL;
   const password = process.env.RUMBLE_BOT_PASSWORD;
   if (!email || !password) {
