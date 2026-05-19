@@ -113,7 +113,7 @@ function buildRefillMessage(args: {
 
   lines.push("");
   lines.push("Merci d'avance pour le traitement.");
-  lines.push("Si tu le souhaites tu peux notifier aux streamers que tu les as refill avec /done :)");
+  lines.push("Si vous le souhaitez vous pouvez notifier les streamers que leur refill est fait avec /done :)");
   lines.push("");
   lines.push("Bonne journée à vous ! ☀️");
   lines.push("");
