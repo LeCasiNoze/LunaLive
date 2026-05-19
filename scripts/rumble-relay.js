@@ -584,6 +584,128 @@ async function tick() {
 void tick();
 setInterval(() => void tick(), POLL_INTERVAL_MS);
 
+// ─────────────────────────────────────────────────────────────────
+// COOKIE REFRESH — Rumble rotate u_s sur les requêtes authentifiées.
+// On visite rumble.com avec le cookie actuel toutes les 2h pour le
+// maintenir vivant ET capturer la nouvelle valeur si rotation.
+// ─────────────────────────────────────────────────────────────────
+const COOKIE_REFRESH_MS = Number(process.env.RUMBLE_COOKIE_REFRESH_MS || 2 * 60 * 60_000);
+
+/** Lit le cookie bot actuel direct depuis la DB (l'endpoint admin le redacte). */
+async function fetchCurrentBotCookie() {
+  if (!dbPool) return null;
+  try {
+    const r = await dbPool.query("SELECT cookie FROM rumble_bot_session WHERE id=1 LIMIT 1");
+    return r.rows?.[0]?.cookie || null;
+  } catch (e) {
+    console.warn("[cookie-refresh] DB read failed", e?.message || e);
+    return null;
+  }
+}
+
+/** Push un nouveau cookie complet à l'API Render. */
+async function pushBotCookie(cookie) {
+  try {
+    const r = await fetch(`${API_BASE}/admin/rumble/bot`, {
+      method: "POST",
+      headers: { "x-admin-key": ADMIN_KEY, "content-type": "application/json" },
+      body: JSON.stringify({ cookie }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.warn(`[cookie-refresh] push failed http=${r.status} ${t.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("[cookie-refresh] push error", e?.message || e);
+    return false;
+  }
+}
+
+/** Parse Set-Cookie headers et retourne la valeur d'un cookie nommé. */
+function extractCookieFromHeaders(setCookieList, name) {
+  if (!setCookieList) return null;
+  const list = Array.isArray(setCookieList) ? setCookieList : [setCookieList];
+  for (const sc of list) {
+    const m = String(sc).match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** Remplace u_s dans une string cookie. */
+function replaceUs(cookieStr, newUs) {
+  if (!cookieStr || !newUs) return cookieStr;
+  if (/u_s=/.test(cookieStr)) {
+    return cookieStr.replace(/u_s=[^;]+/, `u_s=${newUs}`);
+  }
+  return `${cookieStr.replace(/;\s*$/, "")}; u_s=${newUs}`;
+}
+
+async function refreshCookieTick() {
+  try {
+    const current = await fetchCurrentBotCookie();
+    if (!current) {
+      console.warn("[cookie-refresh] pas de cookie actuel en DB — skip");
+      return;
+    }
+    // Extrait u_s actuel
+    const curUsMatch = current.match(/u_s=([^;]+)/);
+    const currentUs = curUsMatch ? curUsMatch[1] : null;
+
+    // Visite une page authentifiée Rumble pour déclencher la rotation u_s.
+    // /account redirige vers login si pas auth → on saura aussi si expiré.
+    const r = await fetch("https://rumble.com/account", {
+      method: "GET",
+      redirect: "manual",
+      headers: {
+        "user-agent": UA,
+        "cookie": current,
+        "accept": "text/html,application/xhtml+xml",
+        "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+      },
+    });
+
+    // Multi-valued Set-Cookie : Node fetch retourne une string ; on split.
+    const rawSetCookie = r.headers.getSetCookie?.() || r.headers.raw?.()?.['set-cookie'] || r.headers.get('set-cookie');
+    const setCookieList = Array.isArray(rawSetCookie)
+      ? rawSetCookie
+      : rawSetCookie ? String(rawSetCookie).split(/,\s*(?=[A-Za-z][\w-]*=)/) : [];
+
+    const newUs = extractCookieFromHeaders(setCookieList, "u_s");
+
+    if (r.status === 302 || r.status === 301) {
+      const loc = r.headers.get("location") || "";
+      if (loc.includes("login") || loc.includes("auth")) {
+        console.warn(`[cookie-refresh] u_s expiré (redirect login) — re-login manuel requis`);
+        return;
+      }
+    }
+
+    if (!newUs) {
+      console.log(`[cookie-refresh] aucun nouveau u_s dans Set-Cookie (status=${r.status}) — session probablement encore valide, on retest plus tard`);
+      return;
+    }
+    if (newUs === currentUs) {
+      console.log(`[cookie-refresh] u_s inchangé (refresh OK, session vivante)`);
+      return;
+    }
+
+    const updated = replaceUs(current, newUs);
+    const ok = await pushBotCookie(updated);
+    if (ok) console.log(`[cookie-refresh] ✓ u_s rotaté et pushé (${newUs.slice(0, 6)}…${newUs.slice(-4)})`);
+  } catch (e) {
+    console.warn("[cookie-refresh] tick error", e?.message || e);
+  }
+}
+
+// Premier refresh au démarrage (avec 10s de délai pour laisser le relay starter),
+// puis toutes les 2h.
+setTimeout(() => void refreshCookieTick(), 10_000);
+setInterval(() => void refreshCookieTick(), COOKIE_REFRESH_MS);
+
 // NOTE: la send-queue (bot replies) a été retirée. Render envoie maintenant
 // directement les messages via sendRumbleMessage (compte LunaLive_Bot vérifié).
-// Le relay ne fait plus que la slug discovery pseudo-only + viewer count.
+// Le relay ne fait plus que la slug discovery pseudo-only + viewer count
+// + le maintien automatique du cookie u_s.
