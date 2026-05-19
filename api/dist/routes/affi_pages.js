@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth } from "../auth.js";
 import { requireFsbAccess } from "./fsb_guard.js";
+import { notifyVipLeadAsync } from "../utils/vipNotify.js";
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
 fsbAffiPagesRouter.use("/fsb/affi-pages", requireAuth, requireFsbAccess);
@@ -264,6 +265,33 @@ publicAffiPagesRouter.post("/public/affi-events", a(async (req, res) => {
     ]);
     return res.json({ ok: true });
 }));
+// VIP lead capture (banniere "Club VIP" du popup V3)
+const vipLeadSchema = z.object({
+    slug: z.string().min(1).max(160),
+    email: z.string().email().max(320),
+    referrer: z.string().max(2000).optional().nullable(),
+});
+publicAffiPagesRouter.post("/public/affi-vip-leads", a(async (req, res) => {
+    const input = vipLeadSchema.safeParse(req.body || {});
+    if (!input.success)
+        return res.status(400).json({ ok: false, error: "bad_input" });
+    const slug = normalizeSlug(input.data.slug);
+    const ip = clientIp(req);
+    const ua = String(req.headers["user-agent"] || "").slice(0, 500);
+    const { rows: pageRows } = await pool.query(`SELECT id FROM affi_landing_pages WHERE lower(slug) = lower($1) LIMIT 1`, [slug]);
+    const pageId = pageRows[0]?.id ?? null;
+    const cleanEmail = input.data.email.toLowerCase().trim();
+    await pool.query(`INSERT INTO affi_vip_leads (page_id, slug, email, ip_hash, user_agent, referrer)
+       VALUES ($1,$2,$3,$4,$5,$6)`, [pageId, slug, cleanEmail, hashIp(ip), ua, input.data.referrer || null]);
+    // Notif async (mail welcome + Discord webhook). Ne bloque PAS la reponse.
+    notifyVipLeadAsync({
+        email: cleanEmail,
+        slug,
+        pageId,
+        referrer: input.data.referrer || null,
+    });
+    return res.json({ ok: true });
+}));
 // Stats par page (FSB only)
 fsbAffiPagesRouter.get("/fsb/affi-pages/:id/stats", a(async (req, res) => {
     const id = Number(req.params.id || 0);
@@ -293,6 +321,47 @@ fsbAffiPagesRouter.get("/fsb/affi-pages/:id/stats", a(async (req, res) => {
         stats: { views, uniqueViews, clicks, uniqueClicks, ctr, uniqueCtr, periodDays: days },
     });
 }));
+// Daily stats sur N jours (graphique d'evolution par page)
+fsbAffiPagesRouter.get("/fsb/affi-pages/:id/daily-stats", a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    if (!Number.isInteger(id) || id <= 0)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    const days = Math.min(180, Math.max(1, Number(req.query.days || 30)));
+    const { rows } = await pool.query(`SELECT
+         (date_trunc('day', created_at) AT TIME ZONE 'UTC')::date AS d,
+         COUNT(*) FILTER (WHERE event='view')      AS views,
+         COUNT(*) FILTER (WHERE event='click_cta') AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')      AS unique_views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta') AS unique_clicks
+       FROM affi_landing_events
+       WHERE page_id = $1
+         AND created_at >= (NOW() - ($2 || ' days')::interval)
+       GROUP BY d
+       ORDER BY d ASC`, [id, String(days)]);
+    // Remplit les jours sans event avec 0
+    const byDate = {};
+    for (const r of rows) {
+        const d = new Date(r.d);
+        const key = d.toISOString().slice(0, 10);
+        byDate[key] = {
+            date: key,
+            views: Number(r.views || 0),
+            clicks: Number(r.clicks || 0),
+            uniqueViews: Number(r.unique_views || 0),
+            uniqueClicks: Number(r.unique_clicks || 0),
+        };
+    }
+    const series = [];
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) {
+        const d = new Date(today);
+        d.setUTCDate(d.getUTCDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        series.push(byDate[key] || { date: key, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0 });
+    }
+    return res.json({ ok: true, series, periodDays: days });
+}));
 // Stats agrégées toutes les pages (pour le dashboard V3 ranking)
 fsbAffiPagesRouter.get("/fsb/affi-pages/stats-summary", a(async (req, res) => {
     const days = Math.min(365, Math.max(1, Number(req.query.days || 30)));
@@ -319,4 +388,213 @@ fsbAffiPagesRouter.get("/fsb/affi-pages/stats-summary", a(async (req, res) => {
         };
     }
     return res.json({ ok: true, byPage, periodDays: days });
+}));
+// ─── Social profile fetcher (TikTok / Instagram) ────────────────────────────
+function extractHandleFromUrl(rawUrl) {
+    const url = rawUrl.trim();
+    const tt = url.match(/tiktok\.com\/@([\w.\-]+)/i);
+    if (tt)
+        return { network: "tiktok", handle: tt[1] };
+    const ig = url.match(/instagram\.com\/([\w.\-]+)(?:[/?#]|$)/i);
+    if (ig && !["p", "reel", "explore", "accounts"].includes(ig[1])) {
+        return { network: "instagram", handle: ig[1] };
+    }
+    const at = url.match(/^@([\w.\-]+)$/);
+    if (at)
+        return { network: null, handle: at[1] };
+    return { network: null, handle: "" };
+}
+function parseFollowerCount(text) {
+    if (!text)
+        return null;
+    const m = text.match(/([\d,.\s]+[KMkmBb]?)\s+(?:Followers|abonn[ée]s)/i);
+    if (!m)
+        return null;
+    let raw = m[1].replace(/[\s,]/g, "").toUpperCase();
+    let multiplier = 1;
+    if (raw.endsWith("K")) {
+        multiplier = 1_000;
+        raw = raw.slice(0, -1);
+    }
+    else if (raw.endsWith("M")) {
+        multiplier = 1_000_000;
+        raw = raw.slice(0, -1);
+    }
+    else if (raw.endsWith("B")) {
+        multiplier = 1_000_000_000;
+        raw = raw.slice(0, -1);
+    }
+    const n = parseFloat(raw);
+    if (!Number.isFinite(n))
+        return null;
+    return Math.round(n * multiplier);
+}
+function formatFollowerCount(n) {
+    if (n == null || n <= 0)
+        return "";
+    if (n >= 1_000_000)
+        return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+    if (n >= 1_000)
+        return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;
+    return String(n);
+}
+async function fetchInstagramProfile(handle) {
+    const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 15_000);
+    try {
+        const res = await fetch(url, {
+            signal: controller.signal,
+            redirect: "follow",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
+        });
+        if (!res.ok)
+            return null;
+        const html = await res.text();
+        let followers = null;
+        // (1) og:description et meta description — anciennement contenait les followers
+        const metas = [
+            html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i),
+            html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i),
+        ];
+        for (const m of metas) {
+            if (m && !followers)
+                followers = parseFollowerCount(m[1]);
+        }
+        // (2) Schema.org ld+json (Person/Organization avec InteractionStatistic)
+        if (followers == null) {
+            const ldJsons = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+            for (const m of ldJsons) {
+                try {
+                    const data = JSON.parse(m[1]);
+                    const items = Array.isArray(data) ? data : [data];
+                    for (const it of items) {
+                        const stats = it?.interactionStatistic || it?.["@graph"]?.flatMap?.((g) => g?.interactionStatistic || []) || [];
+                        const list = Array.isArray(stats) ? stats : [stats];
+                        for (const s of list) {
+                            const type = String(s?.interactionType?.["@type"] || s?.interactionType || "");
+                            if (type.toLowerCase().includes("follow")) {
+                                const n = Number(s?.userInteractionCount ?? s?.value);
+                                if (Number.isFinite(n) && n > 0) {
+                                    followers = n;
+                                    break;
+                                }
+                            }
+                        }
+                        if (followers)
+                            break;
+                    }
+                }
+                catch { /* noop */ }
+            }
+        }
+        // (3) Recherche brute dans le HTML d'un pattern "edge_followed_by":{"count":N}
+        if (followers == null) {
+            const edge = html.match(/edge_followed_by["']?\s*:\s*\{\s*["']?count["']?\s*:\s*(\d+)/i);
+            if (edge)
+                followers = Number(edge[1]) || null;
+        }
+        // (4) Pattern "follower_count":N (autre variant)
+        if (followers == null) {
+            const fc = html.match(/follower_count["']?\s*:\s*(\d+)/i);
+            if (fc)
+                followers = Number(fc[1]) || null;
+        }
+        const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+        const titleStr = ogTitle?.[1] || "";
+        const displayName = titleStr.split("(")[0].trim() || null;
+        return { handle, displayName, followers };
+    }
+    catch {
+        return null;
+    }
+    finally {
+        clearTimeout(t);
+    }
+}
+async function fetchTikTokProfileBasic(handle) {
+    const url = `https://www.tiktok.com/@${encodeURIComponent(handle)}`;
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 12_000);
+    try {
+        const res = await fetch(url, {
+            signal: controller.signal,
+            redirect: "follow",
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+            },
+        });
+        if (!res.ok)
+            return null;
+        const html = await res.text();
+        const dataMatch = html.match(/<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/);
+        if (dataMatch) {
+            try {
+                const json = JSON.parse(dataMatch[1]);
+                const scope = json?.__DEFAULT_SCOPE__?.["webapp.user-detail"] || json?.["__DEFAULT_SCOPE__"]?.["webapp.user-detail"];
+                const u = scope?.userInfo?.user || null;
+                const s = scope?.userInfo?.stats || {};
+                if (u?.uniqueId) {
+                    return {
+                        handle: String(u.uniqueId),
+                        displayName: String(u.nickname || u.uniqueId || "") || null,
+                        followers: Number(s.followerCount ?? 0) || null,
+                    };
+                }
+            }
+            catch { /* noop */ }
+        }
+        const ogDesc = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+        const followers = ogDesc ? parseFollowerCount(ogDesc[1]) : null;
+        return { handle, displayName: null, followers };
+    }
+    catch {
+        return null;
+    }
+    finally {
+        clearTimeout(t);
+    }
+}
+const socialProfileSchema = z.object({ url: z.string().min(1).max(500) });
+fsbAffiPagesRouter.post("/fsb/social-profile", a(async (req, res) => {
+    const input = socialProfileSchema.safeParse(req.body || {});
+    if (!input.success)
+        return res.status(400).json({ ok: false, error: "bad_input" });
+    const { network, handle } = extractHandleFromUrl(input.data.url);
+    if (!handle)
+        return res.status(400).json({ ok: false, error: "no_handle_found" });
+    let profile = null;
+    let detectedNetwork = network;
+    if (network === "tiktok") {
+        profile = await fetchTikTokProfileBasic(handle);
+    }
+    else if (network === "instagram") {
+        profile = await fetchInstagramProfile(handle);
+    }
+    else {
+        profile = await fetchTikTokProfileBasic(handle);
+        if (profile && profile.followers != null)
+            detectedNetwork = "tiktok";
+        else {
+            profile = await fetchInstagramProfile(handle);
+            if (profile)
+                detectedNetwork = "instagram";
+        }
+    }
+    if (!profile)
+        return res.status(502).json({ ok: false, error: "fetch_failed" });
+    return res.json({
+        ok: true,
+        network: detectedNetwork,
+        handle: profile.handle,
+        displayName: profile.displayName,
+        followers: profile.followers,
+        followersLabel: formatFollowerCount(profile.followers),
+        socialHandle: `@${profile.handle}`,
+    });
 }));

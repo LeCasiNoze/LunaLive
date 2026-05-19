@@ -27,11 +27,6 @@ type LevelOpt = {
   height?: number;
 };
 
-function uniqBy<T>(arr: T[], keyFn: (x: T) => string) {
-  const seen = new Set<string>();
-  return arr.filter((x) => { const k = keyFn(x); if (seen.has(k)) return false; seen.add(k); return true; });
-}
-
 function pickBestCapIndex(levels: any[], maxHeight: number): number {
   // Pick the variant with highest BANDWIDTH ≤ maxHeight resolution.
   // Cas Rumble : 2 variantes en 720p (2.7M vs 3.3M) → on veut le 3.3M, pas le premier 720p.

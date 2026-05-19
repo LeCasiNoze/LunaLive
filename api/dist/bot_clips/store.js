@@ -189,6 +189,8 @@ export async function claimOneClipToRenderMp4(opts) {
         AND vod_url IS NOT NULL
         AND (mp4_key IS NULL OR mp4_key = '')
         AND mp4_rendering = false
+        AND (mp4_error IS NULL OR mp4_error = '')
+        AND (platform IS NULL OR lower(platform) != 'dlive')
         AND created_ts >= $1
         AND created_ts >= $2
         AND (created_ts + (COALESCE(post_sec, 0) + $3) * 1000) <= $4

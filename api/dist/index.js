@@ -6,17 +6,18 @@ import { Server as IOServer } from "socket.io";
 import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { attachChat } from "./chat_socket.js";
-import { startDlivePoller } from "./dlive_poller.js";
+// import { startDlivePoller } from "./dlive_poller.js"; // DLive shut down
 import { startRumblePoller } from "./rumble_poller.js";
 import { startRumbleYtRedirectPoller } from "./rumble_yt_redirect_poller.js";
 import { startChestJobs } from "./chest_jobs.js";
 import { ensureBotClips } from "./bot_clips/store.js";
-import { startClipsVodLinker } from "./bot_clips/vod_linker.js";
+// import { startClipsVodLinker } from "./bot_clips/vod_linker.js"; // VOD linker base sur DLive — desactive
 import { ensureCallsSchema } from "./calls/schema.js";
 import { runSlotsUpdate } from "./calls/updater.js";
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { startDiscordBot } from "./discord/bot.js";
+import { startAurixBot } from "./aurix/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
 import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
@@ -138,12 +139,12 @@ function setupGracefulShutdown(server) {
     // ✅ Démarre les pollers (ils utilisent la DB, donc si DB down ça loguera, mais ne bloque pas le deploy)
     startStatsCleanup();
     startEventsEnginePoller(60_000);
-    startDlivePoller(io);
+    // startDlivePoller(io); // DLive shut down — poller desactive (DNS/CDN morts)
     startRumblePoller(io);
     startRumbleYtRedirectPoller();
     startChestJobs(io);
     startAgendaNotifPoller(30_000);
-    startClipsVodLinker();
+    // startClipsVodLinker(); // VOD linker base sur DLive GraphQL — desactive (DLive shut down)
     startClipsMp4Renderer();
     startClipsMp4Cleanup();
     startInstagramScheduler();
@@ -156,6 +157,11 @@ function setupGracefulShutdown(server) {
             log: (msg) => console.log(msg),
         }).catch((e) => {
             console.error("[discord] failed to start", e);
+        });
+    }
+    if (process.env.RUN_AURIX_BOT === "1") {
+        startAurixBot().catch((e) => {
+            console.error("[aurix] failed to start", e);
         });
     }
     // ✅ Bootstrap DB en arrière-plan

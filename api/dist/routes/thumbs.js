@@ -11,7 +11,9 @@ export const thumbsRouter = express.Router();
 const require = createRequire(import.meta.url);
 const ffmpegStatic = (() => {
     try {
-        return require("ffmpeg-static");
+        // @ffmpeg-installer/ffmpeg: binaire embarqué dans le tarball npm
+        // (pas de DL externe au postinstall, contrairement à ffmpeg-static).
+        return require("@ffmpeg-installer/ffmpeg").path;
     }
     catch {
         return null;
