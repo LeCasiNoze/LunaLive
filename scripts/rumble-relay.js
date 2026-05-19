@@ -716,7 +716,27 @@ async function refreshCookieTick() {
 
 // Premier refresh au démarrage (avec 10s de délai pour laisser le relay starter),
 // puis toutes les 2h.
-setTimeout(() => void refreshCookieTick(), 10_000);
+// Au démarrage : lit IMMÉDIATEMENT le cookie u_s depuis ta session Opera GX
+// (via CDP localhost:9222) et le push à Luna. Ça garantit que dès que tu
+// relances le relay, le bot a un cookie frais sans avoir à attendre.
+(async () => {
+  try {
+    const { getCookieFromRunningOpera } = await import("./rumble-bot-login.js");
+    const opera = await getCookieFromRunningOpera();
+    if (opera) {
+      const ok = await pushBotCookie(opera);
+      if (ok) console.log(`[cookie-refresh] ✓ startup : cookie Opera pushé`);
+      else console.warn(`[cookie-refresh] startup : push API échoué`);
+    } else {
+      console.log(`[cookie-refresh] startup : Opera GX pas accessible (lance via opera-with-debug.bat) — fallback tick standard`);
+    }
+  } catch (e) {
+    console.warn(`[cookie-refresh] startup error`, e?.message || e);
+  }
+})();
+
+// Tick standard toutes les 2h (refresh préventif si Opera dispo, sinon
+// visite rumble.com avec cookie courant pour le maintenir vivant)
 setInterval(() => void refreshCookieTick(), COOKIE_REFRESH_MS);
 
 // NOTE: la send-queue (bot replies) a été retirée. Render envoie maintenant
