@@ -98,7 +98,7 @@ function buildModal(prefill?: { pseudo?: string; email?: string; deposit?: strin
   const pseudo = new TextInputBuilder()
     .setCustomId("pseudo")
     .setLabel("Pseudo Celsius")
-    .setPlaceholder("Ex : Casinoze92")
+    .setPlaceholder("Ex : ton-pseudo-celsius")
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
     .setMaxLength(64);
