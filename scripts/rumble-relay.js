@@ -713,6 +713,12 @@ async function refreshCookieTick() {
       console.log(`[cookie-refresh] aucun nouveau u_s dans Set-Cookie (status=${r.status}) — session probablement encore valide, on retest plus tard`);
       return;
     }
+    // Refuse les valeurs "tombstone" — Rumble envoie u_s=deleted pour signifier
+    // expiration, on ne doit jamais écrire ça en DB (sinon bot HS définitivement).
+    if (/^(deleted|expired|null|undefined)$/i.test(newUs.trim()) || newUs.length < 10) {
+      console.warn(`[cookie-refresh] u_s tombstone ('${newUs}') ignoré — session probablement expirée`);
+      return;
+    }
     if (newUs === currentUs) {
       console.log(`[cookie-refresh] u_s inchangé (refresh OK, session vivante)`);
       return;
