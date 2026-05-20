@@ -256,6 +256,9 @@ export async function ensureWatcherBoard(guild: Guild): Promise<void> {
 
   // 3e message sticky : file de traitement (1 demande à la fois + boutons).
   await ensureQueueMessage(guild);
+
+  // Notif ping owner dans 🗂️-gestion (delete+repost pour eviter l'accumulation).
+  await ensureGestionNotification(guild);
 }
 
 export async function refreshWatcherBoard(client: Client): Promise<void> {
@@ -712,4 +715,80 @@ export async function handleQueueFilterSelect(interaction: StringSelectMenuInter
   await kvSet("watcher_queue_filter", value);
   await interaction.deferUpdate();
   if (interaction.guild) await ensureWatcherBoard(interaction.guild);
+}
+
+// ═════════════════════════════════════════════════════════
+// Notif 🗂️-gestion : ping owner quand une nouvelle demande arrive
+// (delete + repost pour ne jamais accumuler).
+// ═════════════════════════════════════════════════════════
+
+async function ensureGestionNotification(guild: Guild): Promise<void> {
+  const gestionId = await kvGet("channel_gestion_id");
+  const watcherId = await kvGet("channel_watcher_id");
+  if (!gestionId) return;
+
+  const ch = guild.channels.cache.get(gestionId);
+  if (!ch || ch.type !== ChannelType.GuildText) return;
+
+  const me = guild.members.me;
+  if (!me) return;
+
+  // Supprime l'ancien message s'il existe (pour eviter l'accumulation).
+  const oldId = await kvGet("gestion_notif_message_id");
+  if (oldId) {
+    try {
+      const old = await (ch as TextChannel).messages.fetch(oldId);
+      if (old.author.id === me.id) await old.delete();
+    } catch {
+      /* deja supprime */
+    }
+    await kvSet("gestion_notif_message_id", "");
+  }
+
+  // Recupere la prochaine demande dans la file (en respectant le filtre actuel).
+  const filter = await getQueueFilter();
+  const next = await fetchNextPending(filter);
+  const remaining = await countPendingForFilter(filter);
+
+  // Si rien a traiter, on n'a rien a notifier.
+  if (!next || remaining === 0) return;
+
+  const guildLabel = next.guild_name || `Guild ${next.guild_id.slice(-4)}`;
+  const watcherMention = watcherId ? `<#${watcherId}>` : "**🕵️-the-watcher**";
+  const ownerMention = `<@${guild.ownerId}>`;
+  const multi = await fetchMultiServerUserIds();
+  const isMulti = multi.has(next.viewer_user_id);
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔔  Nouvelle demande de vérification Celsius")
+    .setColor(cfg.COLOR.WARNING)
+    .setDescription(
+      [
+        `Une demande de vérification vient d'être soumise.`,
+        `**Total en attente :** \`${remaining}\``,
+        "",
+        `**Dernière demande :**`,
+        `👤 Viewer : <@${next.viewer_user_id}> (\`${next.viewer_username}\`)`,
+        `🎰 Pseudo Celsius : \`${next.celsius_pseudo}\``,
+        `💰 Dépôt moyen / mois : \`${fmtAmount(next)}\``,
+        `🎙️ Serveur d'origine : *${guildLabel}*`,
+        isMulti ? `\n⚠️ *Viewer présent sur plusieurs Discord — à examiner.*` : "",
+        "",
+        `→ Traiter dans ${watcherMention}`,
+      ]
+        .filter(Boolean)
+        .join("\n")
+    )
+    .setFooter({ text: `${cfg.BRAND.NAME} • Submission #${next.id}` });
+
+  try {
+    const msg = await (ch as TextChannel).send({
+      content: ownerMention,
+      embeds: [embed],
+      allowedMentions: { users: [guild.ownerId] },
+    });
+    await kvSet("gestion_notif_message_id", msg.id);
+  } catch (e) {
+    console.error("[aurix.watcher] gestion notif post failed:", e);
+  }
 }
