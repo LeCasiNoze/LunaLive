@@ -80,6 +80,10 @@ const STRINGS = {
     statLoss: "Lossback",
     statWithdraw: "Retraits",
     streamerBadge: "Partenaire officiel",
+    streamerH1: "100% BONUS",
+    streamerH2: "exclusif ma commu",
+    streamerSub: "L'affiliation la plus rentable du marché. Giveaways réservés, tournois privés et code promo unique pour mes viewers.",
+    streamerCta: "🎁 Je débloque mes bonus",
     streamerExclusivesTitle: "Pourquoi je joue chez Celsius",
     streamerExclusivesSub: "Ce que j'ai négocié pour ma commu — tu ne trouveras ça nulle part ailleurs.",
     streamerExclusives: [
@@ -158,6 +162,10 @@ const STRINGS = {
     statLoss: "Lossback",
     statWithdraw: "Withdrawals",
     streamerBadge: "Official partner",
+    streamerH1: "100% BONUS",
+    streamerH2: "exclusive to my community",
+    streamerSub: "The most profitable affiliation deal on the market. Reserved giveaways, private tournaments and a unique promo code for my viewers.",
+    streamerCta: "🎁 Unlock my bonuses",
     streamerExclusivesTitle: "Why I play at Celsius",
     streamerExclusivesSub: "What I negotiated for my community — you won't find this anywhere else.",
     streamerExclusives: [
@@ -698,15 +706,15 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
               <div className="s1-badge-top">{t.badgeTop}</div>
             </Reveal>
             <Reveal delay={0.1}>
-              <h1 className="s1-h1">{t.h1Line1}</h1>
-              <p className="s1-h1-line2">{t.h1Line2}</p>
+              <h1 className="s1-h1">{showPresenter ? t.streamerH1 : t.h1Line1}</h1>
+              <p className="s1-h1-line2">{showPresenter ? t.streamerH2 : t.h1Line2}</p>
             </Reveal>
             <Reveal delay={0.2}>
-              <p className="s1-h1-sub">{t.h1Sub}</p>
+              <p className="s1-h1-sub">{showPresenter ? t.streamerSub : t.h1Sub}</p>
             </Reveal>
             <Reveal delay={0.3}>
               <div className="s1-hero-cta-wrap">
-                <MagneticCta href={affiUrl} label={t.heroCta} />
+                <MagneticCta href={affiUrl} label={showPresenter ? t.streamerCta : t.heroCta} />
                 <div className="s1-hero-sub-line">{t.heroSub}</div>
               </div>
             </Reveal>
