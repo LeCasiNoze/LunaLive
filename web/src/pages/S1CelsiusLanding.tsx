@@ -643,7 +643,9 @@ export default function S1CelsiusLanding() {
 
 // ─── Welcome Package section avec toggle Casino/Sport ───────────────────────
 
-function WelcomeSection({ t }: { t: typeof STRINGS["fr"] }) {
+type Strings = typeof STRINGS[Lang];
+
+function WelcomeSection({ t }: { t: Strings }) {
   const [mode, setMode] = React.useState<"casino" | "sport">("casino");
   const paliers = mode === "casino" ? t.paliersCasino : t.paliersSport;
   return (
@@ -683,7 +685,7 @@ function WelcomeSection({ t }: { t: typeof STRINGS["fr"] }) {
 
 // ─── FAQ accordion ──────────────────────────────────────────────────────────
 
-function FaqSection({ t }: { t: typeof STRINGS["fr"] }) {
+function FaqSection({ t }: { t: Strings }) {
   const [open, setOpen] = React.useState<number | null>(0);
   return (
     <section className="s1-section">
