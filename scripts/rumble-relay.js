@@ -74,6 +74,18 @@ if (!ADMIN_KEY) {
   process.exit(1);
 }
 
+// Handlers globaux : fetch() Node 24 throw 'TypeError: fetch failed' avec
+// cause SocketError sur connexion réseau coupée → process.exit sans handler.
+// On log et on continue (le prochain tick retentera).
+process.on("uncaughtException", (err) => {
+  console.warn(`[relay] uncaughtException (continue): ${err?.message || err}`);
+  if (err?.stack) console.warn(err.stack.split("\n").slice(0, 4).join("\n"));
+});
+process.on("unhandledRejection", (reason) => {
+  const msg = reason?.message || (typeof reason === "object" ? JSON.stringify(reason).slice(0, 200) : String(reason));
+  console.warn(`[relay] unhandledRejection (continue): ${msg}`);
+});
+
 console.log(`[relay] starting — API_BASE=${API_BASE} interval=${POLL_INTERVAL_MS}ms`);
 
 /** Récupère la liste des streamers à surveiller depuis Render.
