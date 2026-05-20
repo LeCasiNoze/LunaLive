@@ -207,6 +207,65 @@ function toTelegramLink(contact: string): string {
 
 // ─────────── 3. Refus (status=rejected) ───────────
 
+// ─────────── Admin /dm-preview : envoie les 4 templates a l'admin pour validation ───────────
+
+export async function sendAllDmPreviews(
+  client: Client,
+  adminUserId: string
+): Promise<{ sent: number; failed: number }> {
+  // On force le target = admin (bypass test_mode pour ce flow), en passant
+  // l'admin comme "viewerUserId" partout.
+  const sample = {
+    viewerUserId: adminUserId,
+    viewerTag: "Aurix Affiliate",
+    pseudo: "Testing",
+    email: "viewer@example.com",
+    monthlyDeposit: "1500",
+    guildName: "casino-jojo",
+  };
+
+  let sent = 0;
+  let failed = 0;
+  const safeCall = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+      sent++;
+    } catch (e) {
+      failed++;
+      console.warn("[aurix.celsius.dm] preview send failed:", String(e));
+    }
+  };
+
+  await safeCall(() => sendCelsiusConfirmationDM(client, sample));
+  await safeCall(() =>
+    sendCelsiusValidatedDM(client, {
+      viewerUserId: adminUserId,
+      pseudo: sample.pseudo,
+      monthlyDeposit: "500",
+      monthlyDepositAmount: 500,
+      guildName: sample.guildName,
+    })
+  );
+  await safeCall(() =>
+    sendCelsiusValidatedDM(client, {
+      viewerUserId: adminUserId,
+      pseudo: sample.pseudo,
+      monthlyDeposit: "1500",
+      monthlyDepositAmount: 1500,
+      guildName: sample.guildName,
+    })
+  );
+  await safeCall(() =>
+    sendCelsiusRejectedDM(client, {
+      viewerUserId: adminUserId,
+      pseudo: sample.pseudo,
+      rejectReason: "Compte introuvable dans notre vivier d'affiliés ou pseudo Celsius incorrect.",
+    })
+  );
+
+  return { sent, failed };
+}
+
 export async function sendCelsiusRejectedDM(
   client: Client,
   args: {

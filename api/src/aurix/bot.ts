@@ -253,6 +253,15 @@ export async function startAurixBot(): Promise<void> {
           case "close-ticket":
             await handleCloseTicketCommand(ci);
             return;
+          case "dm-preview": {
+            await ci.deferReply({ ephemeral: true });
+            const { sendAllDmPreviews } = await import("./celsius_dm.js");
+            const r = await sendAllDmPreviews(ci.client, ci.user.id);
+            await ci.editReply({
+              content: `${cfg.EMOJI.check} Previews envoyés en DM : ${r.sent}/4 OK${r.failed ? ` (${r.failed} échec${r.failed > 1 ? "s" : ""})` : ""}.`,
+            });
+            return;
+          }
           case "celsius":
             await handleCelsiusCommand(ci);
             return;

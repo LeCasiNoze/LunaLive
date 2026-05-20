@@ -77,6 +77,11 @@ export const guildCommandDefinitions = [
     description: "(Admin) Ferme le ticket courant.",
     default_member_permissions: String(PermissionFlagsBits.ManageChannels),
   },
+  {
+    name: "dm-preview",
+    description: "(Admin) Reçoit les 4 templates DM /celsius en aperçu.",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+  },
 ];
 
 // Commandes GLOBALES — disponibles sur tous les serveurs où le bot est invité (serveurs streamers).
