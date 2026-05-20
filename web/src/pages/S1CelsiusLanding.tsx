@@ -79,6 +79,15 @@ const STRINGS = {
     statFs: "Free spins",
     statLoss: "Lossback",
     statWithdraw: "Retraits",
+    streamerBadge: "Partenaire officiel",
+    streamerExclusivesTitle: "Pourquoi je joue chez Celsius",
+    streamerExclusivesSub: "Ce que j'ai négocié pour ma commu — tu ne trouveras ça nulle part ailleurs.",
+    streamerExclusives: [
+      { icon: "💎", title: "L'affiliation la plus rentable", text: "Bonus boosté de +20% si tu passes par mon lien — négocié direct avec Celsius." },
+      { icon: "🎁", title: "Giveaways exclusifs ma commu", text: "Tirages cash chaque semaine réservés aux joueurs qui jouent avec mon code." },
+      { icon: "🏆", title: "Tournois privés mensuels", text: "Prize pool dédié, classement entre viewers, leaderboard live sur mon stream." },
+      { icon: "🎟️", title: "Code promo unique", text: "Mon code = bonus de bienvenue boosté + free spins additionnels au 1er dépôt." },
+    ],
     paymentsTitle: "Tous les moyens de paiement acceptés",
     payments: ["Crypto", "Visa", "Mastercard", "Apple Pay", "PayPal", "Google Pay"],
     paymentsNote: "0% de frais sur les CB · On absorbe les 11% habituels",
@@ -148,6 +157,15 @@ const STRINGS = {
     statFs: "Free spins",
     statLoss: "Lossback",
     statWithdraw: "Withdrawals",
+    streamerBadge: "Official partner",
+    streamerExclusivesTitle: "Why I play at Celsius",
+    streamerExclusivesSub: "What I negotiated for my community — you won't find this anywhere else.",
+    streamerExclusives: [
+      { icon: "💎", title: "Most profitable affiliation", text: "Bonus boosted +20% if you go through my link — negotiated direct with Celsius." },
+      { icon: "🎁", title: "Exclusive community giveaways", text: "Weekly cash draws reserved for players using my code." },
+      { icon: "🏆", title: "Private monthly tournaments", text: "Dedicated prize pool, viewer-only leaderboard, live on stream." },
+      { icon: "🎟️", title: "Unique promo code", text: "My code = boosted welcome bonus + extra free spins on first deposit." },
+    ],
     paymentsTitle: "All payment methods accepted",
     payments: ["Crypto", "Visa", "Mastercard", "Apple Pay", "PayPal", "Google Pay"],
     paymentsNote: "0% credit card fees · We absorb the usual 11%",
@@ -379,13 +397,34 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
         .s1-lang-btn{padding:5px 11px;border-radius:999px;background:transparent;border:none;color:rgba(255,255,255,.6);font-weight:700;font-size:.7rem;cursor:pointer;letter-spacing:.08em;font-family:inherit}
         .s1-lang-btn.active{background:linear-gradient(135deg,#FFB930,#FF4B6E);color:#0a0510;box-shadow:0 4px 14px rgba(255,75,110,.4)}
 
-        /* Presenter strip */
-        .s1-presenter{display:inline-flex;align-items:center;gap:12px;padding:8px 16px 8px 8px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,185,48,.3);backdrop-filter:blur(10px);margin-bottom:18px}
-        .s1-presenter-img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,185,48,.6);box-shadow:0 4px 14px rgba(255,75,110,.4)}
-        .s1-presenter-text{text-align:left;line-height:1.1}
-        .s1-presenter-by{font-size:.62rem;color:rgba(255,233,214,.55);letter-spacing:.14em;text-transform:uppercase;font-weight:700}
-        .s1-presenter-pseudo{font-family:'Bagel Fat One',cursive;font-size:1rem;color:#FFE9D6;letter-spacing:.02em;margin-top:2px}
-        .s1-presenter-sub{font-size:.7rem;color:rgba(255,233,214,.55);margin-top:1px}
+        /* Presenter — streamer card (mode portrait) */
+        .s1-presenter{display:flex;flex-direction:column;align-items:center;gap:12px;
+          padding:18px 22px 20px;border-radius:22px;
+          background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
+          border:1px solid rgba(255,185,48,.35);backdrop-filter:blur(14px);margin-bottom:22px;
+          box-shadow:0 18px 40px rgba(255,75,110,.22),0 0 0 1px rgba(255,255,255,.04) inset;
+          position:relative;overflow:hidden;max-width:340px;margin-left:auto;margin-right:auto}
+        .s1-presenter::before{content:"";position:absolute;inset:-50%;
+          background:conic-gradient(from var(--s1-angle),rgba(110,231,255,.4),rgba(167,139,250,.3),rgba(255,75,110,.4),rgba(255,185,48,.4),rgba(110,231,255,.4));
+          animation:s1-angle 8s linear infinite;opacity:.5;z-index:-1;filter:blur(20px)}
+        .s1-presenter-imgwrap{position:relative;width:84px;height:84px}
+        .s1-presenter-imgwrap::before{content:"";position:absolute;inset:-3px;border-radius:50%;
+          background:conic-gradient(from var(--s1-angle),#6EE7FF,#A78BFA,#FF4B6E,#FFB930,#6EE7FF);
+          animation:s1-angle 6s linear infinite}
+        .s1-presenter-img{position:relative;width:84px;height:84px;border-radius:50%;object-fit:cover;
+          border:3px solid #04050d;display:block}
+        .s1-presenter-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;
+          background:linear-gradient(135deg,rgba(255,185,48,.18),rgba(255,75,110,.18));
+          border:1px solid rgba(255,185,48,.4);
+          font-size:.6rem;font-weight:800;letter-spacing:.18em;color:#FFE9D6;text-transform:uppercase}
+        .s1-presenter-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:#FFB930;box-shadow:0 0 8px #FFB930}
+        .s1-presenter-text{text-align:center;line-height:1.1}
+        .s1-presenter-pseudo{font-family:'Bagel Fat One',cursive;font-size:1.6rem;letter-spacing:.02em;
+          background:linear-gradient(180deg,#fff,#FFE9D6 40%,#FFB930 95%);
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+          filter:drop-shadow(0 2px 0 rgba(255,75,110,.3))}
+        .s1-presenter-sub{font-size:.82rem;color:rgba(255,233,214,.7);margin-top:4px;font-weight:600}
+        .s1-presenter-handle{display:inline-block;margin-top:6px;font-size:.78rem;color:#6EE7FF;font-weight:700;letter-spacing:.02em}
 
         /* Hero (mobile-first) */
         .s1-hero{padding:36px 16px 56px;text-align:center;position:relative}
@@ -470,6 +509,27 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
           filter:drop-shadow(0 2px 0 rgba(255,75,110,.3))}
         .s1-palier-fs{margin-top:8px;font-size:.95rem;color:#FFE9D6;font-weight:700}
         .s1-palier-wager{margin-top:10px;font-size:.7rem;color:rgba(255,255,255,.45);letter-spacing:.06em}
+
+        /* Streamer exclusives (gros cards verticales premium) */
+        .s1-stream-section{position:relative}
+        .s1-stream-grid{display:grid;grid-template-columns:1fr;gap:14px;max-width:520px;margin:0 auto;padding:0 4px}
+        .s1-stream-card{position:relative;padding:22px 20px;border-radius:20px;
+          background:
+            radial-gradient(80% 60% at 0% 0%,rgba(167,139,250,.16),transparent 70%),
+            linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.015));
+          border:1px solid rgba(110,231,255,.22);backdrop-filter:blur(14px);
+          box-shadow:0 18px 40px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.03) inset;
+          overflow:hidden;transition:transform .25s ease,border-color .25s ease}
+        .s1-stream-card::after{content:"";position:absolute;left:-30%;top:-30%;width:60%;height:60%;
+          background:radial-gradient(circle,rgba(255,185,48,.22),transparent 70%);
+          filter:blur(20px);pointer-events:none}
+        .s1-stream-card:hover{transform:translateY(-3px);border-color:rgba(255,185,48,.5)}
+        .s1-stream-icon{font-size:2.1rem;line-height:1;margin-bottom:10px;
+          filter:drop-shadow(0 4px 14px rgba(255,185,48,.45))}
+        .s1-stream-title{font-family:'Bagel Fat One',cursive;font-size:1.15rem;line-height:1.15;letter-spacing:.02em;margin:0 0 6px;
+          background:linear-gradient(180deg,#fff,#FFE9D6 60%,#FFB930 100%);
+          -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+        .s1-stream-text{font-size:.86rem;color:rgba(255,255,255,.7);margin:0;line-height:1.5}
 
         /* Benefits grid (2 cols mobile) */
         .s1-benefits{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;max-width:760px;margin:0 auto;padding:0 4px}
@@ -620,11 +680,13 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
               <Reveal>
                 <div className="s1-presenter">
                   {props.profileImageUrl ? (
-                    <img src={props.profileImageUrl} alt="" className="s1-presenter-img" />
+                    <div className="s1-presenter-imgwrap">
+                      <img src={props.profileImageUrl} alt="" className="s1-presenter-img" />
+                    </div>
                   ) : null}
+                  <div className="s1-presenter-badge">{t.streamerBadge}</div>
                   {props.pseudo ? (
                     <div className="s1-presenter-text">
-                      <div className="s1-presenter-by">{lang === "fr" ? "Présenté par" : "Presented by"}</div>
                       <div className="s1-presenter-pseudo">{props.pseudo}</div>
                       {props.pseudoSub ? <div className="s1-presenter-sub">{props.pseudoSub}</div> : null}
                     </div>
@@ -671,6 +733,29 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
             </Reveal>
           </div>
         </motion.section>
+
+        {/* Streamer exclusives — visible uniquement quand un pseudo est fourni */}
+        {showPresenter ? (
+          <section className="s1-section s1-stream-section">
+            <div className="s1-container">
+              <Reveal>
+                <h2 className="s1-section-title">{t.streamerExclusivesTitle}</h2>
+                <p className="s1-section-sub">{t.streamerExclusivesSub}</p>
+              </Reveal>
+              <div className="s1-stream-grid">
+                {t.streamerExclusives.map((s, i) => (
+                  <Reveal key={i} delay={i * 0.08}>
+                    <div className="s1-stream-card">
+                      <div className="s1-stream-icon">{s.icon}</div>
+                      <h3 className="s1-stream-title">{s.title}</h3>
+                      <p className="s1-stream-text">{s.text}</p>
+                    </div>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {/* Welcome Package */}
         <WelcomeSection t={t} />
