@@ -47,6 +47,9 @@ const EditorV2Page = React.lazy(() => import("./pages/EditorV2Page"));
 // Affi Editor V3 â€” /editorFSNV3 (wizard rapide M1, rÃ©utilise pipeline V2)
 const EditorV3Page = React.lazy(() => import("./pages/EditorV3Page"));
 
+// S1 — landing premium standalone Celsius (promo X/Twitter)
+const S1CelsiusLanding = React.lazy(() => import("./pages/S1CelsiusLanding"));
+
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
 const StreamControlPage = React.lazy(() => import("./pages/fsb/StreamControlPage"));
@@ -83,7 +86,8 @@ function AppInner() {
   React.useEffect(() => {
     captureUtmFromUrl();
   }, [location.pathname, location.search]);
-  const isStandaloneReferral = location.pathname.startsWith("/r/");
+  const isStandaloneReferral =
+    location.pathname.startsWith("/r/") || location.pathname.startsWith("/s1");
   const isOverlayRoute =
     location.pathname.startsWith("/overlay") ||
     location.pathname.startsWith("/stream-control");
@@ -288,6 +292,14 @@ function AppInner() {
             }
           />
           <Route path="/r/:slug" element={<ReferralLandingPage />} />
+          <Route
+            path="/s1"
+            element={
+              <React.Suspense fallback={<LoadingFallback />}>
+                <S1CelsiusLanding />
+              </React.Suspense>
+            }
+          />
           <Route path="/event" element={<EventPage />} />
 
           {/* Debug routes */}
