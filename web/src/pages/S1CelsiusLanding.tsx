@@ -742,6 +742,9 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
           </div>
         </motion.section>
 
+        {/* Welcome Package */}
+        <WelcomeSection t={t} />
+
         {/* Streamer exclusives — visible uniquement quand un pseudo est fourni */}
         {showPresenter ? (
           <section className="s1-section s1-stream-section">
@@ -764,29 +767,6 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
             </div>
           </section>
         ) : null}
-
-        {/* Welcome Package */}
-        <WelcomeSection t={t} />
-
-        {/* Benefits */}
-        <section className="s1-section">
-          <div className="s1-container">
-            <Reveal>
-              <h2 className="s1-section-title">{t.benefitsTitle}</h2>
-            </Reveal>
-            <div className="s1-benefits">
-              {t.benefits.map((b, i) => (
-                <Reveal key={i} delay={i * 0.05}>
-                  <div className="s1-benefit">
-                    <div className="s1-benefit-icon">{b.icon}</div>
-                    <h3 className="s1-benefit-title">{b.title}</h3>
-                    <p className="s1-benefit-text">{b.text}</p>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-          </div>
-        </section>
 
         {/* VIP */}
         <section className="s1-section">
@@ -840,6 +820,26 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
                 </div>
               </div>
             </Reveal>
+          </div>
+        </section>
+
+        {/* Benefits — Pourquoi Celsius */}
+        <section className="s1-section">
+          <div className="s1-container">
+            <Reveal>
+              <h2 className="s1-section-title">{t.benefitsTitle}</h2>
+            </Reveal>
+            <div className="s1-benefits">
+              {t.benefits.map((b, i) => (
+                <Reveal key={i} delay={i * 0.05}>
+                  <div className="s1-benefit">
+                    <div className="s1-benefit-icon">{b.icon}</div>
+                    <h3 className="s1-benefit-title">{b.title}</h3>
+                    <p className="s1-benefit-text">{b.text}</p>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
           </div>
         </section>
 
