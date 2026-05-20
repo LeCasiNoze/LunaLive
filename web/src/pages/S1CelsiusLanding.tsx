@@ -320,17 +320,15 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
   return (
     <div className="s1-root">
       <style>{`
-        .s1-root{position:relative;min-height:100vh;color:#fff;font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;overflow-x:hidden;background:#070512}
-        /* Mesh gradient anime de fond */
-        .s1-bg-mesh{position:fixed;inset:-20%;background:
-          radial-gradient(circle at 18% 12%,rgba(255,75,110,.22) 0%,transparent 45%),
-          radial-gradient(circle at 82% 8%,rgba(168,85,247,.18) 0%,transparent 45%),
-          radial-gradient(circle at 50% 92%,rgba(255,185,48,.16) 0%,transparent 50%),
-          radial-gradient(circle at 12% 78%,rgba(34,211,238,.12) 0%,transparent 40%);
-          filter:blur(40px);animation:s1-mesh 24s ease-in-out infinite alternate;pointer-events:none;z-index:0}
-        .s1-bg-grain{position:fixed;inset:0;background-image:radial-gradient(circle at 50% 50%,rgba(255,255,255,.04) 1px,transparent 1px);background-size:24px 24px;opacity:.4;pointer-events:none;z-index:0}
+        .s1-root{position:relative;min-height:100vh;color:#fff;font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;overflow-x:hidden;background:#0a0710}
+        /* Fond propre : deux halos chauds tres flous, pas de purple/cyan */
+        .s1-bg-mesh{position:fixed;inset:-10%;background:
+          radial-gradient(900px circle at 15% 0%,rgba(255,75,110,.14) 0%,transparent 55%),
+          radial-gradient(900px circle at 88% 110%,rgba(255,185,48,.10) 0%,transparent 55%);
+          filter:blur(20px);pointer-events:none;z-index:0}
+        .s1-bg-grain{position:fixed;inset:0;background-image:radial-gradient(circle at 50% 50%,rgba(255,255,255,.025) 1px,transparent 1px);background-size:28px 28px;opacity:.5;pointer-events:none;z-index:0}
         .s1-bg-spot{position:fixed;inset:0;pointer-events:none;z-index:1;mix-blend-mode:screen}
-        .s1-bg-aurora{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.7;background:linear-gradient(115deg,transparent 30%,rgba(255,185,48,.07) 50%,transparent 70%);filter:blur(30px);animation:s1-aurora 18s linear infinite}
+        .s1-bg-aurora{display:none}
 
         /* Layout containers */
         .s1-layer{position:relative;z-index:5}
@@ -356,9 +354,9 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
         .s1-hero{padding:60px 20px 80px;text-align:center}
         .s1-badge-top{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,185,48,.4);font-size:.7rem;font-weight:700;letter-spacing:.14em;color:#FFE9D6;backdrop-filter:blur(8px);margin-bottom:24px}
         .s1-badge-top::before{content:"";width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 10px #22c55e;animation:s1-blink 1.4s ease-in-out infinite}
-        .s1-h1{margin:0;line-height:.95;font-family:'Bagel Fat One',cursive;font-size:clamp(3rem,9vw,6.5rem);letter-spacing:-.01em;background:linear-gradient(180deg,#fff 0%,#FFE9D6 25%,#FFB930 55%,#FF4B6E 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 4px 0 rgba(255,75,110,.5)) drop-shadow(0 0 28px rgba(255,185,48,.4))}
-        .s1-h1-line2{margin:10px 0 0;font-family:'Bagel Fat One',cursive;font-size:clamp(1.4rem,4.5vw,2.4rem);color:#FFE9D6;letter-spacing:.04em;text-shadow:0 0 18px rgba(255,185,48,.4)}
-        .s1-h1-sub{margin:20px auto 0;max-width:560px;font-size:clamp(.95rem,2vw,1.15rem);color:rgba(255,255,255,.75);font-weight:500}
+        .s1-h1{margin:0;line-height:.95;font-family:'Bagel Fat One',cursive;font-size:4.5rem;letter-spacing:-.01em;background:linear-gradient(180deg,#fff 0%,#FFE9D6 25%,#FFB930 55%,#FF4B6E 85%,#fff 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;filter:drop-shadow(0 4px 0 rgba(255,75,110,.5)) drop-shadow(0 0 28px rgba(255,185,48,.4))}
+        .s1-h1-line2{margin:10px 0 0;font-family:'Bagel Fat One',cursive;font-size:1.8rem;color:#FFE9D6;letter-spacing:.04em;text-shadow:0 0 18px rgba(255,185,48,.4)}
+        .s1-h1-sub{margin:20px auto 0;max-width:560px;font-size:1.05rem;color:rgba(255,255,255,.75);font-weight:500}
         .s1-hero-cta-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;margin-top:34px}
         .s1-cta{display:inline-flex;align-items:center;gap:8px;padding:18px 32px;border-radius:18px;font-family:'Bagel Fat One',cursive;font-size:1.15rem;letter-spacing:.04em;text-decoration:none;cursor:pointer;border:none;transition:transform .15s ease;font-weight:400}
         .s1-cta-primary{color:#1a0510;background:linear-gradient(135deg,#FFE9D6 0%,#FFB930 45%,#FF4B6E 100%);box-shadow:0 0 0 1px rgba(255,255,255,.4) inset,0 12px 36px rgba(255,75,110,.55),0 0 70px rgba(255,185,48,.45);border:2px solid #fff}
@@ -370,12 +368,12 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
         /* Stats strip (live) */
         .s1-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin:54px auto 0;max-width:900px;padding:18px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px)}
         .s1-stat{text-align:center;padding:8px 4px}
-        .s1-stat-val{font-family:'Bagel Fat One',cursive;font-size:clamp(1.6rem,4vw,2.2rem);background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;line-height:1;letter-spacing:-.02em}
+        .s1-stat-val{font-family:'Bagel Fat One',cursive;font-size:1.9rem;background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;line-height:1;letter-spacing:-.02em}
         .s1-stat-label{font-size:.7rem;color:rgba(255,255,255,.55);letter-spacing:.16em;text-transform:uppercase;margin-top:4px;font-weight:700}
 
         /* Section title */
         .s1-section{padding:80px 0;position:relative}
-        .s1-section-title{text-align:center;margin:0 0 12px;font-family:'Bagel Fat One',cursive;font-size:clamp(2rem,5vw,3.2rem);background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;letter-spacing:-.01em}
+        .s1-section-title{text-align:center;margin:0 0 12px;font-family:'Bagel Fat One',cursive;font-size:2.4rem;line-height:1.05;background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;letter-spacing:-.01em}
         .s1-section-sub{text-align:center;color:rgba(255,255,255,.65);font-size:1.05rem;margin:0 auto 40px;max-width:600px}
 
         /* Welcome package tabs */
@@ -406,10 +404,9 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
           linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01));
           border:1px solid rgba(255,185,48,.3);box-shadow:0 30px 80px rgba(255,75,110,.3),0 0 0 1px rgba(255,255,255,.04) inset;backdrop-filter:blur(20px);overflow:hidden}
         .s1-vip::before{content:"";position:absolute;inset:0;background:radial-gradient(80% 60% at 50% 0%,rgba(255,185,48,.15),transparent 70%);pointer-events:none}
-        .s1-vip-inner{position:relative;display:grid;grid-template-columns:1.2fr 1fr;gap:40px;align-items:center}
-        @media(max-width:760px){.s1-vip-inner{grid-template-columns:1fr;gap:24px}}
+        .s1-vip-inner{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:32px;align-items:center}
         .s1-vip-badge{display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(255,185,48,.18);color:#FFB930;font-size:.68rem;font-weight:800;letter-spacing:.18em;margin-bottom:16px;text-transform:uppercase}
-        .s1-vip-h{font-family:'Bagel Fat One',cursive;font-size:clamp(1.6rem,3.5vw,2.4rem);line-height:1.1;background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin:0 0 16px;filter:drop-shadow(0 2px 0 rgba(255,75,110,.3))}
+        .s1-vip-h{font-family:'Bagel Fat One',cursive;font-size:1.8rem;line-height:1.15;background:linear-gradient(180deg,#fff,#FFB930 60%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin:0 0 16px;filter:drop-shadow(0 2px 0 rgba(255,75,110,.3));word-break:normal;overflow-wrap:break-word;hyphens:none}
         .s1-vip-body{color:rgba(255,255,255,.78);font-size:1rem;line-height:1.55;margin:0 0 22px}
         .s1-vip-bullets{list-style:none;padding:0;margin:0 0 22px}
         .s1-vip-bullets li{padding:8px 0 8px 30px;position:relative;font-size:.95rem;color:#FFE9D6}
@@ -436,7 +433,7 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
 
         /* Final CTA */
         .s1-final{text-align:center;padding:60px 20px 40px}
-        .s1-final-h{font-family:'Bagel Fat One',cursive;font-size:clamp(2.2rem,6vw,3.6rem);line-height:1.05;background:linear-gradient(180deg,#fff,#FFB930 50%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin:0 0 16px;filter:drop-shadow(0 4px 0 rgba(255,75,110,.4))}
+        .s1-final-h{font-family:'Bagel Fat One',cursive;font-size:2.8rem;line-height:1.05;background:linear-gradient(180deg,#fff,#FFB930 50%,#FF4B6E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;margin:0 0 16px;filter:drop-shadow(0 4px 0 rgba(255,75,110,.4))}
         .s1-final-sub{color:rgba(255,255,255,.7);font-size:1.05rem;margin:0 0 30px}
 
         /* Payments */
