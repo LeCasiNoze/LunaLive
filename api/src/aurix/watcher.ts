@@ -22,6 +22,7 @@ import {
 } from "discord.js";
 import * as cfg from "./config.js";
 import { all, kvGet, kvSet, one, query } from "./db.js";
+import { sendCelsiusValidatedDM, sendCelsiusRejectedDM } from "./celsius_dm.js";
 
 export type SortMode = "date_desc" | "date_asc" | "deposit_desc" | "deposit_asc";
 
@@ -388,6 +389,48 @@ export async function handleWatcherSort(interaction: ButtonInteraction): Promise
   if (interaction.guild) await ensureWatcherBoard(interaction.guild);
 }
 
+/** Envoie le DM viewer apres une decision (verified / rejected). */
+async function dmAfterDecision(
+  client: Client,
+  submissionId: number,
+  decision: "verified" | "rejected"
+): Promise<void> {
+  const sub = await one<{
+    viewer_user_id: string;
+    celsius_pseudo: string;
+    monthly_deposit: string;
+    monthly_deposit_amount: string | null;
+    guild_name: string | null;
+    reject_reason: string | null;
+  }>(
+    `SELECT viewer_user_id, celsius_pseudo, monthly_deposit, monthly_deposit_amount, guild_name, reject_reason
+       FROM aurix_celsius_submissions WHERE id=$1`,
+    [submissionId]
+  );
+  if (!sub) return;
+
+  try {
+    if (decision === "verified") {
+      const amt = sub.monthly_deposit_amount != null ? Number(sub.monthly_deposit_amount) : null;
+      await sendCelsiusValidatedDM(client, {
+        viewerUserId: sub.viewer_user_id,
+        pseudo: sub.celsius_pseudo,
+        monthlyDeposit: sub.monthly_deposit,
+        monthlyDepositAmount: Number.isFinite(amt as number) ? (amt as number) : null,
+        guildName: sub.guild_name ?? "ton serveur",
+      });
+    } else {
+      await sendCelsiusRejectedDM(client, {
+        viewerUserId: sub.viewer_user_id,
+        pseudo: sub.celsius_pseudo,
+        rejectReason: sub.reject_reason,
+      });
+    }
+  } catch (e) {
+    console.error("[aurix.watcher] dmAfterDecision failed:", e);
+  }
+}
+
 export async function handleWatcherValidate(interaction: ButtonInteraction): Promise<void> {
   const submissionId = Number(interaction.customId.split(":").pop());
   if (!Number.isFinite(submissionId)) {
@@ -404,6 +447,7 @@ export async function handleWatcherValidate(interaction: ButtonInteraction): Pro
     [interaction.user.id, submissionId]
   );
   await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  await dmAfterDecision(interaction.client, submissionId, "verified");
   if (interaction.guild) await ensureWatcherBoard(interaction.guild);
 }
 
@@ -439,6 +483,7 @@ export async function handleWatcherRejectModal(interaction: ModalSubmitInteracti
     [interaction.user.id, reason, submissionId]
   );
   await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  await dmAfterDecision(interaction.client, submissionId, "rejected");
   if (interaction.guild) await ensureWatcherBoard(interaction.guild);
   await interaction.editReply({ content: "🔴 Demande refusée." });
 }
@@ -666,6 +711,7 @@ export async function handleQueueAccept(interaction: ButtonInteraction): Promise
     [interaction.user.id, submissionId]
   );
   await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+  await dmAfterDecision(interaction.client, submissionId, "verified");
   if (interaction.guild) await ensureWatcherBoard(interaction.guild);
 }
 
