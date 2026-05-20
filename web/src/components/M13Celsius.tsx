@@ -2,7 +2,6 @@
 // Mappe les props V3 (pseudo / profileImageUrl / pseudoSub / affiLink) vers
 // le landing standalone defini dans pages/S1CelsiusLanding.tsx
 
-import * as React from "react";
 import S1CelsiusLanding from "../pages/S1CelsiusLanding";
 
 export type M13CelsiusProps = {
