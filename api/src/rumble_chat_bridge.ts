@@ -169,7 +169,7 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 async function connectChatSse(
   videoIdNumeric: string,
   onMessage: (m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; requestId: string | null }) => void,
-  onClose: () => void
+  onClose: (noChatAvailable?: boolean) => void
 ): Promise<(() => void) | null> {
   const session = await getRumbleBotSession();
   if (!hasRumbleBotSession(session)) {
@@ -250,8 +250,12 @@ async function connectChatSse(
       });
 
       if (!r.ok || !r.body) {
-        console.warn(`[rumble_chat] SSE connect http=${r.status}`);
-        if (!stopped) onClose();
+        // 204 No Content = Rumble dit "ce vid n'a pas de chat actif"
+        // (live terminé, vid invalide, ou stream qui n'a jamais eu de chat).
+        // On signale différemment pour que le caller backoff au lieu de boucler.
+        const noChat = r.status === 204;
+        console.warn(`[rumble_chat] SSE connect http=${r.status}${noChat ? " (no chat available)" : ""}`);
+        if (!stopped) onClose(noChat);
         return;
       }
 
@@ -445,28 +449,44 @@ export function ensureRumbleBridge(opts: {
     }, ms);
   }
 
+  // Backoff exponentiel + circuit breaker pour éviter de boucler indéfiniment
+  // sur un stream Rumble qui retourne 204 (chat indisponible / live fini).
+  let consecutiveFailures = 0;
+  const MAX_CONSECUTIVE_FAILURES = 20; // après ~30 min de tentatives, on stoppe
+  function nextBackoffMs() {
+    // 5s → 10s → 20s → 40s → 60s (cap)
+    return Math.min(5_000 * Math.pow(2, Math.max(0, consecutiveFailures - 1)), 60_000);
+  }
+
   async function start() {
     if (!alive) return;
     if (!videoIdNumeric) {
       console.log(`[rumble_chat] ${opts.slug}: no videoIdNumeric yet, idle`);
       return;
     }
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.warn(`[rumble_chat] ${opts.slug}: trop d'échecs SSE (${consecutiveFailures}) — stop bridge`);
+      bridge.stop();
+      return;
+    }
 
     stopStream = await connectChatSse(
       videoIdNumeric,
-      (m) => broadcast(m),
-      () => {
-        // disconnect → essayer de reconnecter dans 5s tant que le bridge est vivant
+      (m) => { consecutiveFailures = 0; broadcast(m); },
+      (noChatAvailable) => {
         stopStream = null;
-        if (alive) {
-          console.log(`[rumble_chat] ${opts.slug}: SSE closed, reconnecting in 5s`);
-          scheduleReconnect(5_000);
-        }
+        if (!alive) return;
+        consecutiveFailures++;
+        const delay = noChatAvailable
+          ? Math.max(30_000, nextBackoffMs()) // 204 = minimum 30s
+          : nextBackoffMs();
+        console.log(`[rumble_chat] ${opts.slug}: SSE closed (fail #${consecutiveFailures}${noChatAvailable ? " no-chat" : ""}), reconnecting in ${Math.round(delay/1000)}s`);
+        scheduleReconnect(delay);
       }
     );
     if (!stopStream) {
-      // session manquante ou échec immédiat — retry plus tard
-      scheduleReconnect(30_000);
+      consecutiveFailures++;
+      scheduleReconnect(Math.max(30_000, nextBackoffMs()));
     }
   }
 
