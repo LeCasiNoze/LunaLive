@@ -310,19 +310,22 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
     [clipId, String(info.mp4_key || "").slice(0, 500), Date.now(), Math.max(0, Number(info.mp4_size || 0))]
   );
 
-  // ✅ Générer thumbnail après MP4 prêt
+  // ✅ Générer thumbnail après MP4 prêt — SÉRIALISÉ derrière le clip render
+  // via withFfmpegSlot pour éviter 2 ffmpeg simultanés → OOM sur Render 512MB
   (async () => {
     try {
       // Import dynamique pour éviter dépendances circulaires
       const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../clips/r2.js");
       const { spawn } = await import("child_process");
       const { FFMPEG_BIN, FFMPEG_OK } = await import("../routes/thumbs.js");
+      const { withFfmpegSlot } = await import("../utils/ffmpeg_gate.js");
 
       if (!FFMPEG_OK || !r2Enabled()) return;
 
       const mp4Url = buildPublicUrl(info.mp4_key);
       if (!mp4Url) return;
 
+      await withFfmpegSlot(`thumb-${clipId}`, () => new Promise<void>((resolveSlot) => {
       // Extraire thumbnail avec FFMPEG
       const args = [
         "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-rw_timeout", "10000000",
@@ -347,13 +350,14 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
         console.warn(`[store] thumbnail ffmpeg spawn error clipId=${clipId}`, e);
       });
 
-      p.on("close", async (code: any, signal: any) => {
+      p.on("close", async (code: any, _signal: any) => {
         clearTimeout(killTimer);
         const buf = Buffer.concat(chunks);
         const ok = code === 0 && buf.length > 5_000;
 
         if (!ok) {
           console.warn(`[store] thumbnail ffmpeg failed clipId=${clipId} code=${code} bytes=${buf.length}`);
+          resolveSlot();
           return;
         }
 
@@ -361,7 +365,7 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
           // Stocker dans R2
           const r2Key = `clips/thumbnails/${clipId}.jpg`;
           const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
-          
+
           if (!uploadOk) {
             console.warn(`[store] thumbnail R2 upload failed clipId=${clipId}`);
             return;
@@ -383,8 +387,11 @@ export async function setClipMp4Success(clipId: number, info: { mp4_key: string;
           console.log(`[store] thumbnail generated clipId=${clipId} url=${publicUrl}`);
         } catch (err: any) {
           console.warn(`[store] thumbnail storage failed clipId=${clipId}`, err);
+        } finally {
+          resolveSlot();
         }
       });
+      }));
     } catch (err: any) {
       console.warn(`[store] thumbnail generation exception clipId=${clipId}`, err);
     }

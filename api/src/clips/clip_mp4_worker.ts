@@ -285,8 +285,11 @@ function getFfmpegPath(): string {
   return envPath ? envPath : "ffmpeg";
 }
 
-function runFfmpeg(args: string[], timeoutMs: number): Promise<{ ok: true } | { ok: false; err: string }> {
-  return new Promise((resolve) => {
+async function runFfmpeg(args: string[], timeoutMs: number): Promise<{ ok: true } | { ok: false; err: string }> {
+  // Sérialise via mutex global ffmpeg pour éviter overlap mp4 + thumbnail
+  // qui peut pousser le RSS au-delà des 512 MB Render.
+  const { withFfmpegSlot } = await import("../utils/ffmpeg_gate.js");
+  return withFfmpegSlot("clip-mp4", () => new Promise((resolve) => {
     const ffmpegPath = getFfmpegPath();
     const proc = spawn(ffmpegPath, args, { windowsHide: true });
 
@@ -313,7 +316,7 @@ function runFfmpeg(args: string[], timeoutMs: number): Promise<{ ok: true } | { 
       if (code === 0) return resolve({ ok: true });
       resolve({ ok: false, err: `ffmpeg_exit_${code}\n${stderr}`.slice(0, 30_000) });
     });
-  });
+  }));
 }
 
 /* ─────────────────────────────────────────────
