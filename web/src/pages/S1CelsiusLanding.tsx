@@ -158,8 +158,15 @@ const STRINGS = {
   },
 } as const;
 
-// CTA target (defaults to celsius affiliate root, replaceable via query ?to=)
+// CTA target (defaults to celsius affiliate root, replaceable via query ?to= or prop)
 const DEFAULT_AFFI = "https://celsius.games/UHyEqTtNlL";
+
+export type S1CelsiusLandingProps = {
+  affiLink?: string;
+  pseudo?: string;
+  pseudoSub?: string;
+  profileImageUrl?: string;
+};
 
 // ─── Reveal on scroll wrapper ───────────────────────────────────────────────
 
@@ -240,16 +247,19 @@ function CountUp({ to, prefix = "", suffix = "", duration = 1.4 }: { to: number;
 
 // ─── Main page ──────────────────────────────────────────────────────────────
 
-export default function S1CelsiusLanding() {
+export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
   const [lang, setLang] = React.useState<Lang>("fr");
   const t = STRINGS[lang];
 
-  // Affi URL (query ?to=…)
+  // Affi URL : prop > query ?to= > default
   const affiUrl = React.useMemo(() => {
+    if (props.affiLink) return props.affiLink;
     if (typeof window === "undefined") return DEFAULT_AFFI;
     const params = new URLSearchParams(window.location.search);
     return params.get("to") || DEFAULT_AFFI;
-  }, []);
+  }, [props.affiLink]);
+
+  const showPresenter = Boolean(props.pseudo || props.profileImageUrl);
 
   const [vipMode, setVipMode] = React.useState<"closed" | "form" | "sent">("closed");
   const [vipEmail, setVipEmail] = React.useState("");
@@ -333,6 +343,14 @@ export default function S1CelsiusLanding() {
         .s1-lang-switch{display:flex;gap:4px;padding:3px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:999px}
         .s1-lang-btn{padding:5px 12px;border-radius:999px;background:transparent;border:none;color:rgba(255,255,255,.6);font-weight:700;font-size:.72rem;cursor:pointer;letter-spacing:.08em;font-family:inherit}
         .s1-lang-btn.active{background:linear-gradient(135deg,#FFB930,#FF4B6E);color:#0a0510;box-shadow:0 4px 14px rgba(255,75,110,.4)}
+
+        /* Presenter strip */
+        .s1-presenter{display:inline-flex;align-items:center;gap:12px;padding:8px 16px 8px 8px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,185,48,.3);backdrop-filter:blur(10px);margin-bottom:18px}
+        .s1-presenter-img{width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,185,48,.6);box-shadow:0 4px 14px rgba(255,75,110,.4)}
+        .s1-presenter-text{text-align:left;line-height:1.1}
+        .s1-presenter-by{font-size:.62rem;color:rgba(255,233,214,.55);letter-spacing:.14em;text-transform:uppercase;font-weight:700}
+        .s1-presenter-pseudo{font-family:'Bagel Fat One',cursive;font-size:1rem;color:#FFE9D6;letter-spacing:.02em;margin-top:2px}
+        .s1-presenter-sub{font-size:.7rem;color:rgba(255,233,214,.55);margin-top:1px}
 
         /* Hero */
         .s1-hero{padding:60px 20px 80px;text-align:center}
@@ -467,6 +485,22 @@ export default function S1CelsiusLanding() {
         {/* Hero */}
         <motion.section className="s1-hero" ref={heroRef} style={{ y: heroY, opacity: heroOpacity }}>
           <div className="s1-container">
+            {showPresenter ? (
+              <Reveal>
+                <div className="s1-presenter">
+                  {props.profileImageUrl ? (
+                    <img src={props.profileImageUrl} alt="" className="s1-presenter-img" />
+                  ) : null}
+                  {props.pseudo ? (
+                    <div className="s1-presenter-text">
+                      <div className="s1-presenter-by">{lang === "fr" ? "Présenté par" : "Presented by"}</div>
+                      <div className="s1-presenter-pseudo">{props.pseudo}</div>
+                      {props.pseudoSub ? <div className="s1-presenter-sub">{props.pseudoSub}</div> : null}
+                    </div>
+                  ) : null}
+                </div>
+              </Reveal>
+            ) : null}
             <Reveal>
               <div className="s1-badge-top">{t.badgeTop}</div>
             </Reveal>
