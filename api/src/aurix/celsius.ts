@@ -294,6 +294,85 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
     } catch (e) {
       console.error("[aurix.celsius] watcher refresh failed:", e);
     }
+    try {
+      await sendCelsiusConfirmationDM(interaction.client, {
+        viewerUserId: interaction.user.id,
+        viewerTag: interaction.user.tag,
+        pseudo,
+        email,
+        monthlyDeposit,
+        guildName: guild.name,
+      });
+    } catch (e) {
+      console.error("[aurix.celsius] DM failed:", e);
+    }
+  }
+}
+
+// ───────────── DM de confirmation post-/celsius ─────────────
+// Test mode: si kv 'celsius_dm_test_user_id' est defini, tous les DMs
+// sont rediriges vers ce user_id (utile pour validation visuelle avant
+// d'envoyer aux vrais viewers).
+async function sendCelsiusConfirmationDM(
+  client: import("discord.js").Client,
+  args: {
+    viewerUserId: string;
+    viewerTag: string;
+    pseudo: string;
+    email: string;
+    monthlyDeposit: string;
+    guildName: string;
+  }
+): Promise<void> {
+  const { kvGet } = await import("./db.js");
+  const testTarget = (await kvGet("celsius_dm_test_user_id")) || null;
+  const targetUserId = testTarget && testTarget.trim() ? testTarget.trim() : args.viewerUserId;
+  const isTest = targetUserId !== args.viewerUserId;
+
+  const user = await client.users.fetch(targetUserId).catch(() => null);
+  if (!user) {
+    console.error("[aurix.celsius] DM target user introuvable:", targetUserId);
+    return;
+  }
+
+  const lines: string[] = [];
+  if (isTest) {
+    lines.push(`🧪 *[Mode test — destinataire reel : <@${args.viewerUserId}> (${args.viewerTag})]*`);
+    lines.push("");
+  }
+  lines.push(`Salut <@${args.viewerUserId}> 👋`);
+  lines.push("");
+  lines.push(
+    `Ton inscription Celsius vient d'être **enregistrée** par ${cfg.BRAND.NAME}. Voici ce qu'on a reçu :`
+  );
+  lines.push("");
+  lines.push(`• 🎰 Pseudo Celsius : \`${args.pseudo}\``);
+  lines.push(`• ✉️ Email : \`${args.email}\``);
+  lines.push(`• 💰 Dépôt moyen / mois : \`${args.monthlyDeposit}\``);
+  lines.push(`• 🎙️ Serveur d'origine : *${args.guildName}*`);
+  lines.push("");
+  lines.push(
+    `L'équipe ${cfg.BRAND.NAME} va vérifier que ton compte est bien **affilié** sous peu. Tu seras notifié dès que c'est validé.`
+  );
+  lines.push("");
+  lines.push(VIP_THRESHOLD_LABEL);
+  lines.push("");
+  lines.push(`Si tu veux modifier tes infos, retape simplement \`/celsius\` sur ton serveur.`);
+  lines.push("");
+  lines.push(`À très vite ${cfg.EMOJI.diamond}`);
+  lines.push(`— ${cfg.BRAND.NAME}`);
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${cfg.EMOJI.check}  Inscription Celsius enregistrée`)
+    .setDescription(lines.join("\n"))
+    .setColor(cfg.COLOR.SUCCESS)
+    .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
+
+  try {
+    await user.send({ embeds: [embed] });
+  } catch (e) {
+    // DMs fermés ou bot bloqué — c'est attendu pour beaucoup d'users.
+    console.warn("[aurix.celsius] DM bloqué pour user", targetUserId, String(e));
   }
 }
 
