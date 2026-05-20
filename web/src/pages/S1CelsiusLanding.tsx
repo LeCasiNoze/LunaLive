@@ -81,7 +81,7 @@ const STRINGS = {
     statWithdraw: "Retraits",
     streamerBadge: "Partenaire officiel",
     streamerH1: "100% BONUS",
-    streamerH2: "exclusif ma commu",
+    streamerH2: "exclusif à ma commu",
     streamerSub: "L'affiliation la plus rentable du marché. Giveaways réservés, tournois privés et code promo unique pour mes viewers.",
     streamerCta: "🎁 Je débloque mes bonus",
     streamerExclusivesTitle: "Pourquoi je joue chez Celsius",
