@@ -54,8 +54,20 @@ const RADIO_STREAMER_ID = 32;
 const pgUrl = pathToFileURL(resolve(root, "api/node_modules/pg/lib/index.js")).href;
 const { default: pg } = await import(pgUrl).catch(async () => import("pg"));
 const dbPool = process.env.DATABASE_URL
-  ? new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+      idleTimeoutMillis: 30_000,
+      max: 3,
+    })
   : null;
+// Handler error obligatoire — Render PG drop les connexions idle après ~5 min,
+// ce qui émet un 'error' event sur le pool. Sans handler, Node crash.
+if (dbPool) {
+  dbPool.on("error", (err) => {
+    console.warn(`[relay-db] idle client error (auto-reconnect au prochain query): ${err?.message || err}`);
+  });
+}
 
 if (!ADMIN_KEY) {
   console.error("[relay] ADMIN_KEY manquant — défini-le dans .env ou api/.env");
