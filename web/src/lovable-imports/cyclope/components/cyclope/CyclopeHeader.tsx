@@ -1,4 +1,4 @@
-import profile from "@/cyclope/assets/cyclope-profile.jpg";
+import profile from "@/cyclope/assets/cyclope-profile.webp";
 
 const CyclopeHeader = () => {
   return (

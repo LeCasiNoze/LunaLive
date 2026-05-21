@@ -1,5 +1,5 @@
-import t1 from "@/cyclope/assets/cyclope-temoignage-1.jpg";
-import t2 from "@/cyclope/assets/cyclope-temoignage-2.png";
+import t1 from "@/cyclope/assets/cyclope-temoignage-1.webp";
+import t2 from "@/cyclope/assets/cyclope-temoignage-2.webp";
 
 const testimonials = [
   { src: t1, alt: "Lina a gagné 140€", highlight: "+140€", name: "Lina" },
