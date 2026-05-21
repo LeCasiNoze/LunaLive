@@ -1,0 +1,574 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   02_polish.css — TARGETED visible polish
+   Ciblé sur Topbar (.llTopbar) + LivesPage (.livesPage) + classes communes.
+   Effets visibles : nav anim, hover lift cards, glow purple, conic borders,
+   shine traversant, shimmer live, scroll parallax, stagger entrance,
+   pills premium.
+   Revert : delete this file + remove its line from styles/index.css.
+─────────────────────────────────────────────────────────────────────────── */
+
+/* ════════════════════════════════════════════════════════════════════════
+   GLOBAL POLISH
+═══════════════════════════════════════════════════════════════════════ */
+
+/* Touch & focus */
+a, button, [role="button"], input, select, textarea, label, summary {
+  -webkit-tap-highlight-color: transparent;
+}
+button, a[href], [role="button"] { touch-action: manipulation; }
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgba(124, 92, 252, 0.55);
+  outline-offset: 2px;
+}
+:root { color-scheme: dark; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+:where(button, input, textarea, select):disabled { cursor: not-allowed; opacity: 0.55; }
+::placeholder { color: rgba(167, 165, 200, 0.42); opacity: 1; }
+::selection { background: rgba(124, 92, 252, 0.40); color: #fff; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+img { -webkit-user-drag: none; }
+@keyframes ll-pol-img-in { from { opacity: 0; } to { opacity: 1; } }
+img[loading="lazy"] { animation: ll-pol-img-in 320ms ease-out; }
+@media (prefers-reduced-motion: reduce) { img[loading="lazy"] { animation: none; } }
+
+@media (hover: hover) {
+  :where(button, [role="button"]):active {
+    transform: translateY(0.5px) scale(0.985);
+  }
+}
+
+/* Conic rotating angle var */
+@property --ll-pol-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+@keyframes ll-pol-rotate { to { --ll-pol-angle: 360deg; } }
+@keyframes ll-pol-shine { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes ll-pol-live-bar { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+@keyframes ll-pol-card-in { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes ll-pol-pulse-soft { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: .92; } }
+@keyframes ll-pol-glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124,92,252,0.45), 0 0 18px rgba(124,92,252,0.10); }
+  50%      { box-shadow: 0 0 0 4px rgba(124,92,252,0.18), 0 0 26px rgba(124,92,252,0.30); }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   TOPBAR POLISH — .llTopbar
+═══════════════════════════════════════════════════════════════════════ */
+
+/* Glass plus dense + saturate boost */
+.llTopbar {
+  backdrop-filter: blur(22px) saturate(1.55) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.55) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Brand : glow + scale on hover */
+.llBrandLink {
+  transition: transform 220ms cubic-bezier(.22,1,.36,1), filter 200ms ease, border-color 200ms ease, box-shadow 220ms ease !important;
+}
+.llBrandLink:hover {
+  transform: translateY(-1px) scale(1.015);
+  box-shadow: 0 18px 44px rgba(0,0,0,0.40), 0 0 32px rgba(124,92,252,0.18) !important;
+}
+.llBrandMark {
+  position: relative;
+  transition: box-shadow 240ms ease, transform 220ms cubic-bezier(.22,1,.36,1);
+}
+.llBrandLink:hover .llBrandMark {
+  box-shadow: 0 0 0 1px rgba(124,92,252,0.45), 0 0 24px rgba(124,92,252,0.40), 0 18px 50px rgba(0,0,0,0.45);
+}
+
+/* Nav links — slide highlight on hover */
+.llNav { position: relative; }
+
+.llNavBtn {
+  position: relative;
+  overflow: hidden;
+}
+.llNavBtn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(124,92,252,0.16), rgba(91,142,248,0.10));
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.llNavBtn:hover::before { opacity: 1; }
+.llNavBtn > * { position: relative; z-index: 1; }
+
+/* Active link — underline glow already exists, just boost */
+.llNavBtn.active {
+  background: linear-gradient(135deg, rgba(124,92,252,0.22), rgba(91,142,248,0.14)) !important;
+  border-color: rgba(124,92,252,0.42) !important;
+  box-shadow:
+    0 14px 38px rgba(0,0,0,0.42),
+    0 0 0 1px rgba(167,139,250,0.12) inset,
+    0 0 24px rgba(124,92,252,0.18) !important;
+}
+.llNavBtn.active::after {
+  filter: drop-shadow(0 0 12px rgba(124,92,252,0.65)) !important;
+  height: 2.5px !important;
+}
+
+/* Pills (rubis, quêtes) — hover lift + reflet animé */
+.llPill {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 200ms cubic-bezier(.22,1,.36,1),
+    border-color 200ms ease,
+    box-shadow 220ms ease,
+    filter 200ms ease !important;
+}
+.llPill:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124,92,252,0.42) !important;
+  box-shadow:
+    0 14px 36px rgba(0,0,0,0.42),
+    0 0 22px rgba(124,92,252,0.18) !important;
+  filter: brightness(1.08);
+}
+.llPill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10) 50%, transparent);
+  background-size: 200% 100%;
+  background-position: -200% 0;
+  pointer-events: none;
+  transition: background-position 800ms ease;
+}
+.llPill:hover::after {
+  background-position: 200% 0;
+}
+
+/* Login button : magnetic-like lift */
+.llLoginBtn {
+  transition:
+    transform 200ms cubic-bezier(.22,1,.36,1),
+    box-shadow 220ms ease,
+    filter 180ms ease,
+    border-color 180ms ease !important;
+}
+.llLoginBtn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 22px 50px rgba(0,0,0,0.50),
+    0 0 0 1px rgba(255,255,255,0.10) inset,
+    0 0 36px rgba(124,92,252,0.30) !important;
+}
+
+/* Report button : subtle bounce ping at intervals */
+.llReportBtn {
+  position: relative;
+}
+.llReportBtn::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1px solid rgba(240,78,78,0.50);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.llReportBtn:hover::after {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   LIVES PAGE POLISH — .livesPage
+═══════════════════════════════════════════════════════════════════════ */
+
+/* Boxed wrap — conic rotating border discret + extra glow ambient */
+.livesPage .livesWrap {
+  position: relative;
+}
+.livesPage .livesWrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ll-pol-angle),
+    transparent 0deg,
+    rgba(124,92,252,0.35) 70deg,
+    rgba(91,142,248,0.22) 150deg,
+    transparent 230deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ll-pol-rotate 24s linear infinite;
+  pointer-events: none;
+  z-index: 3;
+  opacity: .55;
+}
+
+/* H1 LunaLive — keep gradient + boost glow + slight float */
+.livesPage .livesH1 {
+  letter-spacing: -1.8px !important;
+  filter:
+    drop-shadow(0 0 22px rgba(124,92,252,0.62))
+    drop-shadow(0 0 50px rgba(91,142,248,0.28)) !important;
+}
+
+/* Hero — conic anim + parallax-ready */
+.livesPage .lp-hero {
+  position: relative;
+  isolation: isolate;
+}
+.livesPage .lp-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--ll-pol-angle),
+    transparent 0deg,
+    rgba(124,92,252,0.55) 80deg,
+    rgba(91,142,248,0.35) 160deg,
+    transparent 220deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ll-pol-rotate 14s linear infinite;
+  pointer-events: none;
+  z-index: 3;
+}
+.livesPage .lp-heroBtn {
+  transition:
+    transform 200ms cubic-bezier(.22,1,.36,1),
+    box-shadow 220ms ease,
+    filter 180ms ease !important;
+  box-shadow:
+    0 14px 36px rgba(124,92,252,0.36),
+    0 0 0 1px rgba(255,255,255,0.06) inset !important;
+}
+.livesPage .lp-heroBtn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow:
+    0 22px 54px rgba(124,92,252,0.55),
+    0 0 0 1px rgba(255,255,255,0.12) inset !important;
+}
+
+/* Section titles : underline gradient anim + glow */
+.livesPage .sectionTitle,
+.livesPage .lp-sectionHead {
+  position: relative;
+  padding-bottom: 12px !important;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.livesPage .sectionTitle::after,
+.livesPage .lp-sectionHead::after {
+  content: "";
+  position: absolute;
+  left: 0; bottom: -1px;
+  width: 56px; height: 1.5px;
+  background: linear-gradient(90deg, #8b6cff, #5b8ef8, transparent);
+  box-shadow: 0 0 14px rgba(124,92,252,0.55);
+}
+
+/* Sidebar cards — premium glass hover lift + animated reflet */
+.livesPage .sidebarCard,
+.livesPage .lp-card {
+  position: relative;
+  transition:
+    transform 240ms cubic-bezier(.22,1,.36,1),
+    border-color 220ms ease,
+    box-shadow 240ms ease !important;
+}
+.livesPage .sidebarCard:hover,
+.livesPage .lp-card:hover {
+  transform: translateY(-3px) !important;
+  border-color: rgba(124,92,252,0.36) !important;
+  box-shadow:
+    0 28px 64px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(124,92,252,0.14) inset,
+    0 0 36px rgba(124,92,252,0.15) !important;
+}
+.livesPage .sidebarCard::before,
+.livesPage .lp-card::before {
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(167,139,250,0.45) 40%,
+    rgba(91,142,248,0.34) 60%,
+    transparent
+  ) !important;
+}
+
+/* Card title boosted glow */
+.livesPage .lp-cardTitle,
+.livesPage .lp-cardTitleBig {
+  text-shadow: 0 0 18px rgba(124,92,252,0.18);
+}
+
+/* Pills mini hover */
+.livesPage .lp-pillMini,
+.livesPage .lp-pillMiniViolet {
+  transition: background 180ms ease, border-color 180ms ease, filter 180ms ease;
+}
+.livesPage .lp-pillMini:hover,
+.livesPage .lp-pillMiniViolet:hover {
+  filter: brightness(1.15);
+  border-color: rgba(124,92,252,0.55);
+}
+
+/* ── LIVE CARDS — main polish ───────────────────────────────────────── */
+
+/* Stagger entrance */
+.livesPage .liveLink {
+  animation: ll-pol-card-in 480ms cubic-bezier(.22,1,.36,1) both;
+}
+.livesPage .liveLink:nth-child(2)   { animation-delay: 40ms; }
+.livesPage .liveLink:nth-child(3)   { animation-delay: 80ms; }
+.livesPage .liveLink:nth-child(4)   { animation-delay: 120ms; }
+.livesPage .liveLink:nth-child(5)   { animation-delay: 160ms; }
+.livesPage .liveLink:nth-child(6)   { animation-delay: 200ms; }
+.livesPage .liveLink:nth-child(n+7) { animation-delay: 240ms; }
+
+/* hoverGlow — boost */
+.livesPage .hoverGlow {
+  transition:
+    transform 240ms cubic-bezier(.22,1,.36,1),
+    box-shadow 240ms ease,
+    border-color 200ms ease !important;
+}
+.livesPage .hoverGlow:hover {
+  transform: translateY(-6px) scale(1.012) !important;
+  box-shadow:
+    0 32px 72px rgba(0,0,0,0.60),
+    0 0 0 1px rgba(124,92,252,0.45),
+    0 0 38px rgba(124,92,252,0.22) !important;
+}
+
+/* Thumb — image scale + brightness + shine traversant */
+.livesPage .liveThumb {
+  position: relative;
+  overflow: hidden;
+  transition: border-color 220ms ease, box-shadow 240ms ease;
+}
+.livesPage .liveThumb img,
+.livesPage .liveThumb > div[style*="background-image"] {
+  transition: transform 480ms cubic-bezier(.22,1,.36,1), filter 240ms ease;
+}
+.livesPage .hoverGlow:hover .liveThumb img,
+.livesPage .hoverGlow:hover .liveThumb > div[style*="background-image"] {
+  transform: scale(1.06);
+  filter: brightness(1.08) saturate(1.08);
+}
+.livesPage .hoverGlow:hover .liveThumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.10) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: ll-pol-shine 900ms ease-out;
+  pointer-events: none;
+  z-index: 4;
+}
+
+/* LIVE badge — shimmer bar */
+.livesPage .liveBadge.is-live {
+  position: relative;
+  overflow: hidden;
+}
+.livesPage .liveBadge.is-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14) 50%, transparent);
+  background-size: 200% 100%;
+  animation: ll-pol-live-bar 2.4s linear infinite;
+  pointer-events: none;
+}
+
+/* livePing — boost the glow */
+.livesPage .livePing {
+  background: #ff4d4d !important;
+  box-shadow:
+    0 0 0 4px rgba(255, 77, 77, 0.22),
+    0 0 12px rgba(255, 77, 77, 0.55) !important;
+}
+
+/* Live name — subtle text-shadow boost */
+.livesPage .liveName {
+  text-shadow: 0 2px 14px rgba(0,0,0,0.75) !important;
+}
+
+/* ── CLIPS TILES — hover */
+.livesPage .lp-clipTile {
+  transition:
+    transform 220ms cubic-bezier(.22,1,.36,1),
+    border-color 220ms ease,
+    box-shadow 240ms ease !important;
+}
+.livesPage .lp-clipTile:hover {
+  transform: translateY(-3px) scale(1.015) !important;
+  border-color: rgba(124,92,252,0.45) !important;
+  box-shadow:
+    0 22px 50px rgba(0,0,0,0.55),
+    0 0 28px rgba(124,92,252,0.18) !important;
+}
+.livesPage .clipTile {
+  transition:
+    transform 220ms cubic-bezier(.22,1,.36,1),
+    border-color 220ms ease,
+    box-shadow 240ms ease !important;
+}
+.livesPage .clipTile:hover {
+  transform: translateY(-3px) scale(1.025) !important;
+  border-color: rgba(124,92,252,0.45) !important;
+  box-shadow: 0 22px 50px rgba(0,0,0,0.55), 0 0 28px rgba(124,92,252,0.18) !important;
+}
+
+/* See all clips button — glow */
+.livesPage .clipsSeeAllBtn {
+  transition: transform 200ms cubic-bezier(.22,1,.36,1), filter 180ms ease, border-color 200ms ease, box-shadow 220ms ease !important;
+}
+.livesPage .clipsSeeAllBtn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 18px 44px rgba(124,92,252,0.30), 0 0 0 1px rgba(124,92,252,0.18) inset !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   MOBILE LIVES POLISH — .lm-page
+═══════════════════════════════════════════════════════════════════════ */
+
+/* Card entrance stagger */
+.lm-page .lm-card-link {
+  animation: ll-pol-card-in 480ms cubic-bezier(.22,1,.36,1) both;
+}
+.lm-page .lm-card-link:nth-child(2)   { animation-delay: 50ms; }
+.lm-page .lm-card-link:nth-child(3)   { animation-delay: 100ms; }
+.lm-page .lm-card-link:nth-child(4)   { animation-delay: 150ms; }
+.lm-page .lm-card-link:nth-child(5)   { animation-delay: 200ms; }
+.lm-page .lm-card-link:nth-child(n+6) { animation-delay: 240ms; }
+
+/* Card active state more pronounced (mobile press) */
+.lm-page .lm-card {
+  transition:
+    transform 240ms cubic-bezier(.22,1,.36,1),
+    border-color 200ms ease,
+    box-shadow 240ms ease !important;
+}
+.lm-page .lm-card:active {
+  transform: scale(0.965) !important;
+  border-color: rgba(124,92,252,0.45) !important;
+  box-shadow:
+    0 22px 48px rgba(0,0,0,0.55),
+    0 0 28px rgba(124,92,252,0.22) !important;
+}
+
+/* LIVE pill mobile — shimmer */
+.lm-page .lm-pill-live {
+  position: relative;
+  overflow: hidden;
+}
+.lm-page .lm-pill-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14) 50%, transparent);
+  background-size: 200% 100%;
+  animation: ll-pol-live-bar 2.4s linear infinite;
+  pointer-events: none;
+}
+
+/* Section titles mobile — underline */
+.lm-page .lm-section-head {
+  position: relative;
+  padding-bottom: 8px !important;
+}
+.lm-page .lm-section-head::after {
+  content: "";
+  position: absolute;
+  left: 4px; bottom: -1px;
+  width: 38px; height: 1.5px;
+  background: linear-gradient(90deg, #8b6cff, #5b8ef8);
+  box-shadow: 0 0 12px rgba(124,92,252,0.50);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   BOTTOM TABS — floating polish
+═══════════════════════════════════════════════════════════════════════ */
+
+.bt-bar {
+  backdrop-filter: blur(28px) saturate(1.5) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(1.5) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+.bt-tab {
+  transition:
+    color 200ms ease,
+    background 200ms ease,
+    border-color 200ms ease,
+    transform 150ms cubic-bezier(.22,1,.36,1),
+    flex-grow 320ms cubic-bezier(.22,1,.36,1),
+    flex-basis 320ms cubic-bezier(.22,1,.36,1),
+    padding 280ms cubic-bezier(.22,1,.36,1) !important;
+}
+.bt-tab.active {
+  box-shadow:
+    0 0 0 1px rgba(167,139,250,0.10) inset,
+    0 8px 22px rgba(124,92,252,0.28),
+    0 0 24px rgba(124,92,252,0.12) !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   GLOBAL UTILITY CLASSES (opt-in)
+═══════════════════════════════════════════════════════════════════════ */
+
+[data-hover-lift] {
+  transition:
+    transform 220ms cubic-bezier(.22,1,.36,1),
+    box-shadow 220ms ease,
+    border-color 200ms ease;
+}
+@media (hover: hover) { [data-hover-lift]:hover { transform: translateY(-3px); } }
+
+@keyframes ll-pol-skel {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.ll-skeleton {
+  background: linear-gradient(110deg, rgba(255,255,255,0.04) 8%, rgba(255,255,255,0.10) 18%, rgba(255,255,255,0.04) 33%);
+  background-size: 200% 100%;
+  animation: ll-pol-skel 1.4s linear infinite;
+  border-radius: 12px;
+}
+
+@keyframes ll-pol-breath {
+  0%, 100% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.18); }
+  50%      { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.05); }
+}
+[data-live="1"], [data-live="true"] {
+  position: relative;
+  animation: ll-pol-breath 1.8s ease-in-out infinite;
+}
+
+/* Glass surfaces saturate boost */
+:where([class*="glass"], [class*="Glass"]) {
+  -webkit-backdrop-filter: blur(16px) saturate(1.45);
+  backdrop-filter: blur(16px) saturate(1.45);
+}
+
+/* Reduced motion master */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+  }
+}

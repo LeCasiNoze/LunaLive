@@ -1,0 +1,5 @@
+/* Tailwind utilities (preflight disabled in tailwind.config.ts pour ne pas
+ * casser le reste du site). Charge ce CSS UNIQUEMENT depuis une page lovable
+ * importee (sinon Tailwind n'a pas d'effet). */
+@tailwind components;
+@tailwind utilities;

@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import path from "node:path";
 
 export default defineConfig({
   plugins: [
@@ -72,5 +73,12 @@ export default defineConfig({
   server: {
     port: 5175,
     strictPort: true,
+  },
+  resolve: {
+    alias: {
+      // Lovable imports : `@/...` -> ./src/lovable-imports/... pour permettre
+      // de copier-coller des projets Lovable sans toucher leurs imports.
+      "@/": path.resolve(__dirname, "./src/lovable-imports/") + "/",
+    },
   },
 });
