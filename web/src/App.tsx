@@ -52,7 +52,6 @@ const S1CelsiusLanding = React.lazy(() => import("./pages/S1CelsiusLanding"));
 
 // Lovable imports — pages premium importees telles quelles depuis Lovable
 const CyclopeLandingPage = React.lazy(() => import("./pages/CyclopeLandingPage"));
-const PianoLandingPage = React.lazy(() => import("./pages/PianoLandingPage"));
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
@@ -93,8 +92,7 @@ function AppInner() {
   const isStandaloneReferral =
     location.pathname.startsWith("/r/") ||
     location.pathname.startsWith("/s1") ||
-    location.pathname.startsWith("/cyclope") ||
-    location.pathname.startsWith("/piano");
+    location.pathname.startsWith("/cyclope");
   const isOverlayRoute =
     location.pathname.startsWith("/overlay") ||
     location.pathname.startsWith("/stream-control");
@@ -312,14 +310,6 @@ function AppInner() {
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <CyclopeLandingPage />
-              </React.Suspense>
-            }
-          />
-          <Route
-            path="/piano"
-            element={
-              <React.Suspense fallback={<LoadingFallback />}>
-                <PianoLandingPage />
               </React.Suspense>
             }
           />
