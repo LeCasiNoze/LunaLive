@@ -355,20 +355,18 @@ async function ensureInOwnTicket(interaction: ChatInputCommandInteraction): Prom
     await interaction.reply({ content: "Commande utilisable uniquement en salon.", ephemeral: true });
     return false;
   }
-  const row = await one<{ user_id: string }>(
-    "SELECT user_id FROM aurix_tickets WHERE channel_id=$1 AND status='open'",
-    [ch.id]
-  );
-  if (!row) {
+  const { getLinkedUserIds } = await import("./tickets.js");
+  const linkedIds = await getLinkedUserIds(ch.id);
+  if (linkedIds.length === 0) {
     await interaction.reply({
       content: `${cfg.EMOJI.cross} \`/refill\` n'est utilisable que dans **ton ticket privé**.`,
       ephemeral: true,
     });
     return false;
   }
-  if (row.user_id !== interaction.user.id) {
+  if (!linkedIds.includes(interaction.user.id)) {
     await interaction.reply({
-      content: `${cfg.EMOJI.cross} Seul le streamer propriétaire de ce ticket peut faire la demande.`,
+      content: `${cfg.EMOJI.cross} Seul le streamer propriétaire de ce ticket (ou son binôme déclaré) peut faire la demande.`,
       ephemeral: true,
     });
     return false;
@@ -376,28 +374,49 @@ async function ensureInOwnTicket(interaction: ChatInputCommandInteraction): Prom
   return true;
 }
 
+/** Email fallback : si l'user n'a pas d'email enregistre, prend celui d'un binome lie. */
+async function findGroupEmail(channelId: string, requesterId: string): Promise<string | null> {
+  const { getLinkedUserIds } = await import("./tickets.js");
+  const linkedIds = await getLinkedUserIds(channelId);
+  // Try the requester first, then partners.
+  const ordered = [requesterId, ...linkedIds.filter((id) => id !== requesterId)];
+  for (const id of ordered) {
+    const acc = await getAccount(id);
+    if (acc?.email) return acc.email;
+  }
+  return null;
+}
+
 // ───────────── /refill ─────────────
 export async function handleRefillCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!(await ensureInOwnTicket(interaction))) return;
 
+  const channelId = interaction.channel!.id;
+  const { getLinkedUserIds } = await import("./tickets.js");
+  const linkedIds = await getLinkedUserIds(channelId);
+
   const batch = await getOpenBatch();
   if (batch) {
-    const dup = await one<{ id: number }>(
-      "SELECT id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id=$2",
-      [batch.id, interaction.user.id]
+    // Dedup : 1 seule demande par GROUPE (owner + binomes) par batch.
+    const dup = await one<{ id: number; user_id: string }>(
+      "SELECT id, user_id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id = ANY($2::bigint[])",
+      [batch.id, linkedIds]
     );
     if (dup) {
+      const who = dup.user_id === interaction.user.id ? "Tu as" : `<@${dup.user_id}> a`;
       await interaction.reply({
-        content: `${cfg.EMOJI.info} Tu as déjà une demande en attente pour ce batch. Utilise \`/refill-cancel\` puis recommence si besoin.`,
+        content: `${cfg.EMOJI.info} ${who} déjà soumis une demande pour ce batch. Une seule demande par ticket et par jour (binôme inclus). Utilise \`/refill-cancel\` puis recommence si besoin.`,
         ephemeral: true,
+        allowedMentions: { users: [] },
       });
       return;
     }
   }
 
-  const acc = await getAccount(interaction.user.id);
-  if (acc?.email) {
-    await submitRefill(interaction, acc.email);
+  // Email : 1) du requester, 2) sinon d'un binome lie, 3) sinon modal.
+  const groupEmail = await findGroupEmail(channelId, interaction.user.id);
+  if (groupEmail) {
+    await submitRefill(interaction, groupEmail);
     return;
   }
 
@@ -517,12 +536,16 @@ export async function handleRefillCancelCommand(interaction: ChatInputCommandInt
     await interaction.reply({ content: "Aucun batch ouvert.", ephemeral: true });
     return;
   }
-  const row = await one<{ id: number }>(
-    "SELECT id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id=$2",
-    [batch.id, interaction.user.id]
+  // Annule la demande du groupe (binome inclus) — un seul refill par groupe.
+  const channelId = interaction.channel!.id;
+  const { getLinkedUserIds } = await import("./tickets.js");
+  const linkedIds = await getLinkedUserIds(channelId);
+  const row = await one<{ id: number; user_id: string }>(
+    "SELECT id, user_id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id = ANY($2::bigint[])",
+    [batch.id, linkedIds]
   );
   if (!row) {
-    await interaction.reply({ content: "Tu n'as pas de demande en cours.", ephemeral: true });
+    await interaction.reply({ content: "Aucune demande en cours pour ce ticket.", ephemeral: true });
     return;
   }
   await query("DELETE FROM aurix_refill_requests WHERE id=$1", [row.id]);

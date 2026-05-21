@@ -22,6 +22,7 @@ import {
   handleApplyTicketModal,
   handleCloseTicketButton,
   handleCloseTicketCommand,
+  handleLinkPartnerCommand,
   handleMemberJoin,
   onMemberRemove,
   onMemberUpdate,
@@ -252,6 +253,9 @@ export async function startAurixBot(): Promise<void> {
             return;
           case "close-ticket":
             await handleCloseTicketCommand(ci);
+            return;
+          case "link-partner":
+            await handleLinkPartnerCommand(ci);
             return;
           case "celsius-vip-invite": {
             await ci.deferReply({ ephemeral: true });

@@ -106,6 +106,19 @@ CREATE INDEX IF NOT EXISTS idx_aurix_celsius_queue
 ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS vip_invited_at TIMESTAMPTZ;
 `,
   },
+  {
+    name: "006_ticket_partners.sql",
+    sql: `
+CREATE TABLE IF NOT EXISTS aurix_ticket_partners (
+    ticket_channel_id BIGINT NOT NULL,
+    partner_user_id   BIGINT NOT NULL,
+    added_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (ticket_channel_id, partner_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_aurix_ticket_partners_user
+    ON aurix_ticket_partners(partner_user_id);
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

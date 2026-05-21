@@ -82,6 +82,19 @@ export const guildCommandDefinitions = [
     description: "(Admin) Envoie le DM d'invitation VIP à tous les vérifiés ≥750€ qui n'ont pas encore reçu.",
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
+  {
+    name: "link-partner",
+    description: "(Admin) Rattache un binôme au ticket courant (partage refill + accès salon).",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+    options: [
+      {
+        name: "user",
+        description: "Le streamer à rattacher en binôme",
+        type: ApplicationCommandOptionType.User,
+        required: true,
+      },
+    ],
+  },
 ];
 
 // Commandes GLOBALES — disponibles sur tous les serveurs où le bot est invité (serveurs streamers).
