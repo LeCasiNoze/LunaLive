@@ -1172,7 +1172,23 @@ function exportV3PreviewAsHtml(
       alert("Impossible d'extraire l'iframe M2 — réessaie quand l'aperçu est totalement chargé.");
       return;
     }
-    let html = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+    // Clone le document pour ne pas alterer le preview live
+    const cloneDoc = doc.documentElement.cloneNode(true) as HTMLElement;
+    // 1. Retire le script click-to-edit (intercepte les clics + preventDefault)
+    cloneDoc.querySelectorAll("script[data-affi-m5-v3-click-to-edit]").forEach((el) => el.remove());
+    // 2. Retire la <style> runtime qui dessine les dashed outlines au hover
+    cloneDoc.querySelectorAll("style").forEach((el) => {
+      if (el.textContent && /\.brand-logo-main:hover|outline:\s*2px\s+dashed/i.test(el.textContent)) {
+        el.remove();
+      }
+    });
+    // 3. Reecrit target="_blank" en _top (l'iframe d'export est probablement
+    // elle-meme dans une iframe via un shortener)
+    cloneDoc.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]').forEach((a) => {
+      a.setAttribute("target", "_top");
+      a.setAttribute("rel", "sponsored noopener");
+    });
+    let html = "<!DOCTYPE html>\n" + cloneDoc.outerHTML;
     html = absolutizeAssetUrls(html, origin);
     triggerDownload(html, `${safeSlug}_export.html`);
     return;
