@@ -462,6 +462,52 @@ fsbAffiPagesRouter.get(
   })
 );
 
+// Hourly stats pour un jour donne (drill-down depuis le chart daily)
+fsbAffiPagesRouter.get(
+  "/fsb/affi-pages/:id/hourly-stats",
+  a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    // Format attendu : YYYY-MM-DD (UTC), defaut = aujourd'hui UTC
+    const dateRaw = String(req.query.date || "").trim();
+    const dateStr = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)
+      ? dateRaw
+      : new Date().toISOString().slice(0, 10);
+
+    const { rows } = await pool.query(
+      `SELECT
+         EXTRACT(HOUR FROM (created_at AT TIME ZONE 'UTC'))::int AS h,
+         COUNT(*) FILTER (WHERE event='view')                       AS views,
+         COUNT(*) FILTER (WHERE event='click_cta')                  AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')        AS unique_views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta')   AS unique_clicks
+       FROM affi_landing_events
+       WHERE page_id = $1
+         AND (created_at AT TIME ZONE 'UTC')::date = $2::date
+       GROUP BY h
+       ORDER BY h ASC`,
+      [id, dateStr]
+    );
+
+    const byHour: Record<number, any> = {};
+    for (const r of rows as any[]) {
+      byHour[Number(r.h)] = {
+        hour: Number(r.h),
+        views: Number(r.views || 0),
+        clicks: Number(r.clicks || 0),
+        uniqueViews: Number(r.unique_views || 0),
+        uniqueClicks: Number(r.unique_clicks || 0),
+      };
+    }
+    const series: any[] = [];
+    for (let h = 0; h < 24; h++) {
+      series.push(byHour[h] || { hour: h, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0 });
+    }
+    return res.json({ ok: true, date: dateStr, series });
+  })
+);
+
 // Stats agrégées toutes les pages (pour le dashboard V3 ranking)
 fsbAffiPagesRouter.get(
   "/fsb/affi-pages/stats-summary",

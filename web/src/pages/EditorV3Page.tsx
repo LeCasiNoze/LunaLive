@@ -1134,10 +1134,155 @@ function pageColor(p: FsbAffiPage): string {
   return "#64748b";
 }
 
-// Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol
-type ChartSeries = { label: string; color: string; data: AffiDailyPoint[] };
+// Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol, click -> drill-down 24h
+type ChartSeries = { label: string; color: string; data: AffiDailyPoint[]; pageId?: number };
 
-function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {
+type HourlyPoint = { hour: number; views: number; clicks: number; uniqueViews: number; uniqueClicks: number };
+
+// Panel detail d'une journee : fetch hourly stats par page + chart 24h
+function DayDetailPanel({
+  date, seriesList, token, onClose,
+}: {
+  date: string; seriesList: ChartSeries[]; token: string | null; onClose: () => void;
+}) {
+  const [byPage, setByPage] = React.useState<Record<number, HourlyPoint[] | "loading" | "error">>({});
+  React.useEffect(() => {
+    let cancelled = false;
+    for (const s of seriesList) {
+      if (!s.pageId || !token) continue;
+      const pid = s.pageId;
+      setByPage((p) => ({ ...p, [pid]: "loading" }));
+      const apiBase = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+      fetch(`${apiBase}/api/fsb/affi-pages/${pid}/hourly-stats?date=${date}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((j) => {
+          if (cancelled) return;
+          if (j?.ok && Array.isArray(j.series)) {
+            setByPage((p) => ({ ...p, [pid]: j.series as HourlyPoint[] }));
+          } else {
+            setByPage((p) => ({ ...p, [pid]: "error" }));
+          }
+        })
+        .catch(() => { if (!cancelled) setByPage((p) => ({ ...p, [pid]: "error" })); });
+    }
+    return () => { cancelled = true; };
+  }, [date, seriesList, token]);
+
+  // Aggrege total jour par page (somme des heures)
+  const totals = seriesList.map((s) => {
+    const h = s.pageId ? byPage[s.pageId] : null;
+    if (!Array.isArray(h)) return { ...s, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0, ready: false };
+    return {
+      ...s,
+      views: h.reduce((a, x) => a + x.views, 0),
+      clicks: h.reduce((a, x) => a + x.clicks, 0),
+      uniqueViews: h.reduce((a, x) => a + x.uniqueViews, 0),
+      uniqueClicks: h.reduce((a, x) => a + x.uniqueClicks, 0),
+      ready: true,
+    };
+  });
+  const allReady = totals.every((t) => t.ready);
+
+  // Hourly chart : barres groupees par heure, une couleur par page
+  const W = 720, H = 180;
+  const PADDING = { top: 14, right: 12, bottom: 22, left: 30 };
+  const innerW = W - PADDING.left - PADDING.right;
+  const innerH = H - PADDING.top - PADDING.bottom;
+  let maxVal = 1;
+  for (const t of totals) {
+    const h = t.pageId ? byPage[t.pageId] : null;
+    if (Array.isArray(h)) for (const p of h) if (p.views > maxVal) maxVal = p.views;
+  }
+  const stepX = innerW / 24;
+  const xAt = (h: number) => PADDING.left + h * stepX + stepX / 2;
+  const yAt = (v: number) => PADDING.top + innerH - (v / maxVal) * innerH;
+
+  const dateLabel = new Date(date).toLocaleDateString("fr-FR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+
+  return (
+    <div style={{
+      marginTop: 14, padding: 14, borderRadius: 12,
+      background: "rgba(15,23,42,.6)", border: "1px solid rgba(255,255,255,.08)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 10, color: "rgba(148,163,184,.7)", letterSpacing: ".08em", textTransform: "uppercase", fontWeight: 700 }}>
+            Détail journée
+          </div>
+          <div style={{ fontSize: 14, color: "#fff", fontWeight: 600, textTransform: "capitalize" }}>{dateLabel}</div>
+        </div>
+        <button onClick={onClose} style={{
+          background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.1)",
+          color: "rgba(226,232,240,.85)", borderRadius: 8, padding: "4px 10px", fontSize: 11, cursor: "pointer",
+        }}>✕ Fermer</button>
+      </div>
+      {/* Cards totaux par page */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(totals.length, 4)}, 1fr)`, gap: 8, marginBottom: 14 }}>
+        {totals.map((t, i) => (
+          <div key={i} style={{
+            padding: "8px 12px", borderRadius: 8,
+            background: "rgba(255,255,255,.03)", border: `1px solid ${t.color}33`,
+            borderLeft: `3px solid ${t.color}`,
+          }}>
+            <div style={{ fontSize: 10, color: t.color, fontWeight: 700, letterSpacing: ".04em" }}>{t.label}</div>
+            <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 12, color: "#fff" }}>
+              <span><b>{t.views}</b><span style={{ color: "rgba(148,163,184,.6)" }}>v · {t.uniqueViews}u</span></span>
+              <span><b>{t.clicks}</b><span style={{ color: "rgba(148,163,184,.6)" }}>c · {t.uniqueClicks}u</span></span>
+              <span style={{ color: t.views > 0 ? "#22c55e" : "rgba(148,163,184,.5)" }}>
+                {t.views > 0 ? `${((t.clicks / t.views) * 100).toFixed(1)}%` : "—"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Chart 24h */}
+      {!allReady ? (
+        <div style={{ color: "rgba(148,163,184,.6)", fontSize: 12, padding: "20px 0", textAlign: "center" }}>Chargement…</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 10, color: "rgba(148,163,184,.6)", marginBottom: 4 }}>Répartition par heure (UTC) — barres vues, points clics</div>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            {[0, 0.5, 1].map((p, i) => (
+              <line key={i} x1={PADDING.left} y1={PADDING.top + innerH * (1 - p)} x2={W - PADDING.right} y2={PADDING.top + innerH * (1 - p)}
+                stroke="rgba(255,255,255,.05)" strokeDasharray="2 4" />
+            ))}
+            {[0, 6, 12, 18, 23].map((h) => (
+              <text key={h} x={xAt(h)} y={H - 6} fontSize="9" fill="rgba(148,163,184,.6)" textAnchor="middle" fontFamily="monospace">
+                {String(h).padStart(2, "0")}h
+              </text>
+            ))}
+            {totals.map((t, si) => {
+              const h = t.pageId ? byPage[t.pageId] : null;
+              if (!Array.isArray(h)) return null;
+              const barW = (stepX - 4) / totals.length;
+              const offsetX = -((stepX - 4) / 2) + si * barW;
+              return (
+                <g key={si}>
+                  {h.map((pt, i) => (
+                    <g key={i}>
+                      {pt.views > 0 ? (
+                        <rect x={xAt(i) + offsetX} y={yAt(pt.views)} width={Math.max(barW - 1, 2)} height={Math.max(yAt(0) - yAt(pt.views), 1)}
+                          fill={t.color} opacity={0.8} rx={1} />
+                      ) : null}
+                      {pt.clicks > 0 ? (
+                        <circle cx={xAt(i) + offsetX + barW / 2} cy={yAt(pt.clicks)} r={2.2}
+                          fill="#0f172a" stroke={t.color} strokeWidth={1.4} />
+                      ) : null}
+                    </g>
+                  ))}
+                </g>
+              );
+            })}
+          </svg>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MultiDailyChart({ seriesList, token }: { seriesList: ChartSeries[]; token?: string | null }) {
   const W = 720;
   const H = 240;
   const PADDING = { top: 18, right: 14, bottom: 24, left: 34 };
@@ -1158,6 +1303,7 @@ function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {
     data.map((s, i) => `${i === 0 ? "M" : "L"} ${xAt(i).toFixed(1)} ${yAt(s[key]).toFixed(1)}`).join(" ");
 
   const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = React.useState<string | null>(null);
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((p) => ({
     y: PADDING.top + innerH * (1 - p),
     label: Math.round(maxVal * p),
@@ -1197,10 +1343,20 @@ function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {
           </g>
         ))}
         {/* Hitboxes mutualisees */}
-        {ref.map((_, i) => (
+        {ref.map((pt, i) => (
           <rect key={i} x={xAt(i) - stepX / 2} y={PADDING.top} width={stepX} height={innerH} fill="transparent"
-            onMouseEnter={() => setHoverIdx(i)} style={{ cursor: "crosshair" }} />
+            onMouseEnter={() => setHoverIdx(i)}
+            onClick={() => setSelectedDate(pt.date)}
+            style={{ cursor: "pointer" }} />
         ))}
+        {/* Marker visible sur la date selectionnee */}
+        {selectedDate && ref.findIndex((p) => p.date === selectedDate) >= 0 ? (() => {
+          const i = ref.findIndex((p) => p.date === selectedDate);
+          return (
+            <line x1={xAt(i)} y1={PADDING.top - 4} x2={xAt(i)} y2={PADDING.top + innerH + 4}
+              stroke="#FFB930" strokeWidth="1.5" />
+          );
+        })() : null}
         {hoverIdx !== null ? (
           <line x1={xAt(hoverIdx)} y1={PADDING.top} x2={xAt(hoverIdx)} y2={PADDING.top + innerH}
             stroke="rgba(255,255,255,.18)" strokeDasharray="2 3" />
@@ -1242,8 +1398,16 @@ function MultiDailyChart({ seriesList }: { seriesList: ChartSeries[] }) {
             <span>{s.label}</span>
           </span>
         ))}
-        <span style={{ marginLeft: "auto", color: "rgba(148,163,184,.5)" }}>━ vues · ┄ clics</span>
+        <span style={{ marginLeft: "auto", color: "rgba(148,163,184,.5)" }}>━ vues · ┄ clics · clic sur une date</span>
       </div>
+      {selectedDate ? (
+        <DayDetailPanel
+          date={selectedDate}
+          seriesList={valid}
+          token={token ?? null}
+          onClose={() => setSelectedDate(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1475,6 +1639,7 @@ function StatsRankingSection({
                   label: p.meta.modelLabel,
                   color: pageColor(p.page),
                   data: dailyCache[p.page.id] as AffiDailyPoint[],
+                  pageId: Number(p.page.id),
                 })) : [];
                 return (
                   <React.Fragment key={g.key}>
@@ -1561,7 +1726,7 @@ function StatsRankingSection({
                             <div style={{ fontSize: 11, color: T.textMute, marginBottom: 10, letterSpacing: ".04em" }}>
                               {g.brandName} · {g.pages.length} page{g.pages.length > 1 ? "s" : ""} · une courbe par modèle (comparaison)
                             </div>
-                            <MultiDailyChart seriesList={chartSeriesList} />
+                            <MultiDailyChart seriesList={chartSeriesList} token={token} />
                             {/* Liste des pages de la personne */}
                             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
                               {g.pages.map((p) => (
