@@ -1145,48 +1145,81 @@ function pageColor(p: FsbAffiPage): string {
   return "#64748b";
 }
 
-// Export du preview V3 en HTML autonome (snapshot du DOM rendu + fonts Google)
+// Export du preview V3 en HTML autonome
+//   - M2 (M5V1Preview = iframe srcdoc) : on prend directement outerHTML de
+//     l'iframe — c'est deja une page complete autonome
+//   - M1, M3-M9 (RenderV2Page) : snapshot du DOM + fonts Google
+//   - M10+ (composants Lovable Tailwind) : idem + Tailwind CDN injecte
+//   - Toutes les URLs d'assets relatives sont absolutisees vers window.location.origin
 function exportV3PreviewAsHtml(
   wrap: HTMLDivElement | null,
   page: { pageTitle?: string; slug?: string; globals?: { bgPage?: string } } | null,
   modelKind: string,
 ) {
-  if (!wrap || !page) {
+  if (!wrap) {
     alert("Aperçu non disponible — vérifie que la page se charge correctement.");
     return;
   }
 
-  // Clone le DOM courant + reecrit les target="_blank" en _top (export utilise
-  // souvent en iframe ou en pop-up depuis un shortener)
+  const origin = window.location.origin;
+  const safeSlug = (page?.slug || `v3_${modelKind}`).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  // Cas special M2 : preview deja en iframe complete (srcdoc) -> extract outerHTML
+  if (modelKind === "M2") {
+    const iframe = wrap.querySelector("iframe") as HTMLIFrameElement | null;
+    const doc = iframe?.contentDocument;
+    if (!doc) {
+      alert("Impossible d'extraire l'iframe M2 — réessaie quand l'aperçu est totalement chargé.");
+      return;
+    }
+    let html = "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+    html = absolutizeAssetUrls(html, origin);
+    triggerDownload(html, `${safeSlug}_export.html`);
+    return;
+  }
+
+  // Cas general : clone DOM, normalise links + URLs, wrap HTML
   const clone = wrap.cloneNode(true) as HTMLElement;
   clone.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]').forEach((a) => {
     a.setAttribute("target", "_top");
     a.setAttribute("rel", "sponsored noopener");
   });
-  const bodyHtml = clone.innerHTML;
+  // Absolutise <img src>, <source srcset> pour qu'ils marchent hors localhost
+  clone.querySelectorAll<HTMLImageElement>("img[src]").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    if (src.startsWith("/")) img.setAttribute("src", origin + src);
+  });
+  let bodyHtml = clone.innerHTML;
+  // Absolutise aussi les url(...) dans les style inlines + backgrounds
+  bodyHtml = bodyHtml.replace(/url\((['"]?)\/([^)'"]+)\1\)/g, `url($1${origin}/$2$1)`);
 
-  // Recolte toutes les Google Fonts deja chargees + DM/Bagel/Space/etc utilisees par V3
+  // Detection Tailwind : si on trouve des classes utilitaires typiques dans le
+  // markup, injecte le runtime CDN (modeles Lovable M10+ en dependent)
+  const usesTailwind = /class="[^"]*\b(flex|grid|relative|absolute|w-full|h-full|min-h-screen|text-\w+|bg-\w+|px-\d|py-\d|mx-auto|rounded(-\w+)?|shadow)\b/.test(bodyHtml);
+
   const fontHref = "https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Space+Grotesk:wght@400;500;700&family=Bebas+Neue&family=Anton&family=Chakra+Petch:wght@400;700&family=DM+Sans:wght@400;500;700&family=Syne:wght@400;700;800&family=Playfair+Display:wght@400;700;900&family=Poppins:wght@400;600;700;900&family=Inter:wght@400;500;700;900&family=Montserrat:wght@400;600;700&display=swap";
 
-  const bgPage = page.globals?.bgPage || "#080212";
-  const title = page.pageTitle || `Affi ${modelKind}`;
+  const bgPage = page?.globals?.bgPage || "#080212";
+  const title = (page?.pageTitle || `Affi ${modelKind}`).replace(/[<>"]/g, "");
+
+  const tailwindCdn = usesTailwind ? '<script src="https://cdn.tailwindcss.com"></script>' : "";
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>${title.replace(/[<>"]/g, "")}</title>
+<title>${title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="${fontHref}" rel="stylesheet" />
+${tailwindCdn}
 <style>
   *,*::before,*::after{box-sizing:border-box}
   html,body{margin:0;padding:0;background:${bgPage};color:#fff;font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;min-height:100vh;overflow-x:hidden}
   a{color:inherit;text-decoration:none}
   img{max-width:100%;display:block}
   button{font-family:inherit}
-  /* Conserve les positions sticky/fixed des modeles */
   body{position:relative}
 </style>
 </head>
@@ -1195,12 +1228,22 @@ ${bodyHtml}
 </body>
 </html>`;
 
+  triggerDownload(html, `${safeSlug}_export.html`);
+}
+
+function absolutizeAssetUrls(html: string, origin: string): string {
+  // src="/..." -> src="origin/..." (idem href= et url())
+  let out = html.replace(/\s(src|href)="\/([^"]*)"/g, ` $1="${origin}/$2"`);
+  out = out.replace(/url\((['"]?)\/([^)'"]+)\1\)/g, `url($1${origin}/$2$1)`);
+  return out;
+}
+
+function triggerDownload(html: string, filename: string) {
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  const safeSlug = (page.slug || `v3_${modelKind}`).replace(/[^a-zA-Z0-9_-]/g, "_");
-  a.download = `${safeSlug}_export.html`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
