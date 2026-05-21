@@ -11,7 +11,6 @@ import {
   type ModalSubmitInteraction,
   PermissionFlagsBits,
   type OverwriteResolvable,
-  PermissionsBitField,
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
@@ -548,25 +547,34 @@ export async function handleLinkPartnerCommand(
     [channel.id, partnerUser.id]
   );
 
-  // Ajoute l'overwrite permission pour le partner sur ce salon.
+  // Ajoute (ou met a jour) l'overwrite permission pour le partner sur ce salon.
+  let permsOk = false;
   try {
-    await (channel as TextChannel).permissionOverwrites.create(
+    await (channel as TextChannel).permissionOverwrites.edit(
       partnerUser.id,
-      new PermissionsBitField([
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles,
-        PermissionFlagsBits.EmbedLinks,
-      ]).toJSON() as any,
+      {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+        AttachFiles: true,
+        EmbedLinks: true,
+      },
       { reason: `Aurix: binome lie par ${interaction.user.tag}` }
     );
+    permsOk = true;
   } catch (e) {
     console.error("[aurix.tickets] link-partner perms failed:", e);
   }
 
+  const permsLine = permsOk
+    ? `• Il peut voir et écrire dans ce salon.`
+    : `⚠️ *L'attribution des permissions du salon a échoué — vérifie les logs Render et la hiérarchie des rôles du bot.*`;
   await interaction.reply({
-    content: `${cfg.EMOJI.check} <@${partnerUser.id}> est désormais **rattaché à ce ticket en binôme**.\n• Il peut écrire ici et utiliser \`/refill\`.\n• Une seule demande \`/refill\` par jour pour le binôme (ils partagent l'email).`,
+    content: [
+      `${cfg.EMOJI.check} <@${partnerUser.id}> est désormais **rattaché à ce ticket en binôme**.`,
+      permsLine,
+      `• Il peut utiliser \`/refill\` (1 seule demande par jour pour le binôme, ils partagent l'email).`,
+    ].join("\n"),
     allowedMentions: { users: [] },
   });
 
