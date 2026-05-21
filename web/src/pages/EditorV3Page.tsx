@@ -465,6 +465,7 @@ function WizardQuickView({
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [isMobilePreview, setIsMobilePreview] = React.useState(true);
+  const previewWrapRef = React.useRef<HTMLDivElement>(null);
   const [openSection, setOpenSection] = React.useState<SectionKey | null>(null);
   const [savedSlug, setSavedSlug] = React.useState<string | null>(initialSavedSlug);
   const [copyOk, setCopyOk] = React.useState(false);
@@ -1038,10 +1039,20 @@ function WizardQuickView({
             <div style={{ display: "flex", gap: 6 }}>
               <Chip active={isMobilePreview} onClick={() => setIsMobilePreview(true)}>📱 Mobile</Chip>
               <Chip active={!isMobilePreview} onClick={() => setIsMobilePreview(false)}>🖥 Desktop</Chip>
+              <button
+                type="button"
+                onClick={() => exportV3PreviewAsHtml(previewWrapRef.current, page, inputs.modelKind)}
+                title="Exporter le HTML autonome de l'aperçu courant"
+                style={{
+                  padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: ".04em",
+                  background: "linear-gradient(135deg,#FFB930,#FF4B6E)", color: "#1a0510", border: "1px solid #FFB930",
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >⬇ Export HTML</button>
             </div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "20px 0", minHeight: 0 }}>
-            <div style={{
+            <div ref={previewWrapRef} style={{
               width: isMobilePreview ? 420 : "min(720px, 100%)",
               maxWidth: isMobilePreview ? 420 : 720,
               margin: "0 auto",
@@ -1132,6 +1143,68 @@ function pageColor(p: FsbAffiPage): string {
     return MODEL_COLORS[m] || "#64748b";
   }
   return "#64748b";
+}
+
+// Export du preview V3 en HTML autonome (snapshot du DOM rendu + fonts Google)
+function exportV3PreviewAsHtml(
+  wrap: HTMLDivElement | null,
+  page: { pageTitle?: string; slug?: string; globals?: { bgPage?: string } } | null,
+  modelKind: string,
+) {
+  if (!wrap || !page) {
+    alert("Aperçu non disponible — vérifie que la page se charge correctement.");
+    return;
+  }
+
+  // Clone le DOM courant + reecrit les target="_blank" en _top (export utilise
+  // souvent en iframe ou en pop-up depuis un shortener)
+  const clone = wrap.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll<HTMLAnchorElement>('a[target="_blank"]').forEach((a) => {
+    a.setAttribute("target", "_top");
+    a.setAttribute("rel", "sponsored noopener");
+  });
+  const bodyHtml = clone.innerHTML;
+
+  // Recolte toutes les Google Fonts deja chargees + DM/Bagel/Space/etc utilisees par V3
+  const fontHref = "https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Space+Grotesk:wght@400;500;700&family=Bebas+Neue&family=Anton&family=Chakra+Petch:wght@400;700&family=DM+Sans:wght@400;500;700&family=Syne:wght@400;700;800&family=Playfair+Display:wght@400;700;900&family=Poppins:wght@400;600;700;900&family=Inter:wght@400;500;700;900&family=Montserrat:wght@400;600;700&display=swap";
+
+  const bgPage = page.globals?.bgPage || "#080212";
+  const title = page.pageTitle || `Affi ${modelKind}`;
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>${title.replace(/[<>"]/g, "")}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="${fontHref}" rel="stylesheet" />
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:${bgPage};color:#fff;font-family:'Space Grotesk','DM Sans',-apple-system,sans-serif;min-height:100vh;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  img{max-width:100%;display:block}
+  button{font-family:inherit}
+  /* Conserve les positions sticky/fixed des modeles */
+  body{position:relative}
+</style>
+</head>
+<body>
+${bodyHtml}
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const safeSlug = (page.slug || `v3_${modelKind}`).replace(/[^a-zA-Z0-9_-]/g, "_");
+  a.download = `${safeSlug}_export.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // Mini chart SVG : 30 jours, courbes vues + clics, tooltip au survol, click -> drill-down 24h
