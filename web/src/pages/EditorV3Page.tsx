@@ -469,6 +469,12 @@ function WizardQuickView({
   const [openSection, setOpenSection] = React.useState<SectionKey | null>(null);
   const [savedSlug, setSavedSlug] = React.useState<string | null>(initialSavedSlug);
   const [copyOk, setCopyOk] = React.useState(false);
+  // Local pageId state — pour eviter la closure-trap : apres POST, on stocke
+  // l'ID retourne par le serveur. Le prochain save lit cette valeur (pas
+  // initialPageId qui pourrait etre stale dans le closure).
+  const [pageId, setPageId] = React.useState<number | null>(initialPageId);
+  // Sync si le parent change la prop (ex: ouverture d'une autre page existante)
+  React.useEffect(() => { setPageId(initialPageId); }, [initialPageId]);
 
   // Page V2 (uniquement M1). Pour M2 on saute la construction.
   const page = React.useMemo(
@@ -533,16 +539,21 @@ function WizardQuickView({
     if (!canSave) { setError("Lien d'affiliation requis."); return; }
     setSaving(true); setError(null);
     try {
+      // Slug : sur premier save (creation), on calcule depuis affiLink.
+      // Sur les saves suivants (page deja existante), on conserve le slug
+      // serveur pour ne pas changer l'URL publique apres chaque "Mettre a
+      // jour" (sinon les bookmarks/liens partages se cassent).
+      const slugToSend = (pageId && savedSlug) ? savedSlug : computedSlug;
       let payload;
       if (inputs.modelKind !== "M2" && page) {
         // M1 + M3-M6 : sauvegarde V2 (zones + blocks) avec marqueurs V3
         const cfg: any = { ...page, [V3_MARKER]: true, [V3_INPUTS_KEY]: inputs };
         payload = {
-          slug: computedSlug,
+          slug: slugToSend,
           model: 4,
           variant: null,
-          brandName: page.casinoName || computedSlug,
-          title: page.pageTitle || page.casinoName || computedSlug,
+          brandName: page.casinoName || slugToSend,
+          title: page.pageTitle || page.casinoName || slugToSend,
           config: cfg,
           editorVersion: 2,
         };
@@ -577,13 +588,39 @@ function WizardQuickView({
           editorVersion: 1,
         };
       }
-      const result = initialPageId
-        ? await updateFsbAffiPage(token, initialPageId, payload)
-        : await createFsbAffiPage(token, payload);
+      // Sur PUT 404 (page deja supprimee depuis le dashboard ou autre tab),
+      // fallback automatique sur POST pour recreer. Le slug auto-renome avec
+      // suffixe -2 si collision (cf resolveUniqueSlug cote API).
+      let result;
+      if (pageId) {
+        try {
+          result = await updateFsbAffiPage(token, pageId, payload);
+        } catch (err: any) {
+          const msg = String(err?.message || "");
+          if (msg === "not_found" || msg.includes("404")) {
+            // La page a disparu cote serveur -> on recree (POST)
+            // En forcant slug=null cote payload, le backend regenere depuis
+            // affiCode + suffixe -N si collision (au lieu d'echouer sur UNIQUE).
+            const recreatePayload = { ...payload, slug: payload.slug };
+            result = await createFsbAffiPage(token, recreatePayload);
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        result = await createFsbAffiPage(token, payload);
+      }
       setSavedSlug(result.item.slug);
+      setPageId(result.item.id);
       onSaved(result.item);
     } catch (e: any) {
-      setError(e?.message || "Erreur de sauvegarde");
+      const msg = e?.message || "Erreur de sauvegarde";
+      // Messages plus parlants pour l'utilisateur
+      const friendly =
+        msg === "not_found" ? "La page n'existe plus côté serveur — réessaie, elle sera recréée."
+        : msg.includes("UNIQUE") || msg.includes("duplicate") ? "Conflit de slug — un autre page utilise déjà ce lien d'affi."
+        : msg;
+      setError(friendly);
     } finally {
       setSaving(false);
     }
