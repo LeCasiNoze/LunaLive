@@ -78,8 +78,8 @@ export const guildCommandDefinitions = [
     default_member_permissions: String(PermissionFlagsBits.ManageChannels),
   },
   {
-    name: "dm-preview",
-    description: "(Admin) Reçoit les 4 templates DM /celsius en aperçu.",
+    name: "celsius-vip-invite",
+    description: "(Admin) Envoie le DM d'invitation VIP à tous les vérifiés ≥750€ qui n'ont pas encore reçu.",
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
 ];

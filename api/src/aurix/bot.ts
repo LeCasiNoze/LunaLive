@@ -253,12 +253,12 @@ export async function startAurixBot(): Promise<void> {
           case "close-ticket":
             await handleCloseTicketCommand(ci);
             return;
-          case "dm-preview": {
+          case "celsius-vip-invite": {
             await ci.deferReply({ ephemeral: true });
-            const { sendAllDmPreviews } = await import("./celsius_dm.js");
-            const r = await sendAllDmPreviews(ci.client, ci.user.id);
+            const { sendVipInviteBlast } = await import("./celsius_dm.js");
+            const r = await sendVipInviteBlast(ci.client);
             await ci.editReply({
-              content: `${cfg.EMOJI.check} Previews envoyés en DM : ${r.sent}/4 OK${r.failed ? ` (${r.failed} échec${r.failed > 1 ? "s" : ""})` : ""}.`,
+              content: `${cfg.EMOJI.check} Campagne VIP : ${r.sent} envoi(s) OK, ${r.skipped} déjà notifié(s), ${r.failed} échec(s) sur ${r.candidates} candidat(s).`,
             });
             return;
           }

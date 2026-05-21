@@ -100,6 +100,12 @@ CREATE INDEX IF NOT EXISTS idx_aurix_celsius_queue
     ON aurix_celsius_submissions(status, skipped_at, created_at);
 `,
   },
+  {
+    name: "005_celsius_vip_invited.sql",
+    sql: `
+ALTER TABLE aurix_celsius_submissions ADD COLUMN IF NOT EXISTS vip_invited_at TIMESTAMPTZ;
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

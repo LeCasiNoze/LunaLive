@@ -161,26 +161,38 @@ async function sendVipValidatedDM(
   lines.push(`Salut <@${args.viewerUserId}>,`);
   lines.push("");
   lines.push(
-    `Ton compte Celsius **\`${args.pseudo}\`** vient d'être validé par l'équipe ${cfg.BRAND.NAME} — et tu rejoins notre **Club VIP** ${cfg.EMOJI.diamond}`
+    `Ton compte Celsius **\`${args.pseudo}\`** vient d'être validé par l'équipe ${cfg.BRAND.NAME}. ${cfg.EMOJI.check}`
   );
   lines.push("");
-  lines.push(`Concrètement, en tant que VIP tu bénéficies de :`);
+  lines.push(
+    `D'après les infos que tu as renseignées, **ton profil pourrait correspondre à notre Club VIP** ${cfg.EMOJI.diamond}`
+  );
+  lines.push("");
+  lines.push(`Concrètement, en tant que VIP tu bénéficierais de :`);
   lines.push(`• Un **host dédié** joignable directement sur Telegram`);
   lines.push(`• Des **offres et bonus exclusifs** réservés aux gros joueurs`);
   lines.push(`• Un **suivi personnalisé** sur tes jeux et tes sessions`);
   lines.push(`• Des **avantages prioritaires** sur les promos Aurix`);
   lines.push("");
+  lines.push(
+    `Pour activer ces avantages, une **dernière étape de vérification** est nécessaire : on contrôle rapidement les stats que tu as déclarées, et si tout est OK, tu reçois ton **host VIP attitré** dans la foulée.`
+  );
+  lines.push("");
   if (tgLink) {
-    lines.push(`Clique sur le bouton ci-dessous pour entrer en conversation directe avec ton host VIP sur Telegram.`);
+    lines.push(
+      `Clique sur le bouton ci-dessous pour me contacter directement sur Telegram — je m'occupe de la vérification et de l'attribution du host.`
+    );
   } else {
-    lines.push(`Ton host VIP va te contacter sous peu pour faire connaissance.`);
+    lines.push(
+      `Un membre de l'équipe va te contacter sous peu pour finaliser la vérification.`
+    );
   }
   lines.push("");
-  lines.push(`Bienvenue dans le Club ${cfg.EMOJI.diamond}`);
+  lines.push(`À très vite ${cfg.EMOJI.diamond}`);
   lines.push(`— ${cfg.BRAND.NAME}`);
 
   const embed = new EmbedBuilder()
-    .setTitle(`${cfg.EMOJI.diamond}  Bienvenue dans le Club VIP Aurix`)
+    .setTitle(`${cfg.EMOJI.diamond}  Ton profil pourrait correspondre au Club VIP`)
     .setDescription(lines.join("\n"))
     .setColor(cfg.COLOR.PRIMARY)
     .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
@@ -188,7 +200,7 @@ async function sendVipValidatedDM(
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
   if (tgLink) {
     const btn = new ButtonBuilder()
-      .setLabel("Contacter mon host VIP")
+      .setLabel("Me contacter sur Telegram")
       .setStyle(ButtonStyle.Link)
       .setURL(tgLink)
       .setEmoji("💬");
@@ -207,63 +219,60 @@ function toTelegramLink(contact: string): string {
 
 // ─────────── 3. Refus (status=rejected) ───────────
 
-// ─────────── Admin /dm-preview : envoie les 4 templates a l'admin pour validation ───────────
+// ─────────── Admin /celsius-vip-invite ───────────
+// DM le template VIP a tous les viewers verified avec depot >= 750€ qui
+// n'ont pas encore recu (flag vip_invited_at en DB pour eviter le spam).
 
-export async function sendAllDmPreviews(
-  client: Client,
-  adminUserId: string
-): Promise<{ sent: number; failed: number }> {
-  // On force le target = admin (bypass test_mode pour ce flow), en passant
-  // l'admin comme "viewerUserId" partout.
-  const sample = {
-    viewerUserId: adminUserId,
-    viewerTag: "Aurix Affiliate",
-    pseudo: "Testing",
-    email: "viewer@example.com",
-    monthlyDeposit: "1500",
-    guildName: "casino-jojo",
-  };
+export async function sendVipInviteBlast(
+  client: Client
+): Promise<{ candidates: number; sent: number; skipped: number; failed: number }> {
+  const { all, query } = await import("./db.js");
+  const candidates = await all<{
+    id: number;
+    viewer_user_id: string;
+    celsius_pseudo: string;
+    guild_name: string | null;
+    vip_invited_at: Date | null;
+  }>(
+    `SELECT id, viewer_user_id, celsius_pseudo, guild_name, vip_invited_at
+       FROM aurix_celsius_submissions
+      WHERE status='verified' AND monthly_deposit_amount >= 750
+      ORDER BY monthly_deposit_amount DESC`
+  );
 
   let sent = 0;
+  let skipped = 0;
   let failed = 0;
-  const safeCall = async (fn: () => Promise<void>) => {
+
+  for (const c of candidates) {
+    if (c.vip_invited_at) {
+      skipped++;
+      continue;
+    }
     try {
-      await fn();
+      // Bypass test_mode pour cette campagne — on envoie au vrai viewer.
+      // Pour ca on fake un target "non test" en passant le viewer comme cible.
+      await sendVipValidatedDM(
+        client,
+        { userId: c.viewer_user_id, isTest: false, realViewerId: c.viewer_user_id },
+        {
+          viewerUserId: c.viewer_user_id,
+          pseudo: c.celsius_pseudo,
+          guildName: c.guild_name ?? "ton serveur",
+        }
+      );
+      await query(
+        "UPDATE aurix_celsius_submissions SET vip_invited_at=NOW() WHERE id=$1",
+        [c.id]
+      );
       sent++;
     } catch (e) {
       failed++;
-      console.warn("[aurix.celsius.dm] preview send failed:", String(e));
+      console.warn("[aurix.celsius.dm] VIP invite failed:", c.viewer_user_id, String(e));
     }
-  };
+  }
 
-  await safeCall(() => sendCelsiusConfirmationDM(client, sample));
-  await safeCall(() =>
-    sendCelsiusValidatedDM(client, {
-      viewerUserId: adminUserId,
-      pseudo: sample.pseudo,
-      monthlyDeposit: "500",
-      monthlyDepositAmount: 500,
-      guildName: sample.guildName,
-    })
-  );
-  await safeCall(() =>
-    sendCelsiusValidatedDM(client, {
-      viewerUserId: adminUserId,
-      pseudo: sample.pseudo,
-      monthlyDeposit: "1500",
-      monthlyDepositAmount: 1500,
-      guildName: sample.guildName,
-    })
-  );
-  await safeCall(() =>
-    sendCelsiusRejectedDM(client, {
-      viewerUserId: adminUserId,
-      pseudo: sample.pseudo,
-      rejectReason: "Compte introuvable dans notre vivier d'affiliés ou pseudo Celsius incorrect.",
-    })
-  );
-
-  return { sent, failed };
+  return { candidates: candidates.length, sent, skipped, failed };
 }
 
 export async function sendCelsiusRejectedDM(
