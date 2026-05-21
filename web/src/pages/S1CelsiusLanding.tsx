@@ -865,16 +865,6 @@ export default function S1CelsiusLanding(props: S1CelsiusLandingProps = {}) {
         {/* FAQ */}
         <FaqSection t={t} />
 
-        {/* Urgency strip */}
-        <Reveal>
-          <div className="s1-container" style={{ marginTop: 20 }}>
-            <div className="s1-urgency">
-              <span className="s1-urgency-dot" />
-              {t.urgencyLine}
-            </div>
-          </div>
-        </Reveal>
-
         {/* Final CTA */}
         <section className="s1-final">
           <div className="s1-container">
