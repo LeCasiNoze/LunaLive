@@ -37,6 +37,7 @@ import { M10Cyclope } from "../components/M10Cyclope";
 import { M11Aurix } from "../components/M11Aurix";
 import { M12Chat } from "../components/M12Chat";
 import { M13Celsius } from "../components/M13Celsius";
+import { M15Cyclope } from "../components/M15Cyclope";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -417,6 +418,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     );
     case "M12": return <M12Chat {...props} />;
     case "M13": return <M13Celsius {...props} pseudoSub={b.pseudoSub} />;
+    case "M15": return <M15Cyclope {...props} />;
   }
 }
 
