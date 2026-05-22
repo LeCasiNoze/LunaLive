@@ -61,6 +61,7 @@ type Config = {
   goldenVisualMode: string;
   goldenBackgroundUrl: string;
   goldenProfileImageUrl?: string;
+  goldenTelegramUrl?: string;
   goldenCtaPosition: string;
   // Montants
   goldenDepositAmount: string;
