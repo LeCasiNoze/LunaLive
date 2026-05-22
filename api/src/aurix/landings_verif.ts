@@ -120,7 +120,7 @@ async function resolveTaap(taapUrl: string): Promise<{ ok: boolean; finalUrl?: s
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     }).finally(() => clearTimeout(to));
-    if (!r.ok && r.status >= 500) return { ok: false, reason: `taap.it HTTP ${r.status}` };
+    if (!r.ok) return { ok: false, reason: `taap.it HTTP ${r.status} (lien cassé / inexistant ?)` };
 
     // Si redirect HTTP a quitte taap.it, on a deja la final URL.
     try {
