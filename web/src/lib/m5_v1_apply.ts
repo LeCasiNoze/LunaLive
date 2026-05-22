@@ -61,6 +61,33 @@ const esc = (s: string) =>
 const escAttr = (s: string) =>
   String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 
+// Assombrit un hex (#rrggbb) en multipliant chaque canal par `ratio`.
+function darkenHex(hex: string, ratio = 0.65): string {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return hex;
+  const r = Math.max(0, Math.min(255, Math.round(parseInt(m[1], 16) * ratio)));
+  const g = Math.max(0, Math.min(255, Math.round(parseInt(m[2], 16) * ratio)));
+  const b = Math.max(0, Math.min(255, Math.round(parseInt(m[3], 16) * ratio)));
+  const h = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+/** Construit le HTML du bouton Telegram theme-aware (couleur = variant accent).
+ *  Injecte un gradient diagonal de l'accent vers une version 35% plus sombre,
+ *  + icone Telegram SVG inline. Reutilise par applyM5V1Config (preview V3)
+ *  et par ReferralLandingPage.applyConfig (rendu publie). */
+export function buildM5V1TelegramButton(url: string, variant: M5V1Variant): string {
+  const accent = M5V1_VARIANTS.find((v) => v.value === variant)?.accent || "#d4a843";
+  const dark = darkenHex(accent, 0.65);
+  const safe = escAttr(url.trim());
+  // rgba decompose pour le glow shadow
+  const rgb = accent.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  const glow = rgb
+    ? `rgba(${parseInt(rgb[1], 16)},${parseInt(rgb[2], 16)},${parseInt(rgb[3], 16)},.45)`
+    : "rgba(0,0,0,.4)";
+  return `<a href="${safe}" class="btn-telegram" target="_top" rel="sponsored noopener" style="display:inline-flex;align-items:center;justify-content:center;gap:10px;margin:12px auto 4px;padding:13px 22px;border-radius:14px;background:linear-gradient(135deg,${accent} 0%,${darkenHex(accent, 0.85)} 50%,${dark} 100%);color:#fff;font-weight:800;font-family:inherit;letter-spacing:.02em;text-decoration:none;box-shadow:0 8px 22px ${glow},0 0 0 1px rgba(255,255,255,.18) inset;border:2px solid rgba(255,255,255,.35);width:100%;max-width:340px;font-size:.92rem;text-shadow:0 1px 2px rgba(0,0,0,.25)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.054 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.94z"/></svg><span>Rejoindre le Telegram</span></a>`;
+}
+
 export function applyM5V1Config(
   htmlIn: string,
   cfg: M5V1QuickConfig,
@@ -209,20 +236,16 @@ export function applyM5V1Config(
     );
   }
 
-  // 7.5) Bouton Telegram (optionnel) — injecte juste apres chaque .btn-jouer
-  //      principal. Style cohérent avec le M5V1 mais palette Telegram.
+  // 7.5) Bouton Telegram (optionnel) — injecte ENTRE .brand-signature et
+  //      .offer-copy (sous le pseudo, au-dessus du "Déposez X / Recevez Y").
+  //      Couleur derivée du variant pour rester en adequation avec le theme.
   if (cfg.telegramUrl && cfg.telegramUrl.trim()) {
-    const safe = escAttr(cfg.telegramUrl.trim());
-    const tgBtn = `
-<a href="${safe}" class="btn-telegram" target="_top" rel="sponsored noopener" style="display:inline-flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;padding:14px 22px;border-radius:14px;background:linear-gradient(135deg,#229ED9 0%,#1ea0d4 50%,#0088CC 100%);color:#fff;font-weight:800;font-family:inherit;letter-spacing:.02em;text-decoration:none;box-shadow:0 8px 22px rgba(34,158,217,.45),0 0 0 1px rgba(255,255,255,.18) inset;border:2px solid rgba(255,255,255,.35);width:100%;max-width:380px;font-size:.95rem">
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.054 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.94z"/></svg>
-<span>Rejoindre le Telegram</span>
-</a>`;
-    // Wrappe chaque .btn-jouer principal dans un container vertical pour
-    // qu'ils s'affichent l'un sous l'autre proprement.
+    const tgBtn = buildM5V1TelegramButton(cfg.telegramUrl, variant);
+    // Container centre pour que le bouton soit aligne avec le reste du hero
+    const wrapped = `<div class="m5v1-telegram-slot" style="display:flex;justify-content:center;width:100%">${tgBtn}</div>\n`;
     html = html.replace(
-      /(<a[^>]*class="btn-jouer[^"]*"[^>]*>[\s\S]*?<\/a>)/g,
-      `<span style="display:flex;flex-direction:column;align-items:center;width:100%">$1${tgBtn}</span>`
+      /(<div class="brand-signature">[\s\S]*?<\/div>\s*)(<div class="offer-copy")/,
+      `$1${wrapped}$2`
     );
   }
 
