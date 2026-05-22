@@ -8,8 +8,10 @@ const _envHls = (import.meta.env.VITE_HLS_BASE as string | undefined);
 const HLS_BASE = (_envHls && _envHls.length > 0 ? _envHls : HLS_WORKER_URL).replace(/\/$/, "");
 
 function toProxiedHls(url: string): string {
-  // 1a-1791.com est le CDN Rumble avec CORS * — pas besoin de proxy
-  if (url.includes("1a-1791.com")) return url;
+  // CDN Rumble (1a-1791.com legacy + *.cdn.rumble.cloud actuel) répond avec
+  // Access-Control-Allow-Origin: * → fetch direct depuis le browser, zero proxy.
+  // Évite OOM Render quand le Worker CF est bloqué par la WAF Rumble.
+  if (url.includes("1a-1791.com") || url.includes("cdn.rumble.cloud")) return url;
   return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
 }
 
