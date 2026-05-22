@@ -116,13 +116,40 @@ async function resolveTaap(taapUrl: string): Promise<{ ok: boolean; finalUrl?: s
       redirect: "follow",
       signal: ctrl.signal,
       headers: {
-        // taap.it parfois renvoie HTML meta-refresh aux UA "bot"; on simule un browser.
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     }).finally(() => clearTimeout(to));
     if (!r.ok && r.status >= 500) return { ok: false, reason: `taap.it HTTP ${r.status}` };
-    return { ok: true, finalUrl: r.url };
+
+    // Si redirect HTTP a quitte taap.it, on a deja la final URL.
+    try {
+      const u = new URL(r.url);
+      if (!u.hostname.toLowerCase().includes("taap.it")) {
+        return { ok: true, finalUrl: r.url };
+      }
+    } catch {
+      /* ignore */
+    }
+
+    // Sinon, taap.it sert un HTML avec redirect JS. On parse `var finalLink = "..."`
+    // (et fallback sur `fallbackUrl` si finalLink absent).
+    const body = await r.text();
+    const finalMatch = body.match(/(?:var\s+finalLink|finalLink)\s*=\s*["']([^"']+)["']/);
+    if (finalMatch && finalMatch[1]) {
+      return { ok: true, finalUrl: finalMatch[1] };
+    }
+    const fbMatch = body.match(/(?:var\s+fallbackUrl|fallbackUrl)\s*=\s*["']([^"']+)["']/);
+    if (fbMatch && fbMatch[1]) {
+      return { ok: true, finalUrl: fbMatch[1] };
+    }
+    // Meta-refresh classique en backup.
+    const metaMatch = body.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]+url=([^"'>\s]+)/i);
+    if (metaMatch && metaMatch[1]) {
+      return { ok: true, finalUrl: metaMatch[1] };
+    }
+
+    return { ok: false, reason: "taap.it: finalLink introuvable dans le HTML" };
   } catch (e) {
     return { ok: false, reason: `network: ${String(e).slice(0, 100)}` };
   }
