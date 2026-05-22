@@ -20,6 +20,7 @@ import * as cfg from "./config.js";
 import { kvGet, kvSet } from "./db.js";
 import { ensureOpenBatch } from "./refill.js";
 import { ensureWatcherBoard } from "./watcher.js";
+import { ensureVerifBoard, seedRefsIfEmpty } from "./landings_verif.js";
 
 const log = (...a: unknown[]) => console.log("[aurix.setup]", ...a);
 
@@ -357,12 +358,20 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
     "🕵️ Supervision des inscriptions /celsius (validation / refus).",
     ow.staffOnly
   );
+  const chLandingVerif = await getOrCreateTextChannel(
+    guild,
+    catStaff,
+    cfg.CHANNELS.LANDING_VERIF,
+    "🔎 Vérification automatique des landings (taap.it → page → celsius URL).",
+    ow.staffOnly
+  );
 
   await kvSet("channel_staff_chat_id", chStaffChat.id);
   await kvSet("channel_refills_id", chRefills.id);
   await kvSet("channel_logs_id", chLogs.id);
   await kvSet("channel_gestion_id", chGestion.id);
   await kvSet("channel_watcher_id", chWatcher.id);
+  await kvSet("channel_landing_verif_id", chLandingVerif.id);
 
   // ─── Panel ticket message + persistent button ───
   await postWelcomePanel(chALire, {
@@ -376,6 +385,10 @@ export async function runSetup(guild: Guild): Promise<SetupResult> {
 
   // ─── Watcher board (list + stats sticky messages) ───
   await ensureWatcherBoard(guild);
+
+  // ─── Landing Verif board (seed + initial embed) ───
+  await seedRefsIfEmpty();
+  await ensureVerifBoard(guild);
 
   // ─── Refill batch initial ───
   await ensureOpenBatch(guild);

@@ -83,6 +83,11 @@ export const guildCommandDefinitions = [
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
   {
+    name: "verify-landings",
+    description: "(Admin) Force une passe de vérification des landings maintenant.",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+  },
+  {
     name: "link-partner",
     description: "(Admin) Rattache un binôme au ticket courant (partage refill + accès salon).",
     default_member_permissions: String(PermissionFlagsBits.Administrator),

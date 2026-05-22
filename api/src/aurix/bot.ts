@@ -53,6 +53,7 @@ import {
   handleQueueRejectButton,
   handleQueueFilterSelect,
 } from "./watcher.js";
+import { startLandingVerifCron, triggerManualCheck } from "./landings_verif.js";
 
 export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
@@ -98,7 +99,7 @@ export async function startAurixBot(): Promise<void> {
 
     // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
     // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-    const SETUP_VERSION = "11";
+    const SETUP_VERSION = "12";
     if (guildId) {
       const guild = c.guilds.cache.get(guildId);
       if (guild) {
@@ -121,6 +122,7 @@ export async function startAurixBot(): Promise<void> {
 
     startCutoffTask(c);
     startTelegramRefillHandler(c);
+    startLandingVerifCron(c);
 
     await c.user.setPresence({
       activities: [{ name: `${cfg.BRAND.NAME} ${cfg.EMOJI.diamond}`, type: ActivityType.Watching }],
@@ -257,6 +259,16 @@ export async function startAurixBot(): Promise<void> {
           case "link-partner":
             await handleLinkPartnerCommand(ci);
             return;
+          case "verify-landings": {
+            await ci.deferReply({ ephemeral: true });
+            const r = await triggerManualCheck(ci.client);
+            const lines = [
+              `${cfg.EMOJI.check} Vérif lancée : ${r.total} landings.`,
+              `✅ \`${r.counts.ok}\` · 🟡 \`${r.counts.celsius_changed}\` · 🔴 \`${r.counts.landing_missing + r.counts.taap_off_domain}\` · ⚠️ \`${r.counts.taap_unreachable}\``,
+            ];
+            await ci.editReply({ content: lines.join("\n") });
+            return;
+          }
           case "celsius-vip-invite": {
             await ci.deferReply({ ephemeral: true });
             const { sendVipInviteBlast } = await import("./celsius_dm.js");

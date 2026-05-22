@@ -119,6 +119,26 @@ CREATE INDEX IF NOT EXISTS idx_aurix_ticket_partners_user
     ON aurix_ticket_partners(partner_user_id);
 `,
   },
+  {
+    name: "007_landing_verif.sql",
+    sql: `
+CREATE TABLE IF NOT EXISTS aurix_landing_verif_refs (
+    id                   BIGSERIAL PRIMARY KEY,
+    pseudo               TEXT NOT NULL,
+    taap_url             TEXT NOT NULL UNIQUE,
+    expected_celsius_url TEXT NOT NULL,
+    last_check_at        TIMESTAMPTZ,
+    last_status          TEXT,
+    last_details         TEXT,
+    last_taap_destination TEXT,
+    last_landing_slug    TEXT,
+    last_db_affi_link    TEXT,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_aurix_landing_verif_refs_status
+    ON aurix_landing_verif_refs(last_status);
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

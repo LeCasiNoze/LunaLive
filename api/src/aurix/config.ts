@@ -58,6 +58,7 @@ export const CHANNELS = {
   LOGS: "🔔-logs",
   GESTION: "🗂️-gestion",
   WATCHER: "🕵️-the-watcher",
+  LANDING_VERIF: "🔎-landing-verif",
   ANNONCES_STREAMERS: "📢-annonces-streamers",
   CHAT_STREAMERS: "💬-chat-streamers",
   PROMOTIONS: "🎁-promotions",
