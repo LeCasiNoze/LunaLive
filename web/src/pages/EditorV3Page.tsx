@@ -544,6 +544,8 @@ function WizardQuickView({
       // serveur pour ne pas changer l'URL publique apres chaque "Mettre a
       // jour" (sinon les bookmarks/liens partages se cassent).
       const slugToSend = (pageId && savedSlug) ? savedSlug : computedSlug;
+      // Nom de page : custom > pseudo > fallback (computedSlug)
+      const displayName = (inputs.customPageName?.trim() || inputs.pseudo?.trim() || "").trim();
       let payload;
       if (inputs.modelKind !== "M2" && page) {
         // M1 + M3-M6 : sauvegarde V2 (zones + blocks) avec marqueurs V3
@@ -552,8 +554,8 @@ function WizardQuickView({
           slug: slugToSend,
           model: 4,
           variant: null,
-          brandName: page.casinoName || slugToSend,
-          title: page.pageTitle || page.casinoName || slugToSend,
+          brandName: displayName || page.casinoName || slugToSend,
+          title: page.pageTitle || displayName || page.casinoName || slugToSend,
           config: cfg,
           editorVersion: 2,
         };
@@ -571,15 +573,16 @@ function WizardQuickView({
           jeuxUrl: inputs.m5JeuxUrl,
           visualMode: inputs.m5VisualMode,
           backgroundUrl: inputs.m5BackgroundUrl,
+          telegramUrl: inputs.telegramUrl,
         });
         const cfg: any = {
           ...v1Cfg,
           [V3_MARKER]: "1",
           [V3_INPUTS_KEY]: JSON.stringify(inputs),
         };
-        const brand = inputs.pseudo?.trim() || computedSlug;
+        const brand = displayName || inputs.pseudo?.trim() || computedSlug;
         payload = {
-          slug: computedSlug,
+          slug: slugToSend,
           model: 5,
           variant,
           brandName: brand,
@@ -717,6 +720,36 @@ function WizardQuickView({
             </label>
             <input type="text" value={inputs.pseudo || ""} onChange={(e) => update({ pseudo: e.target.value })} style={inputStyle} placeholder={inputs.modelKind === "M10" ? "ex: CYCLOPE" : inputs.modelKind === "M11" ? "ex: AURIX" : "ex: Jimmy"} />
           </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelStyle}>Nom dans le dashboard (optionnel)</label>
+            <input
+              type="text"
+              value={inputs.customPageName || ""}
+              onChange={(e) => update({ customPageName: e.target.value })}
+              style={inputStyle}
+              placeholder={inputs.pseudo?.trim() ? `Par défaut : ${inputs.pseudo}` : "ex: Alex Invest (sert juste à s'y retrouver)"}
+            />
+            <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+              Sert d'identifiant dans "Mes pages V3". Si vide, on prend le pseudo, sinon l'affi code.
+            </div>
+          </div>
+
+          {inputs.modelKind === "M2" ? (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelStyle}>Lien Telegram (optionnel)</label>
+              <input
+                type="url"
+                value={inputs.telegramUrl || ""}
+                onChange={(e) => update({ telegramUrl: e.target.value })}
+                style={inputStyle}
+                placeholder="https://t.me/ton_canal"
+              />
+              <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+                Affiche un 2e bouton "Rejoindre le Telegram" sous le CTA principal.
+              </div>
+            </div>
+          ) : null}
 
           {(inputs.modelKind === "M10" || inputs.modelKind === "M11") ? (
             <>
@@ -1116,6 +1149,7 @@ function WizardQuickView({
                     jeuxUrl: inputs.m5JeuxUrl,
                     visualMode: inputs.m5VisualMode,
                     backgroundUrl: inputs.m5BackgroundUrl,
+                    telegramUrl: inputs.telegramUrl,
                   }}
                   variant={inputs.m5Variant || "gold"}
                   isMobile={isMobilePreview}
@@ -2001,6 +2035,16 @@ function V3Topbar({
   );
 }
 
+// Lit les V3QuickInputs serialises depuis la config de la page (string ou object).
+function readV3Inputs(p: FsbAffiPage): V3QuickInputs | null {
+  const raw = (p.config as any)?.[V3_INPUTS_KEY];
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw) as V3QuickInputs; } catch { return null; }
+  }
+  if (raw && typeof raw === "object") return raw as V3QuickInputs;
+  return null;
+}
+
 function DashboardView({
   pages, loading, onCreateQuick, onOpen, onDelete, onRefresh, statsByPage, onSwitchView,
 }: {
@@ -2013,16 +2057,87 @@ function DashboardView({
   statsByPage: Record<string, AffiPageStats>;
   onSwitchView: (v: "dashboard" | "stats") => void;
 }) {
-  const v3Pages = pages.filter(isV3Page);
+  const v3PagesAll = pages.filter(isV3Page);
+
+  // Recherche + tri (client-side)
+  const [searchQ, setSearchQ] = React.useState("");
+  const [sortBy, setSortBy] = React.useState<
+    "createdDesc" | "createdAsc" | "updatedDesc" | "alphaAsc" | "alphaDesc" | "viewsDesc" | "viewsAsc"
+  >("updatedDesc");
+
+  const v3Pages = React.useMemo(() => {
+    const q = searchQ.trim().toLowerCase();
+    let arr = v3PagesAll;
+    if (q) {
+      arr = arr.filter((p) => {
+        const inputs = readV3Inputs(p);
+        const haystack = [
+          p.brandName || "",
+          p.slug || "",
+          inputs?.pseudo || "",
+          inputs?.affiLink || "",
+        ].join(" ").toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    const getViews = (p: FsbAffiPage) => statsByPage[String(p.id)]?.views ?? 0;
+    const cmpName = (a: FsbAffiPage, b: FsbAffiPage) =>
+      (a.brandName || a.slug || "").toLowerCase().localeCompare((b.brandName || b.slug || "").toLowerCase(), "fr");
+    const getTime = (p: FsbAffiPage, key: "createdAt" | "updatedAt") => {
+      const v = (p as any)[key];
+      return v ? new Date(v).getTime() : 0;
+    };
+    const sorters: Record<typeof sortBy, (a: FsbAffiPage, b: FsbAffiPage) => number> = {
+      createdDesc: (a, b) => getTime(b, "createdAt") - getTime(a, "createdAt"),
+      createdAsc: (a, b) => getTime(a, "createdAt") - getTime(b, "createdAt"),
+      updatedDesc: (a, b) => getTime(b, "updatedAt") - getTime(a, "updatedAt"),
+      alphaAsc: cmpName,
+      alphaDesc: (a, b) => -cmpName(a, b),
+      viewsDesc: (a, b) => getViews(b) - getViews(a),
+      viewsAsc: (a, b) => getViews(a) - getViews(b),
+    };
+    return [...arr].sort(sorters[sortBy]);
+  }, [v3PagesAll, searchQ, sortBy, statsByPage]);
 
   return (
     <div style={{ minHeight: "100vh", background: T.bg, color: T.text, fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <V3Topbar activeView="dashboard" onSwitchView={onSwitchView} onCreateQuick={onCreateQuick} onRefresh={onRefresh} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 16 }}>
-          Mes pages V3 <span style={{ fontSize: 14, color: T.textMute, fontWeight: 500 }}>· {v3Pages.length}</span>
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>
+            Mes pages V3 <span style={{ fontSize: 14, color: T.textMute, fontWeight: 500 }}>· {v3Pages.length}{searchQ ? `/${v3PagesAll.length}` : ""}</span>
+          </h2>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="search"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="🔍 Pseudo, slug, lien d'affi…"
+              style={{
+                background: T.bgInput, border: `1px solid ${T.border}`, color: T.text,
+                borderRadius: 8, padding: "8px 12px", fontSize: 13, width: 260, fontFamily: "inherit", outline: "none",
+              }}
+            />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              style={{
+                background: T.bgInput, border: `1px solid ${T.border}`, color: T.text,
+                borderRadius: 8, padding: "8px 10px", fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer",
+              }}
+              title="Trier"
+            >
+              <option value="updatedDesc">↻ Modifiées récemment</option>
+              <option value="createdDesc">🆕 Créées récemment</option>
+              <option value="createdAsc">📅 Créées (anciennes)</option>
+              <option value="alphaAsc">A → Z</option>
+              <option value="alphaDesc">Z → A</option>
+              <option value="viewsDesc">👁 Vues ↓</option>
+              <option value="viewsAsc">👁 Vues ↑</option>
+            </select>
+          </div>
+        </div>
 
         {loading ? (
           <div style={{ color: T.textMute, padding: 24, textAlign: "center" }}>Chargement…</div>

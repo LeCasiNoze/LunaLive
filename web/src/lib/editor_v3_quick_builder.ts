@@ -220,6 +220,13 @@ export interface V3QuickInputs {
   /** Habillage visuel du pseudo M10. */
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
+  /** Nom affiche dans le dashboard "Mes pages V3" (override du pseudo).
+   *  Si vide ET pseudo defini -> on utilise le pseudo.
+   *  Si vide ET pas de pseudo -> on retombe sur l'affi code. */
+  customPageName?: string;
+  /** Lien Telegram a afficher sous le CTA principal (uniquement M2/M5V1
+   *  pour le moment). Si vide, pas de bouton. */
+  telegramUrl?: string;
 }
 
 export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {

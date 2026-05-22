@@ -671,6 +671,18 @@ ${String(cfg.goldenCtaPosition || "").trim() === "bottom"
       html = html.replace(/<\/head>/, `  <link rel="stylesheet" href="${fontsUrl}">\n</head>`);
     }
 
+    // Bouton Telegram optionnel — propage cfg.goldenTelegramUrl si renseigne.
+    // Cohérent avec applyM5V1Config (V3 wizard preview).
+    const tgUrl = (cfg.goldenTelegramUrl || "").trim();
+    if (tgUrl) {
+      const safe = tgUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      const tgBtn = `\n<a href="${safe}" class="btn-telegram" target="_top" rel="sponsored noopener" style="display:inline-flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;padding:14px 22px;border-radius:14px;background:linear-gradient(135deg,#229ED9 0%,#1ea0d4 50%,#0088CC 100%);color:#fff;font-weight:800;font-family:inherit;letter-spacing:.02em;text-decoration:none;box-shadow:0 8px 22px rgba(34,158,217,.45),0 0 0 1px rgba(255,255,255,.18) inset;border:2px solid rgba(255,255,255,.35);width:100%;max-width:380px;font-size:.95rem"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.054 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.94z"/></svg><span>Rejoindre le Telegram</span></a>`;
+      html = html.replace(
+        /(<a[^>]*class="btn-jouer[^"]*"[^>]*>[\s\S]*?<\/a>)/g,
+        `<span style="display:flex;flex-direction:column;align-items:center;width:100%">$1${tgBtn}</span>`
+      );
+    }
+
     return html;
   }
 
