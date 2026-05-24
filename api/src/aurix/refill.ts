@@ -663,6 +663,19 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
   if (!guild) guild = client.guilds.cache.first();
   if (!guild) return;
 
+  // Si aucune demande dans le batch -> aucun message envoye (ni staff-chat
+  // ni Telegram). On auto-mark 'sent' pour pas laisser le batch en
+  // 'locked' eternel.
+  const reqsCount = await getRequests(batch.id);
+  if (reqsCount.length === 0) {
+    log(`Cutoff: batch #${batch.id} vide -> aucun message envoye.`);
+    await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
+    batch.status = "sent";
+    await refreshBatchMessage(client, batch);
+    await ensureOpenBatch(guild);
+    return;
+  }
+
   const staffChatId = await kvGet("channel_staff_chat_id");
   const staffChat = staffChatId ? guild.channels.cache.get(staffChatId) : null;
   if (!staffChat || staffChat.type !== 0) {
@@ -672,7 +685,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     const roleModerateurId = await kvGet("role_moderateur_id");
     const managerMention = (await kvGet("manager_mention")) ?? "*(à configurer via /config manager)*";
 
-    const reqs = await getRequests(batch.id);
+    const reqs = reqsCount;
     const enriched: (Req & { email: string | null })[] = [];
     for (const r of reqs) {
       const acc = await getAccount(r.user_id);
