@@ -559,14 +559,28 @@ export function startLandingVerifCron(client: Client): void {
   }, VERIF_INTERVAL_MS);
 }
 
+async function resolveVerifGuild(client: Client): Promise<Guild | undefined> {
+  // 1) kv 'landing_verif_guild_id' (= guild hote du salon, set par
+  //    ensureLandingVerifChannelInGuild apres migration)
+  // 2) fallback: AURIX_GUILD_ID puis premier guild du client
+  const kvGuildId = (await kvGet("landing_verif_guild_id"))?.trim();
+  if (kvGuildId) {
+    const g = client.guilds.cache.get(kvGuildId);
+    if (g) return g;
+  }
+  const envGuildId = process.env.AURIX_GUILD_ID;
+  if (envGuildId) {
+    const g = client.guilds.cache.get(envGuildId);
+    if (g) return g;
+  }
+  return client.guilds.cache.first();
+}
+
 async function runOnePass(client: Client): Promise<void> {
   log("Verification pass started.");
   await syncRefsFromSheet();
   const r = await verifyAllRefs();
-  const guildId = process.env.AURIX_GUILD_ID;
-  let guild: Guild | undefined;
-  if (guildId) guild = client.guilds.cache.get(guildId);
-  if (!guild) guild = client.guilds.cache.first();
+  const guild = await resolveVerifGuild(client);
   if (guild) await ensureVerifBoard(guild);
   log(`Pass done: ${r.total} refs, counts=${JSON.stringify(r.counts)}`);
 }
@@ -574,10 +588,58 @@ async function runOnePass(client: Client): Promise<void> {
 export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: Record<Status, number> }> {
   await syncRefsFromSheet();
   const r = await verifyAllRefs();
-  const guildId = process.env.AURIX_GUILD_ID;
-  let guild: Guild | undefined;
-  if (guildId) guild = client.guilds.cache.get(guildId);
-  if (!guild) guild = client.guilds.cache.first();
+  const guild = await resolveVerifGuild(client);
   if (guild) await ensureVerifBoard(guild);
   return r;
+}
+
+/**
+ * Cree (ou retrouve) le salon landing-verif dans le guild specifie,
+ * sous la categorie 'AGENCE' (lookup case-insensitive). Stocke en kv:
+ *  - channel_landing_verif_id = id du salon
+ *  - landing_verif_guild_id   = guildId
+ * Appele depuis le bot du guild hote (ex: LunaLive bot ClientReady).
+ */
+export async function ensureLandingVerifChannelInGuild(
+  client: Client,
+  guildId: string
+): Promise<{ ok: boolean; channelId?: string; reason?: string }> {
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (!guild) return { ok: false, reason: `guild ${guildId} introuvable` };
+
+  // Recharge tous les channels en cache.
+  const channels = await guild.channels.fetch();
+
+  // Cherche la categorie AGENCE (substring match, case-insensitive).
+  const category = Array.from(channels.values()).find(
+    (c): c is import("discord.js").CategoryChannel =>
+      !!c && c.type === ChannelType.GuildCategory && /agence/i.test(c.name)
+  );
+  if (!category) {
+    return { ok: false, reason: "categorie 'AGENCE' introuvable" };
+  }
+
+  // Cherche un salon 'landing-verif' deja present dans cette categorie.
+  let chan = Array.from(channels.values()).find(
+    (c): c is TextChannel =>
+      !!c &&
+      c.type === ChannelType.GuildText &&
+      c.parentId === category.id &&
+      /landing-verif/i.test(c.name)
+  );
+
+  if (!chan) {
+    chan = (await guild.channels.create({
+      name: "🔎-landing-verif",
+      type: ChannelType.GuildText,
+      parent: category.id,
+      topic: "🔎 Vérification automatique des landings (taap.it → page → celsius URL).",
+      reason: "Aurix Landing Verif - salon de suivi.",
+    })) as TextChannel;
+    log(`Salon landing-verif cree dans ${guild.name} (categorie ${category.name}).`);
+  }
+
+  await kvSet("channel_landing_verif_id", chan.id);
+  await kvSet("landing_verif_guild_id", guildId);
+  return { ok: true, channelId: chan.id };
 }

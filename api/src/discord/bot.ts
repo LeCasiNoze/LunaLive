@@ -338,6 +338,24 @@ export async function startDiscordBot(ctx: BotCtx) {
         })
         .catch((e) => ctx.log(`[discord] periodic sync failed: ${e?.message || e}`));
     }, 6 * 3600_000);
+
+    // Aurix Landing Verif: salon heberge dans le guild LunaLive sous
+    // categorie AGENCE. La logique de verif tourne dans aurix/landings_verif.ts
+    // mais poste via le client LunaLive.
+    try {
+      const { ensureLandingVerifChannelInGuild, startLandingVerifCron } = await import(
+        "../aurix/landings_verif.js"
+      );
+      const r = await ensureLandingVerifChannelInGuild(client, guildId);
+      if (r.ok) {
+        ctx.log(`[discord] landing-verif salon ready (id=${r.channelId})`);
+        startLandingVerifCron(client);
+      } else {
+        ctx.log(`[discord] landing-verif setup KO: ${r.reason}`);
+      }
+    } catch (e) {
+      ctx.log(`[discord] landing-verif wiring failed: ${String(e)}`);
+    }
   });
 
   client.on("guildMemberAdd", async (member) => {

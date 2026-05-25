@@ -53,7 +53,7 @@ import {
   handleQueueRejectButton,
   handleQueueFilterSelect,
 } from "./watcher.js";
-import { startLandingVerifCron, triggerManualCheck } from "./landings_verif.js";
+import { triggerManualCheck } from "./landings_verif.js";
 
 export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
@@ -122,7 +122,26 @@ export async function startAurixBot(): Promise<void> {
 
     startCutoffTask(c);
     startTelegramRefillHandler(c);
-    startLandingVerifCron(c);
+    // Landing Verif a migre vers le guild LunaLive (categorie AGENCE).
+    // Le cron est demarre cote LunaLive bot. Ici on cleanup l'ancien
+    // salon si encore present dans le guild Aurix.
+    try {
+      if (guildId) {
+        const guild = c.guilds.cache.get(guildId);
+        if (guild) {
+          const channels = await guild.channels.fetch();
+          const stale = Array.from(channels.values()).find(
+            (ch) => !!ch && ch.type === 0 /* GuildText */ && /landing-verif/i.test(ch.name)
+          );
+          if (stale) {
+            await stale.delete("Aurix Landing Verif migre vers guild LunaLive").catch(() => {});
+            console.log(`[aurix] ancien salon landing-verif supprime (${stale.id})`);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[aurix] cleanup landing-verif failed:", e);
+    }
 
     await c.user.setPresence({
       activities: [{ name: `${cfg.BRAND.NAME} ${cfg.EMOJI.diamond}`, type: ActivityType.Watching }],
