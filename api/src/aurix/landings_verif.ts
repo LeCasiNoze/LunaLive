@@ -581,8 +581,93 @@ async function runOnePass(client: Client): Promise<void> {
   await syncRefsFromSheet();
   const r = await verifyAllRefs();
   const guild = await resolveVerifGuild(client);
-  if (guild) await ensureVerifBoard(guild);
+  if (guild) {
+    await ensureVerifBoard(guild);
+    await detectAndNotifyNewProblems(guild);
+  }
   log(`Pass done: ${r.total} refs, counts=${JSON.stringify(r.counts)}`);
+}
+
+/**
+ * Compare l'etat des problemes courants avec la baseline stockee en kv.
+ * Si de nouvelles refs sont passees en non-ok depuis la derniere passe,
+ * post un ping @here dans le salon landing-verif avec la liste.
+ * Au premier appel (kv vide), pas de ping - on enregistre juste la
+ * baseline pour eviter de pinger pour des problemes deja connus.
+ */
+async function detectAndNotifyNewProblems(guild: Guild): Promise<void> {
+  const current = await all<{
+    pseudo: string;
+    taap_url: string;
+    last_status: string;
+    last_details: string | null;
+  }>(
+    `SELECT pseudo, taap_url, last_status, last_details
+       FROM aurix_landing_verif_refs
+      WHERE last_status IS NOT NULL AND last_status <> 'ok'`
+  );
+  const currentTaaps = current.map((c) => c.taap_url).sort();
+  const currentJson = JSON.stringify(currentTaaps);
+
+  const previousRaw = await kvGet("landing_verif_known_problems");
+
+  // 1er appel: on baseline, pas de ping (evite de spammer pour des
+  // anomalies deja connues).
+  if (previousRaw === null) {
+    await kvSet("landing_verif_known_problems", currentJson);
+    log(`Baseline anomalies enregistree (${currentTaaps.length} entrees).`);
+    return;
+  }
+
+  let previousSet: Set<string>;
+  try {
+    const parsed = JSON.parse(previousRaw);
+    previousSet = new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    previousSet = new Set();
+  }
+
+  const newOnes = current.filter((c) => !previousSet.has(c.taap_url));
+  await kvSet("landing_verif_known_problems", currentJson);
+
+  if (newOnes.length === 0) return;
+
+  // Post le ping dans le salon.
+  const chId = await kvGet("channel_landing_verif_id");
+  if (!chId) return;
+  const ch = guild.channels.cache.get(chId);
+  if (!ch || ch.type !== ChannelType.GuildText) return;
+
+  const lines = newOnes.map((n) => {
+    const tag =
+      n.last_status === "celsius_changed"
+        ? "🟡 celsius URL modifiée"
+        : n.last_status === "landing_missing"
+        ? "🔴 landing manquante"
+        : n.last_status === "taap_off_domain"
+        ? "🔴 taap.it détourné"
+        : n.last_status === "taap_unreachable"
+        ? "⚠️ taap.it injoignable / cassé"
+        : `🔴 ${n.last_status}`;
+    return `• **${n.pseudo}** — ${tag}${n.last_details ? ` · *${n.last_details}*` : ""}`;
+  });
+
+  const plural = newOnes.length > 1 ? "s" : "";
+  const content = [
+    `@here 🚨 **Nouvelle${plural} anomalie${plural} détectée${plural} sur les landings**`,
+    "",
+    ...lines,
+  ].join("\n");
+
+  try {
+    await (ch as TextChannel).send({
+      content,
+      allowedMentions: { parse: ["everyone"] },
+    });
+    log(`Ping anomalie poste pour ${newOnes.length} ref(s) nouvelle(s).`);
+  } catch (e) {
+    log("Ping anomalie failed:", e);
+  }
 }
 
 export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: Record<Status, number> }> {
