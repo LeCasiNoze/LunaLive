@@ -45,47 +45,176 @@ type RefRow = {
 
 type Status = "ok" | "taap_unreachable" | "taap_off_domain" | "landing_missing" | "celsius_changed";
 
-// Liste de reference filtree: uniquement les entrees avec taap.it.
-const DEFAULT_REFS: { pseudo: string; celsiusUrl: string; taapUrl: string }[] = [
-  { pseudo: "Perturbateur", celsiusUrl: "https://celsius.games/MSmkNWPsOJ", taapUrl: "https://taap.it/jeuenligne" },
-  { pseudo: "L2n", celsiusUrl: "https://celsius.games/UHyEqTtNlL", taapUrl: "https://taap.it/L2Nplay" },
-  { pseudo: "Marseillais", celsiusUrl: "https://celsius.games/MaJjmPOanC", taapUrl: "https://taap.it/Marseillais" },
-  { pseudo: "Mori", celsiusUrl: "https://celsius.games/XXYHlvegsk", taapUrl: "https://taap.it/Moriplay" },
-  { pseudo: "Alex Invest", celsiusUrl: "https://celsius.games/DGQLdGeAYj", taapUrl: "https://taap.it/Alexinvest" },
-  { pseudo: "The Black Circle", celsiusUrl: "https://celsius.games/iUziEgdndn", taapUrl: "https://taap.it/TheBlackCircle1" },
-  { pseudo: "MAOUNO", celsiusUrl: "https://celsius.games/eZJzpobIRw", taapUrl: "https://taap.it/MaounoGame" },
-  { pseudo: "4bdv (jeuxgame)", celsiusUrl: "https://celsius.games/KhfnmZYvtQ", taapUrl: "https://taap.it/jeuxgame" },
-  { pseudo: "SP MDZ", celsiusUrl: "https://celsius.games/hZaOkWYloF", taapUrl: "https://taap.it/SP_MDZ" },
-  { pseudo: "Leyzera", celsiusUrl: "https://celsius.games/YaLanEyPgV", taapUrl: "https://taap.it/Leyzera" },
-  { pseudo: "Andry", celsiusUrl: "https://celsius.games/YqEHOeAsUn", taapUrl: "https://taap.it/Andryy" },
-  { pseudo: "Cyclope", celsiusUrl: "https://celsius.games/VkRHhCexYZ", taapUrl: "https://taap.it/Cyclope" },
-  { pseudo: "Pertu (Fianso)", celsiusUrl: "https://celsius.games/YyoVimPekT", taapUrl: "https://taap.it/jeuxcelsius" },
-  { pseudo: "Railey", celsiusUrl: "https://celsius.games/ZwUdYlcbgW", taapUrl: "https://taap.it/railey" },
-  { pseudo: "Nzeaux", celsiusUrl: "https://celsius.games/eXgtcrSYFg", taapUrl: "https://taap.it/Nzeaux" },
-  { pseudo: "4BDV (actif)", celsiusUrl: "https://celsius.games/vfljnLwpDg", taapUrl: "https://taap.it/4BDV" },
-  { pseudo: "Grandbanditisme", celsiusUrl: "https://celsius.games/tUpLINlKnQ", taapUrl: "https://taap.it/GrandBanditisme" },
-  { pseudo: "Jimmy", celsiusUrl: "https://celsius.games/jffxhRWqGU", taapUrl: "https://taap.it/Jimmy" },
-  { pseudo: "Mentor", celsiusUrl: "https://celsius.games/CnpeGCknIy", taapUrl: "https://taap.it/Mentor" },
-  { pseudo: "pido", celsiusUrl: "https://celsius.games/wkvOvtTCAR", taapUrl: "https://taap.it/ibJKqJ" },
-  { pseudo: "Thundercaller", celsiusUrl: "https://celsius.games/sAlUNVupqh", taapUrl: "https://taap.it/Thundercaller" },
-  { pseudo: "Pirame", celsiusUrl: "https://celsius.games/sAlUNVupqh", taapUrl: "https://taap.it/Pirame" },
-];
+// Source de verite: Google Sheet publiee en CSV.
+// URL override-able via env var AURIX_LANDINGS_SHEET_URL.
+const DEFAULT_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vQq-1sqseX8RluzBT1xAAGiosPZnu-BPoGJwuRQtEobvBLPc7ZCpYKGzkeIKYBrKw/pub?gid=1280662854&single=true&output=csv";
+
+function sheetUrl(): string {
+  return (process.env.AURIX_LANDINGS_SHEET_URL || "").trim() || DEFAULT_SHEET_URL;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function seedRefsIfEmpty(): Promise<void> {
-  const existing = await one<{ n: string }>("SELECT COUNT(*)::text AS n FROM aurix_landing_verif_refs");
-  if (existing && Number(existing.n) > 0) return;
-  log(`Seeding ${DEFAULT_REFS.length} refs (table empty).`);
-  for (const r of DEFAULT_REFS) {
-    await query(
-      `INSERT INTO aurix_landing_verif_refs(pseudo, taap_url, expected_celsius_url)
-       VALUES($1,$2,$3) ON CONFLICT (taap_url) DO NOTHING`,
-      [r.pseudo, r.taapUrl, r.celsiusUrl]
-    );
+// CSV parser robuste : gere les quoted fields, les newlines dans les quotes
+// et les escaped quotes ("").
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(field);
+        field = "";
+      } else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += c;
+      }
+    }
   }
+  if (field !== "" || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+const RE_CELSIUS = /^https?:\/\/celsius\.games\/[A-Za-z0-9_-]+\/?$/i;
+const RE_TAAP = /^https?:\/\/taap\.it\/[A-Za-z0-9_-]+\/?$/i;
+const BAD_MARKERS = /(pas\s*actif|prison|inactif|inactive)/i;
+
+type SheetRef = { pseudo: string; celsiusUrl: string; taapUrl: string };
+
+function extractRefsFromCsv(text: string): SheetRef[] {
+  const rows = parseCsv(text);
+  if (rows.length === 0) return [];
+  // Skip header row, expect columns: [Type, Nom, Lien, taplink, Lien TELEGRAM]
+  const refs: SheetRef[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const pseudo = (r[1] ?? "").trim();
+    const celsius = (r[2] ?? "").trim();
+    const taap = (r[3] ?? "").trim();
+    const telegram = (r[4] ?? "").trim();
+
+    if (!pseudo) continue;
+    if (!celsius || !RE_CELSIUS.test(celsius)) continue;
+    if (!taap || !RE_TAAP.test(taap)) continue;
+    // Skip si "PAS ACTIF" / "PRISON" / "INACTIF" present dans n'importe quelle colonne.
+    const joined = r.join(" ");
+    if (BAD_MARKERS.test(joined) && !RE_TAAP.test(BAD_MARKERS.exec(joined)?.[0] ?? "")) {
+      // Faux positif possible si un pseudo s'appelle "prison" (improbable),
+      // donc check additionnel: skip uniquement si marker hors des cellules URL.
+      if (BAD_MARKERS.test(telegram) || BAD_MARKERS.test(taap)) continue;
+    }
+    refs.push({ pseudo, celsiusUrl: celsius, taapUrl: taap });
+  }
+  return refs;
+}
+
+export async function fetchSheetRefs(): Promise<SheetRef[]> {
+  const url = sheetUrl();
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const r = await fetch(url, { redirect: "follow", signal: ctrl.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    return extractRefsFromCsv(text);
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+/**
+ * Synchronise aurix_landing_verif_refs avec la sheet:
+ *  - UPSERT chaque ref de la sheet (clef = taap_url)
+ *  - DELETE les refs orphelines (plus dans la sheet)
+ *  - Retourne {added, updated, deleted, total}
+ */
+export async function syncRefsFromSheet(): Promise<{
+  added: number;
+  updated: number;
+  deleted: number;
+  total: number;
+}> {
+  let sheetRefs: SheetRef[];
+  try {
+    sheetRefs = await fetchSheetRefs();
+  } catch (e) {
+    log("syncRefsFromSheet fetch failed:", e);
+    return { added: 0, updated: 0, deleted: 0, total: 0 };
+  }
+
+  const existing = await all<{ taap_url: string; pseudo: string; expected_celsius_url: string }>(
+    "SELECT taap_url, pseudo, expected_celsius_url FROM aurix_landing_verif_refs"
+  );
+  const existingByTaap = new Map(existing.map((e) => [e.taap_url, e]));
+  const sheetTaapUrls = new Set(sheetRefs.map((r) => r.taapUrl));
+
+  let added = 0;
+  let updated = 0;
+
+  for (const ref of sheetRefs) {
+    const e = existingByTaap.get(ref.taapUrl);
+    if (!e) {
+      await query(
+        `INSERT INTO aurix_landing_verif_refs(pseudo, taap_url, expected_celsius_url)
+         VALUES($1,$2,$3) ON CONFLICT (taap_url) DO NOTHING`,
+        [ref.pseudo, ref.taapUrl, ref.celsiusUrl]
+      );
+      added++;
+    } else if (e.pseudo !== ref.pseudo || e.expected_celsius_url !== ref.celsiusUrl) {
+      await query(
+        `UPDATE aurix_landing_verif_refs
+            SET pseudo=$1, expected_celsius_url=$2
+          WHERE taap_url=$3`,
+        [ref.pseudo, ref.celsiusUrl, ref.taapUrl]
+      );
+      updated++;
+    }
+  }
+
+  // Delete orphans (refs en DB mais plus dans la sheet).
+  const orphans = existing.filter((e) => !sheetTaapUrls.has(e.taap_url));
+  let deleted = 0;
+  for (const o of orphans) {
+    await query("DELETE FROM aurix_landing_verif_refs WHERE taap_url=$1", [o.taap_url]);
+    deleted++;
+  }
+
+  log(
+    `Sheet sync: total=${sheetRefs.length} added=${added} updated=${updated} deleted=${deleted}`
+  );
+  return { added, updated, deleted, total: sheetRefs.length };
+}
+
+/** Compat: ancien nom, redirige vers syncRefsFromSheet. */
+export async function seedRefsIfEmpty(): Promise<void> {
+  await syncRefsFromSheet();
 }
 
 function extractSlugFromUrl(url: string): string | null {
@@ -432,7 +561,7 @@ export function startLandingVerifCron(client: Client): void {
 
 async function runOnePass(client: Client): Promise<void> {
   log("Verification pass started.");
-  await seedRefsIfEmpty();
+  await syncRefsFromSheet();
   const r = await verifyAllRefs();
   const guildId = process.env.AURIX_GUILD_ID;
   let guild: Guild | undefined;
@@ -443,7 +572,7 @@ async function runOnePass(client: Client): Promise<void> {
 }
 
 export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: Record<Status, number> }> {
-  await seedRefsIfEmpty();
+  await syncRefsFromSheet();
   const r = await verifyAllRefs();
   const guildId = process.env.AURIX_GUILD_ID;
   let guild: Guild | undefined;
