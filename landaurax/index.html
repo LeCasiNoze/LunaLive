@@ -6,6 +6,10 @@
     <title>Landaurax</title>
     <meta name="robots" content="noindex,nofollow" />
 
+    <!-- Preconnect API (kill TLS handshake latency on first call) -->
+    <link rel="preconnect" href="https://lunalive-api.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://lunalive-api.onrender.com" />
+
     <!-- Fonts (non-blocking async load) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -21,9 +25,27 @@
         rel="stylesheet"
       />
     </noscript>
+    <!-- Prefetch landing JSON ASAP (before React boots) — kills perceived lag -->
+    <script>
+    (function(){
+      try {
+        var p = (window.location.pathname || "").replace(/^\/+|\/+$/g, "");
+        if (!p) return;
+        var slug = p.split("/")[0];
+        if (!/^[a-z0-9_-]+$/i.test(slug)) return;
+        var base = "https://lunalive-api.onrender.com";
+        var url = base + "/api/public/affi-pages/" + encodeURIComponent(slug);
+        window.__affiPrefetch = window.__affiPrefetch || {};
+        window.__affiPrefetch[slug.toLowerCase()] =
+          fetch(url, { credentials: "omit", mode: "cors" })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .catch(function(){ return null; });
+      } catch(_) {}
+    })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root" style="background:#0b0911;min-height:100dvh"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

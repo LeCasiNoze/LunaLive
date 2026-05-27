@@ -126,6 +126,10 @@ publicAffiPagesRouter.get(
     );
 
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    // Cache leger : 60s frais / 5min CDN / 1j stale-while-revalidate. Les
+    // landings ne changent pas souvent — utile pour kill le cold-start
+    // perçu côté visiteurs (notamment depuis landaurax.com).
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ ok: true, page: pageRowToJson(rows[0]) });
   })
 );
