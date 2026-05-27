@@ -28,7 +28,19 @@ const log = (...a: unknown[]) => console.log("[aurix.landings_verif]", ...a);
 
 const VERIF_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h
 const DELAY_BETWEEN_ENTRIES_MS = 1500;
-const LANDING_HOSTS = ["lunalive.win", "www.lunalive.win", "lunalive.onrender.com"];
+// Hosts ou nos landings peuvent etre publiees (LunaLive + Landaurax).
+const LANDING_HOSTS = [
+  "lunalive.win",
+  "www.lunalive.win",
+  "lunalive.onrender.com",
+  "landaurax.com",
+  "www.landaurax.com",
+  "landaurax.onrender.com",
+];
+type PublishDomain = "lunalive" | "landaurax";
+function domainFromHost(host: string): PublishDomain {
+  return host.toLowerCase().includes("landaurax") ? "landaurax" : "lunalive";
+}
 
 type RefRow = {
   id: number;
@@ -41,6 +53,7 @@ type RefRow = {
   last_taap_destination: string | null;
   last_landing_slug: string | null;
   last_db_affi_link: string | null;
+  last_publish_domain: PublishDomain | null;
 };
 
 type Status = "ok" | "taap_unreachable" | "taap_off_domain" | "landing_missing" | "celsius_changed";
@@ -284,15 +297,20 @@ async function resolveTaap(taapUrl: string): Promise<{ ok: boolean; finalUrl?: s
   }
 }
 
-async function findLandingBySlug(slug: string): Promise<{ slug: string; affiLink: string | null } | null> {
-  return one<{ slug: string; affiLink: string | null }>(
-    `SELECT slug, config::jsonb ->> 'affiLink' AS "affiLink"
+async function findLandingBySlug(slug: string): Promise<{ slug: string; affiLink: string | null; publishDomain: PublishDomain } | null> {
+  const row = await one<{ slug: string; affiLink: string | null; publish_domain: string | null }>(
+    `SELECT slug,
+            config::jsonb ->> 'affiLink' AS "affiLink",
+            publish_domain
        FROM affi_landing_pages WHERE slug=$1 LIMIT 1`,
     [slug]
   );
+  if (!row) return null;
+  const pd: PublishDomain = row.publish_domain === "landaurax" ? "landaurax" : "lunalive";
+  return { slug: row.slug, affiLink: row.affiLink, publishDomain: pd };
 }
 
-async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null }> {
+async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null; publishDomain: PublishDomain | null }> {
   // 1. Resolve taap.it
   const taap = await resolveTaap(ref.taap_url);
   if (!taap.ok) {
@@ -302,6 +320,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       taapDest: null,
       landingSlug: null,
       dbAffiLink: null,
+      publishDomain: null,
     };
   }
   const finalUrl = taap.finalUrl!;
@@ -310,12 +329,17 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
   if (!hostMatchesLanding(finalUrl)) {
     return {
       status: "taap_off_domain",
-      details: `redirige vers ${new URL(finalUrl).hostname} (hors lunalive.win)`,
+      details: `redirige vers ${new URL(finalUrl).hostname} (hors hosts autorises)`,
       taapDest: finalUrl,
       landingSlug: null,
       dbAffiLink: null,
+      publishDomain: null,
     };
   }
+  // Domaine deduit du host taap final (utile en cas de landing manquante en DB).
+  const taapDomain: PublishDomain = (() => {
+    try { return domainFromHost(new URL(finalUrl).hostname); } catch { return "lunalive"; }
+  })();
 
   // 3. Extract slug, lookup DB
   const slug = extractSlugFromUrl(finalUrl);
@@ -326,6 +350,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       taapDest: finalUrl,
       landingSlug: null,
       dbAffiLink: null,
+      publishDomain: taapDomain,
     };
   }
   const landing = await findLandingBySlug(slug);
@@ -336,6 +361,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       taapDest: finalUrl,
       landingSlug: slug,
       dbAffiLink: null,
+      publishDomain: taapDomain,
     };
   }
 
@@ -351,6 +377,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       taapDest: finalUrl,
       landingSlug: slug,
       dbAffiLink: dbAffi,
+      publishDomain: landing.publishDomain,
     };
   }
   return {
@@ -359,6 +386,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
     taapDest: finalUrl,
     landingSlug: slug,
     dbAffiLink: dbAffi,
+    publishDomain: landing.publishDomain,
   };
 }
 
@@ -380,9 +408,10 @@ export async function verifyAllRefs(): Promise<{ total: number; counts: Record<S
       await query(
         `UPDATE aurix_landing_verif_refs
            SET last_check_at=NOW(), last_status=$1, last_details=$2,
-               last_taap_destination=$3, last_landing_slug=$4, last_db_affi_link=$5
-         WHERE id=$6`,
-        [r.status, r.details, r.taapDest, r.landingSlug, r.dbAffiLink, ref.id]
+               last_taap_destination=$3, last_landing_slug=$4, last_db_affi_link=$5,
+               last_publish_domain=$6
+         WHERE id=$7`,
+        [r.status, r.details, r.taapDest, r.landingSlug, r.dbAffiLink, r.publishDomain, ref.id]
       );
     } catch (e) {
       log(`verify ref #${ref.id} (${ref.pseudo}) failed:`, e);
@@ -433,9 +462,15 @@ function fmtDate(d: Date | null): string {
   );
 }
 
-function landingUrl(slug: string | null): string | null {
+function landingUrl(slug: string | null, domain: PublishDomain | null): string | null {
   if (!slug) return null;
+  if (domain === "landaurax") return `https://landaurax.com/${slug}`;
   return `https://lunalive.win/r/${slug}`;
+}
+function domainBadge(domain: PublishDomain | null): string {
+  if (domain === "landaurax") return "🌹";
+  if (domain === "lunalive") return "🟣";
+  return "·";
 }
 
 function buildEmbed(refs: RefRow[]): EmbedBuilder {
@@ -458,9 +493,12 @@ function buildEmbed(refs: RefRow[]): EmbedBuilder {
     return acc && acc > d ? acc : d;
   }, null);
 
+  const domLuna = refs.filter((r) => r.last_publish_domain === "lunalive").length;
+  const domLandaurax = refs.filter((r) => r.last_publish_domain === "landaurax").length;
   const summary = [
     `**${refs.length}** landings suivies · *dernière passe : ${fmtDate(lastCheck)}*`,
     `✅ \`${counts.ok}\`  ·  🟡 \`${counts.celsius_changed}\`  ·  🔴 \`${counts.landing_missing + counts.taap_off_domain}\`  ·  ⚠️ \`${counts.taap_unreachable}\`  ·  ⚪ \`${counts.unchecked}\``,
+    `🟣 LunaLive \`${domLuna}\`  ·  🌹 Landaurax \`${domLandaurax}\``,
   ].join("\n");
 
   const embed = new EmbedBuilder()
@@ -480,14 +518,15 @@ function buildEmbed(refs: RefRow[]): EmbedBuilder {
     if (sec.rows.length === 0) continue;
     const lines = sec.rows.map((r) => {
       const badge = statusBadge(r.last_status);
-      const lUrl = landingUrl(r.last_landing_slug);
+      const dom = domainBadge(r.last_publish_domain);
+      const lUrl = landingUrl(r.last_landing_slug, r.last_publish_domain);
       const linksParts: string[] = [];
       linksParts.push(`[taap](${r.taap_url})`);
       if (lUrl) linksParts.push(`[landing](${lUrl})`);
       linksParts.push(`[affi](${r.expected_celsius_url})`);
       const issueSuffix =
         r.last_status && r.last_status !== "ok" && r.last_details ? ` — *${r.last_details}*` : "";
-      return `${badge} **${r.pseudo}** · ${fmtTime(r.last_check_at)} · ${linksParts.join(" · ")}${issueSuffix}`;
+      return `${badge}${dom} **${r.pseudo}** · ${fmtTime(r.last_check_at)} · ${linksParts.join(" · ")}${issueSuffix}`;
     });
     // Split en sous-fields de <=1024 chars.
     const chunks: string[] = [];

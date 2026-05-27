@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ReferralLandingPage from "./pages/ReferralLandingPage";
+import DirectoireePage from "./pages/DirectoireePage";
 
 function Home() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/__directoire" element={<DirectoireePage />} />
         <Route path=":slug" element={<ReferralLandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>

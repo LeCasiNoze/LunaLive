@@ -101,6 +101,54 @@ function pageRowToJson(row: any) {
   };
 }
 
+// Liste publique compacte (slug + brand + model + domaine + updatedAt).
+// Utilisee par le directoire cache sur landaurax. Filtre par domain
+// optionnel via ?domain=lunalive|landaurax.
+publicAffiPagesRouter.get(
+  "/public/affi-pages",
+  a(async (req, res) => {
+    const domain = String(req.query.domain || "").toLowerCase();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (domain === "lunalive" || domain === "landaurax") {
+      params.push(domain);
+      where.push(`publish_domain = $${params.length}`);
+    }
+    const sql = `
+      SELECT
+        id,
+        slug,
+        model,
+        variant,
+        brand_name AS "brandName",
+        title,
+        editor_version AS "editorVersion",
+        publish_domain AS "publishDomain",
+        updated_at AS "updatedAt"
+      FROM affi_landing_pages
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY updated_at DESC NULLS LAST, id DESC
+      LIMIT 500
+    `;
+    const { rows } = await pool.query(sql, params);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=120, stale-while-revalidate=86400");
+    return res.json({
+      ok: true,
+      items: rows.map((r: any) => ({
+        id: Number(r.id),
+        slug: String(r.slug),
+        model: Number(r.model),
+        variant: r.variant || null,
+        brandName: String(r.brandName || ""),
+        title: String(r.title || ""),
+        editorVersion: Number(r.editorVersion || 1),
+        publishDomain: (r.publishDomain || "lunalive") as "lunalive" | "landaurax",
+        updatedAt: r.updatedAt || null,
+      })),
+    });
+  })
+);
+
 publicAffiPagesRouter.get(
   "/public/affi-pages/:slug",
   a(async (req, res) => {
