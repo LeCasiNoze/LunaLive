@@ -1,0 +1,329 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// M5 — Slot 3 lignes independantes.
+// 3 rangees x 3 symboles = 9 cellules au total, revelees une par une.
+// L1 : perdante (3 symboles differents)
+// L2 : bait — 7 7 💎 (presque jackpot)
+// L3 : winner — 3 💎 = bonus 100%
+// Pas de grille 3x3, pas de "ligne centrale", pas de bloc statut/mise/bonus.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import * as React from "react";
+import { sfx } from "../lib/v3_sound";
+import { pseudoTextStyle, pseudoPillStyle, pseudoAnimationClass, type V3LineStyleLike } from "../lib/v3_pseudo_style";
+import { V3SocialProof } from "./V3SocialProof";
+import { V3MeshBg, V3AuroraBg, V3GrainBg } from "./V3AmbientFx";
+import { V3OfferPopup } from "./V3OfferPopup";
+import { V3PseudoKeyframes } from "./V3PseudoKeyframes";
+import { extendPalette } from "../lib/v3_palette";
+import { V3_POPUP_ENABLED } from "../lib/v3_popup_flag";
+
+export type M5SlotProps = {
+  pseudo?: string;
+  profileImageUrl?: string;
+  depositAmount?: number | null;
+  bonusAmount?: number | null;
+  affiLink: string;
+  theme?: {
+    accent?: string;
+    accentLight?: string;
+    accentGlow?: string;
+    bgPage?: string;
+    bgCard?: string;
+    borderColor?: string;
+  };
+  pseudoStyle?: V3LineStyleLike;
+};
+
+const SPIN_POOL = ["🍒", "🍋", "🍇", "🍀", "🔔", "🪙", "⭐", "7️⃣", "💎"];
+
+const ROW_RESULTS: ReadonlyArray<readonly [string, string, string]> = [
+  ["🍒", "🔔", "🍋"],   // L1 perdante
+  ["7️⃣", "7️⃣", "💎"], // L2 bait
+  ["💎", "💎", "💎"],   // L3 win
+];
+
+type RowKind = "loss" | "bait" | "win";
+const ROW_KINDS: ReadonlyArray<RowKind> = ["loss", "bait", "win"];
+
+// Timing : chaque cellule cycle des symboles avant de se verrouiller.
+// Cellules 6 (dernier de L2) et 9 (dernier de L3) ont un suspense en plus.
+const CELL_TICK_MS = 65;          // vitesse de cycle des symboles pendant le spin
+const POPUP_DELAY_MS = 900;       // delai apres derniere cellule avant popup
+
+// Delai (ms) AVANT chaque verrouillage (indexe 1..9 pour les 9 cellules)
+const CELL_REVEAL_AT_MS = [
+  0,    // padding
+  600,  // L1 cell 1
+  820,  // L1 cell 2
+  1040, // L1 cell 3
+  1500, // L2 cell 1 (apres pause inter-ligne)
+  1720, // L2 cell 2
+  2580, // L2 cell 3 = 7/7/💎 (bait) — SUSPENSE 860ms
+  3050, // L3 cell 1
+  3270, // L3 cell 2
+  4400, // L3 cell 3 = 💎 (win) — SUSPENSE 1130ms
+];
+
+const POPUP_STEPS = [
+  "Verification de la ligne gagnante",
+  "Preparation de l'offre",
+  "Lien de recuperation pret",
+] as const;
+
+export function M5Slot({
+  pseudo,
+  profileImageUrl,
+  depositAmount,
+  bonusAmount,
+  affiLink,
+  theme,
+  pseudoStyle,
+}: M5SlotProps) {
+  const P = extendPalette(theme, "#f7c948");
+  const T = {
+    accent: P.accent, accentLight: P.accentLight, accentAlt: P.accentAlt, accentHot: P.accentHot,
+    accentGlow: P.glow, bgPage: P.bgPage, bgCard: P.bgCard,
+    borderColor: theme?.borderColor || "rgba(253,230,138,.26)",
+  };
+
+  // phase globale du jeu
+  const [phase, setPhase] = React.useState<"idle" | "playing" | "won">("idle");
+  // revealedCount = nombre de cellules deja verrouillees (0 a 9)
+  const [revealedCount, setRevealedCount] = React.useState(0);
+  // ticker pour faire defiler les symboles aleatoires sur les cellules pas encore lockees
+  const [tick, setTick] = React.useState(0);
+  const [popupOpen, setPopupOpen] = React.useState(false);
+  const openAffi = () => {
+    if (V3_POPUP_ENABLED) { setPopupOpen(true); return; }
+    if (typeof window !== "undefined") { try { window.open(safeAffi, "_blank", "noopener,noreferrer"); } catch { /* noop */ } }
+  };
+
+  const dep = depositAmount != null ? `${depositAmount}€` : "";
+  const bon = bonusAmount != null ? `${bonusAmount}€` : "";
+  const safeAffi = affiLink || "#";
+  const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
+  const rewardHeadline = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
+  const popupSteps = React.useMemo(() => Array.from(POPUP_STEPS), []);
+
+  // Ticker de symboles aleatoires pdt le spin
+  React.useEffect(() => {
+    if (phase !== "playing") return;
+    const id = window.setInterval(() => setTick((t) => t + 1), CELL_TICK_MS);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  const play = () => {
+    if (phase !== "idle") return;
+    sfx.click();
+    setRevealedCount(0);
+    setPhase("playing");
+
+    // Tension SFX avant cellules 6 et 9 (suspense)
+    window.setTimeout(() => sfx.tension(700), CELL_REVEAL_AT_MS[6] - 700);
+    window.setTimeout(() => sfx.tension(1000), CELL_REVEAL_AT_MS[9] - 1000);
+
+    for (let cellIdx = 1; cellIdx <= 9; cellIdx++) {
+      const rowIdx = Math.floor((cellIdx - 1) / 3);
+      const colIdx = (cellIdx - 1) % 3;
+      const isLastOfRow = colIdx === 2;
+      const rowKind = ROW_KINDS[rowIdx];
+      const at = CELL_REVEAL_AT_MS[cellIdx];
+      const currentCell = cellIdx;
+      window.setTimeout(() => {
+        setRevealedCount(currentCell);
+        sfx.reelStop();
+        if (isLastOfRow) {
+          if (rowKind === "win") sfx.win();
+          else if (rowKind === "bait") sfx.loss();
+          else sfx.loss();
+        }
+      }, at);
+    }
+
+    const totalDuration = CELL_REVEAL_AT_MS[9] + POPUP_DELAY_MS;
+    window.setTimeout(() => {
+      setPhase("won");
+      openAffi();
+    }, totalDuration);
+  };
+
+  const rowState = (rowIdx: number): "idle" | "spinning" | "revealed" => {
+    if (phase === "idle") return "idle";
+    const cellsRevealedInRow = Math.max(0, Math.min(3, revealedCount - rowIdx * 3));
+    if (cellsRevealedInRow === 0) return "spinning";
+    if (cellsRevealedInRow === 3) return "revealed";
+    return "spinning";
+  };
+
+  const cellSymbol = (rowIdx: number, colIdx: number): string => {
+    const globalIdx = rowIdx * 3 + colIdx + 1;
+    if (revealedCount >= globalIdx) return ROW_RESULTS[rowIdx][colIdx];
+    // Encore en train de spin : symbole pseudo-aleatoire decale par index pour avoir des cellules desynchronisees
+    return SPIN_POOL[(tick + rowIdx * 7 + colIdx * 3) % SPIN_POOL.length];
+  };
+
+  const ROW_LABELS: ReadonlyArray<{ idle: string; revealed: (kind: RowKind) => string }> = [
+    { idle: "Ligne 1", revealed: (k) => k === "win" ? "Gagnant" : k === "bait" ? "Presque" : "Perdu" },
+    { idle: "Ligne 2", revealed: (k) => k === "win" ? "Gagnant" : k === "bait" ? "Presque !" : "Perdu" },
+    { idle: "Ligne 3", revealed: (k) => k === "win" ? "Bonus 100%" : k === "bait" ? "Presque" : "Perdu" },
+  ];
+
+  return (
+    <div className="m5-root" style={{ color: "#f8fafc" }}>
+      <style>{`
+        .m5-root{position:relative;display:flex;flex-direction:column;align-items:center;padding:32px 16px 56px;font-family:'Inter',-apple-system,sans-serif;overflow:hidden;min-height:100%;background:radial-gradient(circle at 20% 10%,#1a0a2e 0%,transparent 45%),radial-gradient(circle at 80% 20%,#0a1a3e 0%,transparent 45%),radial-gradient(circle at 50% 90%,#2a0a3e 0%,transparent 50%),${T.bgPage}}
+        .m5-bg-mesh{position:absolute;inset:-20%;background:
+          radial-gradient(circle at 30% 40%,${T.accentGlow} 0%,transparent 40%),
+          radial-gradient(circle at 70% 60%,rgba(168,85,247,.32) 0%,transparent 40%),
+          radial-gradient(circle at 50% 20%,rgba(6,182,212,.22) 0%,transparent 40%);
+          filter:blur(40px);animation:m5-mesh 18s ease-in-out infinite alternate;pointer-events:none;z-index:0}
+
+        .m5-header{display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:18px;position:relative;z-index:3}
+        .m5-avatar{width:74px;height:74px;border-radius:50%;border:2px solid ${T.accent};overflow:hidden;box-shadow:0 0 0 4px rgba(0,0,0,.4),0 0 22px ${T.accentGlow}}
+        .m5-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+        .m5-pseudo-wrap{display:flex;justify-content:center;margin-top:2px;position:relative;isolation:isolate}
+        .m5-pseudo-wrap::before{content:"";position:absolute;inset:-6px -14px;border-radius:999px;background:radial-gradient(ellipse at center,${T.accentGlow} 0%,transparent 70%);z-index:-1;animation:m5-pseudo-glow 2.6s ease-in-out infinite;pointer-events:none}
+
+        .m5-promo{position:relative;z-index:3;display:inline-flex;align-items:center;gap:10px;padding:10px 20px;margin-bottom:22px;background:rgba(10,5,25,.85);border:1px solid ${T.accent};border-radius:999px;font-size:.78rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(248,250,252,.95);box-shadow:0 0 24px ${T.accentGlow},inset 0 0 0 1px ${T.accent}33}
+        .m5-promo strong{color:${T.accentLight};font-weight:900;text-shadow:0 0 10px ${T.accentGlow}}
+
+        .m5-rows{position:relative;z-index:3;display:flex;flex-direction:column;gap:16px;width:min(96vw,500px);margin-bottom:26px}
+        .m5-row{position:relative;display:grid;grid-template-columns:20px minmax(0,1fr) 92px;align-items:center;gap:10px;padding:14px 12px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),rgba(8,12,28,.78);border:1px solid ${T.accent}33;box-shadow:0 8px 22px rgba(0,0,0,.45),0 0 0 1px ${T.accent}11,inset 0 1px 0 rgba(255,255,255,.06);transition:border-color .3s ease,box-shadow .3s ease,transform .3s ease;box-sizing:border-box}
+        .m5-row::before{content:"";position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,${T.accent}22 0%,transparent 50%,${T.accentLight}11 100%);pointer-events:none;opacity:.6}
+        .m5-row.revealed.loss{border-color:rgba(239,68,68,.4);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 18px rgba(239,68,68,.18)}
+        .m5-row.revealed.bait{border-color:rgba(251,146,60,.55);box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 22px rgba(251,146,60,.3)}
+        .m5-row.revealed.win{border-color:${T.accent};box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55;animation:m5-row-win-pulse 1.6s ease-in-out infinite}
+
+        .m5-row-num{position:relative;z-index:1;font-size:.78rem;font-weight:900;letter-spacing:.04em;color:${T.accent};text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg);padding:4px 2px;text-shadow:0 0 12px ${T.accentGlow},0 0 4px ${T.accent}}
+        .m5-row.revealed.win .m5-row-num{color:${T.accentLight};text-shadow:0 0 14px ${T.accentLight},0 0 6px ${T.accent}}
+        .m5-row.revealed.bait .m5-row-num{color:#fb923c;text-shadow:0 0 12px rgba(251,146,60,.5)}
+        .m5-row.revealed.loss .m5-row-num{color:#ef4444;text-shadow:0 0 12px rgba(239,68,68,.5)}
+
+        .m5-cells{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+        .m5-cell{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:2.7rem;border-radius:14px;background:linear-gradient(180deg,#0a0f20,#050811);border:1px solid ${T.accent}44;box-shadow:inset 0 0 0 1px ${T.accent}22,inset 0 8px 20px rgba(0,0,0,.5),0 0 12px ${T.accent}11;overflow:hidden;line-height:1}
+        .m5-cell.spinning{filter:blur(2px);opacity:.55}
+        .m5-cell.locked{animation:m5-cell-lock .4s cubic-bezier(.34,1.56,.64,1)}
+        .m5-cell.win.locked{box-shadow:inset 0 0 0 1px ${T.accent},0 0 18px ${T.accentGlow}}
+        .m5-cell.bait.locked{box-shadow:inset 0 0 0 1px rgba(251,146,60,.55),0 0 14px rgba(251,146,60,.3)}
+        /* Derniere cellule de L2 (cell 6) en attente = suspense pulse orange */
+        .m5-cell.suspense{filter:blur(2.5px) brightness(1.2);opacity:.7;box-shadow:inset 0 0 0 1px rgba(251,146,60,.6),0 0 28px rgba(251,146,60,.5);animation:m5-cell-suspense .6s ease-in-out infinite alternate}
+        /* Derniere cellule de L3 (cell 9) en attente = suspense pulse or */
+        .m5-cell.suspense-win{filter:blur(2.5px) brightness(1.4);opacity:.85;box-shadow:inset 0 0 0 1px ${T.accentLight},0 0 36px ${T.accentGlow},0 0 56px ${T.accent};animation:m5-cell-suspense-win .5s ease-in-out infinite alternate}
+        /* Animation WIN sur la derniere cellule de L3 quand verrouillee */
+        .m5-cell.win-celebrate{animation:m5-cell-celebrate 1.4s cubic-bezier(.34,1.56,.64,1)}
+        .m5-cell.win-celebrate::after{content:"";position:absolute;inset:-8px;border-radius:18px;background:radial-gradient(circle,${T.accentGlow} 0%,transparent 70%);animation:m5-cell-burst 1s ease-out;pointer-events:none}
+
+        /* Sparkles confetti sur L3 win */
+        .m5-row.revealed.win.celebrating::before,
+        .m5-row.revealed.win.celebrating::after{content:"✨";position:absolute;font-size:1.4rem;animation:m5-sparkle 1.6s ease-out infinite;pointer-events:none}
+        .m5-row.revealed.win.celebrating::before{top:-12px;left:14%;animation-delay:0s}
+        .m5-row.revealed.win.celebrating::after{bottom:-12px;right:14%;animation-delay:.4s}
+
+        .m5-row-status{position:relative;z-index:1;width:92px;font-size:.62rem;font-weight:900;letter-spacing:.04em;text-transform:uppercase;text-align:right;line-height:1.2;color:${T.accent}aa;text-shadow:0 0 8px ${T.accentGlow};white-space:normal;overflow-wrap:break-word;hyphens:auto}
+        .m5-row.idle .m5-row-status,.m5-row.spinning .m5-row-status{color:rgba(226,232,240,.4)}
+        .m5-row.revealed.loss .m5-row-status{color:#ef4444}
+        .m5-row.revealed.bait .m5-row-status{color:#fb923c;animation:m5-bait-flash 1.4s ease-in-out infinite}
+        .m5-row.revealed.win .m5-row-status{color:${T.accentLight};text-shadow:0 0 12px ${T.accentGlow}}
+
+        .m5-cta{position:relative;display:block;width:min(94vw,420px);padding:18px 24px;background:linear-gradient(180deg,${T.accentLight} 0%,${T.accent} 100%);color:#0a0508;font-weight:800;text-transform:uppercase;letter-spacing:.16em;font-size:.95rem;border:1px solid ${T.accentLight};border-radius:10px;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18);text-decoration:none;text-align:center;font-family:inherit;transition:transform .12s ease,box-shadow .2s ease;z-index:3;animation:m5-cta-pulse 2.2s ease-in-out infinite}
+        .m5-cta:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentGlow},0 0 60px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}
+        .m5-cta:not(:disabled):active{transform:translateY(1px)}
+        .m5-cta:disabled{background:linear-gradient(180deg,#2a2a32,#1a1a20);color:rgba(255,255,255,.5);border-color:#2a2a32;cursor:not-allowed;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);animation:none}
+
+        @keyframes m5-mesh{0%{transform:translate(0,0) rotate(0deg)}50%{transform:translate(-30px,20px) rotate(8deg)}100%{transform:translate(20px,-15px) rotate(-6deg)}}
+        @keyframes m5-pseudo-glow{0%,100%{opacity:.55;transform:scale(.95)}50%{opacity:1;transform:scale(1.08)}}
+        @keyframes m5-cell-lock{0%{transform:scale(.7);opacity:.4}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+        @keyframes m5-cell-celebrate{0%{transform:scale(.4) rotate(-180deg);opacity:0}40%{transform:scale(1.4) rotate(20deg)}70%{transform:scale(.92) rotate(-8deg)}100%{transform:scale(1) rotate(0)}}
+        @keyframes m5-cell-burst{0%{opacity:0;transform:scale(.5)}50%{opacity:1;transform:scale(1.3)}100%{opacity:0;transform:scale(1.6)}}
+        @keyframes m5-cell-suspense{from{filter:blur(2.5px) brightness(1.2)}to{filter:blur(1px) brightness(1.6)}}
+        @keyframes m5-cell-suspense-win{from{filter:blur(2.5px) brightness(1.4);transform:scale(1)}to{filter:blur(.5px) brightness(1.8);transform:scale(1.06)}}
+        @keyframes m5-sparkle{0%{opacity:0;transform:translateY(0) scale(.6) rotate(0)}30%{opacity:1}100%{opacity:0;transform:translateY(-22px) scale(1.3) rotate(120deg)}}
+        @keyframes m5-row-win-pulse{0%,100%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 28px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}55}50%{box-shadow:0 8px 22px rgba(0,0,0,.35),0 0 44px ${T.accentGlow},inset 0 0 0 1px ${T.accentLight}88}}
+        @keyframes m5-bait-flash{0%,100%{opacity:1}50%{opacity:.55}}
+        @keyframes m5-cta-pulse{0%,100%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 22px ${T.accentGlow},0 0 44px ${T.accentGlow},inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(0,0,0,.18)}50%{box-shadow:0 0 0 1px rgba(0,0,0,.3),0 0 30px ${T.accentLight},0 0 60px ${T.accent},inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(0,0,0,.18)}}
+      `}</style>
+
+      <div className="m5-bg-mesh" />
+
+      <div className="m5-header">
+        <V3MeshBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.4} />
+        <V3AuroraBg colors={{ accent: T.accent, accentLight: T.accentLight, accentAlt: T.accentAlt, accentHot: T.accentHot }} opacity={0.25} />
+        <V3GrainBg opacity={0.04} />
+        {profileImageUrl ? <div className="m5-avatar"><img src={profileImageUrl} alt="" /></div> : null}
+        {pseudo ? (
+          <div className="m5-pseudo-wrap">
+            <div className={pseudoAnimationClass(pseudoStyle)} style={{ ...pseudoPillStyle(T.accent), ...pseudoTextStyle(pseudoStyle, T.accent) }}>
+              {pseudo}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="m5-promo">
+        1 chance · <strong>💎💎💎 = 100%</strong> · <strong>7️⃣7️⃣7️⃣ = 500%</strong>
+      </div>
+
+      <div className="m5-rows">
+        {ROW_KINDS.map((kind, rowIdx) => {
+          const state = rowState(rowIdx);
+          const revealed = state === "revealed";
+          const label = revealed ? ROW_LABELS[rowIdx].revealed(kind) : ROW_LABELS[rowIdx].idle;
+          // Anim "celebrating" sur L3 (kind===win) au moment du reveal final
+          const celebrating = kind === "win" && revealed && revealedCount === 9;
+          return (
+            <div key={rowIdx} className={`m5-row ${state} ${revealed ? kind : ""} ${celebrating ? "celebrating" : ""}`}>
+              <div className="m5-row-num">L{rowIdx + 1}</div>
+              <div className="m5-cells">
+                {[0, 1, 2].map((colIdx) => {
+                  const globalIdx = rowIdx * 3 + colIdx + 1;
+                  const locked = revealedCount >= globalIdx;
+                  // Suspense visuel sur la 3e cellule de L2 (idx 6) et L3 (idx 9)
+                  // quand toutes les autres cellules de la ligne sont lockees mais
+                  // celle-ci ne l'est pas encore.
+                  const isSuspenseCandidate = colIdx === 2 && !locked
+                    && revealedCount >= globalIdx - 2;  // 2 premieres de la ligne lockees
+                  const suspenseClass = isSuspenseCandidate
+                    ? (kind === "win" ? "suspense-win" : kind === "bait" ? "suspense" : "")
+                    : "";
+                  // Anim celebrate sur la cellule WIN finale
+                  const celebrateClass = (kind === "win" && colIdx === 2 && locked && revealedCount === 9) ? "win-celebrate" : "";
+                  return (
+                    <div
+                      key={colIdx}
+                      className={`m5-cell ${locked ? "locked" : "spinning"} ${locked ? kind : ""} ${suspenseClass} ${celebrateClass}`}
+                    >
+                      {cellSymbol(rowIdx, colIdx)}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="m5-row-status">{label}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {phase === "idle" ? (
+        <button className="m5-cta" onClick={play}>Lancer la machine</button>
+      ) : phase === "playing" ? (
+        <button className="m5-cta" disabled>Lecture en cours…</button>
+      ) : (
+        <button className="m5-cta" onClick={openAffi}>Voir mon bonus</button>
+      )}
+
+      <V3OfferPopup
+        open={V3_POPUP_ENABLED && popupOpen && phase === "won"}
+        onClose={() => setPopupOpen(false)}
+        theme={{ accent: T.accent, accentLight: T.accentLight, accentGlow: T.accentGlow, bgCard: T.bgCard }}
+        score={rewardHeadline}
+        depositAmount={dep}
+        bonusAmount={bon}
+        steps={popupSteps}
+        href={safeAffi}
+      />
+
+      <V3SocialProof bonusAmount={bon} accent={T.accent} accentGlow={T.accentGlow} />
+      <V3PseudoKeyframes />
+    </div>
+  );
+}

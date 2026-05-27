@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="fr" data-variant="__VARIANT__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Salon privé — bonus exclusif, tables authentiques, expérience casino haut de gamme." />
+<meta name="robots" content="noindex, nofollow" />
+<title>Celsius Games — Le Salon Privé</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* ────────  TOKENS + VARIANTS (vintage velvet)  ──────── */
+:root {
+  /* burgundy par défaut */
+  --bg-page:      #2a0a14;
+  --bg-page-2:    #3d0f1d;
+  --bg-card:      #1a0812;
+  --border-color: #5a2536;
+
+  --accent:       #D4AF37;   /* gold leaf */
+  --accent-light: #F4D76C;
+  --accent-dark:  #8E6B15;
+  --accent-glow:  rgba(212,175,55,0.4);
+  --accent-soft:  rgba(212,175,55,0.1);
+  --accent-ring:  rgba(212,175,55,0.35);
+
+  --duo:          #7A1E2F;   /* deep burgundy */
+  --duo-light:    #a83049;
+
+  --brand-gold:   #FFD700;
+  --brand-ruby:   #E0115F;
+  --casino-green: #00E676;
+
+  --text-main:   #f5ecd8;
+  --text-muted:  #a89680;
+  --cream:       #fff8e7;
+
+  --radius:      6px;
+  --radius-lg:   12px;
+  --safe-b:      env(safe-area-inset-bottom, 0px);
+}
+
+html[data-variant="ruby"]     { --bg-page: #2a0a14; --bg-page-2: #3d0f1d; --bg-card: #1a0812; --border-color: #5a2536; --duo: #7A1E2F; --duo-light: #a83049; }
+html[data-variant="emerald"]  { --bg-page: #061f17; --bg-page-2: #0e3226; --bg-card: #041510; --border-color: #1e4a38; --duo: #1d5a3c; --duo-light: #2a7a50; }
+html[data-variant="sapphire"] { --bg-page: #0a1226; --bg-page-2: #121d3a; --bg-card: #060c1a; --border-color: #2a3a66; --duo: #1a3265; --duo-light: #2c4e96; }
+html[data-variant="amethyst"] { --bg-page: #1a0a26; --bg-page-2: #261239; --bg-card: #12081a; --border-color: #402458; --duo: #53258a; --duo-light: #7a3fb9; }
+html[data-variant="obsidian"] { --bg-page: #0a0a0e; --bg-page-2: #141418; --bg-card: #040406; --border-color: #2a2a32; --duo: #3a3a42; --duo-light: #5c5c68; --accent:#E8C879; --accent-light: #f2dea2; --accent-dark:#a48a4a; }
+html[data-variant="rose"]     { --bg-page: #26101c; --bg-page-2: #3a1a2c; --bg-card: #180a13; --border-color: #53273c; --duo: #8a2f55; --duo-light: #b14576; }
+html[data-variant="jade"]     { --bg-page: #072620; --bg-page-2: #0e3a32; --bg-card: #041a16; --border-color: #1f5148; --duo: #1f644e; --duo-light: #328868; --accent:#C9A85B; --accent-light:#e6c983; --accent-dark:#8a7235; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--bg-page-2) 0%, var(--bg-page) 60%),
+    var(--bg-page);
+  color: var(--text-main);
+  font-family: 'Cormorant Garamond', 'Times New Roman', serif;
+  font-size: 17px;
+  -webkit-font-smoothing: antialiased;
+}
+body { overflow-x: hidden; line-height: 1.6; min-height: 100vh; padding-bottom: calc(80px + var(--safe-b)); position: relative; }
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.15 0 0 0 0 0.2 0 0 0 0.2 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: .18; mix-blend-mode: overlay;
+}
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 0%, transparent 30%, rgba(0,0,0,0.6) 90%);
+}
+
+.serif { font-family: 'Cinzel', serif; }
+.italic-serif { font-family: 'Cormorant Garamond', serif; font-style: italic; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+.container { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 22px; position: relative; z-index: 2; }
+
+@keyframes chandelier {
+  0%, 100% { opacity: 1; filter: brightness(1); }
+  50%      { opacity: .85; filter: brightness(1.15); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
+@keyframes spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+.reveal { opacity: 0; transform: translateY(22px); transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1); }
+.reveal.active { opacity: 1; transform: none; }
+
+.wrap { position: relative; z-index: 2; }
+
+/* ────────  GOLD ORNAMENT (SVG-like via CSS)  ──────── */
+.ornament {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 0 auto 16px;
+}
+.ornament-line {
+  width: 60px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.ornament-diamond {
+  width: 10px; height: 10px;
+  background: var(--accent); transform: rotate(45deg);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+.ornament-large {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin: 0 auto 24px;
+}
+.ornament-large .ornament-line { width: 80px; }
+.ornament-large .crest {
+  font-family: 'Cinzel', serif;
+  font-size: 1rem; color: var(--accent); letter-spacing: .35em; text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* ────────  NAV  ──────── */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px;
+  margin: 10px 12px 20px;
+  background: linear-gradient(180deg, rgba(26,8,18,0.85) 0%, rgba(26,8,18,0.7) 100%);
+  border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring);
+  border-left: 0; border-right: 0;
+  position: relative;
+}
+.nav::before, .nav::after {
+  content: ""; position: absolute; width: 14px; height: 14px; border: 1px solid var(--accent); border-radius: 50%;
+  top: 50%; transform: translateY(-50%);
+  background: var(--bg-page);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+.nav::before { left: -7px; } .nav::after { right: -7px; }
+
+.brand-logo { display: flex; align-items: center; gap: 12px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-light), var(--accent) 60%, var(--accent-dark) 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 12px var(--accent-glow), inset 0 2px 4px rgba(255,255,255,0.3);
+  position: relative;
+}
+.brand-mark::after { content: "♠"; color: var(--bg-card); font-size: 18px; font-weight: 700; }
+.brand-text { font-family: 'Cinzel', serif; font-size: 15px; color: var(--cream); letter-spacing: .15em; font-weight: 600; }
+.nav-label {
+  font-family: 'Cormorant Garamond', serif; font-style: italic;
+  font-size: 13px; color: var(--text-muted); letter-spacing: .05em;
+}
+.nav-label b { color: var(--accent); font-style: normal; font-family: 'Cinzel', serif; font-weight: 600; letter-spacing: .1em; font-size: 11px; text-transform: uppercase; }
+
+/* ────────  HERO  ──────── */
+.hero { padding: 36px 0 24px; text-align: center; }
+.badge-premium {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 10px 20px;
+  background: linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%);
+  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: 'Cinzel', serif; font-size: 11px; font-weight: 600; letter-spacing: .25em; text-transform: uppercase;
+  margin-bottom: 26px;
+  animation: chandelier 4s ease-in-out infinite;
+}
+.badge-premium svg { width: 14px; height: 14px; }
+
+.hero-title {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(2.2rem, 9vw, 4.4rem);
+  font-weight: 900; line-height: 1.08; letter-spacing: .02em;
+  margin: 0 auto 18px; max-width: 16ch;
+  color: var(--cream);
+  text-shadow: 0 2px 0 rgba(0,0,0,0.4), 0 4px 14px rgba(0,0,0,0.5);
+}
+.hero-title span {
+  display: block;
+  background: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 50%, var(--accent-dark) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-style: italic; font-weight: 700;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+.hero-subtitle {
+  font-family: 'Cormorant Garamond', serif; font-style: italic;
+  font-size: clamp(1.05rem, 3.4vw, 1.3rem);
+  color: var(--text-main); max-width: 42ch; margin: 0 auto 22px;
+  line-height: 1.6;
+}
+.live-count {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 16px;
+  background: rgba(0,0,0,0.3);
+  border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color);
+  font-family: 'Cormorant Garamond', serif; font-style: italic;
+  font-size: 14px; color: var(--text-muted);
+  margin-bottom: 30px;
+}
+.live-count::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 6px var(--casino-green); animation: livePulse 1.6s ease-in-out infinite; }
+.live-count b { color: var(--accent); font-family: 'Cinzel', serif; font-style: normal; font-weight: 700; font-size: 15px; }
+
+/* ────────  BENEFIT STACK (cartes ornées)  ──────── */
+.benefit-stack { display: grid; gap: 10px; max-width: 400px; margin: 0 auto 26px; }
+.benefit-card {
+  position: relative;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, rgba(26,8,18,0.9) 0%, rgba(15,5,10,0.92) 100%);
+  border: 1px solid var(--accent-ring);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  text-align: left;
+}
+.benefit-card::before, .benefit-card::after {
+  content: ""; position: absolute; width: 16px; height: 16px;
+  border: 1px solid var(--accent);
+}
+.benefit-card::before { left: -1px; top: -1px; border-right: 0; border-bottom: 0; }
+.benefit-card::after  { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+.benefit-card.total {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, rgba(26,8,18,0.92) 60%);
+  box-shadow: 0 0 30px var(--accent-glow), inset 0 0 20px rgba(212,175,55,0.05);
+}
+.benefit-label { font-family: 'Cinzel', serif; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .18em; color: var(--text-muted); }
+.benefit-value {
+  font-family: 'Cinzel', serif; font-size: 1.5rem; font-weight: 700; color: var(--cream);
+  background: linear-gradient(180deg, var(--cream) 0%, var(--accent) 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.benefit-card.total .benefit-value { font-size: 1.7rem; }
+.benefit-op { position: relative; height: 12px; }
+.benefit-op::before { content: attr(data-op); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: 'Cinzel', serif; color: var(--accent); font-size: 1.1rem; padding: 0 12px; background: var(--bg-page); }
+.benefit-op::after { content: ""; position: absolute; left: 10%; right: 10%; top: 50%; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-ring), transparent); }
+
+/* ────────  CTA  ──────── */
+.cta-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-bottom: 34px; }
+.btn-jouer {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+  width: 100%; max-width: 380px; min-height: 58px;
+  padding: 16px 32px;
+  background: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 50%, var(--accent-dark) 100%);
+  color: var(--bg-card);
+  font-family: 'Cinzel', serif; font-size: 14px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  border: 1px solid var(--accent-light);
+  border-radius: 3px;
+  cursor: pointer; overflow: hidden;
+  box-shadow:
+    0 8px 24px -6px rgba(0,0,0,0.6),
+    0 0 20px var(--accent-glow),
+    inset 0 1px 0 rgba(255,255,255,0.4),
+    inset 0 -2px 4px rgba(0,0,0,0.2);
+  transition: transform .2s;
+}
+.btn-jouer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.7) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .9s;
+}
+.btn-jouer:hover { transform: translateY(-2px); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+
+.micro-proof { display: inline-flex; align-items: center; gap: 8px; font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 14px; color: var(--text-muted); }
+.micro-proof svg { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+
+.trust-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; max-width: 580px; margin: 0 auto 34px; }
+.trust-badge { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 8px; text-align: center; position: relative; }
+.trust-badge::before, .trust-badge::after {
+  content: ""; position: absolute; left: 20%; right: 20%; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-ring), transparent);
+}
+.trust-badge::before { top: 0; } .trust-badge::after { bottom: 0; }
+.trust-badge svg { width: 24px; height: 24px; color: var(--accent); }
+.trust-badge span { font-family: 'Cinzel', serif; font-size: 10.5px; font-weight: 600; color: var(--text-main); letter-spacing: .14em; text-transform: uppercase; }
+
+.hero-img-wrap { max-width: 520px; margin: 0 auto 6px; position: relative; }
+.promo-image-container {
+  position: relative;
+  border: 8px solid transparent;
+  background:
+    linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+    linear-gradient(135deg, var(--accent-dark), var(--accent-light), var(--accent-dark)) border-box;
+  box-shadow: 0 30px 70px -18px rgba(0,0,0,0.85), 0 0 50px -20px var(--accent-glow);
+  overflow: hidden;
+}
+.promo-image-container::before, .promo-image-container::after {
+  content: ""; position: absolute; width: 24px; height: 24px; z-index: 2;
+  background:
+    radial-gradient(circle, var(--accent) 20%, var(--accent-dark) 60%, transparent 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.promo-image-container::before { top: -4px; left: -4px; }
+.promo-image-container::after  { bottom: -4px; right: -4px; }
+.promo-image-container img { width: 100%; aspect-ratio: 16/9; object-fit: cover; filter: sepia(0.08) saturate(1.05); }
+
+/* ────────  SECTION  ──────── */
+.section { padding: 48px 0 12px; }
+.section-head { text-align: center; max-width: 600px; margin: 0 auto 32px; }
+.eyebrow {
+  display: inline-block;
+  padding: 4px 14px; margin-bottom: 14px;
+  font-family: 'Cinzel', serif; font-size: 10px; font-weight: 600; letter-spacing: .3em; text-transform: uppercase;
+  color: var(--accent);
+  border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring);
+}
+.section-title {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  font-weight: 700; line-height: 1.1; letter-spacing: .02em;
+  color: var(--cream);
+  margin: 0 0 12px;
+}
+.section-title span {
+  font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.section-sub { color: var(--text-muted); font-family: 'Cormorant Garamond', serif; font-style: italic; font-size: 1.1rem; }
+
+/* ────────  STEPS  ──────── */
+.steps-row { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 920px; margin: 0 auto; }
+.step-item {
+  padding: 26px 24px;
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.4) 100%);
+  border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring);
+  position: relative;
+  text-align: center;
+}
+.step-item::before, .step-item::after {
+  content: ""; position: absolute; top: -1px; bottom: -1px; width: 1px;
+  background: linear-gradient(180deg, transparent, var(--accent-ring), transparent);
+}
+.step-item::before { left: 0; } .step-item::after { right: 0; }
+.step-num {
+  width: 50px; height: 50px; margin: 0 auto 14px;
+  background: radial-gradient(circle, var(--accent-light), var(--accent) 60%, var(--accent-dark));
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Cinzel', serif; font-size: 1.4rem; font-weight: 900; color: var(--bg-card);
+  box-shadow: 0 6px 18px -4px var(--accent-glow), inset 0 2px 4px rgba(255,255,255,0.4);
+}
+.step-item h3 { font-family: 'Cinzel', serif; font-size: 1rem; font-weight: 700; color: var(--cream); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px; }
+.step-item p { font-family: 'Cormorant Garamond', serif; font-size: 1rem; color: var(--text-muted); line-height: 1.55; font-style: italic; }
+
+/* ────────  OFFER CARD  ──────── */
+.offer-card {
+  position: relative; max-width: 640px; margin: 0 auto;
+  padding: 36px 28px;
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.5) 100%);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(26,8,18,0.95), rgba(10,4,8,0.98)) padding-box,
+    linear-gradient(135deg, var(--accent-dark), var(--accent-light) 50%, var(--accent-dark)) border-box;
+  text-align: center;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.6), 0 0 40px -15px var(--accent-glow);
+}
+.offer-crest {
+  font-family: 'Cinzel', serif; color: var(--accent);
+  letter-spacing: .4em; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.offer-title { font-family: 'Cinzel', serif; font-size: 1.3rem; font-weight: 700; color: var(--cream); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px; }
+.offer-sub { font-family: 'Cormorant Garamond', serif; font-style: italic; color: var(--text-muted); margin-bottom: 20px; }
+.offer-highlight {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 8px;
+  font-family: 'Cinzel', serif; font-weight: 900;
+  font-size: clamp(1.4rem, 4.5vw, 2rem);
+  color: var(--accent);
+  background: linear-gradient(180deg, var(--cream), var(--accent) 80%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  margin-bottom: 24px;
+}
+.offer-highlight .mini { font-family: 'Cormorant Garamond', serif; color: var(--text-muted); font-style: italic; font-size: .65em; font-weight: 400; -webkit-background-clip: initial; background-clip: initial; }
+
+/* ────────  FEATURES  ──────── */
+.features { display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 960px; margin: 0 auto; }
+.feature {
+  padding: 26px 22px; text-align: center;
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.45) 100%);
+  border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring);
+  position: relative;
+  transition: border-color .3s;
+}
+.feature:hover { border-color: var(--accent); }
+.feature-ico {
+  width: 60px; height: 60px; margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  border: 1px solid var(--accent-ring);
+  color: var(--accent);
+}
+.feature-ico svg { width: 24px; height: 24px; }
+.feature h3 { font-family: 'Cinzel', serif; font-size: 1.05rem; font-weight: 700; color: var(--cream); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+.feature p { font-family: 'Cormorant Garamond', serif; font-size: 1.02rem; color: var(--text-muted); line-height: 1.6; font-style: italic; }
+
+/* ────────  FAQ  ──────── */
+.faq { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  background: var(--bg-card);
+  border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring);
+  margin-bottom: 0; position: relative;
+}
+.faq-item + .faq-item { border-top: 0; }
+.faq-q {
+  padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  font-family: 'Cinzel', serif; font-size: 14px; font-weight: 600; color: var(--cream);
+  letter-spacing: .05em; cursor: pointer; list-style: none;
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q::after { content: "✦"; color: var(--accent); font-size: 1rem; transition: transform .3s; }
+.faq-item[open] .faq-q::after { transform: rotate(180deg); }
+.faq-a { padding: 0 20px 18px; font-family: 'Cormorant Garamond', serif; font-style: italic; color: var(--text-muted); font-size: 1rem; line-height: 1.65; }
+
+/* ────────  BIG CTA  ──────── */
+.big-cta {
+  position: relative; max-width: 760px; margin: 0 auto;
+  padding: 48px 28px;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--accent-soft) 0%, transparent 70%),
+    linear-gradient(180deg, var(--bg-card) 0%, rgba(0,0,0,0.55) 100%);
+  border: 2px solid transparent;
+  background:
+    radial-gradient(ellipse at 50% 0%, var(--accent-soft) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(26,8,18,0.95), rgba(5,2,4,0.98)) padding-box,
+    linear-gradient(135deg, var(--accent-dark), var(--accent-light) 50%, var(--accent-dark)) border-box;
+  text-align: center;
+}
+.big-cta h2 { font-family: 'Cinzel', serif; font-size: clamp(1.6rem, 5.5vw, 2.4rem); font-weight: 700; line-height: 1.15; letter-spacing: .03em; color: var(--cream); margin-bottom: 14px; }
+.big-cta h2 span {
+  font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 700;
+  background: linear-gradient(180deg, var(--accent-light), var(--accent));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.big-cta p { font-family: 'Cormorant Garamond', serif; font-style: italic; color: var(--text-muted); font-size: 1.08rem; max-width: 44ch; margin: 0 auto 26px; }
+
+/* ────────  STICKY CTA  ──────── */
+.sticky-cta {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 9999;
+  padding: 14px 18px calc(14px + var(--safe-b));
+  background: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 50%, var(--accent-dark) 100%);
+  color: var(--bg-card);
+  font-family: 'Cinzel', serif; font-size: 14px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  text-align: center;
+  box-shadow: 0 -6px 26px rgba(212,175,55,0.45);
+  display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px;
+  border-top: 1px solid var(--accent-light);
+}
+.sticky-cta svg { width: 16px; height: 16px; }
+
+footer { margin-top: 60px; padding: 30px 0 36px; border-top: 1px solid var(--accent-ring); text-align: center; font-family: 'Cormorant Garamond', serif; font-style: italic; color: #6a5c4e; font-size: 13px; }
+.disclaimer { max-width: 720px; margin: 0 auto 20px; padding: 18px; background: rgba(0,0,0,0.35); border-top: 1px solid var(--accent-ring); border-bottom: 1px solid var(--accent-ring); text-align: left; font-size: 13px; line-height: 1.65; }
+.disclaimer strong { font-family: 'Cinzel', serif; font-style: normal; color: var(--accent); text-transform: uppercase; font-size: 11px; letter-spacing: .2em; font-weight: 600; }
+
+@media (min-width: 640px) {
+  .container { padding: 0 32px; }
+  .features, .steps-row { grid-template-columns: repeat(3, 1fr); }
+  .steps-row { gap: 24px; }
+}
+@media (min-width: 900px) {
+  .hero { padding: 70px 0 36px; }
+  body { padding-bottom: 40px; }
+  .sticky-cta { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="nav reveal">
+      <div class="brand-logo"><div class="brand-mark"></div><span class="brand-text">Celsius Games</span></div>
+      <div class="nav-label"><b>Établi 2024</b></div>
+    </nav>
+
+    <section class="hero container">
+      <div class="ornament-large reveal">
+        <span class="ornament-line"></span>
+        <span class="crest">Le Salon Privé</span>
+        <span class="ornament-line"></span>
+      </div>
+
+      <div class="reveal">
+        <div class="badge-premium">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+          Bonus exclusif membres
+        </div>
+      </div>
+
+      <h1 class="hero-title reveal">Celsius Games<span>Maison de Jeu</span></h1>
+      <p class="hero-subtitle reveal">Une expérience casino d'exception, héritée des plus grands salons européens. Bonus communauté, tables authentiques, paiements crypto instantanés.</p>
+
+      <div class="live-count reveal"><span><b data-live-count>214</b> membres rejoints aujourd'hui</span></div>
+
+      <div class="benefit-stack reveal">
+        <div class="benefit-card">
+          <div class="benefit-label">Votre mise</div>
+          <div class="benefit-value"><span class="step-deposit">Déposez 10€</span></div>
+        </div>
+        <div class="benefit-op" data-op="+"></div>
+        <div class="benefit-card">
+          <div class="benefit-label">Bonus maison</div>
+          <div class="benefit-value"><span class="step-receive">Recevez 20€</span></div>
+        </div>
+        <div class="benefit-op" data-op="="></div>
+        <div class="benefit-card total">
+          <div class="benefit-label">À votre table</div>
+          <div class="benefit-value" data-total-value>30€</div>
+        </div>
+      </div>
+
+      <div class="cta-wrap reveal">
+        <a href="#" class="btn-jouer" target="_top" rel="sponsored noopener">
+          Réclamer mon bonus
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <p class="micro-proof">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Crédité en moins de 30 secondes
+        </p>
+      </div>
+
+      <div class="trust-row reveal">
+        <div class="trust-badge"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 4v6c0 4-3 7-7 8-4-1-7-4-7-8V7l7-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Licencié</span></div>
+        <div class="trust-badge"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Paiement express</span></div>
+        <div class="trust-badge"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Concierge 24/7</span></div>
+      </div>
+
+      <div class="reveal">
+        <div class="hero-img-wrap">
+          <div class="promo-image-container">
+            <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Le Protocole</span>
+        <h2 class="section-title">Trois étapes, <span>pas davantage</span></h2>
+      </div>
+      <div class="steps-row">
+        <div class="step-item reveal"><div class="step-num">I</div><h3>S'inscrire</h3><p>Création de compte via le lien communauté.</p></div>
+        <div class="step-item reveal"><div class="step-num">II</div><h3>Déposer</h3><p>Votre première mise pour activer l'offre.</p></div>
+        <div class="step-item reveal"><div class="step-num">III</div><h3>Jouer</h3><p>Bonus crédité, tables à votre disposition.</p></div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">L'Offre Signature</span>
+        <h2 class="section-title">Votre <span>premier dépôt</span> doublé</h2>
+        <p class="section-sub">Activée automatiquement. Aucun code à présenter.</p>
+      </div>
+      <div class="offer-card reveal">
+        <div class="offer-crest">✦ Carte de membre ✦</div>
+        <div class="offer-title">Offre de Bienvenue</div>
+        <div class="offer-sub">Valable uniquement par la page communauté</div>
+        <div class="offer-highlight">
+          <span class="mini">Déposez</span>
+          <span data-mirror-deposit>10€</span>
+          <span class="mini">recevez</span>
+          <span data-mirror-receive>20€</span>
+        </div>
+        <a href="#" class="btn-jouer" style="max-width: 100%; width: 100%;" target="_top" rel="sponsored noopener">
+          Activer l'offre
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">La Maison</span>
+        <h2 class="section-title">L'art du <span>jeu raffiné</span></h2>
+      </div>
+      <div class="features">
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
+          <h3>Bonus de maison</h3><p>Doublement du premier dépôt, crédité instantanément sur votre solde de jeu.</p>
+        </div>
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h7l-1 8 10-12h-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
+          <h3>Paiements discrets</h3><p>Retraits crypto en moins de cinq minutes. SEPA sous vingt-quatre heures.</p>
+        </div>
+        <div class="feature reveal">
+          <div class="feature-ico"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M4 10h16" stroke="currentColor" stroke-width="2"/></svg></div>
+          <h3>Cinq mille tables</h3><p>Slots, roulettes, blackjack, baccarat — toutes les grandes maisons réunies.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="section-head reveal">
+        <span class="eyebrow">Questions de salon</span>
+        <h2 class="section-title">À votre <span>service</span></h2>
+      </div>
+      <div class="faq">
+        <details class="faq-item reveal"><summary class="faq-q">Comment activer mon bonus ?</summary><div class="faq-a">Rendez-vous sur le lien d'activation, créez votre compte puis effectuez votre premier dépôt. Le bonus est crédité automatiquement.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Quelle est la rapidité des retraits ?</summary><div class="faq-a">Crypto : moins de cinq minutes. SEPA : moins de vingt-quatre heures après vérification KYC initiale.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Quelles conditions sur le bonus ?</summary><div class="faq-a">Le bonus est soumis à un wager. Les conditions complètes sont détaillées à l'inscription.</div></details>
+        <details class="faq-item reveal"><summary class="faq-q">Votre sécurité est-elle garantie ?</summary><div class="faq-a">Licence officielle, chiffrement SSL, authentification 2FA disponible. Jeu responsable certifié.</div></details>
+      </div>
+    </section>
+
+    <section class="section container">
+      <div class="big-cta reveal">
+        <div class="ornament" style="margin-bottom: 18px;"><span class="ornament-line"></span><span class="ornament-diamond"></span><span class="ornament-line"></span></div>
+        <h2>Prenez place à <span>votre table</span></h2>
+        <p>Lien direct, activation automatique. Cette offre communauté n'est disponible que par cette page.</p>
+        <a href="#" class="btn-jouer" target="_top" rel="sponsored noopener">
+          Entrer au salon
+          <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+      </div>
+    </section>
+
+    <footer class="container">
+      <div class="disclaimer">
+        <strong>Jeu responsable — 18+</strong><br/>
+        Les jeux d'argent comportent des risques : endettement, dépendance. Appelez le 09 74 75 13 13 (appel non surtaxé). Contenu promotionnel, l'offre peut évoluer.
+      </div>
+      <div class="ornament"><span class="ornament-line"></span><span class="ornament-diamond"></span><span class="ornament-line"></span></div>
+      © Celsius Games — Tous droits réservés
+    </footer>
+  </div>
+
+  <a href="#" class="sticky-cta" target="_top" rel="sponsored noopener">
+    Réclamer mon bonus
+    <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </a>
+
+  <script>
+    (function () {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e, i) { if (e.isIntersecting) { setTimeout(function () { e.target.classList.add('active'); }, Math.min(i*50, 260)); io.unobserve(e.target); } });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+      var live = document.querySelector('[data-live-count]');
+      if (live) { var n = parseInt(live.textContent, 10) || 200; setInterval(function () { if (Math.random() < 0.3) { n++; live.textContent = n; } }, 5000); }
+
+      function extractNumber(s){if(!s)return 0;var m=String(s).replace(/[\s ]/g,'').match(/(-?\d+(?:[.,]\d+)?)/);return m?parseFloat(m[1].replace(',','.')):0;}
+      function extractUnit(s){if(!s)return '€';var m=String(s).match(/\d+(?:[.,]\d+)?\s*([^\d\s]+)/);return m?m[1]:'€';}
+      function syncOffer(){
+        var dep=document.querySelector('.step-deposit'),rec=document.querySelector('.step-receive');
+        if(!dep||!rec)return;
+        var d=extractNumber(dep.textContent),r=extractNumber(rec.textContent),u=extractUnit(dep.textContent)||extractUnit(rec.textContent)||'€';
+        var mD=document.querySelector('[data-mirror-deposit]'),mR=document.querySelector('[data-mirror-receive]');
+        if(mD)mD.textContent=d+u;if(mR)mR.textContent=r+u;
+        var t=document.querySelector('[data-total-value]');if(t)t.textContent=(Math.round((d+r)*100)/100)+u;
+      }
+      syncOffer();setTimeout(syncOffer,100);
+    })();
+  </script>
+</body>
+</html>

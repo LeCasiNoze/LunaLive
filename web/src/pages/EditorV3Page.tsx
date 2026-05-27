@@ -446,10 +446,20 @@ function SocialProfileLoader({
   );
 }
 
+// Domaine alternatif de publication (site landaurax.com — pubication-only,
+// branche sur la meme API LunaLive). Surchargeable via env. La route publique
+// la-bas est `/:slug` (pas `/r/:slug`).
+const LANDAURAX_SITE_URL = ((import.meta.env.VITE_LANDAURAX_SITE_URL as string | undefined) ?? "https://landaurax.onrender.com").replace(/\/$/, "");
+function publicUrlFor(slug: string, domain: "lunalive" | "landaurax"): string {
+  if (domain === "landaurax") return `${LANDAURAX_SITE_URL}/${slug}`;
+  return `${window.location.origin}/r/${slug}`;
+}
+
 function WizardQuickView({
   initialInputs,
   initialPageId,
   initialSavedSlug,
+  initialPublishDomain,
   onCancel,
   onSaved,
   token,
@@ -457,6 +467,7 @@ function WizardQuickView({
   initialInputs: V3QuickInputs;
   initialPageId: number | null;
   initialSavedSlug: string | null;
+  initialPublishDomain: "lunalive" | "landaurax";
   onCancel: () => void;
   onSaved: (saved: FsbAffiPage) => void;
   token: string;
@@ -468,6 +479,7 @@ function WizardQuickView({
   const previewWrapRef = React.useRef<HTMLDivElement>(null);
   const [openSection, setOpenSection] = React.useState<SectionKey | null>(null);
   const [savedSlug, setSavedSlug] = React.useState<string | null>(initialSavedSlug);
+  const [publishDomain, setPublishDomain] = React.useState<"lunalive" | "landaurax">(initialPublishDomain);
   const [copyOk, setCopyOk] = React.useState(false);
   // Local pageId state — pour eviter la closure-trap : apres POST, on stocke
   // l'ID retourne par le serveur. Le prochain save lit cette valeur (pas
@@ -497,7 +509,7 @@ function WizardQuickView({
 
   const canSave = inputs.affiLink.trim().length > 0 && !!computedSlug;
 
-  const publicUrl = savedSlug ? `${window.location.origin}/r/${savedSlug}` : null;
+  const publicUrl = savedSlug ? publicUrlFor(savedSlug, publishDomain) : null;
   const handleCopy = async () => {
     if (!publicUrl) return;
     try { await navigator.clipboard.writeText(publicUrl); setCopyOk(true); setTimeout(() => setCopyOk(false), 1500); }
@@ -558,6 +570,7 @@ function WizardQuickView({
           title: page.pageTitle || displayName || page.casinoName || slugToSend,
           config: cfg,
           editorVersion: 2,
+          publishDomain,
         };
       } else {
         // M2 : sauvegarde V1 (Config flat) avec model=5, variant=goldenVariant.
@@ -589,6 +602,7 @@ function WizardQuickView({
           title: brand,
           config: cfg,
           editorVersion: 1,
+          publishDomain,
         };
       }
       // Sur PUT 404 (page deja supprimee depuis le dashboard ou autre tab),
@@ -646,6 +660,33 @@ function WizardQuickView({
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {error ? <div style={{ color: T.danger, fontSize: 13 }}>{error}</div> : null}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 6px", border: `1px solid ${T.border}`, borderRadius: 6, background: T.bg }}>
+            <span style={{ fontSize: 10, color: T.textMute, marginRight: 4, letterSpacing: ".5px" }}>PUBLIER&nbsp;SUR</span>
+            <button
+              type="button"
+              onClick={() => setPublishDomain("lunalive")}
+              style={{
+                background: publishDomain === "lunalive" ? T.gold : "transparent",
+                color: publishDomain === "lunalive" ? "#000" : T.textMute,
+                border: "none", padding: "4px 10px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}
+              title="lunalive.win/r/<slug>"
+            >
+              LunaLive
+            </button>
+            <button
+              type="button"
+              onClick={() => setPublishDomain("landaurax")}
+              style={{
+                background: publishDomain === "landaurax" ? "#e0115f" : "transparent",
+                color: publishDomain === "landaurax" ? "#fff" : T.textMute,
+                border: "none", padding: "4px 10px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              }}
+              title="landaurax.com/<slug>"
+            >
+              Landaurax
+            </button>
+          </div>
           {publicUrl ? (
             <>
               <button onClick={handleCopy} style={btnGhost} title={publicUrl}>
@@ -2326,6 +2367,7 @@ export default function EditorV3Page() {
   const [wizardInputs, setWizardInputs] = React.useState<V3QuickInputs>(defaultV3QuickInputs());
   const [wizardPageId, setWizardPageId] = React.useState<number | null>(null);
   const [wizardSavedSlug, setWizardSavedSlug] = React.useState<string | null>(null);
+  const [wizardPublishDomain, setWizardPublishDomain] = React.useState<"lunalive" | "landaurax">("lunalive");
   const [statsByPage, setStatsByPage] = React.useState<Record<string, AffiPageStats>>({});
 
   const refreshList = React.useCallback(async () => {
@@ -2359,6 +2401,7 @@ export default function EditorV3Page() {
     setWizardInputs(defaultV3QuickInputs());
     setWizardPageId(null);
     setWizardSavedSlug(null);
+    setWizardPublishDomain("lunalive");
     setView("wizard");
     setShowCreateChoice(false);
   };
@@ -2376,6 +2419,7 @@ export default function EditorV3Page() {
     setWizardInputs(stored || fallback);
     setWizardPageId(p.id);
     setWizardSavedSlug(p.slug);
+    setWizardPublishDomain(p.publishDomain === "landaurax" ? "landaurax" : "lunalive");
     setView("wizard");
   };
 
@@ -2397,6 +2441,7 @@ export default function EditorV3Page() {
         initialInputs={wizardInputs}
         initialPageId={wizardPageId}
         initialSavedSlug={wizardSavedSlug}
+        initialPublishDomain={wizardPublishDomain}
         onCancel={() => setView("dashboard")}
         onSaved={handleSaved}
         token={token}

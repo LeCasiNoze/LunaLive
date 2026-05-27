@@ -43,6 +43,7 @@ const pageInputSchema = z.object({
   // editor_version : 1 (legacy V1) ou 2 (nouveau editor). Default 1 pour
   // rétro-compat avec les payloads V1 qui ne fournissent pas le champ.
   editorVersion: z.coerce.number().int().min(1).max(2).optional().default(1),
+  publishDomain: z.enum(["lunalive", "landaurax"]).optional().default("lunalive"),
 });
 
 function slugifySegment(value: string) {
@@ -93,6 +94,7 @@ function pageRowToJson(row: any) {
         ? row.config
         : {},
     editorVersion: Number(row.editorVersion ?? row.editor_version ?? 1),
+    publishDomain: (row.publishDomain || row.publish_domain || "lunalive") as "lunalive" | "landaurax",
     ownerUserId: Number(row.ownerUserId || row.owner_user_id || 0),
     createdAt: row.createdAt || row.created_at || null,
     updatedAt: row.updatedAt || row.updated_at || null,
@@ -113,6 +115,7 @@ publicAffiPagesRouter.get(
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -140,6 +143,7 @@ fsbAffiPagesRouter.get(
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -177,9 +181,10 @@ fsbAffiPagesRouter.post(
          brand_name,
          title,
          config,
-         editor_version
+         editor_version,
+         publish_domain
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
        RETURNING
          id,
          slug,
@@ -189,6 +194,7 @@ fsbAffiPagesRouter.post(
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"`,
@@ -201,6 +207,7 @@ fsbAffiPagesRouter.post(
         input.title,
         JSON.stringify(input.config),
         input.editorVersion,
+        input.publishDomain,
       ]
     );
 
@@ -247,6 +254,7 @@ fsbAffiPagesRouter.put(
               title = $6,
               config = $7::jsonb,
               editor_version = $8,
+              publish_domain = $9,
               updated_at = NOW()
         WHERE id = $1
         RETURNING
@@ -261,7 +269,7 @@ fsbAffiPagesRouter.put(
           owner_user_id AS "ownerUserId",
           created_at AS "createdAt",
           updated_at AS "updatedAt"`,
-      [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion]
+      [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion, input.publishDomain]
     );
 
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });

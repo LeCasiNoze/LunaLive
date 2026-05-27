@@ -7,12 +7,8 @@ export type FsbAffiPage = {
   variant: string | null;
   brandName: string;
   title: string;
-  // V1 = Record<string,string> | V2 = arbre V2Page (objets imbriqués).
-  // On garde le typage permissif côté API ; le consumer cast selon
-  // editorVersion.
   config: Record<string, any>;
   editorVersion?: number;
-  publishDomain?: "lunalive" | "landaurax";
   ownerUserId: number;
   createdAt: string | null;
   updatedAt: string | null;
@@ -26,7 +22,6 @@ export type UpsertAffiPagePayload = {
   title: string;
   config: Record<string, any>;
   editorVersion?: number;
-  publishDomain?: "lunalive" | "landaurax";
 };
 
 async function request<T>(path: string, init: RequestInit = {}) {
@@ -86,7 +81,6 @@ export function getPublicAffiPage(slug: string) {
   return request<{ ok: true; page: FsbAffiPage }>(`/api/public/affi-pages/${encodeURIComponent(slug)}`);
 }
 
-// V3 analytics
 export type AffiPageStats = {
   views: number;
   uniqueViews: number;

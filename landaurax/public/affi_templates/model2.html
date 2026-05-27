@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="fr" data-variant="__VARIANT__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Bonus exclusif — dépôt doublé, paiement instantané." />
+<meta name="robots" content="noindex, nofollow" />
+<title>Celsius Games — Bonus Exclusif</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700;800&display=swap">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   M2 — MINIMAL MONOPAGE (une seule vue, zéro scroll requis)
+   Principe : page 100vh contenue, l'OFFRE est le seul focus, CTA immédiat.
+   Pensée pour TikTok/IG → viewer arrive → voit tout en 1s → clique.
+   Aucune section secondaire, pas de steps/FAQ/features. Juste la conversion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg-page:      #07070e;
+  --bg-card:      #12121e;
+  --border-color: #22223a;
+  --accent:       #FFD700;
+  --accent-light: #FFE552;
+  --accent-dark:  #d4a300;
+  --accent-soft:  rgba(255,215,0,0.1);
+  --accent-glow:  rgba(255,215,0,0.5);
+  --duo:          #E0115F;
+  --duo-glow:     rgba(224,17,95,0.42);
+  --brand-gold:   #FFD700; --brand-ruby: #E0115F; --casino-green: #00E676;
+  --text-main:    #f5f5fa;
+  --text-muted:   #9a9ab5;
+  --radius:       18px; --radius-sm: 12px;
+  --safe-b:       env(safe-area-inset-bottom, 0px);
+}
+html[data-variant="ruby"]     { --accent: #FF3366; --accent-light: #ff6688; --accent-dark: #c11546; --accent-glow: rgba(255,51,102,0.5); --duo: #FFD700; }
+html[data-variant="emerald"]  { --accent: #34D399; --accent-light: #6ee7b7; --accent-dark: #059669; --accent-glow: rgba(52,211,153,0.5); --duo: #FFD700; --bg-page: #051614; --bg-card: #0a1f1b; }
+html[data-variant="sapphire"] { --accent: #60A5FA; --accent-light: #93c5fd; --accent-dark: #2563eb; --accent-glow: rgba(96,165,250,0.5); --duo: #c084fc; --bg-page: #070d1a; --bg-card: #131a30; }
+html[data-variant="amethyst"] { --accent: #C084FC; --accent-light: #d8b4fe; --accent-dark: #9333ea; --accent-glow: rgba(192,132,252,0.5); --duo: #F472B6; }
+html[data-variant="obsidian"] { --accent: #E8C879; --accent-light: #f2dda2; --accent-dark: #a8894d; --accent-glow: rgba(232,200,121,0.48); --duo: #E0115F; --bg-page: #050505; --bg-card: #0d0d10; --border-color: #2a2a30; }
+html[data-variant="rose"]     { --accent: #F472B6; --accent-light: #f9a8d4; --accent-dark: #be185d; --accent-glow: rgba(244,114,182,0.5); --duo: #FFD700; }
+html[data-variant="jade"]     { --accent: #2EE8B6; --accent-light: #6ff0c5; --accent-dark: #1fa97d; --accent-glow: rgba(46,232,182,0.5); --duo: #FFD700; --bg-page: #031b17; --bg-card: #082821; }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg-page); color: var(--text-main);
+  font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  font-size: 15px; line-height: 1.5;
+}
+body {
+  overflow-x: hidden;
+  min-height: 100vh; min-height: 100dvh;
+  position: relative;
+}
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+@keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(1.6); } }
+@keyframes totalPulse {
+  0%, 100% { filter: drop-shadow(0 0 14px var(--accent-glow)); transform: scale(1); }
+  50%      { filter: drop-shadow(0 0 32px var(--accent-glow)); transform: scale(1.03); }
+}
+@keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes meshFloat { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(1%, -1%) scale(1.04); } }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ═══ BG — mesh gradient full page ═══ */
+.bg {
+  position: fixed; inset: -5%; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(40vw 40vw at 15% 10%, var(--accent-glow), transparent 60%),
+    radial-gradient(45vw 45vw at 85% 30%, var(--duo-glow), transparent 60%),
+    radial-gradient(50vw 50vw at 50% 100%, rgba(124,58,237,0.3), transparent 65%),
+    var(--bg-page);
+  animation: meshFloat 14s ease-in-out infinite;
+}
+.bg::after {
+  content: ""; position: absolute; inset: 0;
+  background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1.5px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(ellipse at 50% 30%, black 10%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 30%, black 10%, transparent 75%);
+  opacity: 0.4;
+}
+
+/* ═══ PAGE LAYOUT — flex column centered, min 100vh ═══ */
+.page {
+  position: relative; z-index: 1;
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column;
+  padding: 18px 20px calc(20px + var(--safe-b));
+  max-width: 640px; margin: 0 auto;
+  gap: 16px;
+}
+
+/* Nav top compact */
+.top {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; }
+.brand-mark {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: conic-gradient(from 180deg, var(--accent), var(--duo), var(--accent));
+  box-shadow: 0 0 12px var(--accent-glow);
+  position: relative;
+}
+.brand-mark::after { content: ""; position: absolute; inset: 3px; background: var(--bg-page); border-radius: 5px; }
+.live-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0,230,118,0.08); border: 1px solid rgba(0,230,118,0.3);
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; color: var(--casino-green); letter-spacing: .05em; text-transform: uppercase;
+}
+.live-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 6px var(--casino-green); animation: livePulse 1.6s ease-in-out infinite; }
+
+/* ═══ CENTER — focus absolu sur l'offre ═══ */
+.focus {
+  flex: 1;
+  display: flex; flex-direction: column; justify-content: center; align-items: center;
+  text-align: center;
+  gap: 18px;
+  padding: 10px 0;
+}
+
+.badge-premium {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--accent);
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) both;
+}
+.badge-premium svg { width: 13px; height: 13px; }
+
+.hero-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.7rem, 7vw, 2.6rem);
+  font-weight: 800; line-height: 1.05; letter-spacing: -0.03em;
+  max-width: 20ch;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .08s both;
+}
+.hero-title span {
+  background: linear-gradient(120deg, var(--accent), var(--accent-light), var(--duo), var(--accent));
+  background-size: 200% 200%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: gradientShift 5s ease-in-out infinite;
+}
+.hero-subtitle {
+  font-size: 14px; color: var(--text-muted);
+  max-width: 36ch;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .14s both;
+}
+
+/* ═══ THE BIG OFFER — structure HORIZONTALE (dépôt ➜ total) ═══ */
+/* Un seul bloc visuel qui capture tout : dépôt → bonus → total animé */
+.offer-ring {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  flex-wrap: wrap;
+  padding: 22px 22px;
+  background: linear-gradient(180deg, var(--bg-card) 0%, rgba(7,7,14,0.5) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 70px -20px rgba(0,0,0,0.6), 0 0 40px -15px var(--accent-glow);
+  max-width: 480px; width: 100%;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .2s both;
+}
+.amount { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 10px; }
+.amount-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.amount-value {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: clamp(1.35rem, 5.5vw, 1.8rem);
+  font-weight: 800; letter-spacing: -0.02em;
+  line-height: 1;
+}
+.amount.dep .amount-value { color: #fff; }
+.amount.bon .amount-value { color: var(--accent); }
+.amount.tot {
+  padding: 10px 16px;
+  background: linear-gradient(135deg, var(--accent-soft), rgba(224,17,95,0.08));
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  animation: totalPulse 2.6s ease-in-out infinite;
+}
+.amount.tot .amount-label { color: var(--accent); }
+.amount.tot .amount-value {
+  font-size: clamp(1.7rem, 7vw, 2.4rem);
+  background: linear-gradient(120deg, var(--accent-light), var(--accent), var(--duo));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.op {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px; font-weight: 700;
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+/* ═══ CTA + proof inline ═══ */
+.cta-block {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  width: 100%; max-width: 420px;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .28s both;
+}
+.btn-jouer {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%;
+  padding: 17px 30px;
+  background: linear-gradient(135deg, var(--accent-light), var(--accent), var(--accent-dark));
+  color: #0a0a14;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  border: 0; border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 14px 36px -8px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.3);
+  position: relative; overflow: hidden;
+  transition: transform .15s;
+}
+.btn-jouer::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,0.55) 50%, transparent 70%);
+  transform: translateX(-120%); transition: transform .8s;
+}
+.btn-jouer:hover { transform: translateY(-2px); }
+.btn-jouer:hover::after { transform: translateX(120%); }
+
+.micro-proof {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; color: var(--text-muted);
+}
+.micro-proof svg { width: 13px; height: 13px; color: var(--casino-green); }
+
+.live-counter {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 11.5px; color: var(--text-muted);
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .32s both;
+}
+.live-counter b { color: var(--accent); font-weight: 800; font-variant-numeric: tabular-nums; }
+.live-counter::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--casino-green); box-shadow: 0 0 5px var(--casino-green); animation: livePulse 1.6s ease-in-out infinite; }
+
+/* ═══ TRUST inline (single row, tiny) ═══ */
+.trust-inline {
+  display: flex; justify-content: center; flex-wrap: wrap; gap: 14px;
+  padding-top: 4px;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .38s both;
+}
+.trust-inline span { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); }
+.trust-inline svg { width: 12px; height: 12px; color: var(--casino-green); flex-shrink: 0; }
+
+/* ═══ IMAGE — petite, uniquement si l'utilisateur en veut une (sinon masquer) ═══ */
+.promo-image-container {
+  max-width: 180px; margin: 0 auto;
+  border-radius: var(--radius-sm); overflow: hidden;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 14px 30px -10px rgba(0,0,0,0.6);
+  opacity: 0.92;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .25s both;
+}
+.promo-image-container img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+
+/* ═══ FOOT — disclaimer compact ═══ */
+.foot {
+  flex-shrink: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+  display: flex; flex-direction: column; gap: 8px;
+  text-align: center;
+  font-size: 10.5px; color: #5c5c74;
+  animation: fadeUp .7s cubic-bezier(.2,.7,.2,1) .45s both;
+}
+.disclaimer {
+  padding: 10px 12px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 10.5px; color: var(--text-muted); line-height: 1.5;
+  text-align: left;
+}
+.disclaimer strong { color: var(--text-muted); text-transform: uppercase; font-size: 9.5px; letter-spacing: .1em; font-weight: 700; }
+
+/* .offer-title et .sticky-cta — conservés masqués pour compat applyConfig */
+.offer-title { position: absolute; left: -9999px; top: -9999px; }
+.sticky-cta { position: absolute; left: -9999px; top: -9999px; }
+
+@media (min-width: 640px) {
+  .op { font-size: 18px; }
+}
+@media (min-width: 900px) {
+  .page { padding: 40px 24px 32px; gap: 22px; max-width: 720px; }
+  .focus { gap: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+
+  <div class="page">
+
+    <!-- Top bar compacte -->
+    <div class="top">
+      <div class="brand">
+        <div class="brand-mark"></div>
+        <span>Celsius Games</span>
+      </div>
+      <div class="live-pill">Live</div>
+    </div>
+
+    <!-- Le FOCUS : offre centrée, zéro scroll requis -->
+    <main class="focus">
+      <div class="badge-premium">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 6.4H21l-5.3 4 2 6.6L12 15l-5.7 4 2-6.6L3 8.4h6.6z" fill="currentColor"/></svg>
+        Bonus exclusif
+      </div>
+
+      <h1 class="hero-title">Ton <span>bonus communauté</span></h1>
+      <p class="hero-subtitle">Activation automatique · Aucun code · Paiement instant</p>
+
+      <!-- L'équation, seule et dominante -->
+      <div class="offer-ring">
+        <div class="amount dep">
+          <div class="amount-label">Dépôt</div>
+          <div class="amount-value"><span class="step-deposit">10€</span></div>
+        </div>
+        <span class="op">+</span>
+        <div class="amount bon">
+          <div class="amount-label">Bonus</div>
+          <div class="amount-value"><span class="step-receive">20€</span></div>
+        </div>
+        <span class="op">=</span>
+        <div class="amount tot">
+          <div class="amount-label">À jouer</div>
+          <div class="amount-value" data-total>30€</div>
+        </div>
+      </div>
+
+      <!-- Visuel optionnel petit -->
+      <div class="promo-image-container">
+        <img src="https://cdn.phototourl.com/member/2026-04-10-af97004c-818f-40d3-b081-404c3ad3dfa7.png" alt="" />
+      </div>
+
+      <!-- CTA + proofs inline -->
+      <div class="cta-block">
+        <a href="#" class="btn-jouer" target="_top" rel="sponsored noopener">
+          Activer maintenant
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <div class="micro-proof">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Bonus crédité en moins de 30 secondes
+        </div>
+      </div>
+
+      <!-- Live counter + trust inline -->
+      <div class="live-counter"><b data-live>214</b> joueurs aujourd'hui</div>
+      <div class="trust-inline">
+        <span><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Licence UE</span>
+        <span><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Paiement instant</span>
+        <span><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Support 24/7</span>
+      </div>
+    </main>
+
+    <!-- Footer compact -->
+    <footer class="foot">
+      <div class="disclaimer">
+        <strong>Jeu responsable — 18+</strong><br/>
+        Les jeux d'argent comportent des risques : endettement, dépendance. Appelez le 09 74 75 13 13 (non surtaxé). Contenu promotionnel.
+      </div>
+      © Celsius Games
+    </footer>
+
+    <!-- compat applyConfig (masqués) -->
+    <div class="offer-title">Offre de Bienvenue</div>
+    <a href="#" class="sticky-cta" target="_top" rel="sponsored noopener">Activer</a>
+  </div>
+
+  <script>
+    (function () {
+      // Live counter
+      var live = document.querySelector('[data-live]');
+      if (live) { var n = parseInt(live.textContent, 10) || 200; setInterval(function () { if (Math.random() < 0.3) { n++; live.textContent = n; } }, 4000); }
+
+      // Total auto-sync (depuis step-deposit + step-receive)
+      function num(s) { if (!s) return 0; var m = String(s).replace(/\s/g,'').match(/(\d+(?:[.,]\d+)?)/); return m ? parseFloat(m[1].replace(',','.')) : 0; }
+      function unit(s) { if (!s) return '€'; var m = String(s).match(/\d+(?:[.,]\d+)?\s*([^\d\s]+)/); return m ? m[1] : '€'; }
+      function sync() {
+        var dep = document.querySelector('.step-deposit');
+        var rec = document.querySelector('.step-receive');
+        var tot = document.querySelector('[data-total]');
+        if (!dep || !rec || !tot) return;
+        var d = num(dep.textContent), r = num(rec.textContent);
+        var u = unit(dep.textContent) || unit(rec.textContent) || '€';
+        tot.textContent = (Math.round((d + r) * 100) / 100) + u;
+      }
+      sync(); setTimeout(sync, 100);
+    })();
+  </script>
+</body>
+</html>

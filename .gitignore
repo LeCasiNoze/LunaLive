@@ -2,6 +2,7 @@ node_modules/
 api/node_modules/
 web/node_modules/
 bot/node_modules/
+landaurax/node_modules/
 
 # Env files (secrets)
 .env
@@ -22,3 +23,4 @@ lecasinoze_*.mp4
 
 # Browser profile pour bot Rumble (cookies, NE PAS commit)
 scripts/.rumble-bot-profile/
+landaurax/dist

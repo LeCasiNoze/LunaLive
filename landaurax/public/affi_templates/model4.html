@@ -1,0 +1,816 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Offre VIP de Bienvenue exclusive. Doublez votre dépôt instantanément sur la plateforme VIP.">
+    <title>Offre VIP | Jouer Maintenant</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+
+        :root {
+            --bg-page: #080212; 
+            --bg-card: #150821; 
+            
+            --brand-ruby: #E0115F;
+            --ruby-glow: rgba(224, 17, 95, 0.4);
+            
+            --brand-gold: #FFD700;
+            --gold-glow: rgba(255, 214, 0, 0.4);
+            
+            --casino-green: #00E676; 
+            
+            --border-color: #331A47; 
+            --radius: 12px;
+            
+            --text-main: #FFFFFF;
+            --text-muted: #AAA4B0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1, h2, h3 { font-family: 'Playfair Display', serif; }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            overflow-x: hidden;
+            line-height: 1.6;
+            padding-bottom: 70px;
+        }
+
+        a { text-decoration: none; }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        @keyframes pulseGold {
+            0% { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
+            50% { box-shadow: 0 0 28px 8px rgba(255, 214, 0, 0.7); }
+            100% { box-shadow: 0 0 10px 2px rgba(255, 214, 0, 0.4); }
+        }
+        
+        @keyframes neonFlicker {
+            0%, 10%, 100% { opacity: 1; text-shadow: 0 0 10px var(--brand-gold); }
+            11% { opacity: 0.8; text-shadow: none; }
+            12% { opacity: 1; text-shadow: 0 0 10px var(--brand-gold); }
+            14% { opacity: 0.5; text-shadow: none; }
+            15% { opacity: 1; text-shadow: 0 0 10px var(--brand-gold); }
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+            100% { transform: translateY(0px); }
+        }
+
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* HERO */
+        .hero-section {
+            padding: 32px 0 20px;
+            text-align: center;
+            position: relative;
+        }
+
+        .badge-premium {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 214, 0, 0.05);
+            border: 1px solid rgba(255, 214, 0, 0.3);
+            color: var(--brand-gold);
+            padding: 6px 16px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+            animation: neonFlicker 4s linear infinite;
+        }
+
+        .hero-title {
+            font-size: clamp(1.8rem, 4vw, 3.2rem);
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -1px;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+
+        .hero-title span {
+            color: var(--brand-gold);
+            text-shadow: 0 0 15px var(--brand-gold);
+        }
+
+        .hero-subtitle {
+            font-size: 1rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 18px;
+        }
+
+        /* CARDS GRID */
+        .games-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 28px;
+            max-width: 820px;
+            margin: 0 auto;
+        }
+
+        .promo-card {
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9);
+            border: 2px solid var(--border-color);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .promo-card:nth-child(2) {
+            animation-delay: -3s;
+        }
+
+        .promo-card:hover {
+            border-color: var(--brand-gold);
+            box-shadow: 0 30px 70px rgba(0, 0, 0, 0.9), 0 0 20px rgba(255, 214, 0, 0.2);
+            transform: translateY(-4px);
+        }
+
+        .promo-image-container {
+            width: 100%;
+            background-color: #000;
+            overflow: hidden;
+            border-bottom: 2px solid var(--border-color);
+            aspect-ratio: 16 / 9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .promo-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .promo-body { padding: 22px; }
+
+        .offer-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .icon-circle {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: rgba(255, 214, 0, 0.1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid rgba(255,214,0,0.2);
+            flex-shrink: 0;
+        }
+
+        .icon-circle svg {
+            width: 18px;
+            height: 18px;
+            color: var(--brand-gold);
+        }
+        
+        .offer-title {
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .offer-subtitle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #fff;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .offer-subtitle svg {
+            width: 16px;
+            height: 16px;
+            stroke-width: 2.5;
+            color: var(--casino-green);
+        }
+
+        .info-box {
+            background-color: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .info-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-steps {
+            font-size: 1rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .step-deposit { color: #fff; }
+        .step-arrow { color: #fff; font-size: 1.1rem; }
+        .step-receive {
+            color: var(--brand-gold);
+            text-shadow: 0 0 10px var(--brand-gold);
+        }
+
+        .btn-jouer {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, #FFD700, #FFC200);
+            color: #000;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 800;
+            padding: 16px 0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 0 8px 15px rgba(255, 214, 0, 0.4);
+            border: none;
+            animation: pulseGold 3s infinite;
+        }
+
+        .btn-jouer:hover {
+            transform: scale(1.02);
+            background: linear-gradient(135deg, #FFE552, #FFC200);
+            box-shadow: 0 12px 25px rgba(255, 214, 0, 0.6);
+        }
+
+        .btn-jouer:active {
+            transform: translateY(2px);
+        }
+
+        /* STICKY CTA */
+        .sticky-cta {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            padding: 14px 20px;
+            background: linear-gradient(135deg, #FFD700, #FFC200);
+            color: #000;
+            text-align: center;
+            font-size: 1.1rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 0 -4px 20px rgba(255, 214, 0, 0.5);
+            animation: pulseGold 3s infinite;
+            text-decoration: none;
+            display: block;
+        }
+
+        .sticky-cta:hover {
+            background: linear-gradient(135deg, #FFE552, #FFC200);
+        }
+
+        /* REVIEWS */
+        .reviews-section {
+            padding: 100px 0;
+            background-color: var(--bg-card);
+            border-top: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #fff;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+
+        .section-header h2 span {
+            color: var(--brand-gold);
+            text-shadow: 0 0 10px var(--brand-gold);
+        }
+
+        .section-header p {
+            color: var(--text-muted);
+            margin-top: 10px;
+        }
+
+        .reviews-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        .review-card {
+            background: var(--bg-page);
+            padding: 32px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border-color);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .review-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--brand-gold);
+            box-shadow: 0 10px 30px rgba(255, 214, 0, 0.1);
+        }
+
+        .review-top {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            align-items: flex-start;
+        }
+
+        .reviewer-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.2rem;
+            color: var(--brand-gold);
+        }
+        
+        .reviewer-details { display: flex; flex-direction: column; }
+
+        .reviewer {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #fff;
+        }
+
+        .verified {
+            color: var(--casino-green);
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 2px;
+        }
+
+        .verified svg { width: 12px; height: 12px; }
+
+        .stars {
+            color: var(--brand-gold);
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+        }
+
+        .review-text {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        /* FAQ */
+        .faq-section {
+            padding: 100px 0;
+            background-color: var(--bg-page);
+        }
+        
+        .faq-container { max-width: 800px; margin: 0 auto; }
+        
+        .faq-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            margin-bottom: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+        
+        .faq-question {
+            padding: 24px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.05rem;
+            color: #fff;
+            transition: background 0.2s;
+        }
+
+        .faq-question:hover {
+            background: rgba(255,255,255,0.02);
+            color: var(--brand-gold);
+        }
+        
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text-muted);
+            padding: 0 24px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        
+        .faq-item.active {
+            border-color: var(--brand-gold);
+            background: rgba(255, 214, 0, 0.03);
+        }
+
+        .faq-item.active .faq-answer {
+            padding-bottom: 24px;
+            max-height: 300px;
+            margin-top: 8px;
+        }
+        
+        .faq-icon {
+            color: var(--brand-gold);
+            font-size: 1.5rem;
+            font-weight: 400;
+            transition: transform 0.3s;
+        }
+
+        .faq-item.active .faq-icon {
+            transform: rotate(45deg);
+        }
+
+        /* FOOTER */
+        footer {
+            border-top: 1px solid var(--border-color);
+            padding: 50px 0;
+            text-align: center;
+            color: #555;
+            font-size: 0.85rem;
+            background: #000;
+        }
+
+        .disclaimer {
+            border: 1px solid var(--border-color);
+            padding: 24px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            text-align: left;
+            background: #050505;
+        }
+
+        .disclaimer strong {
+            color: #888;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: #666;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .footer-links a:hover { color: #fff; }
+
+        /* RESPONSIVE */
+        @media (max-width: 700px) {
+            .games-grid {
+                grid-template-columns: 1fr;
+                max-width: 400px;
+            }
+
+            .hero-section {
+                padding: 18px 0 14px;
+            }
+
+            /* Sur mobile : compacte le 1er cadran pour que le bouton "Jouer"
+               soit visible above-the-fold dès l'arrivée sur la page. */
+            .hero-subtitle { margin-bottom: 12px; font-size: .92rem; }
+            .promo-body { padding: 14px; }
+            .offer-header { margin-bottom: 6px; gap: 10px; }
+            .offer-subtitle { margin-bottom: 12px; font-size: .85rem; }
+            .info-box { padding: 12px; margin-bottom: 12px; }
+            .info-title { margin-bottom: 6px; font-size: .72rem; }
+            .info-steps { font-size: .92rem; }
+            .btn-jouer { padding: 13px 0; font-size: 1rem; }
+            .promo-image-container { aspect-ratio: 21 / 9; }
+            .games-grid { gap: 16px; }
+
+            .section-header h2 {
+                font-size: 2rem;
+            }
+
+            .reviews-section, .faq-section {
+                padding: 60px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <section class="hero-section">
+        <div class="container">
+            <div class="reveal">
+                <div class="badge-premium">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Club VIP Certifié
+                </div>
+                <h1 class="hero-title">Accès VIP : Doublez votre capital <span>immédiatement.</span></h1>
+                <p class="hero-subtitle">Rejoignez un cercle de jeu exclusif et régulé. Votre premier dépôt est doublé automatiquement sur votre solde en toute discrétion et sécurité.</p>
+                
+            </div>
+
+            <!-- TWO GAME CARDS SIDE BY SIDE -->
+            <div class="games-grid reveal" style="transition-delay: 0.15s;">
+
+                <!-- CARD 1 : Penalty Duel -->
+                <div class="promo-card">
+                    <div class="promo-image-container">
+                        <img src="https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" alt="Penalty Duel">
+                    </div>
+                    <div class="promo-body">
+                        <div class="offer-header">
+                            <div class="icon-circle">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="8" width="18" height="4" rx="1"></rect>
+                                    <path d="M12 8v13"></path>
+                                    <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
+                                    <path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"></path>
+                                </svg>
+                            </div>
+                            <div class="offer-title">Offre de Bienvenue</div>
+                        </div>
+                        
+                        <div class="offer-subtitle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                                <polyline points="17 6 23 6 23 12"></polyline>
+                            </svg>
+                            BONUS <strong>100%</strong> AUTOMATIQUE
+                        </div>
+
+                        <div class="info-box">
+                            <div class="info-title">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand-gold)" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                                C'est simple
+                            </div>
+                            <div class="info-steps">
+                                <span class="step-deposit">Déposez 20€</span>
+                                <span class="step-arrow">→</span>
+                                <span class="step-receive">Recevez 40€</span>
+                            </div>
+                        </div>
+
+                        <a href="https://celsius.games/VkRHhCexYZ" class="btn-jouer" target="_top" rel="sponsored noopener">
+                            JOUER
+                        </a>
+                    </div>
+                </div>
+
+                <!-- CARD 2 : Jeu des Mines -->
+                <div class="promo-card">
+                    <div class="promo-image-container">
+                        <img src="https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" alt="Jeu des Mines">
+                    </div>
+                    <div class="promo-body">
+                        <div class="offer-header">
+                            <div class="icon-circle">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="8" width="18" height="4" rx="1"></rect>
+                                    <path d="M12 8v13"></path>
+                                    <path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"></path>
+                                    <path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"></path>
+                                </svg>
+                            </div>
+                            <div class="offer-title">Offre de Bienvenue</div>
+                        </div>
+                        
+                        <div class="offer-subtitle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                                <polyline points="17 6 23 6 23 12"></polyline>
+                            </svg>
+                            BONUS <strong>100%</strong> AUTOMATIQUE
+                        </div>
+
+                        <div class="info-box">
+                            <div class="info-title">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--brand-gold)" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                                C'est simple
+                            </div>
+                            <div class="info-steps">
+                                <span class="step-deposit">Déposez 20€</span>
+                                <span class="step-arrow">→</span>
+                                <span class="step-receive">Recevez 40€</span>
+                            </div>
+                        </div>
+
+                        <a href="https://celsius.games/VkRHhCexYZ" class="btn-jouer" target="_top" rel="sponsored noopener">
+                            JOUER
+                        </a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section class="reviews-section">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2>AVIS DES <span>JOUEURS</span></h2>
+                <p>La confiance de notre communauté est notre plus grande réussite.</p>
+            </div>
+            <div class="reviews-grid">
+                
+                <div class="review-card reveal">
+                    <div class="review-top">
+                        <div class="reviewer-info">
+                            <div class="avatar">T</div>
+                            <div class="reviewer-details">
+                                <span class="reviewer">Thomas M.</span>
+                                <span class="verified">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    Gain Encaissé
+                                </span>
+                            </div>
+                        </div>
+                        <div class="stars">★★★★★</div>
+                    </div>
+                    <p class="review-text">"Offre VIP validée. Le bonus s'est activé en 1 minute après mon dépôt. J'ai fait un cashout de 400€ hier soir, j'ai reçu les fonds ce matin par virement SEPA. Rapide et discret."</p>
+                </div>
+
+                <div class="review-card reveal" style="transition-delay: 0.1s;">
+                    <div class="review-top">
+                        <div class="reviewer-info">
+                            <div class="avatar">L</div>
+                            <div class="reviewer-details">
+                                <span class="reviewer">Laura K.</span>
+                                <span class="verified">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    Gain Encaissé
+                                </span>
+                            </div>
+                        </div>
+                        <div class="stars">★★★★★</div>
+                    </div>
+                    <p class="review-text">"Interface de haute qualité sur téléphone, on se croirait vraiment dans un casino VIP. Pas de bugs sur les mini-jeux. Le bonus est un vrai plus pour tester les machines."</p>
+                </div>
+
+                <div class="review-card reveal" style="transition-delay: 0.2s;">
+                    <div class="review-top">
+                        <div class="reviewer-info">
+                            <div class="avatar">N</div>
+                            <div class="reviewer-details">
+                                <span class="reviewer">Nicolas D.</span>
+                                <span class="verified">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    Gain Encaissé
+                                </span>
+                            </div>
+                        </div>
+                        <div class="stars">★★★★☆</div>
+                    </div>
+                    <p class="review-text">"Inscription et vérification du compte ultra-rapide. Dépôt sécurisé (CB passée direct). J'ai posé 50€, j'ai eu 100€ de capital. Service client par chat réactif."</p>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section class="faq-section">
+        <div class="container faq-container">
+            <div class="section-header reveal">
+                <h2>QUESTIONS FRÉQUENTES</h2>
+            </div>
+            
+            <div class="faq-item reveal">
+                <div class="faq-question">Quelles sont les garanties de sécurité des dépôts ? <span class="faq-icon">+</span></div>
+                <div class="faq-answer">La plateforme utilise une technologie de cryptage de pointe (SSL 256 bits), certifiant l'anonymat complet et la sécurité totale de vos transactions financières. Vos fonds sont cachés et stockés sur des serveurs régulés.</div>
+            </div>
+            
+            <div class="faq-item reveal">
+                <div class="faq-question">Le bonus de bienvenue s'applique-t-il à tous les dépôts ? <span class="faq-icon">+</span></div>
+                <div class="faq-answer">L'offre VIP 100% est une offre d'acquisition automatisée via ce lien. Elle est valable <strong>uniquement sur votre tout premier dépôt</strong>, quelle que soit la méthode de paiement choisie (CB ou Virement).</div>
+            </div>
+
+            <div class="faq-item reveal">
+                <div class="faq-question">Sous quel délai puis-je retirer mes gains ? <span class="faq-icon">+</span></div>
+                <div class="faq-answer">C'est une priorité absolue. Les demandes de retrait SEPA sont traitées et validées sous 24h ouvrées. Comptez ensuite le délai bancaire légal pour que les fonds apparaissent sur votre compte bancaire.</div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container reveal">
+            <div class="disclaimer">
+                <strong>Avertissement - Jeu Responsable :</strong>
+                <p style="margin-top: 10px; line-height: 1.5; font-weight: 400; color:#555">Les jeux d'argent comportent des risques sérieux : endettement, isolement, dépendance. Pour être aidé, appelez le 09-74-75-13-13 (appel anonyme). Cette offre est strictement interdite aux mineurs de moins de 18 ans.</p>
+            </div>
+            <div class="footer-links">
+                <a href="#">Termes d'utilisation</a>
+                <a href="#">Conditions de Confidentialité</a>
+                <a href="#">Jeu Responsable</a>
+                <a href="#">Régulation & Licences</a>
+            </div>
+            <p>&copy; 2026 Celsius Games. Club VIP Réservé.</p>
+        </div>
+    </footer>
+
+    <a href="https://celsius.games/VkRHhCexYZ" class="sticky-cta" target="_top" rel="sponsored noopener">🎰 JOUER MAINTENANT</a>
+
+    <script>
+        document.querySelectorAll('.faq-item').forEach(item => {
+            item.querySelector('.faq-question').addEventListener('click', () => {
+                const isActive = item.classList.contains('active');
+                document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('active'));
+                if (!isActive) item.classList.add('active');
+            });
+        });
+
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) entry.target.classList.add('active');
+            });
+        }, { threshold: 0.15, rootMargin: "0px 0px -50px 0px" });
+
+        document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+    </script>
+</body>
+</html>
