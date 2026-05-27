@@ -990,7 +990,7 @@ export default function ReferralLandingPage() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 720;
     return (
       <div style={{ ...styles.root, overflowY: "auto" }}>
-        <React.Suspense fallback={<div style={styles.stateWrap}><div style={styles.stateCard}><div style={styles.stateText}>Chargement…</div></div></div>}>
+        <React.Suspense fallback={<div style={{ position: "fixed", inset: 0, background: "#0b0911" }} />}>
           <RenderV2Page page={v2Page} isMobile={isMobile} />
         </React.Suspense>
       </div>

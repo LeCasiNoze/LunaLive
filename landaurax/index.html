@@ -25,7 +25,8 @@
         rel="stylesheet"
       />
     </noscript>
-    <!-- Prefetch landing JSON ASAP (before React boots) — kills perceived lag -->
+    <!-- Prefetch ASAP (before React boots) — chaine API JSON + template HTML
+         pour que tout soit deja en cache au moment du render. -->
     <script>
     (function(){
       try {
@@ -40,6 +41,18 @@
         window.__affiPrefetch[slug.toLowerCase()] =
           fetch(url, { credentials: "omit", mode: "cors" })
             .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+              // Chain template HTML prefetch (V1 only — V2 ne lit pas de template).
+              // Le fetch est best-effort, fire-and-forget : le browser cache HTTP
+              // se chargera de servir la reponse au render React.
+              try {
+                if (data && data.ok && data.page && data.page.editorVersion !== 2) {
+                  var m = Number(data.page.model || 5);
+                  fetch("/affi_templates/model" + m + ".html").catch(function(){});
+                }
+              } catch(_) {}
+              return data;
+            })
             .catch(function(){ return null; });
       } catch(_) {}
     })();
