@@ -139,6 +139,13 @@ CREATE INDEX IF NOT EXISTS idx_aurix_landing_verif_refs_status
     ON aurix_landing_verif_refs(last_status);
 `,
   },
+  {
+    name: "008_landing_verif_publish_domain.sql",
+    sql: `
+ALTER TABLE aurix_landing_verif_refs
+    ADD COLUMN IF NOT EXISTS last_publish_domain TEXT;
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

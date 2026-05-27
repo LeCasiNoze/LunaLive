@@ -32,6 +32,7 @@
         var p = (window.location.pathname || "").replace(/^\/+|\/+$/g, "");
         if (!p) return;
         var slug = p.split("/")[0];
+        if (slug.indexOf("__") === 0) return;
         if (!/^[a-z0-9_-]+$/i.test(slug)) return;
         var base = "https://lunalive-api.onrender.com";
         var url = base + "/api/public/affi-pages/" + encodeURIComponent(slug);
