@@ -876,11 +876,9 @@ function redirectToLegacyReferral(slug: string, navigate: ReturnType<typeof useN
   navigate(`/s/${encodeURIComponent(safeSlug)}`, { replace: true });
 }
 
-// Lazy-loaded V2 renderer pour ne pas charger le code V2 inutilement
-// quand on consulte une page V1.
-const RenderV2Page = React.lazy(() =>
-  import("../lib/editor_v2_render").then((m) => ({ default: m.RenderV2Page }))
-);
+// V2 renderer importe direct (pas de lazy split sur /r/<slug>) : eviter
+// le 2e round-trip HTTP cold-cache. Vite tree-shake les modules non utilises.
+import { RenderV2Page } from "../lib/editor_v2_render";
 
 // V3 analytics : POST best-effort vers l'API distante.
 // L'URL DOIT être absolue (le static site et l'API sont sur des domaines
@@ -1101,9 +1099,7 @@ export default function ReferralLandingPage() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 720;
     return (
       <div style={{ ...styles.root, overflowY: "auto" }}>
-        <React.Suspense fallback={<DelayedSpinner />}>
-          <RenderV2Page page={v2Page} isMobile={isMobile} />
-        </React.Suspense>
+        <RenderV2Page page={v2Page} isMobile={isMobile} />
       </div>
     );
   }

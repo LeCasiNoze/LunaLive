@@ -824,10 +824,10 @@ function redirectToLegacyReferral(_slug: string, navigate: ReturnType<typeof use
   navigate("/", { replace: true });
 }
 
-// Lazy-loaded V2 renderer
-const RenderV2Page = React.lazy(() =>
-  import("../lib/editor_v2_render").then((m) => ({ default: m.RenderV2Page }))
-);
+// V2 renderer importe direct (pas de lazy split) : la majorite des landings
+// sont V2 et le lazy couterait un 2e round-trip (-300 a -700ms cold).
+// Vite tree-shake les sous-modules non utilises.
+import { RenderV2Page } from "../lib/editor_v2_render";
 
 const ANALYTICS_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 function trackAffiEvent(slug: string, event: "view" | "click_cta") {
@@ -1018,9 +1018,7 @@ export default function ReferralLandingPage() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 720;
     return (
       <div style={{ ...styles.root, overflowY: "auto" }}>
-        <React.Suspense fallback={<DelayedSpinner />}>
-          <RenderV2Page page={v2Page} isMobile={isMobile} />
-        </React.Suspense>
+        <RenderV2Page page={v2Page} isMobile={isMobile} />
       </div>
     );
   }
