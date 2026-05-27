@@ -92,6 +92,38 @@
 
     <link rel="icon" type="image/png" href="/logo_onglet.png" />
     <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png" />
+
+    <!-- Preconnect API (kill TLS handshake sur /r/<slug>) -->
+    <link rel="preconnect" href="https://lunalive-api.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://lunalive-api.onrender.com" />
+
+    <!-- Prefetch landing JSON ASAP pour /r/<slug> — chaine template HTML
+         apres l'API pour que tout soit en cache au render React. -->
+    <script>
+    (function(){
+      try {
+        var m = (window.location.pathname || "").match(/^\/r\/([a-z0-9_-]+)\/?$/i);
+        if (!m) return;
+        var slug = m[1];
+        var base = "https://lunalive-api.onrender.com";
+        var url = base + "/api/public/affi-pages/" + encodeURIComponent(slug);
+        window.__affiPrefetch = window.__affiPrefetch || {};
+        window.__affiPrefetch[slug.toLowerCase()] =
+          fetch(url, { credentials: "omit", mode: "cors" })
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+              try {
+                if (data && data.ok && data.page && data.page.editorVersion !== 2) {
+                  var n = Number(data.page.model || 5);
+                  fetch("/affi_templates/model" + n + ".html").catch(function(){});
+                }
+              } catch(_) {}
+              return data;
+            })
+            .catch(function(){ return null; });
+      } catch(_) {}
+    })();
+    </script>
     <script defer src="/seo-update.js"></script>
   </head>
   <body>
