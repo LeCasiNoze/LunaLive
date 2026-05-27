@@ -982,14 +982,8 @@ export default function ReferralLandingPage() {
   }
 
   if (status !== "ready") {
-    return (
-      <div style={styles.stateWrap}>
-        <div style={styles.stateCard}>
-          <div style={styles.stateTitle}>Chargement de l&apos;offre</div>
-          <div style={styles.stateText}>Preparation de la landing publiee...</div>
-        </div>
-      </div>
-    );
+    // Ecran noir minimal pendant le fetch (prefetch index.html -> ~instantane).
+    return <div style={{ position: "fixed", inset: 0, background: "#0b0911" }} />;
   }
 
   if (v2Page) {

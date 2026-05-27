@@ -77,7 +77,18 @@ export function deleteFsbAffiPage(token: string, id: number) {
   });
 }
 
-export function getPublicAffiPage(slug: string) {
+export async function getPublicAffiPage(slug: string) {
+  // Prefetch hint injecte par index.html : si le fetch a deja demarre avant
+  // que React ne boot, on attend simplement la promesse au lieu de relancer.
+  const cache = (typeof window !== "undefined" ? (window as any).__affiPrefetch : null) as Record<string, Promise<any>> | null;
+  const key = String(slug || "").toLowerCase();
+  const prefetched = cache ? cache[key] : null;
+  if (prefetched) {
+    try {
+      const data = await prefetched;
+      if (data && data.ok && data.page) return data as { ok: true; page: FsbAffiPage };
+    } catch { /* fallback ci-dessous */ }
+  }
   return request<{ ok: true; page: FsbAffiPage }>(`/api/public/affi-pages/${encodeURIComponent(slug)}`);
 }
 
