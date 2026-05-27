@@ -913,6 +913,34 @@ function trackAffiEvent(slug: string, event: "view" | "click_cta") {
   } catch { /* noop */ }
 }
 
+// Loader subtil : ecran noir pendant 350ms (kill le flash sur warm path),
+// puis spinner minimal sur cold start API.
+function DelayedSpinner() {
+  const [show, setShow] = React.useState(false);
+  React.useEffect(() => {
+    const t = setTimeout(() => setShow(true), 350);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#0b0911", display: "grid", placeItems: "center", pointerEvents: "none" }}>
+      <style>{`@keyframes __spin{to{transform:rotate(360deg)}}`}</style>
+      <div
+        aria-hidden
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: "50%",
+          border: "2px solid rgba(246,239,224,0.12)",
+          borderTopColor: "rgba(246,239,224,0.78)",
+          animation: "__spin 0.85s linear infinite",
+          opacity: show ? 1 : 0,
+          transition: "opacity 0.25s ease",
+        }}
+      />
+    </div>
+  );
+}
+
 export default function ReferralLandingPage() {
   const navigate = useNavigate();
   const { slug } = useParams();
@@ -1065,8 +1093,7 @@ export default function ReferralLandingPage() {
   }
 
   if (status !== "ready") {
-    // Ecran noir minimal (prefetch index.html -> ~instantane).
-    return <div style={{ position: "fixed", inset: 0, background: "#0b0911" }} />;
+    return <DelayedSpinner />;
   }
 
   // V2 render path — pas d'iframe, rendu SPA direct
@@ -1074,7 +1101,7 @@ export default function ReferralLandingPage() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 720;
     return (
       <div style={{ ...styles.root, overflowY: "auto" }}>
-        <React.Suspense fallback={<div style={{ position: "fixed", inset: 0, background: "#0b0911" }} />}>
+        <React.Suspense fallback={<DelayedSpinner />}>
           <RenderV2Page page={v2Page} isMobile={isMobile} />
         </React.Suspense>
       </div>
