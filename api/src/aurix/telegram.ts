@@ -84,7 +84,17 @@ export type RefillTelegramItem = {
   displayName: string;
   casinoUsername: string | null;
   email: string | null;
+  amount?: string | null;
 };
+
+function parseEur(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/[\d][\d\s.,]*/);
+  if (!m) return null;
+  const raw = m[0].replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
 
 function buildRefillMessage(args: {
   dayDateFr: string;
@@ -100,15 +110,23 @@ function buildRefillMessage(args: {
   lines.push("");
 
   const plural = args.count > 1 ? "s" : "";
-  lines.push(`💰 ${args.count} demande${plural} × ${args.fixedAmount}`);
+  // Calcule le total si les montants sont parsables.
+  const totals = args.items.map((it) => parseEur(it.amount || args.fixedAmount));
+  const allParsable = totals.every((n) => n != null);
+  if (allParsable) {
+    const total = (totals as number[]).reduce((a, b) => a + b, 0);
+    lines.push(`💰 ${args.count} demande${plural} — total : ${total.toLocaleString("fr-FR")}€`);
+  } else {
+    lines.push(`💰 ${args.count} demande${plural}`);
+  }
   lines.push("");
 
   args.items.forEach((it, i) => {
-    const extras: string[] = [];
+    const amount = it.amount || args.fixedAmount;
+    const extras: string[] = [`${amount}`];
     if (it.email) extras.push(`email Celsius : ${it.email}`);
     if (it.casinoUsername) extras.push(`pseudo casino : ${it.casinoUsername}`);
-    const extraStr = extras.length ? `  —  ${extras.join("  ·  ")}` : "";
-    lines.push(`${i + 1}. ${it.displayName}${extraStr}`);
+    lines.push(`${i + 1}. ${it.displayName}  —  ${extras.join("  ·  ")}`);
   });
 
   lines.push("");
