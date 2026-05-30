@@ -146,6 +146,37 @@ ALTER TABLE aurix_landing_verif_refs
     ADD COLUMN IF NOT EXISTS last_publish_domain TEXT;
 `,
   },
+  {
+    name: "009_auto_refills.sql",
+    sql: `
+CREATE TABLE IF NOT EXISTS aurix_auto_refills (
+    id            BIGSERIAL PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    amount        TEXT NOT NULL,
+    display_name  TEXT NOT NULL,
+    cadence_days  INT  NOT NULL DEFAULT 1,
+    next_run_at   TIMESTAMPTZ NOT NULL,
+    active        BOOLEAN NOT NULL DEFAULT TRUE,
+    notes         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_aurix_auto_refills_due
+    ON aurix_auto_refills(active, next_run_at);
+
+-- Seed dealjb : 1000€ tous les 2 jours, 1er run = apres-demain 00:00 UTC
+-- (aujourd'hui geree manuellement par l'admin).
+INSERT INTO aurix_auto_refills (email, amount, display_name, cadence_days, next_run_at, notes)
+VALUES (
+    'dealjb@hotmail.com',
+    '1000€',
+    'dealjb',
+    2,
+    date_trunc('day', NOW()) + INTERVAL '2 days',
+    'Auto-refill recurrent - pas via /refill'
+) ON CONFLICT (email) DO NOTHING;
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

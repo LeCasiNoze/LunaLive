@@ -253,9 +253,13 @@ function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]
     embed.addFields({ name: "—", value: "*Aucune demande pour l'instant.*" });
   } else {
     const lines = reqs.map((r, i) => {
-      const parts = [`**${i + 1}.** <@${r.user_id}>`];
+      // user_id negatif = sentinelle auto-refill (pas de mention Discord).
+      const isAuto = Number(r.user_id) < 0;
+      const who = isAuto ? `**${r.username}** _(auto)_` : `<@${r.user_id}>`;
+      const parts = [`**${i + 1}.** ${who}`];
       if (r.casino_username) parts.push(`🎰 \`${r.casino_username}\``);
       if (r.email) parts.push(`✉️ \`${r.email}\``);
+      if (r.amount && r.amount !== cfg.DEFAULTS.REFILL_FIXED_AMOUNT) parts.push(`💰 \`${r.amount}\``);
       if (r.notes) parts.push(`📝 *${r.notes}*`);
       return parts.join(" · ");
     });
@@ -663,6 +667,9 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
   if (!guild) guild = client.guilds.cache.first();
   if (!guild) return;
 
+  // Injecte les auto-refills dus pour ce batch (non-Discord users : dealjb, etc).
+  await injectAutoRefills(batch);
+
   // Si aucune demande dans le batch -> aucun message envoye (ni staff-chat
   // ni Telegram). On auto-mark 'sent' pour pas laisser le batch en
   // 'locked' eternel.
@@ -725,11 +732,14 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     const items = await Promise.all(
       enriched.map(async (r) => {
         let displayName = r.username;
-        try {
-          const m = await guildForCutoff.members.fetch(r.user_id);
-          displayName = m.displayName || m.user.globalName || m.user.username;
-        } catch {
-          /* membre parti, on garde le username stocke */
+        const isAuto = Number(r.user_id) < 0;
+        if (!isAuto) {
+          try {
+            const m = await guildForCutoff.members.fetch(r.user_id);
+            displayName = m.displayName || m.user.globalName || m.user.username;
+          } catch {
+            /* membre parti, on garde le username stocke */
+          }
         }
         return {
           ticket_channel_id: r.ticket_channel_id,
@@ -737,6 +747,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
           displayName,
           email: r.email,
           casinoUsername: r.casino_username,
+          amount: r.amount,
         };
       })
     );
@@ -755,6 +766,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
           displayName: it.displayName,
           casinoUsername: it.casinoUsername,
           email: it.email,
+          amount: it.amount,
         })),
       });
 
@@ -897,4 +909,52 @@ async function processRefillDone(client: Client): Promise<void> {
   await sendTelegramText(
     `✅ Batch #${batch.id} marqué effectué — ${notified} streamer(s) notifié(s) sur Discord.`
   );
+}
+
+// ═════════════════════════════════════════════════════════
+// Auto-refills (recurrents, non-Discord users : dealjb, etc).
+// ═════════════════════════════════════════════════════════
+// On insere dans aurix_refill_requests avec un user_id sentinelle
+// negatif (= -auto.id) pour eviter toute collision avec un Discord ID
+// (toujours > 0). La fetch de membre Discord echouera silencieusement
+// au moment du Telegram et on retombera sur le `username` stocke
+// (= display_name de l'auto-refill).
+
+async function injectAutoRefills(batch: Batch): Promise<void> {
+  const autos = await all<{
+    id: string;
+    email: string;
+    amount: string;
+    display_name: string;
+    cadence_days: number;
+  }>(
+    `SELECT id, email, amount, display_name, cadence_days
+       FROM aurix_auto_refills
+      WHERE active = TRUE AND next_run_at <= NOW()
+      ORDER BY id`
+  );
+
+  for (const a of autos) {
+    const virtualUserId = `-${a.id}`; // sentinelle (negatif)
+    const insRes = await query(
+      `INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, notes, ticket_channel_id)
+       VALUES($1, $2, $3, NULL, $4, $5, $6, NULL)
+       ON CONFLICT (batch_id, user_id) DO NOTHING`,
+      [batch.id, virtualUserId, a.display_name, a.email, a.amount, `Auto-refill recurrent (cadence ${a.cadence_days}j)`]
+    );
+
+    await query(
+      `UPDATE aurix_auto_refills
+          SET next_run_at = next_run_at + (cadence_days * INTERVAL '1 day'),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [a.id]
+    );
+
+    if ((insRes.rowCount ?? 0) > 0) {
+      log(`Auto-refill injecte: ${a.display_name} ${a.amount} -> batch #${batch.id}`);
+    } else {
+      log(`Auto-refill ${a.display_name} deja present dans batch #${batch.id} (idempotent skip)`);
+    }
+  }
 }
