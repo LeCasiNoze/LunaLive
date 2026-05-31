@@ -65,6 +65,8 @@ export type M10CyclopeProps = {
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   /** Animation appliquee au pseudo. */
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
+  /** Masque le block VIP (teaser principal + mini sticky). Default false. */
+  hideVip?: boolean;
   /** Callback editeur : appelée au clic sur un élément éditable.
    *  Si undefined (rendu final), le clic est inert (sauf CTA). */
   onEditField?: (field: M10EditField) => void;
@@ -132,6 +134,7 @@ export function M10Cyclope({
   pseudoStyle,
   pseudoVariant,
   pseudoAnimation,
+  hideVip,
   onEditField,
 }: M10CyclopeProps) {
   // Plumbing click-to-edit (a wirer dans une prochaine iteration sur chaque element)
@@ -456,17 +459,19 @@ export function M10Cyclope({
         </section>
 
         {/* VIP teaser principal — juste avant la FAQ pour capter l'attention */}
-        <section className="m10-vip-band">
-          <button
-            type="button"
-            className="m10-vip-teaser"
-            onClick={() => setVipPopupOpen(true)}
-          >
-            <span className="m10-vip-teaser-crown">👑</span>
-            Vous êtes un gros joueur ? Demandez votre traitement spécial
-            <span className="m10-vip-teaser-arrow">→</span>
-          </button>
-        </section>
+        {!hideVip ? (
+          <section className="m10-vip-band">
+            <button
+              type="button"
+              className="m10-vip-teaser"
+              onClick={() => setVipPopupOpen(true)}
+            >
+              <span className="m10-vip-teaser-crown">👑</span>
+              Vous êtes un gros joueur ? Demandez votre traitement spécial
+              <span className="m10-vip-teaser-arrow">→</span>
+            </button>
+          </section>
+        ) : null}
 
         {/* FAQ */}
         <section className="m10-faq">
@@ -522,14 +527,16 @@ export function M10Cyclope({
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
         {/* VIP teaser discret sous le sticky CTA (toujours accessible) */}
-        <button
-          type="button"
-          className="m10-vip-teaser-mini"
-          onClick={() => setVipPopupOpen(true)}
-        >
-          <span className="m10-vip-teaser-mini-crown">👑</span>
-          Gros joueur ? Accès VIP
-        </button>
+        {!hideVip ? (
+          <button
+            type="button"
+            className="m10-vip-teaser-mini"
+            onClick={() => setVipPopupOpen(true)}
+          >
+            <span className="m10-vip-teaser-mini-crown">👑</span>
+            Gros joueur ? Accès VIP
+          </button>
+        ) : null}
       </div>
 
       {/* Popup conserve via flag V3_POPUP_ENABLED. Flippe pour reactiver. */}

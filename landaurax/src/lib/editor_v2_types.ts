@@ -184,6 +184,8 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
   pseudoStyle?: any;
+  /** Masque les elements VIP du modele (M10 : teaser + mini sticky). */
+  hideVip?: boolean;
 }
 
 export type V2Block =

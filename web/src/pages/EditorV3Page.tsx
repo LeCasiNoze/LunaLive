@@ -805,6 +805,23 @@ function WizardQuickView({
             </>
           ) : null}
 
+          {inputs.modelKind === "M10" ? (
+            <div style={{ marginBottom: 14, padding: 12, background: T.bgPanel2, border: `1px solid ${T.border}`, borderRadius: 10 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: T.text }}>
+                <input
+                  type="checkbox"
+                  checked={!!inputs.hideVip}
+                  onChange={(e) => update({ hideVip: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <span><strong>Masquer le block VIP</strong> (teaser principal + mini sticky)</span>
+              </label>
+              <div style={{ fontSize: 11, color: T.textDim, marginTop: 6, paddingLeft: 26 }}>
+                Retire entièrement le bouton "Accès VIP" + le mini lien sous le sticky CTA. Le popup VIP n'est jamais déclenché.
+              </div>
+            </div>
+          ) : null}
+
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Lien d'affiliation *</label>
             <input type="url" value={inputs.affiLink} onChange={(e) => update({ affiLink: e.target.value })} style={inputStyle} placeholder="https://celsius.games/UHyEqTtNlL" />

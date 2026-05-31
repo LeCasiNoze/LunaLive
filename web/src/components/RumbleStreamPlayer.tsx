@@ -134,15 +134,22 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     const hls = new Hls({
       enableWorker: true,
       lowLatencyMode: false,   // Rumble n'utilise pas LL-HLS (pas de #EXT-X-PART)
-      backBufferLength: 8,
-      // live-edge — viser au plus près du direct (1× targetDuration)
+      // Buffer arrière généreux : ne change RIEN à la latence live,
+      // sert juste de marge pour seek arrière et soulage le GC.
+      backBufferLength: 30,
+      // live-edge — on reste au plus près du direct (1× targetDuration)
+      // mais on laisse 2 segments de latence max avant rattrapage doux.
       liveSyncDurationCount: 1,
-      liveMaxLatencyDurationCount: 4,
+      liveMaxLatencyDurationCount: 6,
       liveDurationInfinity: true,
-      maxLiveSyncPlaybackRate: 1.4,
-      // buffer
-      maxBufferLength: 16,
-      maxMaxBufferLength: 24,
+      // Rattrapage live discret (1.10× ~= imperceptible à l'oreille,
+      // 1.4× créait un effet "voix accélérée" perçu comme glitch).
+      maxLiveSyncPlaybackRate: 1.1,
+      // Buffer AVANT la position : plus gros = plus de marge contre les jitter
+      // réseau / micro-coupures CDN. N'augmente PAS la latence (la latence
+      // dépend de la distance au live edge, pas de la taille du buffer forward).
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
       maxBufferHole: 0.5,
       maxFragLookUpTolerance: 0.2,
       // ABR optimiste — Rumble fournit du 720p en 2.7-3.3 Mbps,
@@ -226,52 +233,24 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
         }
       } catch {}
 
-      // DVR playlist : currentTime peut être à 0 (début du DVR, il y a des heures).
-      // On force le seek à la fin réelle de la playlist (dernier fragment),
-      // plus proche du direct que `liveSyncPosition` qui reste 1×targetDuration derrière.
-      const seekToLiveEdge = () => {
-        try {
-          const level = (hls as any).levels?.[(hls as any).currentLevel >= 0 ? (hls as any).currentLevel : 0];
-          const frags = level?.details?.fragments;
-          if (Array.isArray(frags) && frags.length > 0) {
-            const last = frags[frags.length - 1];
-            const edge = Number(last?.start ?? 0) + Number(last?.duration ?? 0);
-            if (Number.isFinite(edge) && edge > 0) {
-              video.currentTime = Math.max(0, edge - 1.5);
-              return;
-            }
-          }
-          const livePos = (hls as any).liveSyncPosition;
-          if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
+      // DVR playlist : currentTime peut démarrer loin dans le passé.
+      // On seek UNE SEULE FOIS à `liveSyncPosition` (= edge - liveSyncDurationCount×target),
+      // pas à `edge - 1.5` qui collait trop près et forçait un rebuffer immédiat.
+      try {
+        const livePos = Number((hls as any).liveSyncPosition);
+        if (Number.isFinite(livePos) && livePos > 0) {
+          // Tolérance : si on est déjà dans une fenêtre raisonnable autour du live,
+          // ne pas seek (un seek = rebuffer = freeze visible).
+          const ct = Number(video.currentTime || 0);
+          if (Math.abs(livePos - ct) > 5) {
             video.currentTime = livePos;
-          } else if (video.duration && Number.isFinite(video.duration) && video.duration > 10) {
-            video.currentTime = video.duration - 2;
           }
-        } catch {}
-      };
-
-      seekToLiveEdge();
+        } else if (video.duration && Number.isFinite(video.duration) && video.duration > 10) {
+          video.currentTime = video.duration - 3;
+        }
+      } catch {}
       safePlay(video);
     });
-
-    // Après que le premier buffer est chargé, re-vérifier qu'on est au live edge
-    hls.on(Hls.Events.BUFFER_APPENDED, (() => {
-      let done = false;
-      return () => {
-        if (done) return;
-        done = true;
-        try {
-          const livePos = (hls as any).liveSyncPosition;
-          if (typeof livePos === "number" && Number.isFinite(livePos) && livePos > 0) {
-            const ct = video.currentTime;
-            // Si on est à plus de 10s du live edge, corriger
-            if (livePos - ct > 10) {
-              video.currentTime = livePos;
-            }
-          }
-        } catch {}
-      };
-    })());
 
     let mediaErrorRetries = 0;
     hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -311,32 +290,22 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       lastProgressAt = Date.now(); lastT = Number(video.currentTime || 0);
     }, 3000);
 
-    // ── Live-edge resync ────────────────────────────────────────
-    // Si on dérive de plus de 8s de la fin réelle de la playlist, on recolle.
-    const RESYNC_THRESHOLD_SEC = 8;
+    // ── Live-edge resync (hard seek) ────────────────────────────
+    // hls.js gère déjà la dérive en douceur via maxLiveSyncPlaybackRate (1.1×).
+    // On ne hard-seek QUE si la dérive devient absurde (>45s) — sinon le seek
+    // provoque un rebuffer visible (= le "freeze puis reprend" perçu).
+    const RESYNC_THRESHOLD_SEC = 45;
     const tLiveEdge = window.setInterval(() => {
       if (!video || video.paused || document.hidden) return;
       try {
-        const level = (hls as any).levels?.[(hls as any).currentLevel >= 0 ? (hls as any).currentLevel : 0];
-        const frags = level?.details?.fragments;
-        let edge: number | null = null;
-        if (Array.isArray(frags) && frags.length > 0) {
-          const last = frags[frags.length - 1];
-          const e = Number(last?.start ?? 0) + Number(last?.duration ?? 0);
-          if (Number.isFinite(e) && e > 0) edge = e;
-        }
-        if (edge === null) {
-          const livePos = Number((hls as any).liveSyncPosition);
-          if (Number.isFinite(livePos)) edge = livePos;
-        }
-        if (edge === null) return;
-        const target = Math.max(0, edge - 1.5);
+        const livePos = Number((hls as any).liveSyncPosition);
+        if (!Number.isFinite(livePos) || livePos <= 0) return;
         const ct = Number(video.currentTime || 0);
-        if (target - ct > RESYNC_THRESHOLD_SEC) {
-          video.currentTime = target;
+        if (livePos - ct > RESYNC_THRESHOLD_SEC) {
+          video.currentTime = livePos;
         }
       } catch {}
-    }, 5000);
+    }, 10000);
 
     return () => {
       window.clearInterval(tStall);
