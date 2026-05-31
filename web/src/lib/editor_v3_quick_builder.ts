@@ -227,6 +227,9 @@ export interface V3QuickInputs {
   /** Lien Telegram a afficher sous le CTA principal (uniquement M2/M5V1
    *  pour le moment). Si vide, pas de bouton. */
   telegramUrl?: string;
+  /** Masque le block VIP (teaser principal + mini sticky) sur M10.
+   *  Default false. */
+  hideVip?: boolean;
 }
 
 export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInputs {
@@ -560,6 +563,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           pseudoVariant: inputs.pseudoVariant,
           pseudoAnimation: inputs.pseudoAnimation,
           pseudoStyle: pseudoStyleResolved,
+          hideVip: inputs.hideVip,
         } as any,
       ],
       belowCards: [],
