@@ -36,7 +36,12 @@ import {
   startCutoffTask,
   startTelegramRefillHandler,
 } from "./refill.js";
-import { handleConfig, handlePing, handleRefillConfigCommand } from "./admin.js";
+import {
+  handleConfig,
+  handlePing,
+  handleRefillConfigCommand,
+  handleResendDmCommand,
+} from "./admin.js";
 import {
   handleCelsiusCommand,
   handleCelsiusModal,
@@ -280,6 +285,9 @@ export async function startAurixBot(): Promise<void> {
             return;
           case "refill-config":
             await handleRefillConfigCommand(ci);
+            return;
+          case "aurix-resend-dm":
+            await handleResendDmCommand(ci);
             return;
           case "verify-landings": {
             await ci.deferReply({ ephemeral: true });

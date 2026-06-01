@@ -88,6 +88,19 @@ export const guildCommandDefinitions = [
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
   {
+    name: "aurix-resend-dm",
+    description: "(Admin) Renvoie le DM Celsius (confirmation/vérifié/refusé) à un viewer.",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+    options: [
+      {
+        name: "user",
+        description: "Le viewer à re-notifier",
+        type: ApplicationCommandOptionType.User,
+        required: true,
+      },
+    ],
+  },
+  {
     name: "refill-config",
     description: "(Admin) Configure le montant et le wager de refill pour un utilisateur ou un auto-refill.",
     default_member_permissions: String(PermissionFlagsBits.Administrator),

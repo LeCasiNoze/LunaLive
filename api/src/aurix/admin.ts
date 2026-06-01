@@ -54,6 +54,76 @@ export async function handlePing(interaction: ChatInputCommandInteraction): Prom
   });
 }
 
+// /aurix-resend-dm — renvoie le DM Celsius adapté (confirmation/vérifié/refusé) au viewer.
+export async function handleResendDmCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  const target = interaction.options.getUser("user", true);
+  const sub = await one<{
+    id: number;
+    celsius_pseudo: string;
+    celsius_email: string;
+    monthly_deposit: string;
+    monthly_deposit_amount: string | null;
+    status: "pending" | "verified" | "rejected";
+    reject_reason: string | null;
+    guild_name: string | null;
+    viewer_username: string;
+  }>(
+    `SELECT id, celsius_pseudo, celsius_email, monthly_deposit, monthly_deposit_amount,
+            status, reject_reason, guild_name, viewer_username
+       FROM aurix_celsius_submissions
+      WHERE viewer_user_id=$1
+      ORDER BY created_at DESC LIMIT 1`,
+    [target.id]
+  );
+  if (!sub) {
+    await interaction.reply({
+      content: `${cfg.EMOJI.cross} Aucune inscription \`/celsius\` trouvée pour <@${target.id}>.`,
+      ephemeral: true,
+      allowedMentions: { users: [] },
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  try {
+    const dm = await import("./celsius_dm.js");
+    const guildName = sub.guild_name ?? "ton serveur";
+    if (sub.status === "verified") {
+      const amt = sub.monthly_deposit_amount != null ? Number(sub.monthly_deposit_amount) : null;
+      await dm.sendCelsiusValidatedDM(interaction.client, {
+        viewerUserId: target.id,
+        pseudo: sub.celsius_pseudo,
+        monthlyDeposit: sub.monthly_deposit,
+        monthlyDepositAmount: Number.isFinite(amt as number) ? (amt as number) : null,
+        guildName,
+      });
+    } else if (sub.status === "rejected") {
+      await dm.sendCelsiusRejectedDM(interaction.client, {
+        viewerUserId: target.id,
+        pseudo: sub.celsius_pseudo,
+        rejectReason: sub.reject_reason,
+      });
+    } else {
+      await dm.sendCelsiusConfirmationDM(interaction.client, {
+        viewerUserId: target.id,
+        viewerTag: sub.viewer_username,
+        pseudo: sub.celsius_pseudo,
+        email: sub.celsius_email,
+        monthlyDeposit: sub.monthly_deposit,
+        guildName,
+      });
+    }
+    await interaction.editReply({
+      content: `${cfg.EMOJI.check} DM (statut **${sub.status}**) renvoyé à <@${target.id}>.`,
+      allowedMentions: { users: [] },
+    });
+  } catch (e) {
+    await interaction.editReply({
+      content: `${cfg.EMOJI.cross} Échec de l'envoi : ${String(e).slice(0, 200)}`,
+    });
+  }
+}
+
 // /refill-config — configure amount + wager pour un Discord user OU un auto-refill par email.
 export async function handleRefillConfigCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   const targetUser = interaction.options.getUser("user");
