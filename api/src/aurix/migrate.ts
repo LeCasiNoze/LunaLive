@@ -177,6 +177,18 @@ VALUES (
 ) ON CONFLICT (email) DO NOTHING;
 `,
   },
+  {
+    name: "010_refill_amount_wager.sql",
+    sql: `
+ALTER TABLE aurix_user_accounts  ADD COLUMN IF NOT EXISTS refill_amount TEXT;
+ALTER TABLE aurix_user_accounts  ADD COLUMN IF NOT EXISTS wager         TEXT;
+ALTER TABLE aurix_auto_refills   ADD COLUMN IF NOT EXISTS wager         TEXT;
+ALTER TABLE aurix_refill_requests ADD COLUMN IF NOT EXISTS wager        TEXT;
+
+-- Wager par defaut pour les auto-refills existants (dealjb).
+UPDATE aurix_auto_refills SET wager = 'no wag' WHERE wager IS NULL;
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

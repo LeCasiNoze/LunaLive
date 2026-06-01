@@ -85,6 +85,7 @@ export type RefillTelegramItem = {
   casinoUsername: string | null;
   email: string | null;
   amount?: string | null;
+  wager?: string | null;
 };
 
 function parseEur(s: string | null | undefined): number | null {
@@ -109,25 +110,30 @@ function buildRefillMessage(args: {
   lines.push(`Voici la liste des refills pour aujourd'hui, ${args.dayDateFr} :`);
   lines.push("");
 
-  const plural = args.count > 1 ? "s" : "";
-  // Calcule le total si les montants sont parsables.
-  const totals = args.items.map((it) => parseEur(it.amount || args.fixedAmount));
-  const allParsable = totals.every((n) => n != null);
-  if (allParsable) {
-    const total = (totals as number[]).reduce((a, b) => a + b, 0);
-    lines.push(`💰 ${args.count} demande${plural} — total : ${total.toLocaleString("fr-FR")}€`);
-  } else {
-    lines.push(`💰 ${args.count} demande${plural}`);
+  // Groupe par montant. Clef = amount STRING (preserve la forme '1000€').
+  const groups = new Map<string, RefillTelegramItem[]>();
+  for (const it of args.items) {
+    const k = (it.amount && it.amount.trim()) || args.fixedAmount;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k)!.push(it);
   }
-  lines.push("");
+  // Tri des groupes : par montant parse, DESC (les gros refills en premier).
+  const sortedKeys = [...groups.keys()].sort((a, b) => (parseEur(b) ?? 0) - (parseEur(a) ?? 0));
 
-  args.items.forEach((it, i) => {
-    const amount = it.amount || args.fixedAmount;
-    const extras: string[] = [`${amount}`];
-    if (it.email) extras.push(`email Celsius : ${it.email}`);
-    if (it.casinoUsername) extras.push(`pseudo casino : ${it.casinoUsername}`);
-    lines.push(`${i + 1}. ${it.displayName}  —  ${extras.join("  ·  ")}`);
-  });
+  for (const k of sortedKeys) {
+    const group = groups.get(k)!;
+    const plural = group.length > 1 ? "s" : "";
+    lines.push(`💰 ${group.length} demande${plural} — refill : ${k}`);
+    lines.push("");
+    group.forEach((it, i) => {
+      const wagerTxt = (it.wager && it.wager.trim()) || "no wag";
+      const amountTxt = (it.amount && it.amount.trim()) || args.fixedAmount;
+      const email = it.email || "-";
+      // Format demande:  "1. dealjb : xxxx@hotmail.com — 1000€ (no wag)"
+      lines.push(`${i + 1}. ${it.displayName} : ${email} — ${amountTxt} (${wagerTxt})`);
+    });
+    lines.push("");
+  }
 
   lines.push("");
   lines.push("Merci d'avance pour le traitement.");
