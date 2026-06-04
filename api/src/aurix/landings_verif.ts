@@ -15,10 +15,15 @@
 //      - 'celsius_changed' : DB.affiLink ≠ expected_celsius_url
 
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  type ButtonInteraction,
+  ButtonStyle,
   ChannelType,
   type Client,
   EmbedBuilder,
   type Guild,
+  PermissionFlagsBits,
   TextChannel,
 } from "discord.js";
 import * as cfg from "./config.js";
@@ -28,6 +33,7 @@ const log = (...a: unknown[]) => console.log("[aurix.landings_verif]", ...a);
 
 const VERIF_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h
 const DELAY_BETWEEN_ENTRIES_MS = 1500;
+const LIVE_EDIT_THROTTLE_MS = 1200;
 // Hosts ou nos landings peuvent etre publiees (LunaLive + Landaurax).
 const LANDING_HOSTS = [
   "lunalive.win",
@@ -57,6 +63,40 @@ type RefRow = {
 };
 
 type Status = "ok" | "taap_unreachable" | "taap_off_domain" | "landing_missing" | "celsius_changed";
+type RunSource = "auto" | "manual";
+type LiveStepState = "idle" | "running" | "ok" | "error";
+type LivePhase = "syncing_sheet" | "verifying" | "done";
+type VerifyCounts = Record<Status, number>;
+
+type LiveRunState = {
+  source: RunSource;
+  phase: LivePhase;
+  startedAt: Date;
+  total: number;
+  processed: number;
+  currentPseudo: string | null;
+  taap: LiveStepState;
+  landing: LiveStepState;
+  affi: LiveStepState;
+  note: string | null;
+  counts: VerifyCounts;
+};
+
+type VerifyProgressEvent =
+  | { type: "taap_ok" }
+  | { type: "taap_error"; reason: string }
+  | { type: "landing_ok" }
+  | { type: "landing_error"; reason: string }
+  | { type: "affi_ok" }
+  | { type: "affi_error"; reason: string };
+
+export const LANDING_VERIF_REFRESH_CID = "landing-verif:refresh";
+
+let activeRunPromise: Promise<{ total: number; counts: VerifyCounts }> | null = null;
+let liveRunState: LiveRunState | null = null;
+let lastBoardEditAt = 0;
+let pendingBoardRefreshClient: Client | null = null;
+let pendingBoardRefreshTimer: NodeJS.Timeout | null = null;
 
 // Source de verite: Google Sheet publiee en CSV.
 // URL override-able via env var AURIX_LANDINGS_SHEET_URL.
@@ -69,6 +109,23 @@ function sheetUrl(): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function emptyCounts(): VerifyCounts {
+  return {
+    ok: 0,
+    taap_unreachable: 0,
+    taap_off_domain: 0,
+    landing_missing: 0,
+    celsius_changed: 0,
+  };
+}
+
+function stepBadge(step: LiveStepState): string {
+  if (step === "ok") return "✅";
+  if (step === "error") return "❌";
+  if (step === "running") return "*en cours*";
+  return "—";
 }
 
 // CSV parser robuste : gere les quoted fields, les newlines dans les quotes
@@ -310,10 +367,14 @@ async function findLandingBySlug(slug: string): Promise<{ slug: string; affiLink
   return { slug: row.slug, affiLink: row.affiLink, publishDomain: pd };
 }
 
-async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null; publishDomain: PublishDomain | null }> {
+async function verifyOneRef(
+  ref: RefRow,
+  onProgress?: (event: VerifyProgressEvent) => void
+): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null; publishDomain: PublishDomain | null }> {
   // 1. Resolve taap.it
   const taap = await resolveTaap(ref.taap_url);
   if (!taap.ok) {
+    onProgress?.({ type: "taap_error", reason: taap.reason ?? "taap.it injoignable" });
     return {
       status: "taap_unreachable",
       details: taap.reason ?? "taap.it injoignable",
@@ -324,9 +385,14 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
     };
   }
   const finalUrl = taap.finalUrl!;
+  onProgress?.({ type: "taap_ok" });
 
   // 2. Check domain
   if (!hostMatchesLanding(finalUrl)) {
+    onProgress?.({
+      type: "landing_error",
+      reason: `redirige vers ${new URL(finalUrl).hostname} (hors hosts autorises)`,
+    });
     return {
       status: "taap_off_domain",
       details: `redirige vers ${new URL(finalUrl).hostname} (hors hosts autorises)`,
@@ -344,6 +410,10 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
   // 3. Extract slug, lookup DB
   const slug = extractSlugFromUrl(finalUrl);
   if (!slug) {
+    onProgress?.({
+      type: "landing_error",
+      reason: `slug introuvable dans l'URL finale (${finalUrl})`,
+    });
     return {
       status: "landing_missing",
       details: `slug introuvable dans l'URL finale (${finalUrl})`,
@@ -355,6 +425,10 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
   }
   const landing = await findLandingBySlug(slug);
   if (!landing) {
+    onProgress?.({
+      type: "landing_error",
+      reason: `landing absente en DB (slug=${slug})`,
+    });
     return {
       status: "landing_missing",
       details: `landing absente en DB (slug=${slug})`,
@@ -364,6 +438,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       publishDomain: taapDomain,
     };
   }
+  onProgress?.({ type: "landing_ok" });
 
   // 4. Compare DB.affiLink vs expected_celsius_url
   const dbAffi = landing.affiLink ?? "";
@@ -371,6 +446,7 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
   // Comparaison case-insensitive sur le slug celsius (le slug peut etre
   // mixed-case, on tolere les variations).
   if (dbAffi && dbAffi.toLowerCase() === expected.toLowerCase()) {
+    onProgress?.({ type: "affi_ok" });
     return {
       status: "ok",
       details: "taap → landing OK · DB.affiLink == attendu",
@@ -380,6 +456,10 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
       publishDomain: landing.publishDomain,
     };
   }
+  onProgress?.({
+    type: "affi_error",
+    reason: `DB.affiLink = "${dbAffi}" ≠ attendu "${expected}"`,
+  });
   return {
     status: "celsius_changed",
     details: `DB.affiLink = "${dbAffi}" ≠ attendu "${expected}"`,
@@ -390,20 +470,121 @@ async function verifyOneRef(ref: RefRow): Promise<{ status: Status; details: str
   };
 }
 
-export async function verifyAllRefs(): Promise<{ total: number; counts: Record<Status, number> }> {
+function updateLiveRunState(mutator: (state: LiveRunState) => void): void {
+  if (!liveRunState) return;
+  mutator(liveRunState);
+}
+
+async function flushBoardRefresh(client: Client): Promise<void> {
+  lastBoardEditAt = Date.now();
+  pendingBoardRefreshClient = null;
+  pendingBoardRefreshTimer = null;
+  const guild = await resolveVerifGuild(client);
+  if (!guild) return;
+  await ensureVerifBoard(guild);
+}
+
+function queueBoardRefresh(client: Client, force = false): void {
+  pendingBoardRefreshClient = client;
+  if (force) {
+    if (pendingBoardRefreshTimer) {
+      clearTimeout(pendingBoardRefreshTimer);
+      pendingBoardRefreshTimer = null;
+    }
+    void flushBoardRefresh(client);
+    return;
+  }
+
+  const elapsed = Date.now() - lastBoardEditAt;
+  if (elapsed >= LIVE_EDIT_THROTTLE_MS) {
+    void flushBoardRefresh(client);
+    return;
+  }
+
+  if (pendingBoardRefreshTimer) return;
+  pendingBoardRefreshTimer = setTimeout(() => {
+    const nextClient = pendingBoardRefreshClient;
+    if (!nextClient) {
+      pendingBoardRefreshTimer = null;
+      return;
+    }
+    void flushBoardRefresh(nextClient);
+  }, LIVE_EDIT_THROTTLE_MS - elapsed);
+}
+
+function applyLiveProgress(event: VerifyProgressEvent): void {
+  updateLiveRunState((state) => {
+    if (event.type === "taap_ok") {
+      state.taap = "ok";
+      state.landing = "running";
+      state.note = null;
+      return;
+    }
+    if (event.type === "taap_error") {
+      state.taap = "error";
+      state.landing = "idle";
+      state.affi = "idle";
+      state.note = event.reason;
+      return;
+    }
+    if (event.type === "landing_ok") {
+      state.landing = "ok";
+      state.affi = "running";
+      state.note = null;
+      return;
+    }
+    if (event.type === "landing_error") {
+      state.landing = "error";
+      state.affi = "idle";
+      state.note = event.reason;
+      return;
+    }
+    if (event.type === "affi_ok") {
+      state.affi = "ok";
+      state.note = null;
+      return;
+    }
+    state.affi = "error";
+    state.note = event.reason;
+  });
+}
+
+export async function verifyAllRefs(
+  client?: Client
+): Promise<{ total: number; counts: VerifyCounts }> {
   const refs = await all<RefRow>(
     "SELECT * FROM aurix_landing_verif_refs ORDER BY id ASC"
   );
-  const counts: Record<Status, number> = {
-    ok: 0,
-    taap_unreachable: 0,
-    taap_off_domain: 0,
-    landing_missing: 0,
-    celsius_changed: 0,
-  };
+  const counts = emptyCounts();
+
+  updateLiveRunState((state) => {
+    state.phase = "verifying";
+    state.total = refs.length;
+    state.processed = 0;
+    state.counts = emptyCounts();
+    state.currentPseudo = null;
+    state.taap = "idle";
+    state.landing = "idle";
+    state.affi = "idle";
+    state.note = refs.length === 0 ? "Aucune landing référencée." : "Préparation de la passe…";
+  });
+  if (client) queueBoardRefresh(client, true);
+
   for (const ref of refs) {
+    updateLiveRunState((state) => {
+      state.currentPseudo = ref.pseudo;
+      state.taap = "running";
+      state.landing = "idle";
+      state.affi = "idle";
+      state.note = null;
+    });
+    if (client) queueBoardRefresh(client);
+
     try {
-      const r = await verifyOneRef(ref);
+      const r = await verifyOneRef(ref, (event) => {
+        applyLiveProgress(event);
+        if (client) queueBoardRefresh(client);
+      });
       counts[r.status]++;
       await query(
         `UPDATE aurix_landing_verif_refs
@@ -413,11 +594,33 @@ export async function verifyAllRefs(): Promise<{ total: number; counts: Record<S
          WHERE id=$7`,
         [r.status, r.details, r.taapDest, r.landingSlug, r.dbAffiLink, r.publishDomain, ref.id]
       );
+      updateLiveRunState((state) => {
+        state.processed++;
+        state.counts[r.status]++;
+        state.note = r.details;
+      });
     } catch (e) {
+      const message = String(e);
       log(`verify ref #${ref.id} (${ref.pseudo}) failed:`, e);
+      updateLiveRunState((state) => {
+        state.processed++;
+        state.note = message.slice(0, 180);
+      });
     }
+    if (client) queueBoardRefresh(client);
     await sleep(DELAY_BETWEEN_ENTRIES_MS);
   }
+
+  updateLiveRunState((state) => {
+    state.phase = "done";
+    state.currentPseudo = null;
+    state.taap = "idle";
+    state.landing = "idle";
+    state.affi = "idle";
+    state.note = null;
+  });
+  if (client) queueBoardRefresh(client, true);
+
   return { total: refs.length, counts };
 }
 
@@ -473,7 +676,7 @@ function domainBadge(domain: PublishDomain | null): string {
   return "·";
 }
 
-function buildEmbed(refs: RefRow[]): EmbedBuilder {
+function buildEmbed(refs: RefRow[], live: LiveRunState | null): EmbedBuilder {
   const counts: Record<string, number> = {
     ok: 0,
     celsius_changed: 0,
@@ -495,17 +698,44 @@ function buildEmbed(refs: RefRow[]): EmbedBuilder {
 
   const domLuna = refs.filter((r) => r.last_publish_domain === "lunalive").length;
   const domLandaurax = refs.filter((r) => r.last_publish_domain === "landaurax").length;
-  const summary = [
+  const summaryLines = [
     `**${refs.length}** landings suivies · *dernière passe : ${fmtDate(lastCheck)}*`,
     `✅ \`${counts.ok}\`  ·  🟡 \`${counts.celsius_changed}\`  ·  🔴 \`${counts.landing_missing + counts.taap_off_domain}\`  ·  ⚠️ \`${counts.taap_unreachable}\`  ·  ⚪ \`${counts.unchecked}\``,
     `🟣 LunaLive \`${domLuna}\`  ·  🌹 Landaurax \`${domLandaurax}\``,
-  ].join("\n");
+  ];
+
+  const liveLines: string[] = [];
+  if (live) {
+    if (live.phase === "syncing_sheet") {
+      liveLines.push(`🔄 Vérification ${live.source === "manual" ? "manuelle" : "auto"} en cours · synchronisation de la sheet Google…`);
+    } else if (live.phase === "verifying") {
+      const totalLabel = live.total > 0 ? `${live.processed}/${live.total}` : "0/0";
+      liveLines.push(`🔄 Vérification ${live.source === "manual" ? "manuelle" : "auto"} en cours · \`${totalLabel}\` traitées`);
+      if (live.currentPseudo) {
+        liveLines.push(
+          `**${live.currentPseudo}** en cours : Taap.it : ${stepBadge(live.taap)} / Landing : ${stepBadge(live.landing)} / Affi : ${stepBadge(live.affi)}`
+        );
+      }
+      liveLines.push(
+        `Passe actuelle : ✅ \`${live.counts.ok}\` · 🟡 \`${live.counts.celsius_changed}\` · 🔴 \`${live.counts.landing_missing + live.counts.taap_off_domain}\` · ⚠️ \`${live.counts.taap_unreachable}\``
+      );
+    }
+    if (live.note) {
+      liveLines.push(`*${live.note}*`);
+    }
+  }
+
+  const summary = [...liveLines, ...summaryLines].join("\n");
 
   const embed = new EmbedBuilder()
     .setTitle("🔎  Landing Verif")
     .setDescription(summary)
     .setColor(cfg.COLOR.PRIMARY)
-    .setFooter({ text: `${cfg.BRAND.NAME} • Vérification automatique toutes les 2h` });
+    .setFooter({
+      text: live
+        ? `${cfg.BRAND.NAME} • Vérification automatique toutes les 2h • mise à jour en direct`
+        : `${cfg.BRAND.NAME} • Vérification automatique toutes les 2h`,
+    });
 
   // Lignes compactes, regroupees par section status.
   const order: { key: string; label: string; rows: RefRow[] }[] = [
@@ -556,6 +786,16 @@ function buildEmbed(refs: RefRow[]): EmbedBuilder {
   return embed;
 }
 
+function buildVerifBoardComponents(isRunning: boolean): ActionRowBuilder<ButtonBuilder>[] {
+  const btn = new ButtonBuilder()
+    .setCustomId(LANDING_VERIF_REFRESH_CID)
+    .setStyle(ButtonStyle.Secondary)
+    .setEmoji("🔄")
+    .setLabel(isRunning ? "Vérif en cours…" : "Relancer la vérif");
+  if (isRunning) btn.setDisabled(true);
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(btn)];
+}
+
 export async function ensureVerifBoard(guild: Guild): Promise<void> {
   const ch = await getVerifChannel(guild);
   if (!ch) return;
@@ -564,21 +804,22 @@ export async function ensureVerifBoard(guild: Guild): Promise<void> {
   if (!me) return;
 
   const refs = await all<RefRow>("SELECT * FROM aurix_landing_verif_refs ORDER BY pseudo ASC");
-  const embed = buildEmbed(refs);
+  const embed = buildEmbed(refs, liveRunState);
+  const components = buildVerifBoardComponents(Boolean(liveRunState));
 
   const existingId = await kvGet("landing_verif_message_id");
   if (existingId) {
     try {
       const m = await ch.messages.fetch(existingId);
       if (m.author.id === me.id) {
-        await m.edit({ embeds: [embed] });
+        await m.edit({ embeds: [embed], components });
         return;
       }
     } catch {
       /* deleted, fall through */
     }
   }
-  const m = await ch.send({ embeds: [embed] });
+  const m = await ch.send({ embeds: [embed], components });
   await kvSet("landing_verif_message_id", m.id);
 }
 
@@ -616,14 +857,7 @@ async function resolveVerifGuild(client: Client): Promise<Guild | undefined> {
 }
 
 async function runOnePass(client: Client): Promise<void> {
-  log("Verification pass started.");
-  await syncRefsFromSheet();
-  const r = await verifyAllRefs();
-  const guild = await resolveVerifGuild(client);
-  if (guild) {
-    await ensureVerifBoard(guild);
-    await detectAndNotifyNewProblems(guild);
-  }
+  const r = await ensureLandingCheckRun(client, "auto", true);
   log(`Pass done: ${r.total} refs, counts=${JSON.stringify(r.counts)}`);
 }
 
@@ -709,12 +943,79 @@ async function detectAndNotifyNewProblems(guild: Guild): Promise<void> {
   }
 }
 
-export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: Record<Status, number> }> {
-  await syncRefsFromSheet();
-  const r = await verifyAllRefs();
-  const guild = await resolveVerifGuild(client);
-  if (guild) await ensureVerifBoard(guild);
-  return r;
+async function ensureLandingCheckRun(
+  client: Client,
+  source: RunSource,
+  notifyNewProblems: boolean
+): Promise<{ total: number; counts: VerifyCounts }> {
+  if (activeRunPromise) return activeRunPromise;
+
+  activeRunPromise = (async () => {
+    log(`Verification pass started (${source}).`);
+    liveRunState = {
+      source,
+      phase: "syncing_sheet",
+      startedAt: new Date(),
+      total: 0,
+      processed: 0,
+      currentPseudo: null,
+      taap: "idle",
+      landing: "idle",
+      affi: "idle",
+      note: null,
+      counts: emptyCounts(),
+    };
+    queueBoardRefresh(client, true);
+
+    try {
+      await syncRefsFromSheet();
+      const result = await verifyAllRefs(client);
+      const guild = await resolveVerifGuild(client);
+      liveRunState = null;
+      if (guild) {
+        await ensureVerifBoard(guild);
+        if (notifyNewProblems) await detectAndNotifyNewProblems(guild);
+      }
+      return result;
+    } finally {
+      liveRunState = null;
+      activeRunPromise = null;
+      queueBoardRefresh(client, true);
+    }
+  })();
+
+  return activeRunPromise;
+}
+
+export function isLandingVerifRunning(): boolean {
+  return activeRunPromise !== null;
+}
+
+export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: VerifyCounts }> {
+  return ensureLandingCheckRun(client, "manual", false);
+}
+
+export async function handleLandingVerifRefreshButton(interaction: ButtonInteraction): Promise<void> {
+  const canManage =
+    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+    interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages);
+  if (!canManage) {
+    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+    return;
+  }
+
+  if (isLandingVerifRunning()) {
+    await interaction.reply({
+      content: "Une vérification des landings est déjà en cours sur ce salon.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  void ensureLandingCheckRun(interaction.client as Client, "manual", false).catch((e) => {
+    log("manual landing refresh failed:", e);
+  });
 }
 
 /**

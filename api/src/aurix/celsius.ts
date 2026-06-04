@@ -326,12 +326,19 @@ function statusEmoji(s: "pending" | "verified" | "rejected"): string {
   return "🟡";
 }
 
+function formatViewerLabel(row: Pick<AurixListRow, "viewer_user_id" | "viewer_username">): string {
+  if (row.viewer_username) {
+    return `<@${row.viewer_user_id}> · \`${row.viewer_username}\``;
+  }
+  return `<@${row.viewer_user_id}>`;
+}
+
 function buildSectionField(
   title: string,
   rows: AurixListRow[]
 ): { name: string; value: string } {
   if (rows.length === 0) return { name: title, value: "*(personne)*" };
-  const lines = rows.map((r) => `• <@${r.viewer_user_id}> · \`${r.celsius_email}\``);
+  const lines = rows.map((r) => `• ${formatViewerLabel(r)}`);
   let chunk = "";
   let used = 0;
   for (const line of lines) {
@@ -405,8 +412,8 @@ export async function handleAurixCommand(interaction: ChatInputCommandInteractio
         : cfg.COLOR.WARNING;
 
     const fields: { name: string; value: string; inline?: boolean }[] = [
+      { name: "👤 Discord", value: formatViewerLabel(sub), inline: true },
       { name: "🎰 Pseudo Celsius", value: `\`${sub.celsius_pseudo}\``, inline: true },
-      { name: "✉️ Email", value: `\`${sub.celsius_email}\``, inline: true },
       { name: "💰 Dépôt / mois", value: `\`${sub.monthly_deposit}\``, inline: true },
     ];
     if (sub.status === "rejected" && sub.reject_reason) {
