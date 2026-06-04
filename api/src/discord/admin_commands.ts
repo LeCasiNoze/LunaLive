@@ -53,6 +53,16 @@ const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", c
 // Garde-fou : user + salon
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function checkAllowedUser(
+  interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction
+): Promise<boolean> {
+  if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
+    await interaction.reply({ ephemeral: true, content: "🚫 Cette commande est réservée à l'équipe agence." });
+    return false;
+  }
+  return true;
+}
+
 async function checkAccess(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction): Promise<boolean> {
   if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
     await interaction.reply({ ephemeral: true, content: "🚫 Cette commande est réservée à l'équipe agence." });
@@ -590,7 +600,7 @@ async function handleTiktokInfluenceurAdd(interaction: ChatInputCommandInteracti
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handlePurge(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!await checkAccess(interaction)) return;
+  if (!await checkAllowedUser(interaction)) return;
   await interaction.deferReply({ ephemeral: true });
   try {
     const x = interaction.options.getInteger("x", true);

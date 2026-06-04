@@ -33,6 +33,9 @@ const log = (...a: unknown[]) => console.log("[aurix.landings_verif]", ...a);
 const VERIF_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2h
 const DELAY_BETWEEN_ENTRIES_MS = 1500;
 const LIVE_EDIT_THROTTLE_MS = 1200;
+const PUBLIC_API_BASE = String(
+  process.env.PUBLIC_API_BASE || process.env.RENDER_EXTERNAL_URL || "https://lunalive-api.onrender.com"
+).replace(/\/$/, "");
 // Hosts ou nos landings peuvent etre publiees (LunaLive + Landaurax).
 const LANDING_HOSTS = [
   "lunalive.win",
@@ -50,8 +53,11 @@ function domainFromHost(host: string): PublishDomain {
 type RefRow = {
   id: number;
   pseudo: string;
-  taap_url: string;
+  taap_url: string | null;
   expected_celsius_url: string;
+  page_slug: string | null;
+  page_publish_domain: PublishDomain | null;
+  sheet_matched: boolean;
   last_check_at: Date | null;
   last_status: string | null;
   last_details: string | null;
@@ -61,9 +67,17 @@ type RefRow = {
   last_publish_domain: PublishDomain | null;
 };
 
-type Status = "ok" | "taap_unreachable" | "taap_off_domain" | "landing_missing" | "celsius_changed";
+type Status =
+  | "ok"
+  | "sheet_missing"
+  | "page_unreachable"
+  | "taap_unreachable"
+  | "taap_off_domain"
+  | "taap_mismatch"
+  | "landing_missing"
+  | "celsius_changed";
 type RunSource = "auto" | "manual";
-type LiveStepState = "idle" | "running" | "ok" | "error";
+type LiveStepState = "idle" | "running" | "ok" | "error" | "skipped";
 type LivePhase = "syncing_sheet" | "verifying" | "done";
 type VerifyCounts = Record<Status, number>;
 
@@ -83,14 +97,21 @@ type LiveRunState = {
 
 type VerifyProgressEvent =
   | { type: "taap_ok" }
+  | { type: "taap_skipped" }
   | { type: "taap_error"; reason: string }
   | { type: "landing_ok" }
   | { type: "landing_error"; reason: string }
   | { type: "affi_ok" }
-  | { type: "affi_error"; reason: string };
+  | { type: "affi_error"; reason: string }
+  | { type: "skip_all"; reason: string };
 
 export const LANDING_VERIF_REFRESH_CID = "landing-verif:refresh";
 const LANDING_VERIF_ALLOWED_USERS = new Set(["fabiozsis", "samyzsis", "lecasinoze"]);
+const LANDING_VERIF_ALLOWED_USER_IDS = new Set([
+  "682472610868887567",
+  "406965568755728395",
+  "992099046472831066",
+]);
 
 let activeRunPromise: Promise<{ total: number; counts: VerifyCounts }> | null = null;
 let liveRunState: LiveRunState | null = null;
@@ -114,8 +135,11 @@ function sleep(ms: number): Promise<void> {
 function emptyCounts(): VerifyCounts {
   return {
     ok: 0,
+    sheet_missing: 0,
+    page_unreachable: 0,
     taap_unreachable: 0,
     taap_off_domain: 0,
+    taap_mismatch: 0,
     landing_missing: 0,
     celsius_changed: 0,
   };
@@ -124,6 +148,7 @@ function emptyCounts(): VerifyCounts {
 function stepBadge(step: LiveStepState): string {
   if (step === "ok") return "✅";
   if (step === "error") return "❌";
+  if (step === "skipped") return "N/A";
   if (step === "running") return "*en cours*";
   return "—";
 }
@@ -176,31 +201,90 @@ const RE_CELSIUS = /^https?:\/\/celsius\.games\/[A-Za-z0-9_-]+\/?$/i;
 const RE_TAAP = /^https?:\/\/taap\.it\/[A-Za-z0-9_-]+\/?$/i;
 const BAD_MARKERS = /(pas\s*actif|prison|inactif|inactive)/i;
 
-type SheetRef = { pseudo: string; celsiusUrl: string; taapUrl: string };
+type SheetRef = { pseudo: string; celsiusUrl: string; taapUrl: string | null };
+type V3PageRef = {
+  pseudo: string;
+  slug: string;
+  publishDomain: PublishDomain;
+  affiLink: string;
+  normalizedCelsiusUrl: string;
+};
+type DesiredRef = {
+  pseudo: string;
+  taapUrl: string | null;
+  expectedCelsiusUrl: string;
+  pageSlug: string;
+  pagePublishDomain: PublishDomain;
+  sheetMatched: boolean;
+};
+
+function normalizePageSlug(slug: string | null | undefined): string | null {
+  const value = String(slug || "").trim().toLowerCase();
+  return value || null;
+}
+
+function normalizeCelsiusUrl(url: string | null | undefined): string | null {
+  const raw = String(url || "").trim();
+  if (!raw || !RE_CELSIUS.test(raw)) return null;
+  try {
+    const u = new URL(raw);
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length === 0) return null;
+    return `https://celsius.games/${parts[parts.length - 1].toLowerCase()}`;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeTaapUrl(url: string | null | undefined): string | null {
+  const raw = String(url || "").trim();
+  if (!raw || !RE_TAAP.test(raw)) return null;
+  try {
+    const u = new URL(raw);
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length === 0) return null;
+    return `https://taap.it/${parts[parts.length - 1]}`;
+  } catch {
+    return null;
+  }
+}
+
+function hasInactiveMarker(row: string[]): boolean {
+  return row.some((cell, idx) => {
+    const text = String(cell || "").trim();
+    if (!text) return false;
+    if (idx === 2 && normalizeCelsiusUrl(text)) return false;
+    if (idx === 3 && normalizeTaapUrl(text)) return false;
+    return BAD_MARKERS.test(text);
+  });
+}
+
+function extractAffiLinkFromConfig(config: unknown): string | null {
+  if (!config || typeof config !== "object") return null;
+
+  const cfg = config as Record<string, unknown>;
+  const direct = typeof cfg.affiLink === "string" ? cfg.affiLink.trim() : "";
+  if (direct) return direct;
+
+  const rawInputs = cfg.__v3Inputs;
+  if (!rawInputs || typeof rawInputs !== "object") return null;
+  const nested = (rawInputs as Record<string, unknown>).affiLink;
+  return typeof nested === "string" && nested.trim().length > 0 ? nested.trim() : null;
+}
 
 function extractRefsFromCsv(text: string): SheetRef[] {
   const rows = parseCsv(text);
   if (rows.length === 0) return [];
-  // Skip header row, expect columns: [Type, Nom, Lien, taplink, Lien TELEGRAM]
   const refs: SheetRef[] = [];
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     const pseudo = (r[1] ?? "").trim();
-    const celsius = (r[2] ?? "").trim();
-    const taap = (r[3] ?? "").trim();
-    const telegram = (r[4] ?? "").trim();
+    const celsiusUrl = normalizeCelsiusUrl(r[2] ?? "");
+    const taapUrl = normalizeTaapUrl(r[3] ?? "");
 
-    if (!pseudo) continue;
-    if (!celsius || !RE_CELSIUS.test(celsius)) continue;
-    if (!taap || !RE_TAAP.test(taap)) continue;
-    // Skip si "PAS ACTIF" / "PRISON" / "INACTIF" present dans n'importe quelle colonne.
-    const joined = r.join(" ");
-    if (BAD_MARKERS.test(joined) && !RE_TAAP.test(BAD_MARKERS.exec(joined)?.[0] ?? "")) {
-      // Faux positif possible si un pseudo s'appelle "prison" (improbable),
-      // donc check additionnel: skip uniquement si marker hors des cellules URL.
-      if (BAD_MARKERS.test(telegram) || BAD_MARKERS.test(taap)) continue;
-    }
-    refs.push({ pseudo, celsiusUrl: celsius, taapUrl: taap });
+    if (!pseudo || !celsiusUrl) continue;
+    if (hasInactiveMarker(r)) continue;
+    refs.push({ pseudo, celsiusUrl, taapUrl });
   }
   return refs;
 }
@@ -220,9 +304,10 @@ export async function fetchSheetRefs(): Promise<SheetRef[]> {
 }
 
 /**
- * Synchronise aurix_landing_verif_refs avec la sheet:
- *  - UPSERT chaque ref de la sheet (clef = taap_url)
- *  - DELETE les refs orphelines (plus dans la sheet)
+ * Synchronise aurix_landing_verif_refs avec les pages V3 corrélées à la sheet:
+ *  - source = pages marquées V3 en base
+ *  - corrélation = affiLink de la page <-> lien Celsius de la sheet
+ *  - taap.it est optionnel et n'est plus la clef
  *  - Retourne {added, updated, deleted, total}
  */
 export async function syncRefsFromSheet(): Promise<{
@@ -239,47 +324,127 @@ export async function syncRefsFromSheet(): Promise<{
     return { added: 0, updated: 0, deleted: 0, total: 0 };
   }
 
-  const existing = await all<{ taap_url: string; pseudo: string; expected_celsius_url: string }>(
-    "SELECT taap_url, pseudo, expected_celsius_url FROM aurix_landing_verif_refs"
+  const pages = await all<{
+    slug: string;
+    pseudo: string | null;
+    affi_link: string | null;
+    publish_domain: string | null;
+  }>(
+    `SELECT slug,
+            COALESCE(config::jsonb -> '__v3Inputs' ->> 'pseudo', brand_name, title, slug) AS pseudo,
+            COALESCE(config::jsonb ->> 'affiLink', config::jsonb -> '__v3Inputs' ->> 'affiLink') AS affi_link,
+            publish_domain
+       FROM affi_landing_pages
+      WHERE config::jsonb ? '__v3'
+      ORDER BY updated_at DESC NULLS LAST, id DESC`
   );
-  const existingByTaap = new Map(existing.map((e) => [e.taap_url, e]));
-  const sheetTaapUrls = new Set(sheetRefs.map((r) => r.taapUrl));
+
+  const v3Pages: V3PageRef[] = [];
+  const seenSlugs = new Set<string>();
+  for (const page of pages) {
+    const slug = normalizePageSlug(page.slug);
+    const normalizedCelsiusUrl = normalizeCelsiusUrl(page.affi_link);
+    if (!slug || !normalizedCelsiusUrl || seenSlugs.has(slug)) continue;
+    seenSlugs.add(slug);
+    v3Pages.push({
+      pseudo: String(page.pseudo || slug).trim() || slug,
+      slug,
+      publishDomain: page.publish_domain === "landaurax" ? "landaurax" : "lunalive",
+      affiLink: String(page.affi_link || "").trim(),
+      normalizedCelsiusUrl,
+    });
+  }
+
+  const sheetByCelsius = new Map<string, SheetRef[]>();
+  for (const ref of sheetRefs) {
+    const bucket = sheetByCelsius.get(ref.celsiusUrl) ?? [];
+    bucket.push(ref);
+    sheetByCelsius.set(ref.celsiusUrl, bucket);
+  }
+
+  const desiredRefs: DesiredRef[] = v3Pages.map((page) => {
+    const sheetMatch = sheetByCelsius.get(page.normalizedCelsiusUrl)?.[0] ?? null;
+    return {
+      pseudo: sheetMatch?.pseudo || page.pseudo,
+      taapUrl: sheetMatch?.taapUrl ?? null,
+      expectedCelsiusUrl: sheetMatch?.celsiusUrl || page.normalizedCelsiusUrl,
+      pageSlug: page.slug,
+      pagePublishDomain: page.publishDomain,
+      sheetMatched: Boolean(sheetMatch),
+    };
+  });
+
+  const existing = await all<{
+    id: number;
+    page_slug: string | null;
+    pseudo: string;
+    taap_url: string | null;
+    expected_celsius_url: string;
+    page_publish_domain: string | null;
+    sheet_matched: boolean;
+  }>(
+    `SELECT id, page_slug, pseudo, taap_url, expected_celsius_url, page_publish_domain, sheet_matched
+       FROM aurix_landing_verif_refs`
+  );
+  const existingBySlug = new Map(
+    existing
+      .map((ref) => {
+        const slug = normalizePageSlug(ref.page_slug);
+        return slug ? [slug, ref] : null;
+      })
+      .filter((entry): entry is [string, (typeof existing)[number]] => entry !== null)
+  );
+  const desiredSlugs = new Set(desiredRefs.map((ref) => ref.pageSlug));
 
   let added = 0;
   let updated = 0;
 
-  for (const ref of sheetRefs) {
-    const e = existingByTaap.get(ref.taapUrl);
+  for (const ref of desiredRefs) {
+    const e = existingBySlug.get(ref.pageSlug);
     if (!e) {
       await query(
-        `INSERT INTO aurix_landing_verif_refs(pseudo, taap_url, expected_celsius_url)
-         VALUES($1,$2,$3) ON CONFLICT (taap_url) DO NOTHING`,
-        [ref.pseudo, ref.taapUrl, ref.celsiusUrl]
+        `INSERT INTO aurix_landing_verif_refs(
+            pseudo, taap_url, expected_celsius_url, page_slug, page_publish_domain, sheet_matched
+          )
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [ref.pseudo, ref.taapUrl, ref.expectedCelsiusUrl, ref.pageSlug, ref.pagePublishDomain, ref.sheetMatched]
       );
       added++;
-    } else if (e.pseudo !== ref.pseudo || e.expected_celsius_url !== ref.celsiusUrl) {
+    } else if (
+      e.pseudo !== ref.pseudo ||
+      (e.taap_url ?? null) !== ref.taapUrl ||
+      e.expected_celsius_url !== ref.expectedCelsiusUrl ||
+      (e.page_publish_domain === "landaurax" ? "landaurax" : "lunalive") !== ref.pagePublishDomain ||
+      Boolean(e.sheet_matched) !== ref.sheetMatched
+    ) {
       await query(
         `UPDATE aurix_landing_verif_refs
-            SET pseudo=$1, expected_celsius_url=$2
-          WHERE taap_url=$3`,
-        [ref.pseudo, ref.celsiusUrl, ref.taapUrl]
+            SET pseudo=$1,
+                taap_url=$2,
+                expected_celsius_url=$3,
+                page_publish_domain=$4,
+                sheet_matched=$5
+          WHERE id=$6`,
+        [ref.pseudo, ref.taapUrl, ref.expectedCelsiusUrl, ref.pagePublishDomain, ref.sheetMatched, e.id]
       );
       updated++;
     }
   }
 
-  // Delete orphans (refs en DB mais plus dans la sheet).
-  const orphans = existing.filter((e) => !sheetTaapUrls.has(e.taap_url));
+  const orphans = existing.filter((ref) => {
+    const slug = normalizePageSlug(ref.page_slug);
+    return !slug || !desiredSlugs.has(slug);
+  });
   let deleted = 0;
   for (const o of orphans) {
-    await query("DELETE FROM aurix_landing_verif_refs WHERE taap_url=$1", [o.taap_url]);
+    await query("DELETE FROM aurix_landing_verif_refs WHERE id=$1", [o.id]);
     deleted++;
   }
 
   log(
-    `Sheet sync: total=${sheetRefs.length} added=${added} updated=${updated} deleted=${deleted}`
+    `Landing sync: pages=${v3Pages.length} matched=${desiredRefs.filter((ref) => ref.sheetMatched).length} added=${added} updated=${updated} deleted=${deleted}`
   );
-  return { added, updated, deleted, total: sheetRefs.length };
+  return { added, updated, deleted, total: desiredRefs.length };
 }
 
 /** Compat: ancien nom, redirige vers syncRefsFromSheet. */
@@ -372,7 +537,7 @@ async function verifyOneRef(
   onProgress?: (event: VerifyProgressEvent) => void
 ): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null; publishDomain: PublishDomain | null }> {
   // 1. Resolve taap.it
-  const taap = await resolveTaap(ref.taap_url);
+  const taap = await resolveTaap(ref.taap_url || "");
   if (!taap.ok) {
     onProgress?.({ type: "taap_error", reason: taap.reason ?? "taap.it injoignable" });
     return {
@@ -470,6 +635,234 @@ async function verifyOneRef(
   };
 }
 
+async function fetchLandingPublicStatus(url: string): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 10_000);
+    const r = await fetch(url, {
+      redirect: "follow",
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    }).finally(() => clearTimeout(to));
+    if (!r.ok) return { ok: false, reason: `landing HTTP ${r.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: `landing network: ${String(e).slice(0, 120)}` };
+  }
+}
+
+async function fetchPublicLandingPage(
+  slug: string
+): Promise<{ ok: boolean; affiLink?: string | null; publishDomain?: PublishDomain; reason?: string }> {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 10_000);
+    const r = await fetch(`${PUBLIC_API_BASE}/api/public/affi-pages/${encodeURIComponent(slug)}`, {
+      redirect: "follow",
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    }).finally(() => clearTimeout(to));
+    if (!r.ok) return { ok: false, reason: `API landing HTTP ${r.status}` };
+
+    const data = await r.json().catch(() => null) as
+      | { ok?: boolean; page?: { config?: unknown; publishDomain?: string } }
+      | null;
+    if (!data?.ok || !data.page) return { ok: false, reason: "API landing: page absente ou payload invalide" };
+
+    return {
+      ok: true,
+      affiLink: extractAffiLinkFromConfig(data.page.config),
+      publishDomain: data.page.publishDomain === "landaurax" ? "landaurax" : "lunalive",
+    };
+  } catch (e) {
+    return { ok: false, reason: `API landing network: ${String(e).slice(0, 120)}` };
+  }
+}
+
+function taapTargetsExpectedLanding(finalUrl: string, expectedSlug: string, expectedDomain: PublishDomain): boolean {
+  try {
+    const slug = normalizePageSlug(extractSlugFromUrl(finalUrl));
+    if (!slug || slug !== expectedSlug) return false;
+    return domainFromHost(new URL(finalUrl).hostname) === expectedDomain;
+  } catch {
+    return false;
+  }
+}
+
+async function verifyOneRefV2(
+  ref: RefRow,
+  onProgress?: (event: VerifyProgressEvent) => void
+): Promise<{ status: Status; details: string; taapDest: string | null; landingSlug: string | null; dbAffiLink: string | null; publishDomain: PublishDomain | null }> {
+  const pageSlug = normalizePageSlug(ref.page_slug);
+  const pageDomain: PublishDomain | null =
+    ref.page_publish_domain === "landaurax" ? "landaurax" : ref.page_publish_domain === "lunalive" ? "lunalive" : null;
+  const expected = normalizeCelsiusUrl(ref.expected_celsius_url) || ref.expected_celsius_url.trim();
+
+  if (!pageSlug || !pageDomain) {
+    const reason = "page V3 invalide en DB (slug ou domaine manquant)";
+    onProgress?.({ type: "skip_all", reason });
+    return {
+      status: "page_unreachable",
+      details: reason,
+      taapDest: null,
+      landingSlug: pageSlug,
+      dbAffiLink: null,
+      publishDomain: pageDomain,
+    };
+  }
+
+  if (!ref.sheet_matched) {
+    const reason = "aucune ligne Google Sheet ne correspond au lien Celsius de cette page";
+    onProgress?.({ type: "skip_all", reason });
+    return {
+      status: "sheet_missing",
+      details: reason,
+      taapDest: null,
+      landingSlug: pageSlug,
+      dbAffiLink: ref.expected_celsius_url,
+      publishDomain: pageDomain,
+    };
+  }
+
+  let taapDest: string | null = null;
+  if (ref.taap_url) {
+    const taap = await resolveTaap(ref.taap_url);
+    if (!taap.ok) {
+      onProgress?.({ type: "taap_error", reason: taap.reason ?? "taap.it injoignable" });
+      return {
+        status: "taap_unreachable",
+        details: taap.reason ?? "taap.it injoignable",
+        taapDest: null,
+        landingSlug: pageSlug,
+        dbAffiLink: null,
+        publishDomain: pageDomain,
+      };
+    }
+    taapDest = taap.finalUrl ?? null;
+    onProgress?.({ type: "taap_ok" });
+
+    if (!taapDest || !hostMatchesLanding(taapDest)) {
+      const host = taapDest ? new URL(taapDest).hostname : "inconnu";
+      const reason = `taap.it redirige vers ${host} (hors hosts autorises)`;
+      onProgress?.({ type: "landing_error", reason });
+      return {
+        status: "taap_off_domain",
+        details: reason,
+        taapDest,
+        landingSlug: pageSlug,
+        dbAffiLink: null,
+        publishDomain: pageDomain,
+      };
+    }
+
+    if (!taapTargetsExpectedLanding(taapDest, pageSlug, pageDomain)) {
+      const expectedUrl = landingUrl(pageSlug, pageDomain);
+      const reason = `taap.it redirige vers ${taapDest} au lieu de ${expectedUrl}`;
+      onProgress?.({ type: "landing_error", reason });
+      return {
+        status: "taap_mismatch",
+        details: reason,
+        taapDest,
+        landingSlug: pageSlug,
+        dbAffiLink: null,
+        publishDomain: pageDomain,
+      };
+    }
+  } else {
+    onProgress?.({ type: "taap_skipped" });
+  }
+
+  const publicUrl = landingUrl(pageSlug, pageDomain);
+  if (!publicUrl) {
+    const reason = "URL publique introuvable pour cette landing";
+    onProgress?.({ type: "landing_error", reason });
+    return {
+      status: "page_unreachable",
+      details: reason,
+      taapDest,
+      landingSlug: pageSlug,
+      dbAffiLink: null,
+      publishDomain: pageDomain,
+    };
+  }
+
+  const landingStatus = await fetchLandingPublicStatus(publicUrl);
+  if (!landingStatus.ok) {
+    const reason = landingStatus.reason ?? "landing publique injoignable";
+    onProgress?.({ type: "landing_error", reason });
+    return {
+      status: "page_unreachable",
+      details: reason,
+      taapDest,
+      landingSlug: pageSlug,
+      dbAffiLink: null,
+      publishDomain: pageDomain,
+    };
+  }
+
+  const publicPage = await fetchPublicLandingPage(pageSlug);
+  if (!publicPage.ok) {
+    const reason = publicPage.reason ?? "API publique de landing injoignable";
+    onProgress?.({ type: "landing_error", reason });
+    return {
+      status: "page_unreachable",
+      details: reason,
+      taapDest,
+      landingSlug: pageSlug,
+      dbAffiLink: null,
+      publishDomain: pageDomain,
+    };
+  }
+
+  if (publicPage.publishDomain !== pageDomain) {
+    const reason = `publishDomain public = "${publicPage.publishDomain}" au lieu de "${pageDomain}"`;
+    onProgress?.({ type: "landing_error", reason });
+    return {
+      status: "page_unreachable",
+      details: reason,
+      taapDest,
+      landingSlug: pageSlug,
+      dbAffiLink: publicPage.affiLink ?? null,
+      publishDomain: publicPage.publishDomain ?? pageDomain,
+    };
+  }
+
+  onProgress?.({ type: "landing_ok" });
+
+  const publicAffi = publicPage.affiLink ?? "";
+  const normalizedPublicAffi = normalizeCelsiusUrl(publicAffi);
+  if (normalizedPublicAffi && normalizedPublicAffi === expected) {
+    onProgress?.({ type: "affi_ok" });
+    return {
+      status: "ok",
+      details: ref.taap_url ? "taap.it, landing et affi OK" : "landing et affi OK (taap non renseigne)",
+      taapDest,
+      landingSlug: pageSlug,
+      dbAffiLink: publicAffi,
+      publishDomain: pageDomain,
+    };
+  }
+
+  const reason = publicAffi
+    ? `page.affiLink = "${publicAffi}" ≠ attendu "${ref.expected_celsius_url}"`
+    : "page publique sans affiLink exploitable";
+  onProgress?.({ type: "affi_error", reason });
+  return {
+    status: "celsius_changed",
+    details: reason,
+    taapDest,
+    landingSlug: pageSlug,
+    dbAffiLink: publicAffi || null,
+    publishDomain: pageDomain,
+  };
+}
+
 function updateLiveRunState(mutator: (state: LiveRunState) => void): void {
   if (!liveRunState) return;
   mutator(liveRunState);
@@ -520,6 +913,12 @@ function applyLiveProgress(event: VerifyProgressEvent): void {
       state.note = null;
       return;
     }
+    if (event.type === "taap_skipped") {
+      state.taap = "skipped";
+      state.landing = "running";
+      state.note = null;
+      return;
+    }
     if (event.type === "taap_error") {
       state.taap = "error";
       state.landing = "idle";
@@ -542,6 +941,13 @@ function applyLiveProgress(event: VerifyProgressEvent): void {
     if (event.type === "affi_ok") {
       state.affi = "ok";
       state.note = null;
+      return;
+    }
+    if (event.type === "skip_all") {
+      state.taap = "skipped";
+      state.landing = "skipped";
+      state.affi = "skipped";
+      state.note = event.reason;
       return;
     }
     state.affi = "error";
@@ -581,7 +987,7 @@ export async function verifyAllRefs(
     if (client) queueBoardRefresh(client);
 
     try {
-      const r = await verifyOneRef(ref, (event) => {
+      const r = await verifyOneRefV2(ref, (event) => {
         applyLiveProgress(event);
         if (client) queueBoardRefresh(client);
       });
@@ -786,6 +1192,128 @@ function buildEmbed(refs: RefRow[], live: LiveRunState | null): EmbedBuilder {
   return embed;
 }
 
+function statusBadgeV2(status: string | null): string {
+  if (status === "ok") return "✅";
+  if (status === "celsius_changed") return "🟡";
+  if (status === "sheet_missing") return "🟠";
+  if (status === "page_unreachable") return "🔴";
+  if (status === "taap_off_domain") return "🔴";
+  if (status === "taap_mismatch") return "🔴";
+  if (status === "taap_unreachable") return "⚠️";
+  return "⚪";
+}
+
+function buildEmbedV2(refs: RefRow[], live: LiveRunState | null): EmbedBuilder {
+  const counts = {
+    ok: 0,
+    celsius_changed: 0,
+    sheet_missing: 0,
+    page_unreachable: 0,
+    taap_off_domain: 0,
+    taap_mismatch: 0,
+    taap_unreachable: 0,
+    landing_missing: 0,
+    unchecked: 0,
+  };
+
+  for (const ref of refs) {
+    const key = ref.last_status ?? "unchecked";
+    counts[key as keyof typeof counts] = (counts[key as keyof typeof counts] ?? 0) + 1;
+  }
+
+  const lastCheck = refs.reduce<Date | null>((acc, ref) => {
+    if (!ref.last_check_at) return acc;
+    const d = new Date(ref.last_check_at);
+    return acc && acc > d ? acc : d;
+  }, null);
+
+  const domLuna = refs.filter((ref) => (ref.page_publish_domain ?? ref.last_publish_domain) === "lunalive").length;
+  const domLandaurax = refs.filter((ref) => (ref.page_publish_domain ?? ref.last_publish_domain) === "landaurax").length;
+  const redCount =
+    counts.sheet_missing + counts.page_unreachable + counts.taap_off_domain + counts.taap_mismatch + counts.landing_missing;
+
+  const summaryLines = [
+    `**${refs.length}** landings suivies · *dernière passe : ${fmtDate(lastCheck)}*`,
+    `✅ \`${counts.ok}\`  ·  🟡 \`${counts.celsius_changed}\`  ·  🔴 \`${redCount}\`  ·  ⚠️ \`${counts.taap_unreachable}\`  ·  ⚪ \`${counts.unchecked}\``,
+    `🟣 LunaLive \`${domLuna}\`  ·  🌹 Landaurax \`${domLandaurax}\``,
+  ];
+
+  const liveLines: string[] = [];
+  if (live) {
+    if (live.phase === "syncing_sheet") {
+      liveLines.push(`🔄 Vérification ${live.source === "manual" ? "manuelle" : "auto"} en cours · synchronisation V3 + sheet…`);
+    } else if (live.phase === "verifying") {
+      const totalLabel = live.total > 0 ? `${live.processed}/${live.total}` : "0/0";
+      liveLines.push(`🔄 Vérification ${live.source === "manual" ? "manuelle" : "auto"} en cours · \`${totalLabel}\` traitées`);
+      if (live.currentPseudo) {
+        liveLines.push(
+          `**${live.currentPseudo}** en cours : Taap.it : ${stepBadge(live.taap)} / Landing : ${stepBadge(live.landing)} / Affi : ${stepBadge(live.affi)}`
+        );
+      }
+      liveLines.push(
+        `Passe actuelle : ✅ \`${live.counts.ok}\` · 🟡 \`${live.counts.celsius_changed}\` · 🔴 \`${live.counts.sheet_missing + live.counts.page_unreachable + live.counts.taap_off_domain + live.counts.taap_mismatch + live.counts.landing_missing}\` · ⚠️ \`${live.counts.taap_unreachable}\``
+      );
+    }
+    if (live.note) liveLines.push(`*${live.note}*`);
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("🔎  Landing Verif")
+    .setDescription([...liveLines, ...summaryLines].join("\n"))
+    .setColor(cfg.COLOR.PRIMARY)
+    .setFooter({
+      text: live
+        ? `${cfg.BRAND.NAME} • vérification automatique toutes les 2h • mise à jour en direct`
+        : `${cfg.BRAND.NAME} • vérification automatique toutes les 2h`,
+    });
+
+  const sections: { label: string; rows: RefRow[] }[] = [
+    { label: "Problèmes (à traiter)", rows: refs.filter((ref) => ref.last_status && ref.last_status !== "ok") },
+    { label: `Tout OK (${counts.ok})`, rows: refs.filter((ref) => ref.last_status === "ok") },
+    { label: "Pas encore vérifiées", rows: refs.filter((ref) => !ref.last_status) },
+  ];
+
+  for (const section of sections) {
+    if (section.rows.length === 0) continue;
+
+    const lines = section.rows.map((ref) => {
+      const badge = statusBadgeV2(ref.last_status);
+      const dom = domainBadge(ref.page_publish_domain ?? ref.last_publish_domain);
+      const landing = landingUrl(ref.page_slug ?? ref.last_landing_slug, ref.page_publish_domain ?? ref.last_publish_domain);
+      const links: string[] = [];
+      if (ref.taap_url) links.push(`[taap](${ref.taap_url})`);
+      if (landing) links.push(`[landing](${landing})`);
+      links.push(`[affi](${ref.expected_celsius_url})`);
+      const issueSuffix =
+        ref.last_status && ref.last_status !== "ok" && ref.last_details ? ` — *${ref.last_details}*` : "";
+      return `${badge}${dom} **${ref.pseudo}** · ${fmtTime(ref.last_check_at)} · ${links.join(" · ")}${issueSuffix}`;
+    });
+
+    const chunks: string[] = [];
+    let current = "";
+    for (const line of lines) {
+      const next = current ? `${current}\n${line}` : line;
+      if (next.length > 1000) {
+        chunks.push(current);
+        current = line;
+      } else {
+        current = next;
+      }
+    }
+    if (current) chunks.push(current);
+
+    chunks.forEach((value, index) => {
+      embed.addFields({ name: index === 0 ? section.label : "​", value });
+    });
+  }
+
+  if (refs.length === 0) {
+    embed.addFields({ name: "​", value: "*Aucune landing référencée.*" });
+  }
+
+  return embed;
+}
+
 function buildVerifBoardComponents(isRunning: boolean): ActionRowBuilder<ButtonBuilder>[] {
   const btn = new ButtonBuilder()
     .setCustomId(LANDING_VERIF_REFRESH_CID)
@@ -804,7 +1332,7 @@ export async function ensureVerifBoard(guild: Guild): Promise<void> {
   if (!me) return;
 
   const refs = await all<RefRow>("SELECT * FROM aurix_landing_verif_refs ORDER BY pseudo ASC");
-  const embed = buildEmbed(refs, liveRunState);
+  const embed = buildEmbedV2(refs, liveRunState);
   const components = buildVerifBoardComponents(Boolean(liveRunState));
 
   const existingId = await kvGet("landing_verif_message_id");
@@ -943,6 +1471,88 @@ async function detectAndNotifyNewProblems(guild: Guild): Promise<void> {
   }
 }
 
+async function detectAndNotifyNewProblemsV2(guild: Guild): Promise<void> {
+  const current = await all<{
+    pseudo: string;
+    page_slug: string | null;
+    last_status: string;
+    last_details: string | null;
+  }>(
+    `SELECT pseudo, page_slug, last_status, last_details
+       FROM aurix_landing_verif_refs
+      WHERE last_status IS NOT NULL AND last_status <> 'ok'`
+  );
+
+  const currentKeys = current
+    .map((entry) => normalizePageSlug(entry.page_slug))
+    .filter((entry): entry is string => Boolean(entry))
+    .sort();
+  const currentJson = JSON.stringify(currentKeys);
+  const previousRaw = await kvGet("landing_verif_known_problems");
+
+  if (previousRaw === null) {
+    await kvSet("landing_verif_known_problems", currentJson);
+    log(`Baseline anomalies enregistree (${currentKeys.length} entrees).`);
+    return;
+  }
+
+  let previousSet: Set<string>;
+  try {
+    const parsed = JSON.parse(previousRaw);
+    previousSet = new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    previousSet = new Set();
+  }
+
+  const newOnes = current.filter((entry) => {
+    const slug = normalizePageSlug(entry.page_slug);
+    return slug ? !previousSet.has(slug) : false;
+  });
+  await kvSet("landing_verif_known_problems", currentJson);
+
+  if (newOnes.length === 0) return;
+
+  const chId = await kvGet("channel_landing_verif_id");
+  if (!chId) return;
+  const ch = guild.channels.cache.get(chId);
+  if (!ch || ch.type !== ChannelType.GuildText) return;
+
+  const lines = newOnes.map((entry) => {
+    const tag =
+      entry.last_status === "celsius_changed"
+        ? "🟡 affiLink Celsius modifié"
+        : entry.last_status === "sheet_missing"
+        ? "🟠 aucune ligne correspondante dans la sheet"
+        : entry.last_status === "page_unreachable"
+        ? "🔴 landing publique injoignable"
+        : entry.last_status === "taap_off_domain"
+        ? "🔴 taap.it redirige hors des domaines attendus"
+        : entry.last_status === "taap_mismatch"
+        ? "🔴 taap.it pointe vers la mauvaise landing"
+        : entry.last_status === "taap_unreachable"
+        ? "⚠️ taap.it injoignable / cassé"
+        : `🔴 ${entry.last_status}`;
+    return `• **${entry.pseudo}** — ${tag}${entry.last_details ? ` · *${entry.last_details}*` : ""}`;
+  });
+
+  const plural = newOnes.length > 1 ? "s" : "";
+  const content = [
+    `@here 🚨 **Nouvelle${plural} anomalie${plural} détectée${plural} sur les landings**`,
+    "",
+    ...lines,
+  ].join("\n");
+
+  try {
+    await (ch as TextChannel).send({
+      content,
+      allowedMentions: { parse: ["everyone"] },
+    });
+    log(`Ping anomalie poste pour ${newOnes.length} ref(s) nouvelle(s).`);
+  } catch (e) {
+    log("Ping anomalie failed:", e);
+  }
+}
+
 async function ensureLandingCheckRun(
   client: Client,
   source: RunSource,
@@ -974,7 +1584,7 @@ async function ensureLandingCheckRun(
       liveRunState = null;
       if (guild) {
         await ensureVerifBoard(guild);
-        if (notifyNewProblems) await detectAndNotifyNewProblems(guild);
+        if (notifyNewProblems) await detectAndNotifyNewProblemsV2(guild);
       }
       return result;
     } finally {
@@ -992,6 +1602,7 @@ export function isLandingVerifRunning(): boolean {
 }
 
 function isLandingVerifAllowedUser(interaction: ButtonInteraction): boolean {
+  if (LANDING_VERIF_ALLOWED_USER_IDS.has(interaction.user.id)) return true;
   const member = interaction.member as { displayName?: string | null } | null;
   const candidates = [
     interaction.user.username,
