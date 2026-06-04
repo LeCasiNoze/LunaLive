@@ -23,7 +23,6 @@ import {
   type Client,
   EmbedBuilder,
   type Guild,
-  PermissionFlagsBits,
   TextChannel,
 } from "discord.js";
 import * as cfg from "./config.js";
@@ -91,6 +90,7 @@ type VerifyProgressEvent =
   | { type: "affi_error"; reason: string };
 
 export const LANDING_VERIF_REFRESH_CID = "landing-verif:refresh";
+const LANDING_VERIF_ALLOWED_USERS = new Set(["fabiozsis", "samyzsis", "lecasinoze"]);
 
 let activeRunPromise: Promise<{ total: number; counts: VerifyCounts }> | null = null;
 let liveRunState: LiveRunState | null = null;
@@ -991,16 +991,26 @@ export function isLandingVerifRunning(): boolean {
   return activeRunPromise !== null;
 }
 
+function isLandingVerifAllowedUser(interaction: ButtonInteraction): boolean {
+  const member = interaction.member as { displayName?: string | null } | null;
+  const candidates = [
+    interaction.user.username,
+    interaction.user.globalName,
+    member?.displayName,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    .map((v) => v.trim().toLowerCase());
+
+  return candidates.some((v) => LANDING_VERIF_ALLOWED_USERS.has(v));
+}
+
 export async function triggerManualCheck(client: Client): Promise<{ total: number; counts: VerifyCounts }> {
   return ensureLandingCheckRun(client, "manual", false);
 }
 
 export async function handleLandingVerifRefreshButton(interaction: ButtonInteraction): Promise<void> {
-  const canManage =
-    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
-    interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages);
-  if (!canManage) {
-    await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+  if (!isLandingVerifAllowedUser(interaction)) {
+    await interaction.reply({ content: "Commande réservée à Fabiozsis, Samyzsis et LeCasinoze.", ephemeral: true });
     return;
   }
 
