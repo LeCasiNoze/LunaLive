@@ -647,7 +647,18 @@ async function fetchLandingPublicStatus(url: string): Promise<{ ok: boolean; rea
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
     }).finally(() => clearTimeout(to));
-    if (!r.ok) return { ok: false, reason: `landing HTTP ${r.status}` };
+    if (!r.ok) {
+      const contentType = (r.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("text/html")) {
+        const html = await r.text().catch(() => "");
+        // Render peut servir la SPA de landing avec un status 404 tout en
+        // laissant le navigateur afficher correctement la page publiee.
+        // Dans ce cas, on laisse l'etape API publique trancher sur l'existence
+        // reelle du slug au lieu de classer la landing en faux negatif ici.
+        if (html.includes("/api/public/affi-pages/")) return { ok: true };
+      }
+      return { ok: false, reason: `landing HTTP ${r.status}` };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: `landing network: ${String(e).slice(0, 120)}` };
