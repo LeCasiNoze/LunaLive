@@ -2,6 +2,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, ModalBuilder, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, TextInputBuilder, TextInputStyle, } from "discord.js";
 import * as cfg from "./config.js";
 import { all, kvGet, kvSet, one, query } from "./db.js";
+import { sendCelsiusValidatedDM, sendCelsiusRejectedDM } from "./celsius_dm.js";
 const DEFAULT_SORT = "date_desc";
 const QUEUE_FILTER_ALL = "__ALL__";
 function sortClause(mode) {
@@ -174,6 +175,8 @@ export async function ensureWatcherBoard(guild) {
         await kvSet("watcher_stats_message_id", newStatsId);
     // 3e message sticky : file de traitement (1 demande à la fois + boutons).
     await ensureQueueMessage(guild);
+    // Notif ping owner dans 🗂️-gestion (delete+repost pour eviter l'accumulation).
+    await ensureGestionNotification(guild);
 }
 export async function refreshWatcherBoard(client) {
     const guildId = process.env.AURIX_GUILD_ID;
@@ -295,6 +298,35 @@ export async function handleWatcherSort(interaction) {
     if (interaction.guild)
         await ensureWatcherBoard(interaction.guild);
 }
+/** Envoie le DM viewer apres une decision (verified / rejected). */
+async function dmAfterDecision(client, submissionId, decision) {
+    const sub = await one(`SELECT viewer_user_id, celsius_pseudo, monthly_deposit, monthly_deposit_amount, guild_name, reject_reason
+       FROM aurix_celsius_submissions WHERE id=$1`, [submissionId]);
+    if (!sub)
+        return;
+    try {
+        if (decision === "verified") {
+            const amt = sub.monthly_deposit_amount != null ? Number(sub.monthly_deposit_amount) : null;
+            await sendCelsiusValidatedDM(client, {
+                viewerUserId: sub.viewer_user_id,
+                pseudo: sub.celsius_pseudo,
+                monthlyDeposit: sub.monthly_deposit,
+                monthlyDepositAmount: Number.isFinite(amt) ? amt : null,
+                guildName: sub.guild_name ?? "ton serveur",
+            });
+        }
+        else {
+            await sendCelsiusRejectedDM(client, {
+                viewerUserId: sub.viewer_user_id,
+                pseudo: sub.celsius_pseudo,
+                rejectReason: sub.reject_reason,
+            });
+        }
+    }
+    catch (e) {
+        console.error("[aurix.watcher] dmAfterDecision failed:", e);
+    }
+}
 export async function handleWatcherValidate(interaction) {
     const submissionId = Number(interaction.customId.split(":").pop());
     if (!Number.isFinite(submissionId)) {
@@ -308,6 +340,7 @@ export async function handleWatcherValidate(interaction) {
     await interaction.deferUpdate();
     await query("UPDATE aurix_celsius_submissions SET status='verified', decided_by=$1, verified_at=NOW(), reject_reason=NULL WHERE id=$2", [interaction.user.id, submissionId]);
     await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+    await dmAfterDecision(interaction.client, submissionId, "verified");
     if (interaction.guild)
         await ensureWatcherBoard(interaction.guild);
 }
@@ -339,6 +372,7 @@ export async function handleWatcherRejectModal(interaction) {
     await interaction.deferReply({ ephemeral: true });
     await query("UPDATE aurix_celsius_submissions SET status='rejected', decided_by=$1, verified_at=NOW(), reject_reason=$2 WHERE id=$3", [interaction.user.id, reason, submissionId]);
     await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+    await dmAfterDecision(interaction.client, submissionId, "rejected");
     if (interaction.guild)
         await ensureWatcherBoard(interaction.guild);
     await interaction.editReply({ content: "🔴 Demande refusée." });
@@ -522,6 +556,7 @@ export async function handleQueueAccept(interaction) {
     await interaction.deferUpdate();
     await query("UPDATE aurix_celsius_submissions SET status='verified', decided_by=$1, verified_at=NOW(), reject_reason=NULL WHERE id=$2", [interaction.user.id, submissionId]);
     await editReviewToDecision(interaction.client, submissionId, interaction.user.id);
+    await dmAfterDecision(interaction.client, submissionId, "verified");
     if (interaction.guild)
         await ensureWatcherBoard(interaction.guild);
 }
@@ -568,4 +603,75 @@ export async function handleQueueFilterSelect(interaction) {
     await interaction.deferUpdate();
     if (interaction.guild)
         await ensureWatcherBoard(interaction.guild);
+}
+// ═════════════════════════════════════════════════════════
+// Notif 🗂️-gestion : ping owner quand une nouvelle demande arrive
+// (delete + repost pour ne jamais accumuler).
+// ═════════════════════════════════════════════════════════
+async function ensureGestionNotification(guild) {
+    const gestionId = await kvGet("channel_gestion_id");
+    const watcherId = await kvGet("channel_watcher_id");
+    if (!gestionId)
+        return;
+    const ch = guild.channels.cache.get(gestionId);
+    if (!ch || ch.type !== ChannelType.GuildText)
+        return;
+    const me = guild.members.me;
+    if (!me)
+        return;
+    // Supprime l'ancien message s'il existe (pour eviter l'accumulation).
+    const oldId = await kvGet("gestion_notif_message_id");
+    if (oldId) {
+        try {
+            const old = await ch.messages.fetch(oldId);
+            if (old.author.id === me.id)
+                await old.delete();
+        }
+        catch {
+            /* deja supprime */
+        }
+        await kvSet("gestion_notif_message_id", "");
+    }
+    // Recupere la prochaine demande dans la file (en respectant le filtre actuel).
+    const filter = await getQueueFilter();
+    const next = await fetchNextPending(filter);
+    const remaining = await countPendingForFilter(filter);
+    // Si rien a traiter, on n'a rien a notifier.
+    if (!next || remaining === 0)
+        return;
+    const guildLabel = next.guild_name || `Guild ${next.guild_id.slice(-4)}`;
+    const watcherMention = watcherId ? `<#${watcherId}>` : "**🕵️-the-watcher**";
+    const ownerMention = `<@${guild.ownerId}>`;
+    const multi = await fetchMultiServerUserIds();
+    const isMulti = multi.has(next.viewer_user_id);
+    const embed = new EmbedBuilder()
+        .setTitle("🔔  Nouvelle demande de vérification Celsius")
+        .setColor(cfg.COLOR.WARNING)
+        .setDescription([
+        `Une demande de vérification vient d'être soumise.`,
+        `**Total en attente :** \`${remaining}\``,
+        "",
+        `**Dernière demande :**`,
+        `👤 Viewer : <@${next.viewer_user_id}> (\`${next.viewer_username}\`)`,
+        `🎰 Pseudo Celsius : \`${next.celsius_pseudo}\``,
+        `💰 Dépôt moyen / mois : \`${fmtAmount(next)}\``,
+        `🎙️ Serveur d'origine : *${guildLabel}*`,
+        isMulti ? `\n⚠️ *Viewer présent sur plusieurs Discord — à examiner.*` : "",
+        "",
+        `→ Traiter dans ${watcherMention}`,
+    ]
+        .filter(Boolean)
+        .join("\n"))
+        .setFooter({ text: `${cfg.BRAND.NAME} • Submission #${next.id}` });
+    try {
+        const msg = await ch.send({
+            content: ownerMention,
+            embeds: [embed],
+            allowedMentions: { users: [guild.ownerId] },
+        });
+        await kvSet("gestion_notif_message_id", msg.id);
+    }
+    catch (e) {
+        console.error("[aurix.watcher] gestion notif post failed:", e);
+    }
 }

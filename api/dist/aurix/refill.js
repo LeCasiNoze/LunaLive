@@ -1,4 +1,4 @@
-// Refill : /refill (montant fixe), /refill-cancel, /refill-sent, /compte, cutoff quotidien.
+// Refill : /refill (montant fixe), /refill-cancel, /compte, cutoff quotidien + listener Telegram /done.
 import { ActionRowBuilder, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, } from "discord.js";
 import * as cfg from "./config.js";
 import { all, kvGet, kvGetInt, one, query } from "./db.js";
@@ -183,11 +183,17 @@ function buildBatchEmbed(batch, reqs) {
     }
     else {
         const lines = reqs.map((r, i) => {
-            const parts = [`**${i + 1}.** <@${r.user_id}>`];
+            // user_id negatif = sentinelle auto-refill (pas de mention Discord).
+            const isAuto = Number(r.user_id) < 0;
+            const who = isAuto ? `**${r.username}** _(auto)_` : `<@${r.user_id}>`;
+            const parts = [`**${i + 1}.** ${who}`];
             if (r.casino_username)
                 parts.push(`🎰 \`${r.casino_username}\``);
             if (r.email)
                 parts.push(`✉️ \`${r.email}\``);
+            const amountTxt = r.amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+            const wagerTxt = r.wager || "no wag";
+            parts.push(`💰 \`${amountTxt}\` _(${wagerTxt})_`);
             if (r.notes)
                 parts.push(`📝 *${r.notes}*`);
             return parts.join(" · ");
@@ -273,7 +279,7 @@ async function refreshBatchMessage(client, batch) {
         const enriched = [];
         for (const r of reqs) {
             const acc = await getAccount(r.user_id);
-            enriched.push({ ...r, email: acc?.email ?? null });
+            enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
         }
         await msg.edit({ embeds: [buildBatchEmbed(batch, enriched)] });
     }
@@ -288,41 +294,62 @@ async function ensureInOwnTicket(interaction) {
         await interaction.reply({ content: "Commande utilisable uniquement en salon.", ephemeral: true });
         return false;
     }
-    const row = await one("SELECT user_id FROM aurix_tickets WHERE channel_id=$1 AND status='open'", [ch.id]);
-    if (!row) {
+    const { getLinkedUserIds } = await import("./tickets.js");
+    const linkedIds = await getLinkedUserIds(ch.id);
+    if (linkedIds.length === 0) {
         await interaction.reply({
             content: `${cfg.EMOJI.cross} \`/refill\` n'est utilisable que dans **ton ticket privé**.`,
             ephemeral: true,
         });
         return false;
     }
-    if (row.user_id !== interaction.user.id) {
+    if (!linkedIds.includes(interaction.user.id)) {
         await interaction.reply({
-            content: `${cfg.EMOJI.cross} Seul le streamer propriétaire de ce ticket peut faire la demande.`,
+            content: `${cfg.EMOJI.cross} Seul le streamer propriétaire de ce ticket (ou son binôme déclaré) peut faire la demande.`,
             ephemeral: true,
         });
         return false;
     }
     return true;
 }
+/** Email fallback : si l'user n'a pas d'email enregistre, prend celui d'un binome lie. */
+async function findGroupEmail(channelId, requesterId) {
+    const { getLinkedUserIds } = await import("./tickets.js");
+    const linkedIds = await getLinkedUserIds(channelId);
+    // Try the requester first, then partners.
+    const ordered = [requesterId, ...linkedIds.filter((id) => id !== requesterId)];
+    for (const id of ordered) {
+        const acc = await getAccount(id);
+        if (acc?.email)
+            return acc.email;
+    }
+    return null;
+}
 // ───────────── /refill ─────────────
 export async function handleRefillCommand(interaction) {
     if (!(await ensureInOwnTicket(interaction)))
         return;
+    const channelId = interaction.channel.id;
+    const { getLinkedUserIds } = await import("./tickets.js");
+    const linkedIds = await getLinkedUserIds(channelId);
     const batch = await getOpenBatch();
     if (batch) {
-        const dup = await one("SELECT id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id=$2", [batch.id, interaction.user.id]);
+        // Dedup : 1 seule demande par GROUPE (owner + binomes) par batch.
+        const dup = await one("SELECT id, user_id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id = ANY($2::bigint[])", [batch.id, linkedIds]);
         if (dup) {
+            const who = dup.user_id === interaction.user.id ? "Tu as" : `<@${dup.user_id}> a`;
             await interaction.reply({
-                content: `${cfg.EMOJI.info} Tu as déjà une demande en attente pour ce batch. Utilise \`/refill-cancel\` puis recommence si besoin.`,
+                content: `${cfg.EMOJI.info} ${who} déjà soumis une demande pour ce batch. Une seule demande par ticket et par jour (binôme inclus). Utilise \`/refill-cancel\` puis recommence si besoin.`,
                 ephemeral: true,
+                allowedMentions: { users: [] },
             });
             return;
         }
     }
-    const acc = await getAccount(interaction.user.id);
-    if (acc?.email) {
-        await submitRefill(interaction, acc.email);
+    // Email : 1) du requester, 2) sinon d'un binome lie, 3) sinon modal.
+    const groupEmail = await findGroupEmail(channelId, interaction.user.id);
+    if (groupEmail) {
+        await submitRefill(interaction, groupEmail);
         return;
     }
     // Modal pour la 1ère fois
@@ -373,15 +400,19 @@ async function submitRefillCore(interaction, email) {
         return;
     }
     const acc = await getAccount(interaction.user.id);
-    await query(`INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, notes, ticket_channel_id)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    // Resolve per-user overrides (amount + wager), fallback aux defauts.
+    const refillAmount = acc?.refill_amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+    const wager = acc?.wager || "no wag";
+    await query(`INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, wager, notes, ticket_channel_id)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT(batch_id, user_id) DO NOTHING`, [
         batch.id,
         interaction.user.id,
         interaction.user.tag,
         acc?.casino_username ?? null,
         email,
-        cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
+        refillAmount,
+        wager,
         null,
         channel.id,
     ]);
@@ -417,9 +448,13 @@ export async function handleRefillCancelCommand(interaction) {
         await interaction.reply({ content: "Aucun batch ouvert.", ephemeral: true });
         return;
     }
-    const row = await one("SELECT id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id=$2", [batch.id, interaction.user.id]);
+    // Annule la demande du groupe (binome inclus) — un seul refill par groupe.
+    const channelId = interaction.channel.id;
+    const { getLinkedUserIds } = await import("./tickets.js");
+    const linkedIds = await getLinkedUserIds(channelId);
+    const row = await one("SELECT id, user_id FROM aurix_refill_requests WHERE batch_id=$1 AND user_id = ANY($2::bigint[])", [batch.id, linkedIds]);
     if (!row) {
-        await interaction.reply({ content: "Tu n'as pas de demande en cours.", ephemeral: true });
+        await interaction.reply({ content: "Aucune demande en cours pour ce ticket.", ephemeral: true });
         return;
     }
     await query("DELETE FROM aurix_refill_requests WHERE id=$1", [row.id]);
@@ -427,24 +462,6 @@ export async function handleRefillCancelCommand(interaction) {
     await interaction.reply({ content: `${cfg.EMOJI.check} Demande annulée.`, ephemeral: true });
     if (interaction.guild) {
         await logEvent(interaction.guild, `↩️ <@${interaction.user.id}> a annulé sa demande (batch #${batch.id})`);
-    }
-}
-// ───────────── /refill-sent ─────────────
-export async function handleRefillSentCommand(interaction) {
-    const batch = await one("SELECT * FROM aurix_refill_batches WHERE status='locked' ORDER BY id DESC LIMIT 1");
-    if (!batch) {
-        await interaction.reply({ content: "Aucun batch verrouillé.", ephemeral: true });
-        return;
-    }
-    await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
-    batch.status = "sent";
-    await refreshBatchMessage(interaction.client, batch);
-    await interaction.reply({
-        content: `${cfg.EMOJI.check} Batch #${batch.id} marqué comme envoyé.`,
-        ephemeral: true,
-    });
-    if (interaction.guild) {
-        await logEvent(interaction.guild, `📤 Batch #${batch.id} marqué envoyé par <@${interaction.user.id}>`);
     }
 }
 // ───────────── /compte ─────────────
@@ -537,6 +554,20 @@ async function triggerCutoff(client, batch) {
         guild = client.guilds.cache.first();
     if (!guild)
         return;
+    // Injecte les auto-refills dus pour ce batch (non-Discord users : dealjb, etc).
+    await injectAutoRefills(batch);
+    // Si aucune demande dans le batch -> aucun message envoye (ni staff-chat
+    // ni Telegram). On auto-mark 'sent' pour pas laisser le batch en
+    // 'locked' eternel.
+    const reqsCount = await getRequests(batch.id);
+    if (reqsCount.length === 0) {
+        log(`Cutoff: batch #${batch.id} vide -> aucun message envoye.`);
+        await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
+        batch.status = "sent";
+        await refreshBatchMessage(client, batch);
+        await ensureOpenBatch(guild);
+        return;
+    }
     const staffChatId = await kvGet("channel_staff_chat_id");
     const staffChat = staffChatId ? guild.channels.cache.get(staffChatId) : null;
     if (!staffChat || staffChat.type !== 0) {
@@ -546,11 +577,11 @@ async function triggerCutoff(client, batch) {
         const roleDirectionId = await kvGet("role_direction_id");
         const roleModerateurId = await kvGet("role_moderateur_id");
         const managerMention = (await kvGet("manager_mention")) ?? "*(à configurer via /config manager)*";
-        const reqs = await getRequests(batch.id);
+        const reqs = reqsCount;
         const enriched = [];
         for (const r of reqs) {
             const acc = await getAccount(r.user_id);
-            enriched.push({ ...r, email: acc?.email ?? null });
+            enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
         }
         const plain = buildPlainListForManager(enriched);
         const mentions = [];
@@ -571,12 +602,202 @@ async function triggerCutoff(client, batch) {
             "```",
         ].join("\n"))
             .setColor(cfg.COLOR.WARNING)
-            .setFooter({ text: `${cfg.BRAND.NAME} • Une fois envoyé, fais /refill-sent` });
+            .setFooter({ text: `${cfg.BRAND.NAME} • Manager confirmera via /done sur Telegram` });
         await staffChat.send({
             content: mentions.join(" ") || undefined,
             embeds: [embed],
             allowedMentions: { roles: mentions.length ? [roleDirectionId, roleModerateurId].filter((x) => !!x) : [] },
         });
+        // Construit la liste enrichie avec displayName Discord (nickname > globalName > username).
+        const guildForCutoff = guild;
+        const items = await Promise.all(enriched.map(async (r) => {
+            let displayName = r.username;
+            const isAuto = Number(r.user_id) < 0;
+            if (!isAuto) {
+                try {
+                    const m = await guildForCutoff.members.fetch(r.user_id);
+                    displayName = m.displayName || m.user.globalName || m.user.username;
+                }
+                catch {
+                    /* membre parti, on garde le username stocke */
+                }
+            }
+            return {
+                ticket_channel_id: r.ticket_channel_id,
+                user_id: r.user_id,
+                displayName,
+                email: r.email,
+                casinoUsername: r.casino_username,
+                amount: r.amount,
+                wager: r.wager,
+            };
+        }));
+        // Envoi Telegram puis, SI succes, auto-mark batch envoye + notify tickets.
+        try {
+            const { sendRefillBatchToTelegram } = await import("./telegram.js");
+            const dayDateFr = fmtDayDateFr(batch.cutoff_at, tz());
+            const res = await sendRefillBatchToTelegram({
+                batchId: batch.id,
+                dayDateFr,
+                managerMention,
+                fixedAmount: cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
+                count: reqs.length,
+                items: items.map((it) => ({
+                    displayName: it.displayName,
+                    casinoUsername: it.casinoUsername,
+                    email: it.email,
+                    amount: it.amount,
+                    wager: it.wager,
+                })),
+            });
+            if (res.ok) {
+                // Le batch reste 'locked' jusqu'a ce que le manager tape /done sur Telegram.
+                // On notifie juste les streamers que leur demande est transmise.
+                await notifyRequestersTransmitted(guildForCutoff, batch.id, items);
+            }
+            else {
+                log(`Telegram send returned not ok: ${res.reason} — pas de notification ticket.`);
+            }
+        }
+        catch (e) {
+            log("Telegram send failed:", e);
+        }
     }
     await ensureOpenBatch(guild);
+}
+function fmtDayDateFr(d, zone) {
+    const weekday = new Intl.DateTimeFormat("fr-FR", { weekday: "long", timeZone: zone }).format(d);
+    const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", timeZone: zone }).format(d);
+    const month = new Intl.DateTimeFormat("fr-FR", { month: "2-digit", timeZone: zone }).format(d);
+    const year = new Intl.DateTimeFormat("fr-FR", { year: "numeric", timeZone: zone }).format(d);
+    return `${weekday} ${day}/${month}/${year}`;
+}
+async function notifyRequestersTransmitted(guild, batchId, items) {
+    for (const it of items) {
+        if (!it.ticket_channel_id)
+            continue;
+        const ch = guild.channels.cache.get(it.ticket_channel_id);
+        if (!ch || ch.type !== 0)
+            continue;
+        try {
+            const embed = new EmbedBuilder()
+                .setTitle(`${cfg.EMOJI.check} Demande transmise au manager`)
+                .setDescription([
+                `Salut <@${it.user_id}> 👋`,
+                "",
+                `Ta demande de refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **transmise au manager**.`,
+                `Il s'occupera du virement sur ton compte casino dès que possible — tu n'as rien à faire de plus.`,
+                "",
+                `À demain pour une nouvelle demande ${cfg.EMOJI.diamond}`,
+            ].join("\n"))
+                .setColor(cfg.COLOR.SUCCESS)
+                .setFooter({ text: `${cfg.BRAND.NAME} • Batch #${batchId}` });
+            await ch.send({
+                content: `<@${it.user_id}>`,
+                embeds: [embed],
+                allowedMentions: { users: [it.user_id] },
+            });
+        }
+        catch (e) {
+            log("notifyRequestersTransmitted failed for ticket", it.ticket_channel_id, e);
+        }
+    }
+}
+// ═════════════════════════════════════════════════════════
+// Telegram /done — le manager confirme que les refills sont effectués.
+// On marque le batch sent + on notifie chaque ticket.
+// ═════════════════════════════════════════════════════════
+export function startTelegramRefillHandler(client) {
+    void import("./telegram.js").then(({ startTelegramListener }) => {
+        startTelegramListener(async (text) => {
+            const t = text.trim();
+            if (!/^\/done(@\w+)?$/i.test(t))
+                return;
+            await processRefillDone(client);
+        });
+    });
+}
+async function processRefillDone(client) {
+    const { sendTelegramText } = await import("./telegram.js");
+    const batch = await one("SELECT * FROM aurix_refill_batches WHERE status='locked' ORDER BY id DESC LIMIT 1");
+    if (!batch) {
+        await sendTelegramText("⚠️ Aucun batch en attente côté Aurix. Rien à marquer comme effectué.");
+        return;
+    }
+    await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
+    batch.status = "sent";
+    await refreshBatchMessage(client, batch);
+    const env = loadEnv();
+    let guild;
+    if (env.GUILD_ID)
+        guild = client.guilds.cache.get(env.GUILD_ID);
+    if (!guild)
+        guild = client.guilds.cache.first();
+    if (!guild) {
+        await sendTelegramText(`✅ Batch #${batch.id} marqué effectué (impossible de notifier les tickets — guild introuvable).`);
+        return;
+    }
+    const reqs = await getRequests(batch.id);
+    let notified = 0;
+    for (const r of reqs) {
+        if (!r.ticket_channel_id)
+            continue;
+        const ch = guild.channels.cache.get(r.ticket_channel_id);
+        if (!ch || ch.type !== 0)
+            continue;
+        try {
+            const embed = new EmbedBuilder()
+                .setTitle(`${cfg.EMOJI.money} Refill effectué !`)
+                .setDescription([
+                `Salut <@${r.user_id}>,`,
+                "",
+                `Ton refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **effectué** par le manager Aurix.`,
+                `Jette un œil à ton compte casino — c'est crédité (ou ça arrive d'une minute à l'autre).`,
+                "",
+                `Bon stream ${cfg.EMOJI.fire}`,
+            ].join("\n"))
+                .setColor(cfg.COLOR.SUCCESS)
+                .setFooter({ text: `${cfg.BRAND.NAME} • Batch #${batch.id}` });
+            await ch.send({
+                content: `<@${r.user_id}>`,
+                embeds: [embed],
+                allowedMentions: { users: [r.user_id] },
+            });
+            notified++;
+        }
+        catch (e) {
+            log("ticket notify (done) failed:", r.ticket_channel_id, e);
+        }
+    }
+    await sendTelegramText(`✅ Batch #${batch.id} marqué effectué — ${notified} streamer(s) notifié(s) sur Discord.`);
+}
+// ═════════════════════════════════════════════════════════
+// Auto-refills (recurrents, non-Discord users : dealjb, etc).
+// ═════════════════════════════════════════════════════════
+// On insere dans aurix_refill_requests avec un user_id sentinelle
+// negatif (= -auto.id) pour eviter toute collision avec un Discord ID
+// (toujours > 0). La fetch de membre Discord echouera silencieusement
+// au moment du Telegram et on retombera sur le `username` stocke
+// (= display_name de l'auto-refill).
+async function injectAutoRefills(batch) {
+    const autos = await all(`SELECT id, email, amount, wager, display_name, cadence_days
+       FROM aurix_auto_refills
+      WHERE active = TRUE AND next_run_at <= NOW()
+      ORDER BY id`);
+    for (const a of autos) {
+        const virtualUserId = `-${a.id}`; // sentinelle (negatif)
+        const insRes = await query(`INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, wager, notes, ticket_channel_id)
+       VALUES($1, $2, $3, NULL, $4, $5, $6, $7, NULL)
+       ON CONFLICT (batch_id, user_id) DO NOTHING`, [batch.id, virtualUserId, a.display_name, a.email, a.amount, a.wager || "no wag", `Auto-refill recurrent (cadence ${a.cadence_days}j)`]);
+        await query(`UPDATE aurix_auto_refills
+          SET next_run_at = next_run_at + (cadence_days * INTERVAL '1 day'),
+              updated_at = NOW()
+        WHERE id = $1`, [a.id]);
+        if ((insRes.rowCount ?? 0) > 0) {
+            log(`Auto-refill injecte: ${a.display_name} ${a.amount} -> batch #${batch.id}`);
+        }
+        else {
+            log(`Auto-refill ${a.display_name} deja present dans batch #${batch.id} (idempotent skip)`);
+        }
+    }
 }

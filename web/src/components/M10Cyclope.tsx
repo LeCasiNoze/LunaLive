@@ -65,6 +65,8 @@ export type M10CyclopeProps = {
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   /** Animation appliquee au pseudo. */
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
+  /** Affiche le block VIP (teaser principal + mini sticky). */
+  showVip?: boolean;
   /** Masque le block VIP (teaser principal + mini sticky). Default false. */
   hideVip?: boolean;
   /** Callback editeur : appelée au clic sur un élément éditable.
@@ -134,6 +136,7 @@ export function M10Cyclope({
   pseudoStyle,
   pseudoVariant,
   pseudoAnimation,
+  showVip,
   hideVip,
   onEditField,
 }: M10CyclopeProps) {
@@ -195,6 +198,7 @@ export function M10Cyclope({
 
   const dep = depositAmount != null ? `${depositAmount}€` : "";
   const bon = bonusAmount != null ? `${bonusAmount}€` : "";
+  const vipVisible = typeof showVip === "boolean" ? showVip : !hideVip;
   const safeAffi = affiLink || "#";
   const netBonus = (depositAmount != null && bonusAmount != null) ? bonusAmount - depositAmount : null;
   const rewardScore = (netBonus != null && netBonus > 0) ? `+${netBonus}€` : (bon ? `+${bon}` : "Bonus 100%");
@@ -459,7 +463,7 @@ export function M10Cyclope({
         </section>
 
         {/* VIP teaser principal — juste avant la FAQ pour capter l'attention */}
-        {!hideVip ? (
+        {vipVisible ? (
           <section className="m10-vip-band">
             <button
               type="button"
@@ -527,7 +531,7 @@ export function M10Cyclope({
           🚀 JE PRENDS {bon ? `MES ${bon}` : "MON BONUS"}
         </a>
         {/* VIP teaser discret sous le sticky CTA (toujours accessible) */}
-        {!hideVip ? (
+        {vipVisible ? (
           <button
             type="button"
             className="m10-vip-teaser-mini"

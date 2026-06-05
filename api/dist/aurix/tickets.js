@@ -1,7 +1,28 @@
 // Tickets : ouverture (bouton), fermeture (bouton staff), close auto si membre part / perd le rôle Streamer.
 import { ActionRowBuilder, ChannelType, EmbedBuilder, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle, } from "discord.js";
 import * as cfg from "./config.js";
-import { kvGet, one, query } from "./db.js";
+import { all, kvGet, one, query } from "./db.js";
+// ─── Tickets liés (binomes) ───
+// Un user peut soit etre proprietaire de son ticket, soit etre partner
+// d'un autre ticket (binome qui partage le ticket + le refill).
+/** Retourne owner + tous les partners pour un ticket donne. */
+export async function getLinkedUserIds(channelId) {
+    const owner = await one("SELECT user_id FROM aurix_tickets WHERE channel_id=$1 AND status='open'", [channelId]);
+    if (!owner)
+        return [];
+    const partners = await all("SELECT partner_user_id FROM aurix_ticket_partners WHERE ticket_channel_id=$1", [channelId]);
+    return [owner.user_id, ...partners.map((p) => p.partner_user_id)];
+}
+/** Cherche le channel_id du ticket ou ce user est owner ou partner. */
+export async function findUserTicketChannel(userId) {
+    const owned = await one("SELECT channel_id FROM aurix_tickets WHERE user_id=$1 AND status='open' LIMIT 1", [userId]);
+    if (owned)
+        return owned.channel_id;
+    const partner = await one(`SELECT p.ticket_channel_id FROM aurix_ticket_partners p
+       JOIN aurix_tickets t ON t.channel_id=p.ticket_channel_id
+      WHERE p.partner_user_id=$1 AND t.status='open' LIMIT 1`, [userId]);
+    return partner ? partner.ticket_channel_id : null;
+}
 async function createTicketChannel(guild, member, type) {
     const catId = await kvGet("category_tickets_open_id");
     if (!catId)
@@ -77,17 +98,20 @@ async function createTicketChannel(guild, member, type) {
     return channel;
 }
 async function ensureNoOpenTicket(interaction, guild, member) {
-    const existing = await one("SELECT channel_id FROM aurix_tickets WHERE user_id=$1 AND status='open' LIMIT 1", [member.id]);
-    if (existing) {
-        const ch = guild.channels.cache.get(existing.channel_id);
+    // Owner ou partner d'un ticket existant ?
+    const existingChannelId = await findUserTicketChannel(member.id);
+    if (existingChannelId) {
+        const ch = guild.channels.cache.get(existingChannelId);
         if (ch) {
             await interaction.reply({
-                content: `${cfg.EMOJI.info} Tu as déjà un ticket ouvert : ${ch.toString()}`,
+                content: `${cfg.EMOJI.info} Tu as déjà un ticket ouvert (ou tu y es rattaché en binôme) : ${ch.toString()}`,
                 ephemeral: true,
             });
             return false;
         }
-        await query("DELETE FROM aurix_tickets WHERE channel_id=$1", [existing.channel_id]);
+        // Salon supprimé manuellement — nettoie la DB.
+        await query("DELETE FROM aurix_tickets WHERE channel_id=$1", [existingChannelId]);
+        await query("DELETE FROM aurix_ticket_partners WHERE ticket_channel_id=$1", [existingChannelId]);
     }
     return true;
 }
@@ -372,4 +396,66 @@ export async function logEvent(guild, message) {
             /* ignore */
         }
     }
+}
+// ─────────── /link-partner (admin) — rattache un binome au ticket courant ───────────
+export async function handleLinkPartnerCommand(interaction) {
+    const guild = interaction.guild;
+    const channel = interaction.channel;
+    if (!guild || !channel || channel.type !== ChannelType.GuildText) {
+        await interaction.reply({ content: "Erreur de contexte.", ephemeral: true });
+        return;
+    }
+    const ticket = await one("SELECT user_id FROM aurix_tickets WHERE channel_id=$1 AND status='open'", [channel.id]);
+    if (!ticket) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Cette commande s'utilise dans un **ticket Aurix ouvert**.`,
+            ephemeral: true,
+        });
+        return;
+    }
+    const partnerUser = interaction.options.getUser("user", true);
+    if (partnerUser.id === ticket.user_id) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Le propriétaire ne peut pas être son propre binôme.`,
+            ephemeral: true,
+        });
+        return;
+    }
+    // Verifie que le partner n'est pas deja rattache a un autre ticket.
+    const existingForPartner = await findUserTicketChannel(partnerUser.id);
+    if (existingForPartner && existingForPartner !== channel.id) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} <@${partnerUser.id}> est déjà rattaché à un autre ticket : <#${existingForPartner}>. Ferme-le d'abord (\`/close-ticket\` dedans).`,
+            ephemeral: true,
+        });
+        return;
+    }
+    await query("INSERT INTO aurix_ticket_partners(ticket_channel_id, partner_user_id) VALUES($1,$2) ON CONFLICT DO NOTHING", [channel.id, partnerUser.id]);
+    // Ajoute (ou met a jour) l'overwrite permission pour le partner sur ce salon.
+    let permsOk = false;
+    try {
+        await channel.permissionOverwrites.edit(partnerUser.id, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+            AttachFiles: true,
+            EmbedLinks: true,
+        }, { reason: `Aurix: binome lie par ${interaction.user.tag}` });
+        permsOk = true;
+    }
+    catch (e) {
+        console.error("[aurix.tickets] link-partner perms failed:", e);
+    }
+    const permsLine = permsOk
+        ? `• Il peut voir et écrire dans ce salon.`
+        : `⚠️ *L'attribution des permissions du salon a échoué — vérifie les logs Render et la hiérarchie des rôles du bot.*`;
+    await interaction.reply({
+        content: [
+            `${cfg.EMOJI.check} <@${partnerUser.id}> est désormais **rattaché à ce ticket en binôme**.`,
+            permsLine,
+            `• Il peut utiliser \`/refill\` (1 seule demande par jour pour le binôme, ils partagent l'email).`,
+        ].join("\n"),
+        allowedMentions: { users: [] },
+    });
+    await logEvent(guild, `🔗 <@${partnerUser.id}> rattaché en binôme à ${channel.toString()} par <@${interaction.user.id}>`);
 }

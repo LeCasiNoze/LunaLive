@@ -1073,7 +1073,7 @@ function fmtDate(d: Date | null): string {
 
 function landingUrl(slug: string | null, domain: PublishDomain | null): string | null {
   if (!slug) return null;
-  if (domain === "landaurax") return `https://landaurax.com/${slug}`;
+  if (domain === "landaurax") return `https://landaurax.onrender.com/${slug}`;
   return `https://lunalive.win/r/${slug}`;
 }
 function domainBadge(domain: PublishDomain | null): string {

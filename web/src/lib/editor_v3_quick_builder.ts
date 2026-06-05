@@ -227,8 +227,10 @@ export interface V3QuickInputs {
   /** Lien Telegram a afficher sous le CTA principal (uniquement M2/M5V1
    *  pour le moment). Si vide, pas de bouton. */
   telegramUrl?: string;
+  /** Affiche le block VIP sur M10. Default false pour les nouvelles pages. */
+  showVip?: boolean;
   /** Masque le block VIP (teaser principal + mini sticky) sur M10.
-   *  Default false. */
+   *  Legacy only: conserve le rendu des anciennes pages. */
   hideVip?: boolean;
 }
 
@@ -237,8 +239,8 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     modelKind,
     pseudo: "",
     affiLink: "",
-    depositAmount: modelKind === "M2" ? 20 : 10,
-    bonusAmount: 20,
+    depositAmount: 20,
+    bonusAmount: 40,
     profileImageUrl: "",
     card1Image: { kind: "penalty", url: V3_GAME_IMAGES[0].url },
     card2Image: { kind: "mines",   url: V3_GAME_IMAGES[1].url },
@@ -269,6 +271,7 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     gameBonusPct: "550%",
     pseudoVariant: "fade",
     pseudoAnimation: "none",
+    showVip: false,
   };
 }
 
@@ -562,6 +565,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           gameBonusPct: inputs.gameBonusPct,
           pseudoVariant: inputs.pseudoVariant,
           pseudoAnimation: inputs.pseudoAnimation,
+          showVip: inputs.showVip,
           pseudoStyle: pseudoStyleResolved,
           hideVip: inputs.hideVip,
         } as any,

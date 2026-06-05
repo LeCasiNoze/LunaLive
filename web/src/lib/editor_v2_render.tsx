@@ -403,6 +403,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
         gameBonusPct={b.gameBonusPct}
         pseudoVariant={b.pseudoVariant}
         pseudoAnimation={b.pseudoAnimation}
+        showVip={b.showVip}
         hideVip={b.hideVip}
       />
     );

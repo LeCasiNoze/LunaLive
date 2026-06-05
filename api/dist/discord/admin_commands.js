@@ -17,9 +17,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, } from "discord.js";
 import { pool } from "../db.js";
 import { refreshAgencyFeesBoard } from "../agency_fees_board.js";
-import { buildV3PageFromQuickInputs } from "../lib/affi_v3_quick_builder.js";
 import { makeV2BlockId } from "../lib/affi_v2_types.js";
-import { M1_THEMES, getM1Theme, themeToColors } from "../lib/m1_themes.js";
+import { getM1Theme, themeToColors } from "../lib/m1_themes.js";
 import { loadUnpaidOccurrences, markExpensePaid } from "../lib/expenses_unpaid.js";
 const LOG = "[admin-cmd]";
 const ALLOWED_USER_IDS = new Set([
@@ -29,10 +28,30 @@ const ALLOWED_USER_IDS = new Set([
 ]);
 const QG_CHANNEL_ID = "1501890674620891268";
 const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_LANDAURAX_BASE = String(process.env.PUBLIC_LANDAURAX_BASE || process.env.VITE_LANDAURAX_SITE_URL || "https://landaurax.onrender.com").replace(/\/$/, "");
+const LANDING_EDITOR_RETURN_TO = "/FSB_Board?section=tools";
 const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
+function landingPublicUrl(slug, domain = "lunalive") {
+    return domain === "landaurax" ? `${PUBLIC_LANDAURAX_BASE}/${slug}` : `${PUBLIC_WEB_BASE}/r/${slug}`;
+}
+function landingEditorUrl(pageId, slug) {
+    const params = new URLSearchParams({
+        pageId: String(pageId),
+        slug,
+        returnTo: LANDING_EDITOR_RETURN_TO,
+    });
+    return `${PUBLIC_WEB_BASE}/editorFSNV3?${params.toString()}`;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Garde-fou : user + salon
 // ─────────────────────────────────────────────────────────────────────────────
+async function checkAllowedUser(interaction) {
+    if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
+        await interaction.reply({ ephemeral: true, content: "🚫 Cette commande est réservée à l'équipe agence." });
+        return false;
+    }
+    return true;
+}
 async function checkAccess(interaction) {
     if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
         await interaction.reply({ ephemeral: true, content: "🚫 Cette commande est réservée à l'équipe agence." });
@@ -171,12 +190,18 @@ const LANDING_MODEL_LABEL = {
 async function handleLandingCreer(interaction) {
     if (!await checkAccess(interaction))
         return;
-    const rawModel = (interaction.options.getString("model") || "M1").toUpperCase();
-    const modelKind = (["M1", "M3", "M4", "M5", "M6"].includes(rawModel) ? rawModel : "M1");
-    const rawTheme = (interaction.options.getString("theme") || "gold").toLowerCase();
-    const themeKey = (M1_THEMES.some(t => t.key === rawTheme) ? rawTheme : "gold");
+    {
+        const quickModal = new ModalBuilder()
+            .setCustomId(MODAL_LANDING_CREER)
+            .setTitle("Landing V3 - M10");
+        quickModal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("pseudo").setLabel("Pseudo / nom du streamer").setStyle(TextInputStyle.Short).setMaxLength(60).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("affiLink").setLabel("Lien d'affiliation (URL complete)").setStyle(TextInputStyle.Short).setMaxLength(400).setRequired(true)));
+        await interaction.showModal(quickModal);
+        return;
+    }
+    const modelKind = "M10";
+    const themeKey = "cyclope";
     const modal = new ModalBuilder()
-        .setCustomId(`${MODAL_LANDING_CREER}:${modelKind}:${themeKey}`)
+        .setCustomId(MODAL_LANDING_CREER)
         .setTitle(`Landing V3 — ${modelKind} / ${getM1Theme(themeKey).label}`.slice(0, 45));
     modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("pseudo").setLabel("Pseudo / nom du streamer").setStyle(TextInputStyle.Short).setMaxLength(60).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("affiLink").setLabel("Lien d'affiliation (URL complète)").setStyle(TextInputStyle.Short).setMaxLength(400).setRequired(true)), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("depositAmount").setLabel("Dépôt min en € (vide = ligne masquée)").setStyle(TextInputStyle.Short).setMaxLength(8).setRequired(false).setValue("10")), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("bonusAmount").setLabel("Bonus € à jouer (vide = ligne masquée)").setStyle(TextInputStyle.Short).setMaxLength(8).setRequired(false).setValue("20")), new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("profileImageUrl").setLabel("URL photo de profil (optionnel)").setStyle(TextInputStyle.Short).setMaxLength(400).setRequired(false)));
     await interaction.showModal(modal);
@@ -184,82 +209,166 @@ async function handleLandingCreer(interaction) {
 async function handleLandingCreerSubmit(interaction) {
     await interaction.deferReply({ ephemeral: true });
     try {
+        {
+            const pseudo = interaction.fields.getTextInputValue("pseudo").trim();
+            const affiLink = interaction.fields.getTextInputValue("affiLink").trim();
+            if (!pseudo)
+                throw new Error("Pseudo requis");
+            if (!/^https?:\/\//i.test(affiLink))
+                throw new Error("Lien d'affiliation invalide (doit commencer par http(s)://)");
+            const depositAmount = 20;
+            const bonusAmount = 40;
+            const publishDomain = "landaurax";
+            const inputs = {
+                modelKind: "M10",
+                m1UseTheme: true,
+                m1Theme: "cyclope",
+                pseudo,
+                affiLink,
+                depositAmount,
+                bonusAmount,
+                profileImageUrl: "",
+                gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
+                gameLabel: "POULET",
+                gameBonusPct: "550%",
+                pseudoVariant: "fade",
+                pseudoAnimation: "none",
+                showVip: false,
+            };
+            const v2Page = buildLandingM10Page({
+                pseudo,
+                affiLink,
+                depositAmount,
+                bonusAmount,
+                showVip: false,
+            });
+            const builderSlug = String(v2Page.slug || "").trim();
+            const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+            const slug = await resolveUniqueSlug(baseSlug || "landing");
+            v2Page.slug = slug;
+            const config = { ...v2Page, __v3: true, __v3Inputs: inputs };
+            const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
+            const r = await pool.query(`
+        INSERT INTO affi_landing_pages
+          (slug, model, variant, brand_name, title, config, editor_version, owner_user_id, publish_domain, created_at, updated_at)
+        VALUES ($1, 4, NULL, $2, $3, $4::jsonb, 2, $5, $6, NOW(), NOW())
+        RETURNING id, slug, publish_domain
+        `, [slug, pseudo, pseudo, JSON.stringify(config), ownerUserId, publishDomain]);
+            const id = Number(r.rows[0].id);
+            const finalSlug = String(r.rows[0].slug);
+            const finalDomain = r.rows[0].publish_domain === "landaurax" ? "landaurax" : "lunalive";
+            const publicUrl = landingPublicUrl(finalSlug, finalDomain);
+            const editorUrl = landingEditorUrl(id, finalSlug);
+            const embed = new EmbedBuilder()
+                .setColor(0xFF4B6E)
+                .setTitle("Landing V3 creee - M10")
+                .setURL(publicUrl)
+                .setDescription(`Page **${pseudo}** creee et publiee sur **Landaurax** (#${id}, slug \`${finalSlug}\`).\n\n` +
+                `Montants par defaut : **20 EUR / 40 EUR**. Ouvre le lien de modification pour l'ajuster directement dans le FSB Board V3.`)
+                .addFields({ name: "URL publique", value: publicUrl, inline: false }, { name: "Modifier dans le FSB Board V3", value: editorUrl, inline: false });
+            const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Voir la page").setURL(publicUrl), new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Modifier (V3)").setURL(editorUrl));
+            await interaction.editReply({ embeds: [embed], components: [row] });
+            return;
+        }
+        /*
         // customId = "admin:landing:creer:modal:M3:emerald" → parse model + theme
         const suffix = interaction.customId.slice(MODAL_LANDING_CREER.length + 1);
         const [rawModel, rawTheme] = suffix.split(":");
         const modelUp = (rawModel || "").toUpperCase();
-        const modelKind = (["M1", "M3", "M4", "M5", "M6"].includes(modelUp) ? modelUp : "M1");
+        const modelKind: LandingModelKind = (["M1","M3","M4","M5","M6"].includes(modelUp) ? modelUp : "M1") as LandingModelKind;
         const themeLo = (rawTheme || "gold").toLowerCase();
-        const themeKey = (M1_THEMES.some(t => t.key === themeLo) ? themeLo : "gold");
-        const pseudo = interaction.fields.getTextInputValue("pseudo").trim();
+        const themeKey: M1ThemeKey = (M1_THEMES.some(t => t.key === themeLo) ? themeLo : "gold") as M1ThemeKey;
+    
+        const pseudo  = interaction.fields.getTextInputValue("pseudo").trim();
         const affiLink = interaction.fields.getTextInputValue("affiLink").trim();
-        const depStr = interaction.fields.getTextInputValue("depositAmount").trim();
-        const bonStr = interaction.fields.getTextInputValue("bonusAmount").trim();
+        const depStr  = interaction.fields.getTextInputValue("depositAmount").trim();
+        const bonStr  = interaction.fields.getTextInputValue("bonusAmount").trim();
         const profile = interaction.fields.getTextInputValue("profileImageUrl")?.trim() || "";
-        if (!pseudo)
-            throw new Error("Pseudo requis");
-        if (!/^https?:\/\//i.test(affiLink))
-            throw new Error("Lien d'affiliation invalide (doit commencer par http(s)://)");
+    
+        if (!pseudo) throw new Error("Pseudo requis");
+        if (!/^https?:\/\//i.test(affiLink)) throw new Error("Lien d'affiliation invalide (doit commencer par http(s)://)");
+    
         const depositAmount = depStr === "" ? null : Number(depStr);
-        const bonusAmount = bonStr === "" ? null : Number(bonStr);
-        if (depositAmount !== null && !isFinite(depositAmount))
-            throw new Error("Dépôt invalide");
-        if (bonusAmount !== null && !isFinite(bonusAmount))
-            throw new Error("Bonus invalide");
+        const bonusAmount   = bonStr === "" ? null : Number(bonStr);
+        if (depositAmount !== null && !isFinite(depositAmount)) throw new Error("Dépôt invalide");
+        if (bonusAmount   !== null && !isFinite(bonusAmount))   throw new Error("Bonus invalide");
+    
         // Inputs partagés (le wizard V3 côté front les relit via __v3Inputs).
-        const inputs = {
-            modelKind,
-            m1UseTheme: true,
-            m1Theme: themeKey,
-            pseudo,
-            affiLink,
-            depositAmount,
-            bonusAmount,
-            profileImageUrl: profile,
-            card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
-            card2Image: { kind: "mines", url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
-            cardAspect: "1/1",
-            cardObjectFit: "cover",
-            pseudoStyle: { font: "Inter", color: "#FFD700", size: "m", weight: "black", glow: true },
-            depositLineStyle: { font: "Inter", color: "#ffffff", size: "l", weight: "black" },
-            bonusLineStyle: { font: "Inter", color: "#FFD700", size: "l", weight: "black", glow: true },
+        const inputs: any = {
+          modelKind,
+          m1UseTheme: true,
+          m1Theme: themeKey,
+          pseudo,
+          affiLink,
+          depositAmount,
+          bonusAmount,
+          profileImageUrl: profile,
+          card1Image: { kind: "penalty", url: "https://cdn.phototourl.com/member/2026-04-09-240bb1e8-d188-4130-81ae-8e3f88143efc.png" },
+          card2Image: { kind: "mines",   url: "https://cdn.phototourl.com/free/2026-04-09-c5dee0f7-cdad-427c-bd2e-bcbb6f4b24a6.png" },
+          cardAspect: "1/1",
+          cardObjectFit: "cover",
+          pseudoStyle:      { font: "Inter", color: "#FFD700", size: "m",  weight: "black", glow: true },
+          depositLineStyle: { font: "Inter", color: "#ffffff", size: "l",  weight: "black" },
+          bonusLineStyle:   { font: "Inter", color: "#FFD700", size: "l",  weight: "black", glow: true },
         };
+    
         // Build V2Page selon le modèle. M1 = builder M4V1-dupliqué ; M3-M6 = bloc
         // unique v3GameModel (mini-jeu plein écran, idem buildV3GameModelPage côté front).
         const v2Page = modelKind === "M1"
-            ? buildV3PageFromQuickInputs(inputs)
-            : buildV3GameModelPageMin(modelKind, themeKey, { pseudo, affiLink, depositAmount, bonusAmount, profileImageUrl: profile });
+          ? buildV3PageFromQuickInputs(inputs as V3QuickInputs)
+          : buildV3GameModelPageMin(modelKind, themeKey, { pseudo, affiLink, depositAmount, bonusAmount, profileImageUrl: profile });
+    
         // Slug : si le builder a déduit un slug depuis affiLink, on l'utilise ;
         // sinon fallback sur slugify(pseudo). Puis garantit unicité.
-        const builderSlug = String(v2Page.slug || "").trim();
+        const builderSlug = String((v2Page as any).slug || "").trim();
         const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
         const slug = await resolveUniqueSlug(baseSlug || "landing");
-        v2Page.slug = slug;
+        (v2Page as any).slug = slug;
+    
         // Marqueurs V3 dans le config pour qu'à la ré-ouverture, le wizard
         // puisse pré-remplir ses inputs (cohérent avec le save côté EditorV3Page).
-        const config = { ...v2Page, __v3: true, __v3Inputs: inputs };
+        const config: any = { ...v2Page, __v3: true, __v3Inputs: inputs };
+    
         const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
-        const r = await pool.query(`
-      INSERT INTO affi_landing_pages
-        (slug, model, variant, brand_name, title, config, editor_version, owner_user_id, created_at, updated_at)
-      VALUES ($1, 4, NULL, $2, $3, $4::jsonb, 2, $5, NOW(), NOW())
-      RETURNING id, slug
-      `, [slug, pseudo, pseudo, JSON.stringify(config), ownerUserId]);
+    
+        const r = await pool.query(
+          `
+          INSERT INTO affi_landing_pages
+            (slug, model, variant, brand_name, title, config, editor_version, owner_user_id, created_at, updated_at)
+          VALUES ($1, 4, NULL, $2, $3, $4::jsonb, 2, $5, NOW(), NOW())
+          RETURNING id, slug
+          `,
+          [slug, pseudo, pseudo, JSON.stringify(config), ownerUserId]
+        );
         const id = Number(r.rows[0].id);
         const finalSlug = String(r.rows[0].slug);
+    
         const publicUrl = `${PUBLIC_WEB_BASE}/r/${finalSlug}`;
         const editorUrl = `${PUBLIC_WEB_BASE}/editorFSNV3`;
+    
         const embed = new EmbedBuilder()
-            .setColor(0x9D4BFF)
-            .setTitle(`🌐 Landing V3 créée — ${modelKind} (${LANDING_MODEL_LABEL[modelKind]})`)
-            .setURL(publicUrl)
-            .setDescription(`Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`, modèle ${modelKind}, thème ${getM1Theme(themeKey).label}).\n\n` +
+          .setColor(0x9D4BFF)
+          .setTitle(`🌐 Landing V3 créée — ${modelKind} (${LANDING_MODEL_LABEL[modelKind]})`)
+          .setURL(publicUrl)
+          .setDescription(
+            `Page **${pseudo}** créée et publiée (#${id}, slug \`${finalSlug}\`, modèle ${modelKind}, thème ${getM1Theme(themeKey).label}).\n\n` +
             `🎯 La page est **directement live** — pseudo, lien d'affi, dépôt et bonus sont déjà appliqués. ` +
-            `Ouvre l'éditeur V3 pour ajuster les images, polices, couleurs ou ajouter une photo de profil si besoin.`)
-            .addFields({ name: "🔗 URL publique", value: publicUrl, inline: false }, { name: "✏️  Éditeur V3", value: editorUrl, inline: false });
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("🌐 Voir la page").setURL(publicUrl), new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("✏️  Modifier (V3)").setURL(editorUrl));
+            `Ouvre l'éditeur V3 pour ajuster les images, polices, couleurs ou ajouter une photo de profil si besoin.`
+          )
+          .addFields(
+            { name: "🔗 URL publique", value: publicUrl, inline: false },
+            { name: "✏️  Éditeur V3",  value: editorUrl, inline: false },
+          );
+    
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("🌐 Voir la page").setURL(publicUrl),
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("✏️  Modifier (V3)").setURL(editorUrl),
+        );
+    
         await interaction.editReply({ embeds: [embed], components: [row] });
+        */
     }
     catch (e) {
         await interaction.editReply({ content: `❌ ${e?.message || e}` });
@@ -324,6 +433,62 @@ function buildV3GameModelPageMin(kind, themeKey, inputs) {
         },
     };
 }
+function buildLandingM10Page(inputs) {
+    const pseudo = inputs.pseudo.trim();
+    const theme = getM1Theme("cyclope");
+    const themeColors = themeToColors(theme);
+    let affiCode = "";
+    try {
+        const u = new URL(inputs.affiLink);
+        const last = u.pathname.split("/").filter(Boolean).pop() || "";
+        affiCode = last.replace(/[^A-Za-z0-9_-]/g, "");
+    }
+    catch { /* noop */ }
+    return {
+        modelKind: "M4V2",
+        affiCode,
+        affiLink: inputs.affiLink,
+        casinoName: pseudo || "M10",
+        slug: affiCode ? `${affiCode}V3` : "",
+        pageTitle: pseudo || "M10",
+        compactSpacing: true,
+        zones: {
+            aboveCards: [],
+            cards: [
+                {
+                    id: makeV2BlockId("v3GameModel"),
+                    type: "v3GameModel",
+                    gameKind: "M10",
+                    pseudo,
+                    profileImageUrl: "",
+                    depositAmount: inputs.depositAmount,
+                    bonusAmount: inputs.bonusAmount,
+                    affiLink: inputs.affiLink,
+                    theme: themeColors,
+                    pseudoSub: "",
+                    followersCount: "",
+                    socialHandle: "",
+                    gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
+                    gameLabel: "POULET",
+                    gameBonusPct: "550%",
+                    pseudoVariant: "fade",
+                    pseudoAnimation: "none",
+                    showVip: inputs.showVip,
+                },
+            ],
+            belowCards: [],
+            reviews: [],
+            faq: [],
+            footer: [],
+        },
+        globals: {
+            bgPage: theme.bgPage,
+            bgCard: theme.bgCard,
+            brandGold: theme.accent,
+            borderColor: theme.borderColor,
+        },
+    };
+}
 async function resolveUniqueSlug(base) {
     let candidate = base;
     let n = 2;
@@ -345,7 +510,7 @@ async function handleLandingList(interaction) {
     try {
         const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
         const r = await pool.query(`
-      SELECT id, slug, brand_name AS brand, title, model, editor_version, created_at
+      SELECT id, slug, brand_name AS brand, title, model, editor_version, publish_domain, created_at
       FROM affi_landing_pages
       WHERE owner_user_id = $1
       ORDER BY created_at DESC
@@ -356,7 +521,7 @@ async function handleLandingList(interaction) {
             return;
         }
         const lines = r.rows.map((row) => `**${row.brand}** · model ${row.model} V${row.editor_version}\n` +
-            `${PUBLIC_WEB_BASE}/r/${row.slug}`);
+            `${landingPublicUrl(String(row.slug), row.publish_domain === "landaurax" ? "landaurax" : "lunalive")}`);
         const totalCount = r.rowCount ?? lines.length;
         const embed = new EmbedBuilder()
             .setColor(0x9D4BFF)
@@ -455,7 +620,7 @@ async function handleTiktokInfluenceurAdd(interaction) {
 // /purge X — supprime les X derniers messages du salon
 // ─────────────────────────────────────────────────────────────────────────────
 async function handlePurge(interaction) {
-    if (!await checkAccess(interaction))
+    if (!await checkAllowedUser(interaction))
         return;
     await interaction.deferReply({ ephemeral: true });
     try {

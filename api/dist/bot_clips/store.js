@@ -222,70 +222,78 @@ export async function setClipMp4Success(clipId, info) {
         mp4_rendering = false
     WHERE id = $1
     `, [clipId, String(info.mp4_key || "").slice(0, 500), Date.now(), Math.max(0, Number(info.mp4_size || 0))]);
-    // ✅ Générer thumbnail après MP4 prêt
+    // ✅ Générer thumbnail après MP4 prêt — SÉRIALISÉ derrière le clip render
+    // via withFfmpegSlot pour éviter 2 ffmpeg simultanés → OOM sur Render 512MB
     (async () => {
         try {
             // Import dynamique pour éviter dépendances circulaires
             const { r2Enabled, buildPublicUrl, putR2Buffer } = await import("../clips/r2.js");
             const { spawn } = await import("child_process");
             const { FFMPEG_BIN, FFMPEG_OK } = await import("../routes/thumbs.js");
+            const { withFfmpegSlot } = await import("../utils/ffmpeg_gate.js");
             if (!FFMPEG_OK || !r2Enabled())
                 return;
             const mp4Url = buildPublicUrl(info.mp4_key);
             if (!mp4Url)
                 return;
-            // Extraire thumbnail avec FFMPEG
-            const args = [
-                "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-rw_timeout", "10000000",
-                "-ss", "1", "-i", mp4Url,
-                "-an", "-frames:v", "1", "-vf", "scale=640:-1", "-q:v", "5",
-                "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"
-            ];
-            const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
-            const chunks = [];
-            let stderr = "";
-            const killTimer = setTimeout(() => {
-                try {
-                    p.kill("SIGKILL");
-                }
-                catch { }
-            }, 10_000);
-            p.stdout.on("data", (d) => chunks.push(Buffer.from(d)));
-            p.stderr.on("data", (d) => (stderr += String(d)));
-            p.on("error", (e) => {
-                clearTimeout(killTimer);
-                console.warn(`[store] thumbnail ffmpeg spawn error clipId=${clipId}`, e);
-            });
-            p.on("close", async (code, signal) => {
-                clearTimeout(killTimer);
-                const buf = Buffer.concat(chunks);
-                const ok = code === 0 && buf.length > 5_000;
-                if (!ok) {
-                    console.warn(`[store] thumbnail ffmpeg failed clipId=${clipId} code=${code} bytes=${buf.length}`);
-                    return;
-                }
-                try {
-                    // Stocker dans R2
-                    const r2Key = `clips/thumbnails/${clipId}.jpg`;
-                    const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
-                    if (!uploadOk) {
-                        console.warn(`[store] thumbnail R2 upload failed clipId=${clipId}`);
+            await withFfmpegSlot(`thumb-${clipId}`, () => new Promise((resolveSlot) => {
+                // Extraire thumbnail avec FFMPEG
+                const args = [
+                    "-hide_banner", "-loglevel", "error", "-y", "-nostdin", "-rw_timeout", "10000000",
+                    "-ss", "1", "-i", mp4Url,
+                    "-an", "-frames:v", "1", "-vf", "scale=640:-1", "-q:v", "5",
+                    "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"
+                ];
+                const p = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+                const chunks = [];
+                let stderr = "";
+                const killTimer = setTimeout(() => {
+                    try {
+                        p.kill("SIGKILL");
+                    }
+                    catch { }
+                }, 10_000);
+                p.stdout.on("data", (d) => chunks.push(Buffer.from(d)));
+                p.stderr.on("data", (d) => (stderr += String(d)));
+                p.on("error", (e) => {
+                    clearTimeout(killTimer);
+                    console.warn(`[store] thumbnail ffmpeg spawn error clipId=${clipId}`, e);
+                });
+                p.on("close", async (code, _signal) => {
+                    clearTimeout(killTimer);
+                    const buf = Buffer.concat(chunks);
+                    const ok = code === 0 && buf.length > 5_000;
+                    if (!ok) {
+                        console.warn(`[store] thumbnail ffmpeg failed clipId=${clipId} code=${code} bytes=${buf.length}`);
+                        resolveSlot();
                         return;
                     }
-                    // Générer URL publique
-                    const publicUrl = buildPublicUrl(r2Key);
-                    if (!publicUrl) {
-                        console.warn(`[store] thumbnail URL build failed clipId=${clipId}`);
-                        return;
+                    try {
+                        // Stocker dans R2
+                        const r2Key = `clips/thumbnails/${clipId}.jpg`;
+                        const uploadOk = await putR2Buffer({ key: r2Key, buffer: buf, contentType: "image/jpeg" });
+                        if (!uploadOk) {
+                            console.warn(`[store] thumbnail R2 upload failed clipId=${clipId}`);
+                            return;
+                        }
+                        // Générer URL publique
+                        const publicUrl = buildPublicUrl(r2Key);
+                        if (!publicUrl) {
+                            console.warn(`[store] thumbnail URL build failed clipId=${clipId}`);
+                            return;
+                        }
+                        // Mettre à jour BDD
+                        await pool.query(`UPDATE bot_clips SET thumbnail_url = $1 WHERE id = $2`, [publicUrl, clipId]);
+                        console.log(`[store] thumbnail generated clipId=${clipId} url=${publicUrl}`);
                     }
-                    // Mettre à jour BDD
-                    await pool.query(`UPDATE bot_clips SET thumbnail_url = $1 WHERE id = $2`, [publicUrl, clipId]);
-                    console.log(`[store] thumbnail generated clipId=${clipId} url=${publicUrl}`);
-                }
-                catch (err) {
-                    console.warn(`[store] thumbnail storage failed clipId=${clipId}`, err);
-                }
-            });
+                    catch (err) {
+                        console.warn(`[store] thumbnail storage failed clipId=${clipId}`, err);
+                    }
+                    finally {
+                        resolveSlot();
+                    }
+                });
+            }));
         }
         catch (err) {
             console.warn(`[store] thumbnail generation exception clipId=${clipId}`, err);

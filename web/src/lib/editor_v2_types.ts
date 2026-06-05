@@ -248,6 +248,8 @@ export interface V2V3GameModelBlock extends V2BaseBlock {
   gameBonusPct?: string;
   pseudoVariant?: "fade" | "outline" | "3d" | "neon" | "stamp" | "gold";
   pseudoAnimation?: "none" | "pulse" | "float" | "glow";
+  /** Affiche les éléments VIP du modèle M10. */
+  showVip?: boolean;
   /** Masque les elements VIP du modele (M10 : teaser + mini sticky). */
   hideVip?: boolean;
   /** Style typographique du pseudo (font/size/color/weight/glow).
