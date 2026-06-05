@@ -333,6 +333,7 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
         pseudoVariant: "fade",
         pseudoAnimation: "none",
         showVip: false,
+        hideVip: true,
       };
 
       const v2Page = buildLandingM10Page({
@@ -341,6 +342,7 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
         depositAmount,
         bonusAmount,
         showVip: false,
+        hideVip: true,
       });
       const builderSlug = String((v2Page as any).slug || "").trim();
       const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -560,6 +562,7 @@ function buildLandingM10Page(inputs: {
   depositAmount: number;
   bonusAmount: number;
   showVip: boolean;
+  hideVip: boolean;
 }): any {
   const pseudo = inputs.pseudo.trim();
   const theme = getM1Theme("cyclope");
@@ -601,6 +604,7 @@ function buildLandingM10Page(inputs: {
           pseudoVariant: "fade",
           pseudoAnimation: "none",
           showVip: inputs.showVip,
+          hideVip: inputs.hideVip,
         },
       ],
       belowCards: [],

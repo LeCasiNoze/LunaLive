@@ -234,6 +234,7 @@ async function handleLandingCreerSubmit(interaction) {
                 pseudoVariant: "fade",
                 pseudoAnimation: "none",
                 showVip: false,
+                hideVip: true,
             };
             const v2Page = buildLandingM10Page({
                 pseudo,
@@ -241,6 +242,7 @@ async function handleLandingCreerSubmit(interaction) {
                 depositAmount,
                 bonusAmount,
                 showVip: false,
+                hideVip: true,
             });
             const builderSlug = String(v2Page.slug || "").trim();
             const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -474,6 +476,7 @@ function buildLandingM10Page(inputs) {
                     pseudoVariant: "fade",
                     pseudoAnimation: "none",
                     showVip: inputs.showVip,
+                    hideVip: inputs.hideVip,
                 },
             ],
             belowCards: [],
