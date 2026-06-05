@@ -38,6 +38,7 @@ const pageInputSchema = z.object({
     // editor_version : 1 (legacy V1) ou 2 (nouveau editor). Default 1 pour
     // rétro-compat avec les payloads V1 qui ne fournissent pas le champ.
     editorVersion: z.coerce.number().int().min(1).max(2).optional().default(1),
+    publishDomain: z.enum(["lunalive", "landaurax"]).optional().default("lunalive"),
 });
 function slugifySegment(value) {
     return value
@@ -79,11 +80,56 @@ function pageRowToJson(row) {
             ? row.config
             : {},
         editorVersion: Number(row.editorVersion ?? row.editor_version ?? 1),
+        publishDomain: (row.publishDomain || row.publish_domain || "lunalive"),
         ownerUserId: Number(row.ownerUserId || row.owner_user_id || 0),
         createdAt: row.createdAt || row.created_at || null,
         updatedAt: row.updatedAt || row.updated_at || null,
     };
 }
+// Liste publique compacte (slug + brand + model + domaine + updatedAt).
+// Utilisee par le directoire cache sur landaurax. Filtre par domain
+// optionnel via ?domain=lunalive|landaurax.
+publicAffiPagesRouter.get("/public/affi-pages", a(async (req, res) => {
+    const domain = String(req.query.domain || "").toLowerCase();
+    const where = [];
+    const params = [];
+    if (domain === "lunalive" || domain === "landaurax") {
+        params.push(domain);
+        where.push(`publish_domain = $${params.length}`);
+    }
+    const sql = `
+      SELECT
+        id,
+        slug,
+        model,
+        variant,
+        brand_name AS "brandName",
+        title,
+        editor_version AS "editorVersion",
+        publish_domain AS "publishDomain",
+        updated_at AS "updatedAt"
+      FROM affi_landing_pages
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY updated_at DESC NULLS LAST, id DESC
+      LIMIT 500
+    `;
+    const { rows } = await pool.query(sql, params);
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=120, stale-while-revalidate=86400");
+    return res.json({
+        ok: true,
+        items: rows.map((r) => ({
+            id: Number(r.id),
+            slug: String(r.slug),
+            model: Number(r.model),
+            variant: r.variant || null,
+            brandName: String(r.brandName || ""),
+            title: String(r.title || ""),
+            editorVersion: Number(r.editorVersion || 1),
+            publishDomain: (r.publishDomain || "lunalive"),
+            updatedAt: r.updatedAt || null,
+        })),
+    });
+}));
 publicAffiPagesRouter.get("/public/affi-pages/:slug", a(async (req, res) => {
     const slug = normalizeSlug(String(req.params.slug || ""));
     const { rows } = await pool.query(`SELECT
@@ -95,6 +141,7 @@ publicAffiPagesRouter.get("/public/affi-pages/:slug", a(async (req, res) => {
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -103,6 +150,10 @@ publicAffiPagesRouter.get("/public/affi-pages/:slug", a(async (req, res) => {
        LIMIT 1`, [slug]);
     if (!rows[0])
         return res.status(404).json({ ok: false, error: "not_found" });
+    // Cache leger : 60s frais / 5min CDN / 1j stale-while-revalidate. Les
+    // landings ne changent pas souvent — utile pour kill le cold-start
+    // perçu côté visiteurs (notamment depuis landaurax.com).
+    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
     return res.json({ ok: true, page: pageRowToJson(rows[0]) });
 }));
 fsbAffiPagesRouter.get("/fsb/affi-pages", a(async (_req, res) => {
@@ -115,6 +166,7 @@ fsbAffiPagesRouter.get("/fsb/affi-pages", a(async (_req, res) => {
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"
@@ -142,9 +194,10 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
          brand_name,
          title,
          config,
-         editor_version
+         editor_version,
+         publish_domain
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
        RETURNING
          id,
          slug,
@@ -154,6 +207,7 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
          title,
          config,
          editor_version AS "editorVersion",
+         publish_domain AS "publishDomain",
          owner_user_id AS "ownerUserId",
          created_at AS "createdAt",
          updated_at AS "updatedAt"`, [
@@ -165,6 +219,7 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
         input.title,
         JSON.stringify(input.config),
         input.editorVersion,
+        input.publishDomain,
     ]);
     return res.status(201).json({ ok: true, item: pageRowToJson(rows[0]) });
 }));
@@ -203,6 +258,7 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
               title = $6,
               config = $7::jsonb,
               editor_version = $8,
+              publish_domain = $9,
               updated_at = NOW()
         WHERE id = $1
         RETURNING
@@ -216,7 +272,7 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
           editor_version AS "editorVersion",
           owner_user_id AS "ownerUserId",
           created_at AS "createdAt",
-          updated_at AS "updatedAt"`, [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion]);
+          updated_at AS "updatedAt"`, [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion, input.publishDomain]);
     if (!rows[0])
         return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, item: pageRowToJson(rows[0]) });
@@ -361,6 +417,43 @@ fsbAffiPagesRouter.get("/fsb/affi-pages/:id/daily-stats", a(async (req, res) => 
         series.push(byDate[key] || { date: key, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0 });
     }
     return res.json({ ok: true, series, periodDays: days });
+}));
+// Hourly stats pour un jour donne (drill-down depuis le chart daily)
+fsbAffiPagesRouter.get("/fsb/affi-pages/:id/hourly-stats", a(async (req, res) => {
+    const id = Number(req.params.id || 0);
+    if (!Number.isInteger(id) || id <= 0)
+        return res.status(400).json({ ok: false, error: "bad_id" });
+    // Format attendu : YYYY-MM-DD (UTC), defaut = aujourd'hui UTC
+    const dateRaw = String(req.query.date || "").trim();
+    const dateStr = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw)
+        ? dateRaw
+        : new Date().toISOString().slice(0, 10);
+    const { rows } = await pool.query(`SELECT
+         EXTRACT(HOUR FROM (created_at AT TIME ZONE 'UTC'))::int AS h,
+         COUNT(*) FILTER (WHERE event='view')                       AS views,
+         COUNT(*) FILTER (WHERE event='click_cta')                  AS clicks,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='view')        AS unique_views,
+         COUNT(DISTINCT ip_hash) FILTER (WHERE event='click_cta')   AS unique_clicks
+       FROM affi_landing_events
+       WHERE page_id = $1
+         AND (created_at AT TIME ZONE 'UTC')::date = $2::date
+       GROUP BY h
+       ORDER BY h ASC`, [id, dateStr]);
+    const byHour = {};
+    for (const r of rows) {
+        byHour[Number(r.h)] = {
+            hour: Number(r.h),
+            views: Number(r.views || 0),
+            clicks: Number(r.clicks || 0),
+            uniqueViews: Number(r.unique_views || 0),
+            uniqueClicks: Number(r.unique_clicks || 0),
+        };
+    }
+    const series = [];
+    for (let h = 0; h < 24; h++) {
+        series.push(byHour[h] || { hour: h, views: 0, clicks: 0, uniqueViews: 0, uniqueClicks: 0 });
+    }
+    return res.json({ ok: true, date: dateStr, series });
 }));
 // Stats agrégées toutes les pages (pour le dashboard V3 ranking)
 fsbAffiPagesRouter.get("/fsb/affi-pages/stats-summary", a(async (req, res) => {

@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type M1ThemeKey =
+  | "cyclope"
   | "gold" | "ruby" | "emerald" | "sapphire"
   | "amethyst" | "obsidian" | "rose" | "jade";
 
@@ -22,6 +23,7 @@ export interface M1Theme {
 }
 
 export const M1_THEMES: M1Theme[] = [
+  { key: "cyclope", label: "Cyclope (rose/or)", accent: "#FF4B6E", accentLight: "#FFB930", accentGlow: "rgba(255,75,110,.55)", accentSoft: "rgba(255,75,110,.08)", accentBorder: "rgba(255,185,48,.45)", bgPage: "#0B1530", bgCard: "#0F1B3D", borderColor: "rgba(255,185,48,.22)" },
   { key: "gold",     label: "Or",        accent: "#FFD700", accentLight: "#FFC200", accentGlow: "rgba(255,214,0,.4)",  accentSoft: "rgba(255,214,0,.08)",  accentBorder: "rgba(255,214,0,.35)",  bgPage: "#080212", bgCard: "#150821", borderColor: "#331A47" },
   { key: "ruby",     label: "Rubis",     accent: "#E0115F", accentLight: "#FF4080", accentGlow: "rgba(224,17,95,.45)", accentSoft: "rgba(224,17,95,.08)",  accentBorder: "rgba(224,17,95,.35)",  bgPage: "#15050C", bgCard: "#260914", borderColor: "#4A1530" },
   { key: "emerald",  label: "Émeraude",  accent: "#00E676", accentLight: "#4DFF99", accentGlow: "rgba(0,230,118,.4)",  accentSoft: "rgba(0,230,118,.08)",  accentBorder: "rgba(0,230,118,.35)",  bgPage: "#06120D", bgCard: "#0D2418", borderColor: "#1F4030" },

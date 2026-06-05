@@ -3,6 +3,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilde
 import * as cfg from "./config.js";
 import { all, one } from "./db.js";
 import { refreshWatcherBoard } from "./watcher.js";
+import { sendCelsiusConfirmationDM } from "./celsius_dm.js";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const VIP_THRESHOLD_LABEL = "💎 Les gros joueurs avérés bénéficient d'un **HOST VIP attitré**.";
 const DEPOSIT_EXPLAIN = "ℹ️ *Pourquoi le dépôt moyen ?* On l'utilise pour proposer aux **gros joueurs avérés** un **HOST VIP attitré** et leur ouvrir un suivi prioritaire chez Aurix. Aucune donnée n'est partagée publiquement.";
@@ -59,7 +60,7 @@ function buildModal(prefill) {
     const pseudo = new TextInputBuilder()
         .setCustomId("pseudo")
         .setLabel("Pseudo Celsius")
-        .setPlaceholder("Ex : Casinoze92")
+        .setPlaceholder("Ex : ton-pseudo-celsius")
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(64);
@@ -217,6 +218,19 @@ export async function handleCelsiusModal(interaction) {
         catch (e) {
             console.error("[aurix.celsius] watcher refresh failed:", e);
         }
+        try {
+            await sendCelsiusConfirmationDM(interaction.client, {
+                viewerUserId: interaction.user.id,
+                viewerTag: interaction.user.tag,
+                pseudo,
+                email,
+                monthlyDeposit,
+                guildName: guild.name,
+            });
+        }
+        catch (e) {
+            console.error("[aurix.celsius] DM failed:", e);
+        }
     }
 }
 function statusEmoji(s) {
@@ -226,10 +240,16 @@ function statusEmoji(s) {
         return "🔴";
     return "🟡";
 }
+function formatViewerLabel(row) {
+    if (row.viewer_username) {
+        return `<@${row.viewer_user_id}> · \`${row.viewer_username}\``;
+    }
+    return `<@${row.viewer_user_id}>`;
+}
 function buildSectionField(title, rows) {
     if (rows.length === 0)
         return { name: title, value: "*(personne)*" };
-    const lines = rows.map((r) => `• <@${r.viewer_user_id}> · \`${r.celsius_email}\``);
+    const lines = rows.map((r) => `• ${formatViewerLabel(r)}`);
     let chunk = "";
     let used = 0;
     for (const line of lines) {
@@ -290,8 +310,8 @@ export async function handleAurixCommand(interaction) {
                 ? cfg.COLOR.DANGER
                 : cfg.COLOR.WARNING;
         const fields = [
+            { name: "👤 Discord", value: formatViewerLabel(sub), inline: true },
             { name: "🎰 Pseudo Celsius", value: `\`${sub.celsius_pseudo}\``, inline: true },
-            { name: "✉️ Email", value: `\`${sub.celsius_email}\``, inline: true },
             { name: "💰 Dépôt / mois", value: `\`${sub.monthly_deposit}\``, inline: true },
         ];
         if (sub.status === "rejected" && sub.reject_reason) {

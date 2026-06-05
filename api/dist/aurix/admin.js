@@ -1,7 +1,7 @@
-// Sous-commandes /config + /ping
+// Sous-commandes /config + /ping + /refill-config
 import { EmbedBuilder } from "discord.js";
 import * as cfg from "./config.js";
-import { kvGet, kvGetInt, kvSet } from "./db.js";
+import { kvGet, kvGetInt, kvSet, one, query } from "./db.js";
 import { loadEnv } from "./env.js";
 export async function handleConfig(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -44,6 +44,141 @@ export async function handleConfig(interaction) {
 export async function handlePing(interaction) {
     await interaction.reply({
         content: `🏓 Pong — \`${interaction.client.ws.ping}ms\``,
+        ephemeral: true,
+    });
+}
+// /aurix-resend-dm — renvoie le DM Celsius adapté (confirmation/vérifié/refusé) au viewer.
+export async function handleResendDmCommand(interaction) {
+    const target = interaction.options.getUser("user", true);
+    const sub = await one(`SELECT id, celsius_pseudo, celsius_email, monthly_deposit, monthly_deposit_amount,
+            status, reject_reason, guild_name, viewer_username
+       FROM aurix_celsius_submissions
+      WHERE viewer_user_id=$1
+      ORDER BY created_at DESC LIMIT 1`, [target.id]);
+    if (!sub) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Aucune inscription \`/celsius\` trouvée pour <@${target.id}>.`,
+            ephemeral: true,
+            allowedMentions: { users: [] },
+        });
+        return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    try {
+        const dm = await import("./celsius_dm.js");
+        const guildName = sub.guild_name ?? "ton serveur";
+        if (sub.status === "verified") {
+            const amt = sub.monthly_deposit_amount != null ? Number(sub.monthly_deposit_amount) : null;
+            await dm.sendCelsiusValidatedDM(interaction.client, {
+                viewerUserId: target.id,
+                pseudo: sub.celsius_pseudo,
+                monthlyDeposit: sub.monthly_deposit,
+                monthlyDepositAmount: Number.isFinite(amt) ? amt : null,
+                guildName,
+            });
+        }
+        else if (sub.status === "rejected") {
+            await dm.sendCelsiusRejectedDM(interaction.client, {
+                viewerUserId: target.id,
+                pseudo: sub.celsius_pseudo,
+                rejectReason: sub.reject_reason,
+            });
+        }
+        else {
+            await dm.sendCelsiusConfirmationDM(interaction.client, {
+                viewerUserId: target.id,
+                viewerTag: sub.viewer_username,
+                pseudo: sub.celsius_pseudo,
+                email: sub.celsius_email,
+                monthlyDeposit: sub.monthly_deposit,
+                guildName,
+            });
+        }
+        await interaction.editReply({
+            content: `${cfg.EMOJI.check} DM (statut **${sub.status}**) renvoyé à <@${target.id}>.`,
+            allowedMentions: { users: [] },
+        });
+    }
+    catch (e) {
+        await interaction.editReply({
+            content: `${cfg.EMOJI.cross} Échec de l'envoi : ${String(e).slice(0, 200)}`,
+        });
+    }
+}
+// /refill-config — configure amount + wager pour un Discord user OU un auto-refill par email.
+export async function handleRefillConfigCommand(interaction) {
+    const targetUser = interaction.options.getUser("user");
+    const autoEmail = interaction.options.getString("auto_email")?.trim();
+    const amount = interaction.options.getString("amount")?.trim() || null;
+    const wager = interaction.options.getString("wager")?.trim() || null;
+    if (!targetUser && !autoEmail) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Précise soit \`user:\` (un membre Discord), soit \`auto_email:\` (email d'un auto-refill).`,
+            ephemeral: true,
+        });
+        return;
+    }
+    if (targetUser && autoEmail) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Précise **soit** \`user:\` **soit** \`auto_email:\`, pas les deux.`,
+            ephemeral: true,
+        });
+        return;
+    }
+    if (!amount && !wager) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Précise au moins \`amount:\` ou \`wager:\`.`,
+            ephemeral: true,
+        });
+        return;
+    }
+    if (targetUser) {
+        // Met a jour aurix_user_accounts (upsert si absent).
+        const exists = await one("SELECT user_id FROM aurix_user_accounts WHERE user_id=$1", [targetUser.id]);
+        if (!exists) {
+            await query(`INSERT INTO aurix_user_accounts(user_id, refill_amount, wager)
+         VALUES($1, $2, $3)
+         ON CONFLICT(user_id) DO UPDATE
+           SET refill_amount = COALESCE(EXCLUDED.refill_amount, aurix_user_accounts.refill_amount),
+               wager         = COALESCE(EXCLUDED.wager,         aurix_user_accounts.wager),
+               updated_at    = NOW()`, [targetUser.id, amount, wager]);
+        }
+        else {
+            await query(`UPDATE aurix_user_accounts
+            SET refill_amount = COALESCE($2, refill_amount),
+                wager         = COALESCE($3, wager),
+                updated_at    = NOW()
+          WHERE user_id = $1`, [targetUser.id, amount, wager]);
+        }
+        const row = await one("SELECT refill_amount, wager FROM aurix_user_accounts WHERE user_id=$1", [targetUser.id]);
+        await interaction.reply({
+            content: `${cfg.EMOJI.check} Config refill mise à jour pour <@${targetUser.id}> :\n` +
+                `• Montant : \`${row?.refill_amount || `${cfg.DEFAULTS.REFILL_FIXED_AMOUNT} (défaut)`}\`\n` +
+                `• Wager : \`${row?.wager || "no wag (défaut)"}\``,
+            allowedMentions: { users: [] },
+            ephemeral: true,
+        });
+        return;
+    }
+    // Auto-refill par email.
+    const auto = await one("SELECT id, amount, wager, display_name FROM aurix_auto_refills WHERE lower(email)=lower($1)", [autoEmail]);
+    if (!auto) {
+        await interaction.reply({
+            content: `${cfg.EMOJI.cross} Aucun auto-refill trouvé avec l'email \`${autoEmail}\`.`,
+            ephemeral: true,
+        });
+        return;
+    }
+    await query(`UPDATE aurix_auto_refills
+        SET amount     = COALESCE($2, amount),
+            wager      = COALESCE($3, wager),
+            updated_at = NOW()
+      WHERE id = $1`, [auto.id, amount, wager]);
+    const refreshed = await one("SELECT amount, wager FROM aurix_auto_refills WHERE id=$1", [auto.id]);
+    await interaction.reply({
+        content: `${cfg.EMOJI.check} Config auto-refill mise à jour pour \`${auto.display_name}\` (\`${autoEmail}\`) :\n` +
+            `• Montant : \`${refreshed?.amount || auto.amount}\`\n` +
+            `• Wager : \`${refreshed?.wager || "no wag"}\``,
         ephemeral: true,
     });
 }
