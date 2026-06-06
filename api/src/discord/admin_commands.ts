@@ -42,6 +42,7 @@ const ALLOWED_USER_IDS = new Set([
   "406965568755728395", // Fabiozsis
   "992099046472831066", // Samyzsis (eowite22)
 ]);
+const DEFAULT_LANDING_OWNER_DISCORD_ID = "682472610868887567";
 
 const QG_CHANNEL_ID = "1501890674620891268";
 
@@ -632,11 +633,28 @@ async function resolveUniqueSlug(base: string): Promise<string> {
 }
 
 async function resolveOwnerUserIdForDiscord(discordUserId: string): Promise<number> {
-  const r = await pool.query(
-    `SELECT user_id FROM discord_links WHERE discord_user_id = $1 LIMIT 1`,
-    [discordUserId]
-  );
-  return Number(r.rows[0]?.user_id || 0);
+  const resolveLinkedUser = async (id: string): Promise<number | null> => {
+    const r = await pool.query(
+      `
+      SELECT u.id
+      FROM discord_links dl
+      JOIN users u ON u.id = dl.user_id
+      WHERE dl.discord_user_id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+    const userId = Number(r.rows[0]?.id || 0);
+    return userId > 0 ? userId : null;
+  };
+
+  const linkedUserId = await resolveLinkedUser(discordUserId);
+  if (linkedUserId) return linkedUserId;
+
+  const fallbackUserId = await resolveLinkedUser(DEFAULT_LANDING_OWNER_DISCORD_ID);
+  if (fallbackUserId) return fallbackUserId;
+
+  throw new Error("Aucun compte FSB propriétaire valide trouvé pour créer la landing.");
 }
 
 async function handleLandingList(interaction: ChatInputCommandInteraction): Promise<void> {
