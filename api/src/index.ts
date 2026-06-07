@@ -28,6 +28,7 @@ import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
 import { startAgencyFeeReminder } from "./agency_fee_reminder.js";
 import { startAgencyFeesBoard } from "./agency_fees_board.js";
 import { startInstagramAgendaBoard } from "./instagram_agenda_board.js";
+import { refreshAllAffiPageSnapshots } from "./routes/affi_pages.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -114,6 +115,9 @@ async function bootstrapBackground() {
 
     // Si tu veux que le updater slots ne démarre qu'après DB ready :
     startSlotsCatalogUpdater(12);
+    refreshAllAffiPageSnapshots().catch((e) => {
+      console.warn("[boot] affi snapshots refresh failed", e?.message || e);
+    });
 
     console.log("[boot] background bootstrap done");
   } catch (e: any) {
@@ -143,7 +147,19 @@ function setupGracefulShutdown(server: http.Server) {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
+function setupProcessCrashGuards() {
+  process.on("unhandledRejection", (reason) => {
+    console.error("[process] unhandledRejection isolated:", reason);
+  });
+
+  process.on("uncaughtException", (error) => {
+    console.error("[process] uncaughtException isolated:", error);
+  });
+}
+
 (async () => {
+  setupProcessCrashGuards();
+
   // ✅ Crée l'app vite
   const app = createApp();
 
