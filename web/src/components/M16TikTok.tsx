@@ -14,25 +14,25 @@ const ASSET_BASE = "/affi_templates/m16_tiktok";
 
 const reviews = [
   {
-    img: `${ASSET_BASE}/chat-proof-1.jpg`,
+    img: `${ASSET_BASE}/chat-proof-1.webp`,
     name: "Thomas M.",
     text: "Interface simple et rapide, bonus automatique comme annonce.",
     time: "Il y a 2 jours",
   },
   {
-    img: `${ASSET_BASE}/chat-proof-2.jpg`,
+    img: `${ASSET_BASE}/chat-proof-2.webp`,
     name: "Laura K.",
     text: "Test avec 20 EUR, tout s'est active directement.",
     time: "Il y a 5 jours",
   },
   {
-    img: `${ASSET_BASE}/chat-proof-3.jpg`,
+    img: `${ASSET_BASE}/chat-proof-3.webp`,
     name: "Lena D.",
     text: "Les mini-jeux sont varies et le bonus x2 est vraiment cool.",
     time: "Il y a 1 semaine",
   },
   {
-    img: `${ASSET_BASE}/chat-proof-4.jpg`,
+    img: `${ASSET_BASE}/chat-proof-4.webp`,
     name: "Sophie L.",
     text: "La page mobile est claire, inscription rapide.",
     time: "Il y a 1 semaine",
@@ -151,7 +151,7 @@ export function M16TikTok({
       <main className="m16-wrap">
         <a className="m16-card v3-cta" href={safeAffi} target="_blank" rel="sponsored noopener noreferrer">
           <div className="m16-hero-media">
-            <img src={`${ASSET_BASE}/bdv-piano-hero.png`} alt="Mini-jeux" />
+            <img src={`${ASSET_BASE}/bdv-piano-hero.webp`} alt="Mini-jeux" fetchPriority="high" />
             <div className="m16-hero-copy">
               <span className="m16-kicker">{name ? `Bonus ${name} actif` : "Bonus actif"}</span>
               <h1 className="m16-title">
