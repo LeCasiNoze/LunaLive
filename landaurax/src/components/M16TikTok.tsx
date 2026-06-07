@@ -81,10 +81,12 @@ export function M16TikTok({
       <style>{`
         .m16-root{min-height:100vh;position:relative;overflow-x:hidden;background:radial-gradient(120% 70% at 50% 0%,rgba(138,79,255,.22) 0%,transparent 55%),radial-gradient(80% 50% at 50% 100%,rgba(90,40,180,.16) 0%,transparent 60%),#14082a;color:#fff;font-family:"Chakra Petch","Trebuchet MS",system-ui,sans-serif;padding-bottom:108px}
         .m16-wrap{width:min(100%,430px);margin:0 auto;padding:0 20px}
-        .m16-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:28px 20px 12px}
+        .m16-header{display:flex;flex-direction:column;align-items:center;text-align:center;padding:28px 20px 14px}
         .m16-avatar-shell{width:78px;height:78px;border-radius:50%;padding:3px;background:linear-gradient(135deg,#ff7a00 0%,#e84393 50%,#8a4fff 100%);box-shadow:0 0 26px rgba(138,79,255,.38)}
         .m16-avatar{width:100%;height:100%;border-radius:50%;object-fit:cover;background:#14082a;display:block}
-        .m16-name{margin:12px 0 0;font-size:1.05rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase}
+        .m16-name{position:relative;isolation:isolate;display:inline-flex;align-items:center;justify-content:center;max-width:min(100%,360px);margin:14px 0 0;padding:11px 20px 12px;border-radius:999px;border:1px solid rgba(255,179,71,.48);background:linear-gradient(135deg,rgba(255,255,255,.14) 0%,rgba(255,179,71,.11) 42%,rgba(138,79,255,.16) 100%);box-shadow:0 12px 30px rgba(0,0,0,.38),0 0 26px rgba(255,122,0,.22),inset 0 1px 0 rgba(255,255,255,.22);font-family:Impact,"Arial Black","Chakra Petch",sans-serif;font-size:clamp(1.15rem,6vw,1.65rem);font-weight:900;letter-spacing:.08em;line-height:.95;text-transform:uppercase;text-wrap:balance;color:#fff3c4;text-shadow:0 2px 0 rgba(80,25,0,.75),0 0 14px rgba(255,179,71,.5);overflow:hidden}
+        .m16-name:before{content:"";position:absolute;z-index:-1;inset:-2px;border-radius:inherit;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:translateX(-120%) skewX(-18deg);animation:m16-name-sheen 4.8s ease-in-out infinite}
+        .m16-name:after{content:"createur";position:absolute;top:-8px;left:50%;transform:translateX(-50%);padding:2px 8px;border-radius:999px;background:#14082a;border:1px solid rgba(255,179,71,.42);color:#ffb347;font-family:"Chakra Petch",system-ui,sans-serif;font-size:.48rem;font-weight:900;letter-spacing:.18em;line-height:1;text-shadow:none}
         .m16-card{display:block;position:relative;overflow:hidden;border-radius:28px;border:1px solid rgba(178,140,255,.5);box-shadow:0 0 36px rgba(138,79,255,.3),0 14px 32px rgba(0,0,0,.6);text-decoration:none;color:inherit;transform:translateZ(0)}
         .m16-card:active,.m16-strip:active,.m16-cta:active{transform:scale(.98)}
         .m16-hero-media{position:relative;aspect-ratio:4/5;width:100%;overflow:hidden;background:#210f3f}
@@ -135,8 +137,9 @@ export function M16TikTok({
         .m16-sticky .m16-cta{min-height:56px;flex-direction:column;font-size:1.08rem}
         .m16-sticky small{font-family:system-ui,sans-serif;font-size:.62rem;letter-spacing:.05em;color:rgba(26,10,0,.75);font-weight:700;margin-top:2px}
         @keyframes m16-sheen{0%{left:-45%}55%,100%{left:120%}}
+        @keyframes m16-name-sheen{0%,45%{transform:translateX(-130%) skewX(-18deg)}70%,100%{transform:translateX(130%) skewX(-18deg)}}
         @media (min-width:760px){.m16-root{padding-bottom:118px}.m16-wrap{width:min(100%,460px)}.m16-card{border-radius:32px}.m16-grid{gap:14px}}
-        @media (max-width:360px){.m16-wrap{padding:0 14px}.m16-grid{gap:9px}.m16-review{padding:9px}.m16-title{font-size:2rem}.m16-cta{font-size:1.02rem}}
+        @media (max-width:360px){.m16-wrap{padding:0 14px}.m16-grid{gap:9px}.m16-review{padding:9px}.m16-title{font-size:2rem}.m16-cta{font-size:1.02rem}.m16-name{font-size:1.05rem;padding-inline:15px;letter-spacing:.06em}}
       `}</style>
 
       <header className="m16-header">
