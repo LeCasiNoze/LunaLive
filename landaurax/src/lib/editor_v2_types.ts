@@ -163,7 +163,7 @@ export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
   theme?: M4ThemeColors;
 }
 
-export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15";
+export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15" | "M16";
 
 export interface V2V3GameModelBlock extends V2BaseBlock {
   type: "v3GameModel";

@@ -713,7 +713,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M15"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M15", "M16"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -732,6 +732,7 @@ function WizardQuickView({
               {inputs.modelKind === "M12" && "M12 = Paliers VIP — Bronze→Diamond, bonus 100% scalé + places restantes + capture email VIP gros joueurs"}
               {inputs.modelKind === "M13" && "M13 = S1 Celsius — mini-site premium FR/EN (welcome package 4 paliers, VIP host, payments, FAQ) — pseudo + image facultatifs"}
               {inputs.modelKind === "M15" && "M15 = Cyclope (Lovable) — landing l'Héritier importée telle quelle (header + hero + steps + gains + témoignages + FAQ + sticky CTA)"}
+              {inputs.modelKind === "M16" && "M16 = TikTok LAS — landing mobile issue du zip, pseudo + depot/bonus + lien d'affiliation"}
             </div>
           </div>
 

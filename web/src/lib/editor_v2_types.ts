@@ -224,7 +224,7 @@ export interface V2M4V1LowerSectionsBlock extends V2BaseBlock {
 
 // ─── V3 Game Models (M3-M6) — preset interactif pleine page ──────────────────
 
-export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15";
+export type V3GameModelKind = "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15" | "M16";
 
 /** Bloc preset full-page pour les modèles V3 interactifs (roue, scratch, slot,
  *  coffre). Ce bloc rend l'intégralité de la landing : hero pseudo + profil,

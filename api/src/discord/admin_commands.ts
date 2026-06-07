@@ -269,7 +269,7 @@ async function handleLandingCreer(interaction: ChatInputCommandInteraction): Pro
   {
     const quickModal = new ModalBuilder()
       .setCustomId(MODAL_LANDING_CREER)
-      .setTitle("Landing V3 - M10");
+      .setTitle("Landing V3 - M16");
     quickModal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder().setCustomId("pseudo").setLabel("Pseudo / nom du streamer").setStyle(TextInputStyle.Short).setMaxLength(60).setRequired(true)
@@ -320,30 +320,21 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
       const bonusAmount = 40;
       const publishDomain = "landaurax" as const;
       const inputs: any = {
-        modelKind: "M10",
+        modelKind: "M16",
         m1UseTheme: true,
-        m1Theme: "cyclope",
+        m1Theme: "gold",
         pseudo,
         affiLink,
         depositAmount,
         bonusAmount,
         profileImageUrl: "",
-        gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
-        gameLabel: "POULET",
-        gameBonusPct: "550%",
-        pseudoVariant: "fade",
-        pseudoAnimation: "none",
-        showVip: false,
-        hideVip: true,
       };
 
-      const v2Page = buildLandingM10Page({
+      const v2Page = buildLandingM16Page({
         pseudo,
         affiLink,
         depositAmount,
         bonusAmount,
-        showVip: false,
-        hideVip: true,
       });
       const builderSlug = String((v2Page as any).slug || "").trim();
       const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -371,7 +362,7 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
 
       const embed = new EmbedBuilder()
         .setColor(0xFF4B6E)
-        .setTitle("Landing V3 creee - M10")
+        .setTitle("Landing V3 creee - M16")
         .setURL(publicUrl)
         .setDescription(
           `Page **${pseudo}** creee et publiee sur **Landaurax** (#${id}, slug \`${finalSlug}\`).\n\n` +
@@ -557,17 +548,13 @@ function buildV3GameModelPageMin(
   };
 }
 
-function buildLandingM10Page(inputs: {
+function buildLandingM16Page(inputs: {
   pseudo: string;
   affiLink: string;
   depositAmount: number;
   bonusAmount: number;
-  showVip: boolean;
-  hideVip: boolean;
 }): any {
   const pseudo = inputs.pseudo.trim();
-  const theme = getM1Theme("cyclope");
-  const themeColors = themeToColors(theme);
   let affiCode = "";
   try {
     const u = new URL(inputs.affiLink);
@@ -579,9 +566,9 @@ function buildLandingM10Page(inputs: {
     modelKind: "M4V2",
     affiCode,
     affiLink: inputs.affiLink,
-    casinoName: pseudo || "M10",
+    casinoName: pseudo || "M16",
     slug: affiCode ? `${affiCode}V3` : "",
-    pageTitle: pseudo || "M10",
+    pageTitle: pseudo || "M16",
     compactSpacing: true,
     zones: {
       aboveCards: [],
@@ -589,23 +576,12 @@ function buildLandingM10Page(inputs: {
         {
           id: makeV2BlockId("v3GameModel" as any),
           type: "v3GameModel",
-          gameKind: "M10",
+          gameKind: "M16",
           pseudo,
           profileImageUrl: "",
           depositAmount: inputs.depositAmount,
           bonusAmount: inputs.bonusAmount,
           affiLink: inputs.affiLink,
-          theme: themeColors,
-          pseudoSub: "",
-          followersCount: "",
-          socialHandle: "",
-          gameImageUrl: "/affi_templates/cyclope/chicken.jpg",
-          gameLabel: "POULET",
-          gameBonusPct: "550%",
-          pseudoVariant: "fade",
-          pseudoAnimation: "none",
-          showVip: inputs.showVip,
-          hideVip: inputs.hideVip,
         },
       ],
       belowCards: [],
@@ -614,10 +590,10 @@ function buildLandingM10Page(inputs: {
       footer: [],
     },
     globals: {
-      bgPage: theme.bgPage,
-      bgCard: theme.bgCard,
-      brandGold: theme.accent,
-      borderColor: theme.borderColor,
+      bgPage: "#14082A",
+      bgCard: "rgba(178,140,255,0.05)",
+      brandGold: "#FFB347",
+      borderColor: "rgba(178,140,255,0.16)",
     },
   };
 }
