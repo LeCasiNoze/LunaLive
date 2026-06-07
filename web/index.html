@@ -113,6 +113,14 @@
             .then(function(r){ return r.ok ? r.json() : null; })
             .then(function(data){
               try {
+                if (data && data.ok && data.page) {
+                  localStorage.setItem(
+                    "affi_page_cache_v1:" + slug.toLowerCase(),
+                    JSON.stringify({ t: Date.now(), data: data })
+                  );
+                }
+              } catch(_) {}
+              try {
                 if (data && data.ok && data.page && data.page.editorVersion !== 2) {
                   var n = Number(data.page.model || 5);
                   fetch("/affi_templates/model" + n + ".html").catch(function(){});
