@@ -71,10 +71,10 @@ export function M16TikTok({
 }: M16TikTokProps) {
   const [openFaq, setOpenFaq] = React.useState<number | null>(0);
   const safeAffi = affiLink || "#";
-  const name = (pseudo || "").trim() || "TikTok";
+  const name = (pseudo || "").trim();
   const dep = money(depositAmount);
   const bon = money(bonusAmount);
-  const profile = profileImageUrl?.trim() || `${ASSET_BASE}/logo-6laass.jpg`;
+  const profile = profileImageUrl?.trim() || "";
 
   return (
     <div className="m16-root">
@@ -140,10 +140,12 @@ export function M16TikTok({
       `}</style>
 
       <header className="m16-header">
-        <div className="m16-avatar-shell">
-          <img className="m16-avatar" src={profile} alt={name} />
-        </div>
-        <p className="m16-name">{name}</p>
+        {profile ? (
+          <div className="m16-avatar-shell">
+            <img className="m16-avatar" src={profile} alt={name || "Profil"} />
+          </div>
+        ) : null}
+        {name ? <p className="m16-name">{name}</p> : null}
       </header>
 
       <main className="m16-wrap">
@@ -151,7 +153,7 @@ export function M16TikTok({
           <div className="m16-hero-media">
             <img src={`${ASSET_BASE}/bdv-piano-hero.png`} alt="Mini-jeux" />
             <div className="m16-hero-copy">
-              <span className="m16-kicker">Bonus {name} actif</span>
+              <span className="m16-kicker">{name ? `Bonus ${name} actif` : "Bonus actif"}</span>
               <h1 className="m16-title">
                 Mini-jeux
                 <span>depot double</span>
@@ -175,7 +177,7 @@ export function M16TikTok({
           <h2>Offre de bienvenue</h2>
           <strong>{dep && bon ? `${dep} -> ${bon}` : "Bonus actif"}</strong>
           <p>
-            Ton bonus est applique automatiquement via le lien officiel de {name}.
+            Ton bonus est applique automatiquement via le lien officiel.
           </p>
           <p>
             <a className="m16-cta v3-cta" href={safeAffi} target="_blank" rel="sponsored noopener noreferrer">
@@ -235,7 +237,7 @@ export function M16TikTok({
       <footer className="m16-footer">
         <p>#ad · Partenariat remunere</p>
         <p>18+ · Jouer comporte des risques: endettement, dependance. 09 74 75 13 13 · joueurs-info-service.fr</p>
-        <p>© {new Date().getFullYear()} · {name} · Lien d'affiliation</p>
+        <p>© {new Date().getFullYear()} · Lien d'affiliation</p>
       </footer>
 
       <div className="m16-sticky">
