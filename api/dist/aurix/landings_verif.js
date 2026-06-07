@@ -1054,6 +1054,13 @@ function statusBadgeV2(status) {
         return "⚠️";
     return "⚪";
 }
+const DISCORD_EMBED_SAFE_LIMIT = 5600;
+const DISCORD_FIELD_SAFE_LIMIT = 900;
+function truncateText(value, max) {
+    if (value.length <= max)
+        return value;
+    return `${value.slice(0, Math.max(0, max - 1))}…`;
+}
 function buildEmbedV2(refs, live) {
     const counts = {
         ok: 0,
@@ -1109,11 +1116,17 @@ function buildEmbedV2(refs, live) {
             ? `${cfg.BRAND.NAME} • vérification automatique toutes les 2h • mise à jour en direct`
             : `${cfg.BRAND.NAME} • vérification automatique toutes les 2h`,
     });
+    let embedChars = "🔎  Landing Verif".length +
+        [...liveLines, ...summaryLines].join("\n").length +
+        (live
+            ? `${cfg.BRAND.NAME} • vérification automatique toutes les 2h • mise à jour en direct`
+            : `${cfg.BRAND.NAME} • vérification automatique toutes les 2h`).length;
     const sections = [
         { label: "Problèmes (à traiter)", rows: refs.filter((ref) => ref.last_status && ref.last_status !== "ok") },
         { label: `Tout OK (${counts.ok})`, rows: refs.filter((ref) => ref.last_status === "ok") },
         { label: "Pas encore vérifiées", rows: refs.filter((ref) => !ref.last_status) },
     ];
+    let omittedRows = 0;
     for (const section of sections) {
         if (section.rows.length === 0)
             continue;
@@ -1127,14 +1140,16 @@ function buildEmbedV2(refs, live) {
             if (landing)
                 links.push(`[landing](${landing})`);
             links.push(`[affi](${ref.expected_celsius_url})`);
-            const issueSuffix = ref.last_status && ref.last_status !== "ok" && ref.last_details ? ` — *${ref.last_details}*` : "";
+            const issueSuffix = ref.last_status && ref.last_status !== "ok" && ref.last_details
+                ? ` — *${truncateText(ref.last_details, 140)}*`
+                : "";
             return `${badge}${dom} **${ref.pseudo}** · ${fmtTime(ref.last_check_at)} · ${links.join(" · ")}${issueSuffix}`;
         });
         const chunks = [];
         let current = "";
         for (const line of lines) {
             const next = current ? `${current}\n${line}` : line;
-            if (next.length > 1000) {
+            if (next.length > DISCORD_FIELD_SAFE_LIMIT) {
                 chunks.push(current);
                 current = line;
             }
@@ -1145,8 +1160,24 @@ function buildEmbedV2(refs, live) {
         if (current)
             chunks.push(current);
         chunks.forEach((value, index) => {
-            embed.addFields({ name: index === 0 ? section.label : "​", value });
+            if (omittedRows > 0)
+                return;
+            const name = index === 0 ? section.label : "​";
+            const nextCost = name.length + value.length;
+            if (embedChars + nextCost > DISCORD_EMBED_SAFE_LIMIT) {
+                omittedRows = chunks.slice(index).join("\n").split("\n").filter(Boolean).length;
+                return;
+            }
+            embed.addFields({ name, value });
+            embedChars += nextCost;
         });
+    }
+    if (omittedRows > 0) {
+        const name = "Liste tronquée";
+        const value = `Affichage compact pour rester sous la limite Discord. ${omittedRows} ligne(s) masquée(s) — relance la vérif ou consulte la DB pour le détail complet.`;
+        if (embedChars + name.length + value.length <= DISCORD_EMBED_SAFE_LIMIT) {
+            embed.addFields({ name, value });
+        }
     }
     if (refs.length === 0) {
         embed.addFields({ name: "​", value: "*Aucune landing référencée.*" });
