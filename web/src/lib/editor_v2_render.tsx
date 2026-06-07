@@ -38,6 +38,7 @@ import { M11Aurix } from "../components/M11Aurix";
 import { M12Chat } from "../components/M12Chat";
 import { M13Celsius } from "../components/M13Celsius";
 import { M15Cyclope } from "../components/M15Cyclope";
+import { M16TikTok } from "../components/M16TikTok";
 
 // ─── Edit mode context — propage onBlockClick + selection ─────────────────────
 //
@@ -403,6 +404,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
         gameBonusPct={b.gameBonusPct}
         pseudoVariant={b.pseudoVariant}
         pseudoAnimation={b.pseudoAnimation}
+        showVip={b.showVip}
         hideVip={b.hideVip}
       />
     );
@@ -420,6 +422,7 @@ function RenderV3GameModel({ b }: { b: V2V3GameModelBlock }) {
     case "M12": return <M12Chat {...props} />;
     case "M13": return <M13Celsius {...props} pseudoSub={b.pseudoSub} />;
     case "M15": return <M15Cyclope {...props} />;
+    case "M16": return <M16TikTok {...props} />;
   }
 }
 

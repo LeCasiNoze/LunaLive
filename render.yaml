@@ -18,3 +18,15 @@ services:
     buildCommand: cd web && npm install && npm run build
     startCommand: node serve.js
     pullRequestPreviewsEnabled: false
+
+  - type: web
+    name: landaurax
+    runtime: static
+    branch: main
+    buildCommand: cd landaurax && npm ci && npm run build
+    staticPublishPath: landaurax/dist
+    autoDeployTrigger: commit
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

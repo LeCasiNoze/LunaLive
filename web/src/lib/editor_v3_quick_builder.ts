@@ -171,7 +171,7 @@ export interface V3QuickInputs {
    *   - M6 = Mines (grille 3x3 diamants/bombe)
    *   - M7 = Plinko (bille à travers les pegs)
    *   - M8 = Penalty (tir au but, vise une zone) */
-  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15";
+  modelKind: "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15" | "M16";
   /** Variant M5 (uniquement utilisé quand modelKind === "M2"). */
   m5Variant?: M5V1Variant;
   /** URL du coffre custom (M2). Vide → garde le default variant-spécifique. */
@@ -227,8 +227,10 @@ export interface V3QuickInputs {
   /** Lien Telegram a afficher sous le CTA principal (uniquement M2/M5V1
    *  pour le moment). Si vide, pas de bouton. */
   telegramUrl?: string;
+  /** Affiche le block VIP sur M10. Default false pour les nouvelles pages. */
+  showVip?: boolean;
   /** Masque le block VIP (teaser principal + mini sticky) sur M10.
-   *  Default false. */
+   *  Legacy only: conserve le rendu des anciennes pages. */
   hideVip?: boolean;
 }
 
@@ -237,8 +239,8 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     modelKind,
     pseudo: "",
     affiLink: "",
-    depositAmount: modelKind === "M2" ? 20 : 10,
-    bonusAmount: 20,
+    depositAmount: 20,
+    bonusAmount: 40,
     profileImageUrl: "",
     card1Image: { kind: "penalty", url: V3_GAME_IMAGES[0].url },
     card2Image: { kind: "mines",   url: V3_GAME_IMAGES[1].url },
@@ -269,6 +271,7 @@ export function defaultV3QuickInputs(modelKind: "M1" | "M2" = "M1"): V3QuickInpu
     gameBonusPct: "550%",
     pseudoVariant: "fade",
     pseudoAnimation: "none",
+    showVip: false,
   };
 }
 
@@ -504,7 +507,7 @@ export function buildV3PageFromQuickInputs(inputs: V3QuickInputs): V2Page {
 // très simple : un V2Page minimaliste avec une seule zone (cards) contenant
 // ce bloc.
 export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
-  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15";
+  const kind = inputs.modelKind as "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12" | "M13" | "M15" | "M16";
   const useTheme = inputs.m1UseTheme !== false;
   const theme = useTheme ? getM1Theme(inputs.m1Theme) : null;
   const baseThemeColors = theme ? {
@@ -562,6 +565,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
           gameBonusPct: inputs.gameBonusPct,
           pseudoVariant: inputs.pseudoVariant,
           pseudoAnimation: inputs.pseudoAnimation,
+          showVip: inputs.showVip,
           pseudoStyle: pseudoStyleResolved,
           hideVip: inputs.hideVip,
         } as any,
@@ -569,7 +573,7 @@ export function buildV3GameModelPage(inputs: V3QuickInputs): V2Page {
       belowCards: [],
       reviews: [],
       faq: [],
-      footer: (kind === "M10" || kind === "M11" || kind === "M12" || kind === "M13" || kind === "M15") ? [] : [
+      footer: (kind === "M10" || kind === "M11" || kind === "M12" || kind === "M13" || kind === "M15" || kind === "M16") ? [] : [
         // M10 (Cyclope) et M11 (Aurix) ont leur propre footer + sticky CTA integres,
         // pas besoin du M4V1LowerSections qui injectait un 2e CTA "JOUER MAINTENANT".
         {

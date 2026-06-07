@@ -229,6 +229,7 @@ export async function runSetup(guild) {
     await postBotInvitePanel(chBotStreamers);
     // ─── Watcher board (list + stats sticky messages) ───
     await ensureWatcherBoard(guild);
+    // Landing Verif est gere par le bot LunaLive (categorie AGENCE).
     // ─── Refill batch initial ───
     await ensureOpenBatch(guild);
     log("Setup terminé.");

@@ -16,11 +16,6 @@ export const guildCommandDefinitions = [
         description: "Annule ta demande de refill en cours.",
     },
     {
-        name: "refill-sent",
-        description: "(Staff) Marque le dernier batch verrouillé comme envoyé.",
-        default_member_permissions: String(PermissionFlagsBits.ManageMessages),
-    },
-    {
         name: "compte",
         description: "Voir / modifier tes infos (Telegram, email, pseudo joueur).",
     },
@@ -80,6 +75,73 @@ export const guildCommandDefinitions = [
         name: "close-ticket",
         description: "(Admin) Ferme le ticket courant.",
         default_member_permissions: String(PermissionFlagsBits.ManageChannels),
+    },
+    {
+        name: "celsius-vip-invite",
+        description: "(Admin) Envoie le DM d'invitation VIP à tous les vérifiés ≥750€ qui n'ont pas encore reçu.",
+        default_member_permissions: String(PermissionFlagsBits.Administrator),
+    },
+    {
+        name: "verify-landings",
+        description: "(Admin) Force une passe de vérification des landings maintenant.",
+        default_member_permissions: String(PermissionFlagsBits.Administrator),
+    },
+    {
+        name: "aurix-resend-dm",
+        description: "(Admin) Renvoie le DM Celsius (confirmation/vérifié/refusé) à un viewer.",
+        default_member_permissions: String(PermissionFlagsBits.Administrator),
+        options: [
+            {
+                name: "user",
+                description: "Le viewer à re-notifier",
+                type: ApplicationCommandOptionType.User,
+                required: true,
+            },
+        ],
+    },
+    {
+        name: "refill-config",
+        description: "(Admin) Configure le montant et le wager de refill pour un utilisateur ou un auto-refill.",
+        default_member_permissions: String(PermissionFlagsBits.Administrator),
+        options: [
+            {
+                name: "user",
+                description: "Utilisateur Discord (laisser vide si auto-refill par email).",
+                type: ApplicationCommandOptionType.User,
+                required: false,
+            },
+            {
+                name: "auto_email",
+                description: "Email d'un auto-refill (ex: dealjb@hotmail.com) — alternative à 'user'.",
+                type: ApplicationCommandOptionType.String,
+                required: false,
+            },
+            {
+                name: "amount",
+                description: "Montant du refill (ex: '500€', '1000€'). Vide = inchangé.",
+                type: ApplicationCommandOptionType.String,
+                required: false,
+            },
+            {
+                name: "wager",
+                description: "Wager (ex: 'no wag', 'x30'). Vide = inchangé.",
+                type: ApplicationCommandOptionType.String,
+                required: false,
+            },
+        ],
+    },
+    {
+        name: "link-partner",
+        description: "(Admin) Rattache un binôme au ticket courant (partage refill + accès salon).",
+        default_member_permissions: String(PermissionFlagsBits.Administrator),
+        options: [
+            {
+                name: "user",
+                description: "Le streamer à rattacher en binôme",
+                type: ApplicationCommandOptionType.User,
+                required: true,
+            },
+        ],
     },
 ];
 // Commandes GLOBALES — disponibles sur tous les serveurs où le bot est invité (serveurs streamers).

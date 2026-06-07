@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { RenderV2Page } from "../lib/editor_v2_render";
 import {
@@ -682,7 +683,7 @@ function WizardQuickView({
                 color: publishDomain === "landaurax" ? "#fff" : T.textMute,
                 border: "none", padding: "4px 10px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
               }}
-              title="landaurax.com/<slug>"
+              title="landaurax.onrender.com/<slug>"
             >
               Landaurax
             </button>
@@ -712,7 +713,7 @@ function WizardQuickView({
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Modèle</label>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M15"] as const).map((k) => (
+              {(["M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12", "M13", "M15", "M16"] as const).map((k) => (
                 <Chip key={k} active={inputs.modelKind === k} onClick={() => update({ modelKind: k })}>{k}</Chip>
               ))}
             </div>
@@ -731,6 +732,7 @@ function WizardQuickView({
               {inputs.modelKind === "M12" && "M12 = Paliers VIP — Bronze→Diamond, bonus 100% scalé + places restantes + capture email VIP gros joueurs"}
               {inputs.modelKind === "M13" && "M13 = S1 Celsius — mini-site premium FR/EN (welcome package 4 paliers, VIP host, payments, FAQ) — pseudo + image facultatifs"}
               {inputs.modelKind === "M15" && "M15 = Cyclope (Lovable) — landing l'Héritier importée telle quelle (header + hero + steps + gains + témoignages + FAQ + sticky CTA)"}
+              {inputs.modelKind === "M16" && "M16 = TikTok LAS — landing mobile issue du zip, pseudo + depot/bonus + lien d'affiliation"}
             </div>
           </div>
 
@@ -751,6 +753,9 @@ function WizardQuickView({
                     </span>
                   </Chip>
                 ))}
+              </div>
+              <div style={{ display: "none", fontSize: 11, color: T.textDim, marginTop: 6, paddingLeft: 26 }}>
+                DÃ©cochÃ© = le bouton "AccÃ¨s VIP" et le mini lien sticky restent masquÃ©s. CochÃ© = ils rÃ©apparaissent.
               </div>
             </div>
           ) : null}
@@ -810,13 +815,19 @@ function WizardQuickView({
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontSize: 13, color: T.text }}>
                 <input
                   type="checkbox"
-                  checked={!!inputs.hideVip}
-                  onChange={(e) => update({ hideVip: e.target.checked })}
+                  checked={typeof inputs.showVip === "boolean" ? inputs.showVip : !(inputs.hideVip ?? false)}
+                  onChange={(e) => update({ showVip: e.target.checked, hideVip: undefined })}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
-                <span><strong>Masquer le block VIP</strong> (teaser principal + mini sticky)</span>
+                <span><strong>Afficher le block VIP</strong> (teaser principal + mini sticky)</span>
               </label>
               <div style={{ fontSize: 11, color: T.textDim, marginTop: 6, paddingLeft: 26 }}>
+                Decoche = le bouton VIP et le mini lien sticky restent masques. Coche = ils reapparaissent.
+              </div>
+              <div style={{ display: "none", fontSize: 11, color: T.textDim, marginTop: 6, paddingLeft: 26 }}>
+                DÃ©cochÃ© = le bouton "AccÃ¨s VIP" et le mini lien sticky restent masquÃ©s. CochÃ© = ils rÃ©apparaissent.
+              </div>
+              <div style={{ display: "none", fontSize: 11, color: T.textDim, marginTop: 6, paddingLeft: 26 }}>
                 Retire entièrement le bouton "Accès VIP" + le mini lien sous le sticky CTA. Le popup VIP n'est jamais déclenché.
               </div>
             </div>
@@ -2375,6 +2386,7 @@ function CreateChoiceModal({ onChoose, onCancel }: { onChoose: (mode: "quick" | 
 export default function EditorV3Page() {
   const { user, token } = useAuth();
   const allowed = !!user && FSB_ALLOWED_IDS.has(user.id);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [view, setView] = React.useState<"dashboard" | "stats" | "wizard">("dashboard");
   const [pages, setPages] = React.useState<FsbAffiPage[]>([]);
@@ -2384,7 +2396,7 @@ export default function EditorV3Page() {
   const [wizardInputs, setWizardInputs] = React.useState<V3QuickInputs>(defaultV3QuickInputs());
   const [wizardPageId, setWizardPageId] = React.useState<number | null>(null);
   const [wizardSavedSlug, setWizardSavedSlug] = React.useState<string | null>(null);
-  const [wizardPublishDomain, setWizardPublishDomain] = React.useState<"lunalive" | "landaurax">("lunalive");
+  const [wizardPublishDomain, setWizardPublishDomain] = React.useState<"lunalive" | "landaurax">("landaurax");
   const [statsByPage, setStatsByPage] = React.useState<Record<string, AffiPageStats>>({});
 
   const refreshList = React.useCallback(async () => {
@@ -2418,12 +2430,12 @@ export default function EditorV3Page() {
     setWizardInputs(defaultV3QuickInputs());
     setWizardPageId(null);
     setWizardSavedSlug(null);
-    setWizardPublishDomain("lunalive");
+    setWizardPublishDomain("landaurax");
     setView("wizard");
     setShowCreateChoice(false);
   };
 
-  const handleOpen = (p: FsbAffiPage) => {
+  const handleOpen = React.useCallback((p: FsbAffiPage) => {
     const raw = (p.config as any)?.[V3_INPUTS_KEY];
     let stored: V3QuickInputs | undefined;
     // M1 (editorVersion=2) : objet directement, M2 (editorVersion=1) : string JSON
@@ -2438,7 +2450,24 @@ export default function EditorV3Page() {
     setWizardSavedSlug(p.slug);
     setWizardPublishDomain(p.publishDomain === "landaurax" ? "landaurax" : "lunalive");
     setView("wizard");
-  };
+  }, []);
+
+  React.useEffect(() => {
+    if (loadingList) return;
+    const requestedPageId = Number(searchParams.get("pageId") || 0);
+    const requestedSlug = (searchParams.get("slug") || "").trim().toLowerCase();
+    if (!requestedPageId && !requestedSlug) return;
+    const match = pages.find((p) =>
+      (requestedPageId > 0 && p.id === requestedPageId) ||
+      (!!requestedSlug && p.slug.toLowerCase() === requestedSlug)
+    );
+    if (!match) return;
+    handleOpen(match);
+    const next = new URLSearchParams(searchParams);
+    next.delete("pageId");
+    next.delete("slug");
+    setSearchParams(next, { replace: true });
+  }, [handleOpen, loadingList, pages, searchParams, setSearchParams]);
 
   const handleDelete = async (p: FsbAffiPage) => {
     if (!token) return;

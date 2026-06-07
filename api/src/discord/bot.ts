@@ -15,6 +15,10 @@ import {
   IG_AGENDA_REFRESH_CID,
   handleIgAgendaRefreshButton,
 } from "../instagram_agenda_board.js";
+import {
+  LANDING_VERIF_REFRESH_CID,
+  handleLandingVerifRefreshButton,
+} from "../aurix/landings_verif.js";
 
 import { routeAdminInteraction } from "./admin_commands.js";
 
@@ -490,6 +494,11 @@ export async function startDiscordBot(ctx: BotCtx) {
       // ── Instagram agenda board — bouton refresh ───────────────────────────
       if (interaction.isButton() && interaction.customId === IG_AGENDA_REFRESH_CID) {
         await handleIgAgendaRefreshButton(interaction); return;
+      }
+
+      // ── Landing verif — relance manuelle en direct ───────────────────────
+      if (interaction.isButton() && interaction.customId === LANDING_VERIF_REFRESH_CID) {
+        await handleLandingVerifRefreshButton(interaction); return;
       }
 
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────

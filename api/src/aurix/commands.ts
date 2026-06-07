@@ -88,6 +88,50 @@ export const guildCommandDefinitions = [
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
   {
+    name: "aurix-resend-dm",
+    description: "(Admin) Renvoie le DM Celsius (confirmation/vérifié/refusé) à un viewer.",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+    options: [
+      {
+        name: "user",
+        description: "Le viewer à re-notifier",
+        type: ApplicationCommandOptionType.User,
+        required: true,
+      },
+    ],
+  },
+  {
+    name: "refill-config",
+    description: "(Admin) Configure le montant et le wager de refill pour un utilisateur ou un auto-refill.",
+    default_member_permissions: String(PermissionFlagsBits.Administrator),
+    options: [
+      {
+        name: "user",
+        description: "Utilisateur Discord (laisser vide si auto-refill par email).",
+        type: ApplicationCommandOptionType.User,
+        required: false,
+      },
+      {
+        name: "auto_email",
+        description: "Email d'un auto-refill (ex: dealjb@hotmail.com) — alternative à 'user'.",
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+      {
+        name: "amount",
+        description: "Montant du refill (ex: '500€', '1000€'). Vide = inchangé.",
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+      {
+        name: "wager",
+        description: "Wager (ex: 'no wag', 'x30'). Vide = inchangé.",
+        type: ApplicationCommandOptionType.String,
+        required: false,
+      },
+    ],
+  },
+  {
     name: "link-partner",
     description: "(Admin) Rattache un binôme au ticket courant (partage refill + accès salon).",
     default_member_permissions: String(PermissionFlagsBits.Administrator),

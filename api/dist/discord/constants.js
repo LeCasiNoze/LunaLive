@@ -144,25 +144,7 @@ export const SLASH_COMMANDS = [
         name: "landing",
         description: "Landing pages affiliées",
         options: [
-            { name: "creer", description: "Créer une landing rapide (V3)", type: 1, options: [
-                    { name: "model", description: "Modèle visuel (défaut: M1)", type: 3, required: false, choices: [
-                            { name: "M1 — Cards + Reviews", value: "M1" },
-                            { name: "M3 — Spinning Wheel", value: "M3" },
-                            { name: "M4 — Scratch Card", value: "M4" },
-                            { name: "M5 — Slot Machine", value: "M5" },
-                            { name: "M6 — Treasure Chest", value: "M6" },
-                        ] },
-                    { name: "theme", description: "Thème de couleur (défaut: Or)", type: 3, required: false, choices: [
-                            { name: "Or", value: "gold" },
-                            { name: "Rubis", value: "ruby" },
-                            { name: "Émeraude", value: "emerald" },
-                            { name: "Saphir", value: "sapphire" },
-                            { name: "Améthyste", value: "amethyst" },
-                            { name: "Obsidian", value: "obsidian" },
-                            { name: "Rose", value: "rose" },
-                            { name: "Jade", value: "jade" },
-                        ] },
-                ] },
+            { name: "creer", description: "Créer une landing rapide (V3)", type: 1 },
             { name: "list", description: "Lister mes landings avec URLs", type: 1 },
         ],
     },

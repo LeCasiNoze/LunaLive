@@ -238,8 +238,11 @@ function getFfmpegPath() {
     const envPath = process.env.FFMPEG_PATH && String(process.env.FFMPEG_PATH).trim();
     return envPath ? envPath : "ffmpeg";
 }
-function runFfmpeg(args, timeoutMs) {
-    return new Promise((resolve) => {
+async function runFfmpeg(args, timeoutMs) {
+    // Sérialise via mutex global ffmpeg pour éviter overlap mp4 + thumbnail
+    // qui peut pousser le RSS au-delà des 512 MB Render.
+    const { withFfmpegSlot } = await import("../utils/ffmpeg_gate.js");
+    return withFfmpegSlot("clip-mp4", () => new Promise((resolve) => {
         const ffmpegPath = getFfmpegPath();
         const proc = spawn(ffmpegPath, args, { windowsHide: true });
         let stderr = "";
@@ -265,7 +268,7 @@ function runFfmpeg(args, timeoutMs) {
                 return resolve({ ok: true });
             resolve({ ok: false, err: `ffmpeg_exit_${code}\n${stderr}`.slice(0, 30_000) });
         });
-    });
+    }));
 }
 /* ─────────────────────────────────────────────
    Render + upload one clip

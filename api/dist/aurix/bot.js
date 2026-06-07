@@ -6,11 +6,12 @@ import { kvSet } from "./db.js";
 import { runMigrations } from "./migrate.js";
 import { guildCommandDefinitions, globalCommandDefinitions } from "./commands.js";
 import { runSetup } from "./setup.js";
-import { handleOpenTicketDealButton, handleOpenTicketApplyButton, handleApplyTicketModal, handleCloseTicketButton, handleCloseTicketCommand, handleMemberJoin, onMemberRemove, onMemberUpdate, } from "./tickets.js";
-import { handleRefillCommand, handleRefillCancelCommand, handleRefillSentCommand, handleCompteCommand, handleCompteModal, handleFirstRefillEmailModal, startCutoffTask, } from "./refill.js";
-import { handleConfig, handlePing } from "./admin.js";
+import { handleOpenTicketDealButton, handleOpenTicketApplyButton, handleApplyTicketModal, handleCloseTicketButton, handleCloseTicketCommand, handleLinkPartnerCommand, handleMemberJoin, onMemberRemove, onMemberUpdate, } from "./tickets.js";
+import { handleRefillCommand, handleRefillCancelCommand, handleCompteCommand, handleCompteModal, handleFirstRefillEmailModal, startCutoffTask, startTelegramRefillHandler, } from "./refill.js";
+import { handleConfig, handlePing, handleRefillConfigCommand, handleResendDmCommand, } from "./admin.js";
 import { handleCelsiusCommand, handleCelsiusModal, handleCelsiusModifyButton, handleAurixCommand, } from "./celsius.js";
 import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, } from "./watcher.js";
+import { triggerManualCheck } from "./landings_verif.js";
 export async function startAurixBot() {
     const env = loadEnv();
     console.log("[aurix] Running migrations…");
@@ -46,7 +47,7 @@ export async function startAurixBot() {
         }
         // Auto-setup: relance si la version du setup en DB est < SETUP_VERSION.
         // Le setup est idempotent (getOrCreate*) — sûr à ré-exécuter.
-        const SETUP_VERSION = "11";
+        const SETUP_VERSION = "12";
         if (guildId) {
             const guild = c.guilds.cache.get(guildId);
             if (guild) {
@@ -68,6 +69,26 @@ export async function startAurixBot() {
             }
         }
         startCutoffTask(c);
+        startTelegramRefillHandler(c);
+        // Landing Verif a migre vers le guild LunaLive (categorie AGENCE).
+        // Le cron est demarre cote LunaLive bot. Ici on cleanup l'ancien
+        // salon si encore present dans le guild Aurix.
+        try {
+            if (guildId) {
+                const guild = c.guilds.cache.get(guildId);
+                if (guild) {
+                    const channels = await guild.channels.fetch();
+                    const stale = Array.from(channels.values()).find((ch) => !!ch && ch.type === 0 /* GuildText */ && /landing-verif/i.test(ch.name));
+                    if (stale) {
+                        await stale.delete("Aurix Landing Verif migre vers guild LunaLive").catch(() => { });
+                        console.log(`[aurix] ancien salon landing-verif supprime (${stale.id})`);
+                    }
+                }
+            }
+        }
+        catch (e) {
+            console.error("[aurix] cleanup landing-verif failed:", e);
+        }
         await c.user.setPresence({
             activities: [{ name: `${cfg.BRAND.NAME} ${cfg.EMOJI.diamond}`, type: ActivityType.Watching }],
             status: "online",
@@ -184,9 +205,6 @@ export async function startAurixBot() {
                     case "refill-cancel":
                         await handleRefillCancelCommand(ci);
                         return;
-                    case "refill-sent":
-                        await handleRefillSentCommand(ci);
-                        return;
                     case "compte":
                         await handleCompteCommand(ci);
                         return;
@@ -199,6 +217,34 @@ export async function startAurixBot() {
                     case "close-ticket":
                         await handleCloseTicketCommand(ci);
                         return;
+                    case "link-partner":
+                        await handleLinkPartnerCommand(ci);
+                        return;
+                    case "refill-config":
+                        await handleRefillConfigCommand(ci);
+                        return;
+                    case "aurix-resend-dm":
+                        await handleResendDmCommand(ci);
+                        return;
+                    case "verify-landings": {
+                        await ci.deferReply({ ephemeral: true });
+                        const r = await triggerManualCheck(ci.client);
+                        const lines = [
+                            `${cfg.EMOJI.check} Vérif lancée : ${r.total} landings.`,
+                            `✅ \`${r.counts.ok}\` · 🟡 \`${r.counts.celsius_changed}\` · 🔴 \`${r.counts.landing_missing + r.counts.taap_off_domain}\` · ⚠️ \`${r.counts.taap_unreachable}\``,
+                        ];
+                        await ci.editReply({ content: lines.join("\n") });
+                        return;
+                    }
+                    case "celsius-vip-invite": {
+                        await ci.deferReply({ ephemeral: true });
+                        const { sendVipInviteBlast } = await import("./celsius_dm.js");
+                        const r = await sendVipInviteBlast(ci.client);
+                        await ci.editReply({
+                            content: `${cfg.EMOJI.check} Campagne VIP : ${r.sent} envoi(s) OK, ${r.skipped} déjà notifié(s), ${r.failed} échec(s) sur ${r.candidates} candidat(s).`,
+                        });
+                        return;
+                    }
                     case "celsius":
                         await handleCelsiusCommand(ci);
                         return;

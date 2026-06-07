@@ -42,16 +42,42 @@ const ALLOWED_USER_IDS = new Set([
   "406965568755728395", // Fabiozsis
   "992099046472831066", // Samyzsis (eowite22)
 ]);
+const DEFAULT_LANDING_OWNER_DISCORD_ID = "682472610868887567";
 
 const QG_CHANNEL_ID = "1501890674620891268";
 
 const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_LANDAURAX_BASE = String(process.env.PUBLIC_LANDAURAX_BASE || process.env.VITE_LANDAURAX_SITE_URL || "https://landaurax.onrender.com").replace(/\/$/, "");
+const LANDING_EDITOR_RETURN_TO = "/FSB_Board?section=tools";
 
 const eur = (n: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(n);
+
+function landingPublicUrl(slug: string, domain: "lunalive" | "landaurax" = "lunalive"): string {
+  return domain === "landaurax" ? `${PUBLIC_LANDAURAX_BASE}/${slug}` : `${PUBLIC_WEB_BASE}/r/${slug}`;
+}
+
+function landingEditorUrl(pageId: number, slug: string): string {
+  const params = new URLSearchParams({
+    pageId: String(pageId),
+    slug,
+    returnTo: LANDING_EDITOR_RETURN_TO,
+  });
+  return `${PUBLIC_WEB_BASE}/editorFSNV3?${params.toString()}`;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Garde-fou : user + salon
 // ─────────────────────────────────────────────────────────────────────────────
+
+async function checkAllowedUser(
+  interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction
+): Promise<boolean> {
+  if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
+    await interaction.reply({ ephemeral: true, content: "🚫 Cette commande est réservée à l'équipe agence." });
+    return false;
+  }
+  return true;
+}
 
 async function checkAccess(interaction: ChatInputCommandInteraction | ButtonInteraction | ModalSubmitInteraction): Promise<boolean> {
   if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
@@ -240,13 +266,26 @@ const LANDING_MODEL_LABEL: Record<LandingModelKind, string> = {
 async function handleLandingCreer(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!await checkAccess(interaction)) return;
 
-  const rawModel = (interaction.options.getString("model") || "M1").toUpperCase();
-  const modelKind: LandingModelKind = (["M1","M3","M4","M5","M6"].includes(rawModel) ? rawModel : "M1") as LandingModelKind;
-  const rawTheme = (interaction.options.getString("theme") || "gold").toLowerCase();
-  const themeKey: M1ThemeKey = (M1_THEMES.some(t => t.key === rawTheme) ? rawTheme : "gold") as M1ThemeKey;
+  {
+    const quickModal = new ModalBuilder()
+      .setCustomId(MODAL_LANDING_CREER)
+      .setTitle("Landing V3 - M16");
+    quickModal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder().setCustomId("pseudo").setLabel("Pseudo / nom du streamer").setStyle(TextInputStyle.Short).setMaxLength(60).setRequired(true)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder().setCustomId("affiLink").setLabel("Lien d'affiliation (URL complete)").setStyle(TextInputStyle.Short).setMaxLength(400).setRequired(true)
+      ),
+    );
+    await interaction.showModal(quickModal);
+    return;
+  }
 
+  const modelKind = "M10";
+  const themeKey = "cyclope" as const;
   const modal = new ModalBuilder()
-    .setCustomId(`${MODAL_LANDING_CREER}:${modelKind}:${themeKey}`)
+    .setCustomId(MODAL_LANDING_CREER)
     .setTitle(`Landing V3 — ${modelKind} / ${getM1Theme(themeKey).label}`.slice(0, 45));
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -271,6 +310,78 @@ async function handleLandingCreer(interaction: ChatInputCommandInteraction): Pro
 async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
   try {
+    {
+      const pseudo = interaction.fields.getTextInputValue("pseudo").trim();
+      const affiLink = interaction.fields.getTextInputValue("affiLink").trim();
+      if (!pseudo) throw new Error("Pseudo requis");
+      if (!/^https?:\/\//i.test(affiLink)) throw new Error("Lien d'affiliation invalide (doit commencer par http(s)://)");
+
+      const depositAmount = 20;
+      const bonusAmount = 40;
+      const publishDomain = "landaurax" as const;
+      const inputs: any = {
+        modelKind: "M16",
+        m1UseTheme: true,
+        m1Theme: "gold",
+        pseudo,
+        affiLink,
+        depositAmount,
+        bonusAmount,
+        profileImageUrl: "",
+      };
+
+      const v2Page = buildLandingM16Page({
+        pseudo,
+        affiLink,
+        depositAmount,
+        bonusAmount,
+      });
+      const builderSlug = String((v2Page as any).slug || "").trim();
+      const baseSlug = builderSlug || pseudo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const slug = await resolveUniqueSlug(baseSlug || "landing");
+      (v2Page as any).slug = slug;
+
+      const config: any = { ...v2Page, __v3: true, __v3Inputs: inputs };
+      const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
+      const r = await pool.query(
+        `
+        INSERT INTO affi_landing_pages
+          (slug, model, variant, brand_name, title, config, editor_version, owner_user_id, publish_domain, created_at, updated_at)
+        VALUES ($1, 4, NULL, $2, $3, $4::jsonb, 2, $5, $6, NOW(), NOW())
+        RETURNING id, slug, publish_domain
+        `,
+        [slug, pseudo, pseudo, JSON.stringify(config), ownerUserId, publishDomain]
+      );
+
+      const id = Number(r.rows[0].id);
+      const finalSlug = String(r.rows[0].slug);
+      const finalDomain = r.rows[0].publish_domain === "landaurax" ? "landaurax" : "lunalive";
+      const publicUrl = landingPublicUrl(finalSlug, finalDomain);
+      const editorUrl = landingEditorUrl(id, finalSlug);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFF4B6E)
+        .setTitle("Landing V3 creee - M16")
+        .setURL(publicUrl)
+        .setDescription(
+          `Page **${pseudo}** creee et publiee sur **Landaurax** (#${id}, slug \`${finalSlug}\`).\n\n` +
+          `Montants par defaut : **20 EUR / 40 EUR**. Ouvre le lien de modification pour l'ajuster directement dans le FSB Board V3.`
+        )
+        .addFields(
+          { name: "URL publique", value: publicUrl, inline: false },
+          { name: "Modifier dans le FSB Board V3", value: editorUrl, inline: false },
+        );
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Voir la page").setURL(publicUrl),
+        new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Modifier (V3)").setURL(editorUrl),
+      );
+
+      await interaction.editReply({ embeds: [embed], components: [row] });
+      return;
+    }
+    /*
     // customId = "admin:landing:creer:modal:M3:emerald" → parse model + theme
     const suffix = interaction.customId.slice(MODAL_LANDING_CREER.length + 1);
     const [rawModel, rawTheme] = suffix.split(":");
@@ -367,6 +478,7 @@ async function handleLandingCreerSubmit(interaction: ModalSubmitInteraction): Pr
     );
 
     await interaction.editReply({ embeds: [embed], components: [row] });
+    */
   } catch (e: any) {
     await interaction.editReply({ content: `❌ ${e?.message || e}` });
   }
@@ -436,6 +548,56 @@ function buildV3GameModelPageMin(
   };
 }
 
+function buildLandingM16Page(inputs: {
+  pseudo: string;
+  affiLink: string;
+  depositAmount: number;
+  bonusAmount: number;
+}): any {
+  const pseudo = inputs.pseudo.trim();
+  let affiCode = "";
+  try {
+    const u = new URL(inputs.affiLink);
+    const last = u.pathname.split("/").filter(Boolean).pop() || "";
+    affiCode = last.replace(/[^A-Za-z0-9_-]/g, "");
+  } catch { /* noop */ }
+
+  return {
+    modelKind: "M4V2",
+    affiCode,
+    affiLink: inputs.affiLink,
+    casinoName: pseudo || "M16",
+    slug: affiCode ? `${affiCode}V3` : "",
+    pageTitle: pseudo || "M16",
+    compactSpacing: true,
+    zones: {
+      aboveCards: [],
+      cards: [
+        {
+          id: makeV2BlockId("v3GameModel" as any),
+          type: "v3GameModel",
+          gameKind: "M16",
+          pseudo,
+          profileImageUrl: "",
+          depositAmount: inputs.depositAmount,
+          bonusAmount: inputs.bonusAmount,
+          affiLink: inputs.affiLink,
+        },
+      ],
+      belowCards: [],
+      reviews: [],
+      faq: [],
+      footer: [],
+    },
+    globals: {
+      bgPage: "#14082A",
+      bgCard: "rgba(178,140,255,0.05)",
+      brandGold: "#FFB347",
+      borderColor: "rgba(178,140,255,0.16)",
+    },
+  };
+}
+
 async function resolveUniqueSlug(base: string): Promise<string> {
   let candidate = base;
   let n = 2;
@@ -447,11 +609,28 @@ async function resolveUniqueSlug(base: string): Promise<string> {
 }
 
 async function resolveOwnerUserIdForDiscord(discordUserId: string): Promise<number> {
-  const r = await pool.query(
-    `SELECT user_id FROM discord_links WHERE discord_user_id = $1 LIMIT 1`,
-    [discordUserId]
-  );
-  return Number(r.rows[0]?.user_id || 0);
+  const resolveLinkedUser = async (id: string): Promise<number | null> => {
+    const r = await pool.query(
+      `
+      SELECT u.id
+      FROM discord_links dl
+      JOIN users u ON u.id = dl.user_id
+      WHERE dl.discord_user_id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+    const userId = Number(r.rows[0]?.id || 0);
+    return userId > 0 ? userId : null;
+  };
+
+  const linkedUserId = await resolveLinkedUser(discordUserId);
+  if (linkedUserId) return linkedUserId;
+
+  const fallbackUserId = await resolveLinkedUser(DEFAULT_LANDING_OWNER_DISCORD_ID);
+  if (fallbackUserId) return fallbackUserId;
+
+  throw new Error("Aucun compte FSB propriétaire valide trouvé pour créer la landing.");
 }
 
 async function handleLandingList(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -462,7 +641,7 @@ async function handleLandingList(interaction: ChatInputCommandInteraction): Prom
     const ownerUserId = await resolveOwnerUserIdForDiscord(interaction.user.id);
     const r = await pool.query(
       `
-      SELECT id, slug, brand_name AS brand, title, model, editor_version, created_at
+      SELECT id, slug, brand_name AS brand, title, model, editor_version, publish_domain, created_at
       FROM affi_landing_pages
       WHERE owner_user_id = $1
       ORDER BY created_at DESC
@@ -475,7 +654,7 @@ async function handleLandingList(interaction: ChatInputCommandInteraction): Prom
     }
     const lines = r.rows.map((row: any) =>
       `**${row.brand}** · model ${row.model} V${row.editor_version}\n` +
-      `${PUBLIC_WEB_BASE}/r/${row.slug}`
+      `${landingPublicUrl(String(row.slug), row.publish_domain === "landaurax" ? "landaurax" : "lunalive")}`
     );
     const totalCount = r.rowCount ?? lines.length;
     const embed = new EmbedBuilder()
@@ -590,7 +769,7 @@ async function handleTiktokInfluenceurAdd(interaction: ChatInputCommandInteracti
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function handlePurge(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!await checkAccess(interaction)) return;
+  if (!await checkAllowedUser(interaction)) return;
   await interaction.deferReply({ ephemeral: true });
   try {
     const x = interaction.options.getInteger("x", true);

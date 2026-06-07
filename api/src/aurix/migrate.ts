@@ -177,6 +177,41 @@ VALUES (
 ) ON CONFLICT (email) DO NOTHING;
 `,
   },
+  {
+    name: "010_refill_amount_wager.sql",
+    sql: `
+ALTER TABLE aurix_user_accounts  ADD COLUMN IF NOT EXISTS refill_amount TEXT;
+ALTER TABLE aurix_user_accounts  ADD COLUMN IF NOT EXISTS wager         TEXT;
+ALTER TABLE aurix_auto_refills   ADD COLUMN IF NOT EXISTS wager         TEXT;
+ALTER TABLE aurix_refill_requests ADD COLUMN IF NOT EXISTS wager        TEXT;
+
+-- Wager par defaut pour les auto-refills existants (dealjb).
+UPDATE aurix_auto_refills SET wager = 'no wag' WHERE wager IS NULL;
+`,
+  },
+  {
+    name: "011_landing_verif_v3_pages.sql",
+    sql: `
+ALTER TABLE aurix_landing_verif_refs
+    DROP CONSTRAINT IF EXISTS aurix_landing_verif_refs_taap_url_key;
+
+ALTER TABLE aurix_landing_verif_refs
+    ALTER COLUMN taap_url DROP NOT NULL;
+
+ALTER TABLE aurix_landing_verif_refs
+    ADD COLUMN IF NOT EXISTS page_slug TEXT;
+
+ALTER TABLE aurix_landing_verif_refs
+    ADD COLUMN IF NOT EXISTS page_publish_domain TEXT;
+
+ALTER TABLE aurix_landing_verif_refs
+    ADD COLUMN IF NOT EXISTS sheet_matched BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_aurix_landing_verif_refs_page_slug
+    ON aurix_landing_verif_refs (LOWER(page_slug))
+    WHERE page_slug IS NOT NULL;
+`,
+  },
 ];
 
 export async function runMigrations(): Promise<void> {

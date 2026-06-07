@@ -161,6 +161,7 @@ type Req = {
   casino_username: string | null;
   email: string | null;
   amount: string | null;
+  wager: string | null;
   notes: string | null;
   ticket_channel_id: string | null;
   requested_at: Date;
@@ -170,6 +171,8 @@ type Account = {
   telegram: string | null;
   email: string | null;
   casino_username: string | null;
+  refill_amount: string | null;
+  wager: string | null;
   updated_at: Date;
 };
 
@@ -259,7 +262,9 @@ function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]
       const parts = [`**${i + 1}.** ${who}`];
       if (r.casino_username) parts.push(`🎰 \`${r.casino_username}\``);
       if (r.email) parts.push(`✉️ \`${r.email}\``);
-      if (r.amount && r.amount !== cfg.DEFAULTS.REFILL_FIXED_AMOUNT) parts.push(`💰 \`${r.amount}\``);
+      const amountTxt = r.amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+      const wagerTxt = (r as any).wager || "no wag";
+      parts.push(`💰 \`${amountTxt}\` _(${wagerTxt})_`);
       if (r.notes) parts.push(`📝 *${r.notes}*`);
       return parts.join(" · ");
     });
@@ -344,7 +349,7 @@ async function refreshBatchMessage(client: Client, batch: Batch): Promise<void> 
     const enriched: (Req & { email: string | null })[] = [];
     for (const r of reqs) {
       const acc = await getAccount(r.user_id);
-      enriched.push({ ...r, email: acc?.email ?? null });
+      enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
     }
     await msg.edit({ embeds: [buildBatchEmbed(batch, enriched)] });
   } catch {
@@ -481,9 +486,12 @@ async function submitRefillCore(
   }
 
   const acc = await getAccount(interaction.user.id);
+  // Resolve per-user overrides (amount + wager), fallback aux defauts.
+  const refillAmount = (acc as any)?.refill_amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+  const wager = (acc as any)?.wager || "no wag";
   await query(
-    `INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, notes, ticket_channel_id)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, wager, notes, ticket_channel_id)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
      ON CONFLICT(batch_id, user_id) DO NOTHING`,
     [
       batch.id,
@@ -491,7 +499,8 @@ async function submitRefillCore(
       interaction.user.tag,
       acc?.casino_username ?? null,
       email,
-      cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
+      refillAmount,
+      wager,
       null,
       channel.id,
     ]
@@ -696,7 +705,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     const enriched: (Req & { email: string | null })[] = [];
     for (const r of reqs) {
       const acc = await getAccount(r.user_id);
-      enriched.push({ ...r, email: acc?.email ?? null });
+      enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
     }
     const plain = buildPlainListForManager(enriched);
 
@@ -748,6 +757,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
           email: r.email,
           casinoUsername: r.casino_username,
           amount: r.amount,
+          wager: r.wager,
         };
       })
     );
@@ -767,6 +777,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
           casinoUsername: it.casinoUsername,
           email: it.email,
           amount: it.amount,
+          wager: it.wager,
         })),
       });
 
@@ -925,10 +936,11 @@ async function injectAutoRefills(batch: Batch): Promise<void> {
     id: string;
     email: string;
     amount: string;
+    wager: string | null;
     display_name: string;
     cadence_days: number;
   }>(
-    `SELECT id, email, amount, display_name, cadence_days
+    `SELECT id, email, amount, wager, display_name, cadence_days
        FROM aurix_auto_refills
       WHERE active = TRUE AND next_run_at <= NOW()
       ORDER BY id`
@@ -937,10 +949,10 @@ async function injectAutoRefills(batch: Batch): Promise<void> {
   for (const a of autos) {
     const virtualUserId = `-${a.id}`; // sentinelle (negatif)
     const insRes = await query(
-      `INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, notes, ticket_channel_id)
-       VALUES($1, $2, $3, NULL, $4, $5, $6, NULL)
+      `INSERT INTO aurix_refill_requests(batch_id, user_id, username, casino_username, email, amount, wager, notes, ticket_channel_id)
+       VALUES($1, $2, $3, NULL, $4, $5, $6, $7, NULL)
        ON CONFLICT (batch_id, user_id) DO NOTHING`,
-      [batch.id, virtualUserId, a.display_name, a.email, a.amount, `Auto-refill recurrent (cadence ${a.cadence_days}j)`]
+      [batch.id, virtualUserId, a.display_name, a.email, a.amount, a.wager || "no wag", `Auto-refill recurrent (cadence ${a.cadence_days}j)`]
     );
 
     await query(
