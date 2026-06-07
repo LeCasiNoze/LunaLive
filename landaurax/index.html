@@ -43,6 +43,14 @@
           fetch(url, { credentials: "omit", mode: "cors" })
             .then(function(r){ return r.ok ? r.json() : null; })
             .then(function(data){
+              try {
+                if (data && data.ok && data.page) {
+                  localStorage.setItem(
+                    "affi_page_cache_v1:" + slug.toLowerCase(),
+                    JSON.stringify({ t: Date.now(), data: data })
+                  );
+                }
+              } catch(_) {}
               // Chain template HTML prefetch (V1 only — V2 ne lit pas de template).
               // Le fetch est best-effort, fire-and-forget : le browser cache HTTP
               // se chargera de servir la reponse au render React.

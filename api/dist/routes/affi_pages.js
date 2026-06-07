@@ -6,6 +6,7 @@ import { a } from "../utils/async.js";
 import { requireAuth } from "../auth.js";
 import { requireFsbAccess } from "./fsb_guard.js";
 import { notifyVipLeadAsync } from "../utils/vipNotify.js";
+import { r2Enabled, putR2Buffer, deleteFromR2 } from "../clips/r2.js";
 export const publicAffiPagesRouter = Router();
 export const fsbAffiPagesRouter = Router();
 fsbAffiPagesRouter.use("/fsb/affi-pages", requireAuth, requireFsbAccess);
@@ -86,6 +87,54 @@ function pageRowToJson(row) {
         updatedAt: row.updatedAt || row.updated_at || null,
     };
 }
+function affiSnapshotKey(slug) {
+    return `static/affi_pages/${String(slug || "").trim().toLowerCase()}.json`;
+}
+async function publishAffiSnapshot(page) {
+    if (!r2Enabled())
+        return;
+    const slug = String(page.slug || "").trim();
+    if (!slug)
+        return;
+    const payload = Buffer.from(JSON.stringify({ ok: true, page }), "utf8");
+    await putR2Buffer({
+        key: affiSnapshotKey(slug),
+        contentType: "application/json; charset=utf-8",
+        buffer: payload,
+        cacheControl: "public, max-age=60, s-maxage=300, stale-while-revalidate=86400",
+    });
+}
+function publishAffiSnapshotAsync(page) {
+    publishAffiSnapshot(page).catch((e) => {
+        console.warn("[affi-pages] snapshot publish failed:", e?.message || e);
+    });
+}
+export async function refreshAllAffiPageSnapshots() {
+    if (!r2Enabled())
+        return;
+    const { rows } = await pool.query(`SELECT
+       id,
+       slug,
+       model,
+       variant,
+       brand_name AS "brandName",
+       title,
+       config,
+       editor_version AS "editorVersion",
+       publish_domain AS "publishDomain",
+       owner_user_id AS "ownerUserId",
+       created_at AS "createdAt",
+       updated_at AS "updatedAt"
+     FROM affi_landing_pages
+     ORDER BY updated_at DESC NULLS LAST, id DESC
+     LIMIT 1000`);
+    let ok = 0;
+    for (const row of rows) {
+        await publishAffiSnapshot(pageRowToJson(row));
+        ok++;
+    }
+    console.log(`[affi-pages] snapshots refreshed: ${ok}`);
+}
 // Liste publique compacte (slug + brand + model + domaine + updatedAt).
 // Utilisee par le directoire cache sur landaurax. Filtre par domain
 // optionnel via ?domain=lunalive|landaurax.
@@ -154,7 +203,9 @@ publicAffiPagesRouter.get("/public/affi-pages/:slug", a(async (req, res) => {
     // landings ne changent pas souvent — utile pour kill le cold-start
     // perçu côté visiteurs (notamment depuis landaurax.com).
     res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
-    return res.json({ ok: true, page: pageRowToJson(rows[0]) });
+    const page = pageRowToJson(rows[0]);
+    publishAffiSnapshotAsync(page);
+    return res.json({ ok: true, page });
 }));
 fsbAffiPagesRouter.get("/fsb/affi-pages", a(async (_req, res) => {
     const { rows } = await pool.query(`SELECT
@@ -221,7 +272,9 @@ fsbAffiPagesRouter.post("/fsb/affi-pages", a(async (req, res) => {
         input.editorVersion,
         input.publishDomain,
     ]);
-    return res.status(201).json({ ok: true, item: pageRowToJson(rows[0]) });
+    const item = pageRowToJson(rows[0]);
+    publishAffiSnapshotAsync(item);
+    return res.status(201).json({ ok: true, item });
 }));
 fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
     const id = Number(req.params.id || 0);
@@ -270,19 +323,29 @@ fsbAffiPagesRouter.put("/fsb/affi-pages/:id", a(async (req, res) => {
           title,
           config,
           editor_version AS "editorVersion",
+          publish_domain AS "publishDomain",
           owner_user_id AS "ownerUserId",
           created_at AS "createdAt",
           updated_at AS "updatedAt"`, [id, slug, input.model, input.variant, input.brandName, input.title, JSON.stringify(input.config), input.editorVersion, input.publishDomain]);
     if (!rows[0])
         return res.status(404).json({ ok: false, error: "not_found" });
-    return res.json({ ok: true, item: pageRowToJson(rows[0]) });
+    const item = pageRowToJson(rows[0]);
+    publishAffiSnapshotAsync(item);
+    return res.json({ ok: true, item });
 }));
 fsbAffiPagesRouter.delete("/fsb/affi-pages/:id", a(async (req, res) => {
     const id = Number(req.params.id || 0);
     if (!Number.isInteger(id) || id <= 0) {
         return res.status(400).json({ ok: false, error: "bad_id" });
     }
+    const existing = await pool.query(`SELECT slug FROM affi_landing_pages WHERE id = $1 LIMIT 1`, [id]);
     const { rowCount } = await pool.query(`DELETE FROM affi_landing_pages WHERE id = $1`, [id]);
+    const slug = String(existing.rows?.[0]?.slug || "").trim();
+    if (slug && r2Enabled()) {
+        deleteFromR2(affiSnapshotKey(slug)).catch((e) => {
+            console.warn("[affi-pages] snapshot delete failed:", e?.message || e);
+        });
+    }
     if (!rowCount)
         return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true });

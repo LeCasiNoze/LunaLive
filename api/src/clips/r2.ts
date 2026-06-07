@@ -85,7 +85,7 @@ export async function putFileToR2(params: { key: string; contentType: string; fi
   );
 }
 
-export async function putR2Buffer(params: { key: string; contentType: string; buffer: Buffer }): Promise<boolean> {
+export async function putR2Buffer(params: { key: string; contentType: string; buffer: Buffer; cacheControl?: string }): Promise<boolean> {
   try {
     const Bucket = mustEnv("R2_BUCKET");
     const client = makeS3Client();
@@ -99,7 +99,7 @@ export async function putR2Buffer(params: { key: string; contentType: string; bu
         Key: k,
         Body: params.buffer,
         ContentType: String(params.contentType || "application/octet-stream"),
-        CacheControl: "public, max-age=31536000, immutable",
+        CacheControl: params.cacheControl || "public, max-age=31536000, immutable",
       })
     );
     return true;

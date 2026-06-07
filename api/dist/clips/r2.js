@@ -84,7 +84,7 @@ export async function putR2Buffer(params) {
             Key: k,
             Body: params.buffer,
             ContentType: String(params.contentType || "application/octet-stream"),
-            CacheControl: "public, max-age=31536000, immutable",
+            CacheControl: params.cacheControl || "public, max-age=31536000, immutable",
         }));
         return true;
     }
