@@ -222,6 +222,22 @@ function normalizeTelegram(v: string): string {
   return t.startsWith("@") ? t : "@" + t;
 }
 
+function requestAmount(r: { amount?: string | null }): string {
+  return (r.amount && r.amount.trim()) || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+}
+
+function summarizeAmounts(reqs: Array<Pick<Req, "amount">>): string {
+  if (reqs.length === 0) return cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+  const counts = new Map<string, number>();
+  for (const r of reqs) {
+    const amount = requestAmount(r);
+    counts.set(amount, (counts.get(amount) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([amount, count]) => `${count} × ${amount}`)
+    .join(" · ");
+}
+
 // ───────────── Embed builder ─────────────
 function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]): EmbedBuilder {
   const zone = tz();
@@ -244,7 +260,7 @@ function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]
     .setDescription(
       [
         `**Cutoff :** \`${cutoffLocal}\` (${zone})`,
-        `**Montant unitaire :** \`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\``,
+        `**Montants :** \`${summarizeAmounts(reqs)}\``,
         `**Statut :** ${statusLabel}`,
         `**Total demandes :** \`${reqs.length}\``,
       ].join("\n")
@@ -262,7 +278,7 @@ function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]
       const parts = [`**${i + 1}.** ${who}`];
       if (r.casino_username) parts.push(`🎰 \`${r.casino_username}\``);
       if (r.email) parts.push(`✉️ \`${r.email}\``);
-      const amountTxt = r.amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+      const amountTxt = requestAmount(r);
       const wagerTxt = (r as any).wager || "no wag";
       parts.push(`💰 \`${amountTxt}\` _(${wagerTxt})_`);
       if (r.notes) parts.push(`📝 *${r.notes}*`);
@@ -288,11 +304,13 @@ function buildBatchEmbed(batch: Batch, reqs: (Req & { email?: string | null })[]
 function buildPlainListForManager(reqs: (Req & { email?: string | null })[]): string {
   if (reqs.length === 0) return "(aucune demande)";
   const lines = [
-    `Demandes de refill du jour (${cfg.DEFAULTS.REFILL_FIXED_AMOUNT} chacun) :`,
+    `Demandes de refill du jour (${summarizeAmounts(reqs)}) :`,
     "",
   ];
   reqs.forEach((r, i) => {
     const chunks = [`${i + 1}. ${r.username}`];
+    chunks.push(`montant : ${requestAmount(r)}`);
+    chunks.push(`wager : ${r.wager || "no wag"}`);
     if (r.casino_username) chunks.push(`pseudo casino : ${r.casino_username}`);
     if (r.email) chunks.push(`email : ${r.email}`);
     if (r.notes) chunks.push(`note : ${r.notes}`);
@@ -513,7 +531,7 @@ async function submitRefillCore(
     .setTitle(`${cfg.EMOJI.check}  Demande de refill effectuée`)
     .setDescription(
       [
-        `💰 Montant : **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}**`,
+        `💰 Montant : **${refillAmount}**`,
         `✉️ Email : \`${email}\``,
         "",
         `📅 Refill prévu ${refillWindowText(fresh.cutoff_at)}`,
@@ -526,7 +544,7 @@ async function submitRefillCore(
 
   await logEvent(
     guild,
-    `💰 <@${interaction.user.id}> → refill ${cfg.DEFAULTS.REFILL_FIXED_AMOUNT} (\`${email}\`) — batch #${fresh.id}`
+    `💰 <@${interaction.user.id}> → refill ${refillAmount} (\`${email}\`) — batch #${fresh.id}`
   );
 }
 
@@ -719,7 +737,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
         [
           `Le batch refill **#${batch.id}** est **verrouillé**.`,
           `**Manager à ping :** ${managerMention}`,
-          `**Nombre de demandes :** \`${reqs.length}\` × \`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\``,
+          `**Nombre de demandes :** \`${reqs.length}\` (${summarizeAmounts(enriched)})`,
           "",
           `📋 Liste prête à copier-coller :`,
           "```",
@@ -807,7 +825,7 @@ function fmtDayDateFr(d: Date, zone: string): string {
 async function notifyRequestersTransmitted(
   guild: Guild,
   batchId: number,
-  items: Array<{ ticket_channel_id: string | null; user_id: string; displayName: string }>
+  items: Array<{ ticket_channel_id: string | null; user_id: string; displayName: string; amount?: string | null }>
 ): Promise<void> {
   for (const it of items) {
     if (!it.ticket_channel_id) continue;
@@ -820,7 +838,7 @@ async function notifyRequestersTransmitted(
           [
             `Salut <@${it.user_id}> 👋`,
             "",
-            `Ta demande de refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **transmise au manager**.`,
+            `Ta demande de refill de **${requestAmount(it)}** vient d'être **transmise au manager**.`,
             `Il s'occupera du virement sur ton compte casino dès que possible — tu n'as rien à faire de plus.`,
             "",
             `À demain pour une nouvelle demande ${cfg.EMOJI.diamond}`,
@@ -897,7 +915,7 @@ async function processRefillDone(client: Client): Promise<void> {
           [
             `Salut <@${r.user_id}>,`,
             "",
-            `Ton refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **effectué** par le manager Aurix.`,
+            `Ton refill de **${requestAmount(r)}** vient d'être **effectué** par le manager Aurix.`,
             `Jette un œil à ton compte casino — c'est crédité (ou ça arrive d'une minute à l'autre).`,
             "",
             `Bon stream ${cfg.EMOJI.fire}`,

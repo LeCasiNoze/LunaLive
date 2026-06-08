@@ -154,6 +154,21 @@ function normalizeTelegram(v) {
         return t;
     return t.startsWith("@") ? t : "@" + t;
 }
+function requestAmount(r) {
+    return (r.amount && r.amount.trim()) || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+}
+function summarizeAmounts(reqs) {
+    if (reqs.length === 0)
+        return cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+    const counts = new Map();
+    for (const r of reqs) {
+        const amount = requestAmount(r);
+        counts.set(amount, (counts.get(amount) || 0) + 1);
+    }
+    return [...counts.entries()]
+        .map(([amount, count]) => `${count} × ${amount}`)
+        .join(" · ");
+}
 // ───────────── Embed builder ─────────────
 function buildBatchEmbed(batch, reqs) {
     const zone = tz();
@@ -172,7 +187,7 @@ function buildBatchEmbed(batch, reqs) {
         .setTitle(`${cfg.EMOJI.list}  Batch refill #${batch.id}`)
         .setDescription([
         `**Cutoff :** \`${cutoffLocal}\` (${zone})`,
-        `**Montant unitaire :** \`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\``,
+        `**Montants :** \`${summarizeAmounts(reqs)}\``,
         `**Statut :** ${statusLabel}`,
         `**Total demandes :** \`${reqs.length}\``,
     ].join("\n"))
@@ -191,7 +206,7 @@ function buildBatchEmbed(batch, reqs) {
                 parts.push(`🎰 \`${r.casino_username}\``);
             if (r.email)
                 parts.push(`✉️ \`${r.email}\``);
-            const amountTxt = r.amount || cfg.DEFAULTS.REFILL_FIXED_AMOUNT;
+            const amountTxt = requestAmount(r);
             const wagerTxt = r.wager || "no wag";
             parts.push(`💰 \`${amountTxt}\` _(${wagerTxt})_`);
             if (r.notes)
@@ -218,11 +233,13 @@ function buildPlainListForManager(reqs) {
     if (reqs.length === 0)
         return "(aucune demande)";
     const lines = [
-        `Demandes de refill du jour (${cfg.DEFAULTS.REFILL_FIXED_AMOUNT} chacun) :`,
+        `Demandes de refill du jour (${summarizeAmounts(reqs)}) :`,
         "",
     ];
     reqs.forEach((r, i) => {
         const chunks = [`${i + 1}. ${r.username}`];
+        chunks.push(`montant : ${requestAmount(r)}`);
+        chunks.push(`wager : ${r.wager || "no wag"}`);
         if (r.casino_username)
             chunks.push(`pseudo casino : ${r.casino_username}`);
         if (r.email)
@@ -421,7 +438,7 @@ async function submitRefillCore(interaction, email) {
     const embed = new EmbedBuilder()
         .setTitle(`${cfg.EMOJI.check}  Demande de refill effectuée`)
         .setDescription([
-        `💰 Montant : **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}**`,
+        `💰 Montant : **${refillAmount}**`,
         `✉️ Email : \`${email}\``,
         "",
         `📅 Refill prévu ${refillWindowText(fresh.cutoff_at)}`,
@@ -429,7 +446,7 @@ async function submitRefillCore(interaction, email) {
         .setColor(cfg.COLOR.SUCCESS)
         .setFooter({ text: `${cfg.BRAND.NAME} • Batch #${fresh.id}` });
     await replySmart(interaction, { embeds: [embed], ephemeral: false });
-    await logEvent(guild, `💰 <@${interaction.user.id}> → refill ${cfg.DEFAULTS.REFILL_FIXED_AMOUNT} (\`${email}\`) — batch #${fresh.id}`);
+    await logEvent(guild, `💰 <@${interaction.user.id}> → refill ${refillAmount} (\`${email}\`) — batch #${fresh.id}`);
 }
 async function replySmart(interaction, payload) {
     if (interaction.replied || interaction.deferred) {
@@ -594,7 +611,7 @@ async function triggerCutoff(client, batch) {
             .setDescription([
             `Le batch refill **#${batch.id}** est **verrouillé**.`,
             `**Manager à ping :** ${managerMention}`,
-            `**Nombre de demandes :** \`${reqs.length}\` × \`${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}\``,
+            `**Nombre de demandes :** \`${reqs.length}\` (${summarizeAmounts(enriched)})`,
             "",
             `📋 Liste prête à copier-coller :`,
             "```",
@@ -685,7 +702,7 @@ async function notifyRequestersTransmitted(guild, batchId, items) {
                 .setDescription([
                 `Salut <@${it.user_id}> 👋`,
                 "",
-                `Ta demande de refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **transmise au manager**.`,
+                `Ta demande de refill de **${requestAmount(it)}** vient d'être **transmise au manager**.`,
                 `Il s'occupera du virement sur ton compte casino dès que possible — tu n'as rien à faire de plus.`,
                 "",
                 `À demain pour une nouvelle demande ${cfg.EMOJI.diamond}`,
@@ -751,7 +768,7 @@ async function processRefillDone(client) {
                 .setDescription([
                 `Salut <@${r.user_id}>,`,
                 "",
-                `Ton refill de **${cfg.DEFAULTS.REFILL_FIXED_AMOUNT}** vient d'être **effectué** par le manager Aurix.`,
+                `Ton refill de **${requestAmount(r)}** vient d'être **effectué** par le manager Aurix.`,
                 `Jette un œil à ton compte casino — c'est crédité (ou ça arrive d'une minute à l'autre).`,
                 "",
                 `Bon stream ${cfg.EMOJI.fire}`,

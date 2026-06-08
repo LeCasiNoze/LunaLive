@@ -57,6 +57,7 @@ import {
   handleQueuePass,
   handleQueueRejectButton,
   handleQueueFilterSelect,
+  handleAutoValidateConfigSelect,
 } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 
@@ -206,6 +207,10 @@ export async function startAurixBot(): Promise<void> {
       if (interaction.isStringSelectMenu()) {
         if (interaction.customId === "aurix:watcher:queue:filter") {
           await handleQueueFilterSelect(interaction);
+          return;
+        }
+        if (interaction.customId === "aurix:watcher:auto-validate:toggle") {
+          await handleAutoValidateConfigSelect(interaction);
           return;
         }
         return;
