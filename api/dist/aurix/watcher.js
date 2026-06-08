@@ -7,6 +7,8 @@ const DEFAULT_SORT = "date_desc";
 const WATCHER_CHANNEL_FALLBACK_ID = "1504883037249208340";
 const QUEUE_FILTER_ALL = "__ALL__";
 const AUTO_VALIDATE_SELECT_ID = "aurix:watcher:auto-validate:toggle";
+const AUTO_VALIDATE_RUN_ID = "aurix:watcher:auto-validate:run";
+const AUTO_VALIDATE_REFRESH_ID = "aurix:watcher:auto-validate:refresh";
 function sortClause(mode) {
     switch (mode) {
         case "date_asc":
@@ -620,8 +622,20 @@ function buildAutoValidateConfigEmbed(settings) {
         .setFooter({ text: `${cfg.BRAND.NAME} • Sélectionne un streamer ci-dessous pour basculer ON/OFF` });
 }
 function buildAutoValidateConfigRows(settings) {
+    const rows = [];
+    const runBtn = new ButtonBuilder()
+        .setCustomId(AUTO_VALIDATE_RUN_ID)
+        .setLabel("Lancer maintenant")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("✅");
+    const refreshBtn = new ButtonBuilder()
+        .setCustomId(AUTO_VALIDATE_REFRESH_ID)
+        .setLabel("Rafraîchir")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("🔄");
+    rows.push(new ActionRowBuilder().addComponents(runBtn, refreshBtn));
     if (settings.length === 0)
-        return [];
+        return rows;
     const select = new StringSelectMenuBuilder()
         .setCustomId(AUTO_VALIDATE_SELECT_ID)
         .setPlaceholder("Basculer l'auto-validation d'un streamer…");
@@ -634,7 +648,8 @@ function buildAutoValidateConfigRows(settings) {
             : "Clique pour valider automatiquement les futurs joueurs.")
             .setValue(s.guild_id));
     }
-    return [new ActionRowBuilder().addComponents(select)];
+    rows.push(new ActionRowBuilder().addComponents(select));
+    return rows;
 }
 export async function ensureAutoValidateConfigMessage(guild) {
     const ch = await getWatcherChannel(guild);
@@ -686,6 +701,48 @@ export async function handleAutoValidateConfigSelect(interaction) {
     });
 }
 // ───────────── Queue handlers ─────────────
+async function fetchPendingAutoValidatable() {
+    return all(`SELECT s.*
+       FROM aurix_celsius_submissions s
+       JOIN aurix_streamer_settings cfg ON cfg.guild_id = s.guild_id
+      WHERE s.status = 'pending'
+        AND cfg.auto_validate_celsius = TRUE
+      ORDER BY s.created_at ASC, s.id ASC
+      LIMIT 100`);
+}
+export async function handleAutoValidateRunButton(interaction) {
+    if (!isModerator(interaction)) {
+        await interaction.reply({ content: "RÃ©servÃ© au staff.", ephemeral: true });
+        return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const rows = await fetchPendingAutoValidatable();
+    let ok = 0;
+    for (const sub of rows) {
+        const upd = await query("UPDATE aurix_celsius_submissions SET status='verified', decided_by=$1, verified_at=NOW(), reject_reason=NULL WHERE id=$2 AND status='pending'", [interaction.user.id, sub.id]);
+        if ((upd.rowCount ?? 0) <= 0)
+            continue;
+        await editReviewToDecision(interaction.client, sub.id, interaction.user.id);
+        await dmAfterDecision(interaction.client, sub.id, "verified");
+        ok++;
+    }
+    if (interaction.guild)
+        await ensureWatcherBoard(interaction.guild);
+    await interaction.editReply({
+        content: ok > 0
+            ? `✅ Auto-validation lancÃ©e : \`${ok}\` joueur(s) validÃ©(s).`
+            : "Aucune demande en attente pour les streamers en auto-validation.",
+    });
+}
+export async function handleAutoValidateRefreshButton(interaction) {
+    if (!isModerator(interaction)) {
+        await interaction.reply({ content: "RÃ©servÃ© au staff.", ephemeral: true });
+        return;
+    }
+    await interaction.deferUpdate();
+    if (interaction.guild)
+        await ensureWatcherBoard(interaction.guild);
+}
 export async function handleQueueAccept(interaction) {
     const submissionId = Number(interaction.customId.split(":").pop());
     if (!Number.isFinite(submissionId)) {

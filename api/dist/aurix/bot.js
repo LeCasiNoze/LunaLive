@@ -10,7 +10,7 @@ import { handleOpenTicketDealButton, handleOpenTicketApplyButton, handleApplyTic
 import { handleRefillCommand, handleRefillCancelCommand, handleCompteCommand, handleCompteModal, handleFirstRefillEmailModal, startCutoffTask, startTelegramRefillHandler, } from "./refill.js";
 import { handleConfig, handlePing, handleRefillConfigCommand, handleResendDmCommand, } from "./admin.js";
 import { handleCelsiusCommand, handleCelsiusModal, handleCelsiusModifyButton, handleAurixCommand, } from "./celsius.js";
-import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, handleAutoValidateConfigSelect, ensureWatcherBoard, } from "./watcher.js";
+import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, handleAutoValidateConfigSelect, ensureWatcherBoard, handleAutoValidateRunButton, handleAutoValidateRefreshButton, } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 export async function startAurixBot() {
     const env = loadEnv();
@@ -149,6 +149,14 @@ export async function startAurixBot() {
                 }
                 if (cid.startsWith("aurix:watcher:reject:")) {
                     await handleWatcherRejectButton(interaction);
+                    return;
+                }
+                if (cid === "aurix:watcher:auto-validate:run") {
+                    await handleAutoValidateRunButton(interaction);
+                    return;
+                }
+                if (cid === "aurix:watcher:auto-validate:refresh") {
+                    await handleAutoValidateRefreshButton(interaction);
                     return;
                 }
                 return;
