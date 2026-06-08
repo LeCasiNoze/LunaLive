@@ -4,6 +4,7 @@ import * as cfg from "./config.js";
 import { all, kvGet, kvSet, one, query } from "./db.js";
 import { sendCelsiusValidatedDM, sendCelsiusRejectedDM } from "./celsius_dm.js";
 const DEFAULT_SORT = "date_desc";
+const WATCHER_CHANNEL_FALLBACK_ID = "1504883037249208340";
 const QUEUE_FILTER_ALL = "__ALL__";
 const AUTO_VALIDATE_SELECT_ID = "aurix:watcher:auto-validate:toggle";
 function sortClause(mode) {
@@ -165,13 +166,20 @@ function buildSortRow() {
     return new ActionRowBuilder().addComponents(mk("date_desc", "Date ↓", "📅"), mk("date_asc", "Date ↑", "📅"), mk("deposit_desc", "Dépôt ↓", "💰"), mk("deposit_asc", "Dépôt ↑", "💰"));
 }
 async function getWatcherChannel(guild) {
-    const id = await kvGet("channel_watcher_id");
-    if (!id)
-        return null;
-    const ch = guild.channels.cache.get(id);
-    if (!ch || ch.type !== ChannelType.GuildText)
-        return null;
-    return ch;
+    const storedId = await kvGet("channel_watcher_id");
+    const candidates = [storedId, process.env.AURIX_WATCHER_CHANNEL_ID, WATCHER_CHANNEL_FALLBACK_ID]
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+    const unique = [...new Set(candidates)];
+    for (const id of unique) {
+        const ch = guild.channels.cache.get(id) ?? (await guild.channels.fetch(id).catch(() => null));
+        if (ch && ch.type === ChannelType.GuildText) {
+            if (id !== storedId)
+                await kvSet("channel_watcher_id", id);
+            return ch;
+        }
+    }
+    return null;
 }
 // ───────────── Board (sticky list + stats) ─────────────
 export async function ensureWatcherBoard(guild) {

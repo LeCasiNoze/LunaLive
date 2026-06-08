@@ -58,6 +58,7 @@ import {
   handleQueueRejectButton,
   handleQueueFilterSelect,
   handleAutoValidateConfigSelect,
+  ensureWatcherBoard,
 } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 
@@ -124,6 +125,18 @@ export async function startAurixBot(): Promise<void> {
           console.error("[aurix] Auto-setup a échoué :", e);
         }
       }
+    }
+
+    try {
+      if (guildId) {
+        const guild = c.guilds.cache.get(guildId);
+        if (guild) {
+          await ensureWatcherBoard(guild);
+          console.log("[aurix] Watcher board refresh ok.");
+        }
+      }
+    } catch (e) {
+      console.error("[aurix] Watcher board refresh failed:", e);
     }
 
     startCutoffTask(c);
