@@ -10,7 +10,7 @@ import { handleOpenTicketDealButton, handleOpenTicketApplyButton, handleApplyTic
 import { handleRefillCommand, handleRefillCancelCommand, handleCompteCommand, handleCompteModal, handleFirstRefillEmailModal, startCutoffTask, startTelegramRefillHandler, } from "./refill.js";
 import { handleConfig, handlePing, handleRefillConfigCommand, handleResendDmCommand, } from "./admin.js";
 import { handleCelsiusCommand, handleCelsiusModal, handleCelsiusModifyButton, handleAurixCommand, } from "./celsius.js";
-import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, handleAutoValidateConfigSelect, } from "./watcher.js";
+import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, handleAutoValidateConfigSelect, ensureWatcherBoard, } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 export async function startAurixBot() {
     const env = loadEnv();
@@ -67,6 +67,18 @@ export async function startAurixBot() {
                     console.error("[aurix] Auto-setup a échoué :", e);
                 }
             }
+        }
+        try {
+            if (guildId) {
+                const guild = c.guilds.cache.get(guildId);
+                if (guild) {
+                    await ensureWatcherBoard(guild);
+                    console.log("[aurix] Watcher board refresh ok.");
+                }
+            }
+        }
+        catch (e) {
+            console.error("[aurix] Watcher board refresh failed:", e);
         }
         startCutoffTask(c);
         startTelegramRefillHandler(c);

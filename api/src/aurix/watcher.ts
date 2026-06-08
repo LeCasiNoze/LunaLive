@@ -27,6 +27,7 @@ import { sendCelsiusValidatedDM, sendCelsiusRejectedDM } from "./celsius_dm.js";
 export type SortMode = "date_desc" | "date_asc" | "deposit_desc" | "deposit_asc";
 
 const DEFAULT_SORT: SortMode = "date_desc";
+const WATCHER_CHANNEL_FALLBACK_ID = "1504883037249208340";
 
 type Submission = {
   id: number;
@@ -275,11 +276,20 @@ function buildSortRow(): ActionRowBuilder<ButtonBuilder> {
 }
 
 async function getWatcherChannel(guild: Guild): Promise<TextChannel | null> {
-  const id = await kvGet("channel_watcher_id");
-  if (!id) return null;
-  const ch = guild.channels.cache.get(id);
-  if (!ch || ch.type !== ChannelType.GuildText) return null;
-  return ch as TextChannel;
+  const storedId = await kvGet("channel_watcher_id");
+  const candidates = [storedId, process.env.AURIX_WATCHER_CHANNEL_ID, WATCHER_CHANNEL_FALLBACK_ID]
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  const unique = [...new Set(candidates)];
+
+  for (const id of unique) {
+    const ch = guild.channels.cache.get(id) ?? (await guild.channels.fetch(id).catch(() => null));
+    if (ch && ch.type === ChannelType.GuildText) {
+      if (id !== storedId) await kvSet("channel_watcher_id", id);
+      return ch as TextChannel;
+    }
+  }
+  return null;
 }
 
 // ───────────── Board (sticky list + stats) ─────────────
