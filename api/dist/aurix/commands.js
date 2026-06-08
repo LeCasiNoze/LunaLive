@@ -9,7 +9,7 @@ export const guildCommandDefinitions = [
     },
     {
         name: "refill",
-        description: "Demander un refill (500€).",
+        description: "Demander un refill selon ton deal configuré.",
     },
     {
         name: "refill-cancel",

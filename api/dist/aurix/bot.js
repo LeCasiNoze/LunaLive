@@ -10,7 +10,7 @@ import { handleOpenTicketDealButton, handleOpenTicketApplyButton, handleApplyTic
 import { handleRefillCommand, handleRefillCancelCommand, handleCompteCommand, handleCompteModal, handleFirstRefillEmailModal, startCutoffTask, startTelegramRefillHandler, } from "./refill.js";
 import { handleConfig, handlePing, handleRefillConfigCommand, handleResendDmCommand, } from "./admin.js";
 import { handleCelsiusCommand, handleCelsiusModal, handleCelsiusModifyButton, handleAurixCommand, } from "./celsius.js";
-import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, } from "./watcher.js";
+import { handleWatcherSort, handleWatcherValidate, handleWatcherRejectButton, handleWatcherRejectModal, handleQueueAccept, handleQueuePass, handleQueueRejectButton, handleQueueFilterSelect, handleAutoValidateConfigSelect, } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 export async function startAurixBot() {
     const env = loadEnv();
@@ -145,6 +145,10 @@ export async function startAurixBot() {
             if (interaction.isStringSelectMenu()) {
                 if (interaction.customId === "aurix:watcher:queue:filter") {
                     await handleQueueFilterSelect(interaction);
+                    return;
+                }
+                if (interaction.customId === "aurix:watcher:auto-validate:toggle") {
+                    await handleAutoValidateConfigSelect(interaction);
                     return;
                 }
                 return;

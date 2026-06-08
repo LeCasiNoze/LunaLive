@@ -5,6 +5,7 @@ import { all, kvGet, kvSet, one, query } from "./db.js";
 import { sendCelsiusValidatedDM, sendCelsiusRejectedDM } from "./celsius_dm.js";
 const DEFAULT_SORT = "date_desc";
 const QUEUE_FILTER_ALL = "__ALL__";
+const AUTO_VALIDATE_SELECT_ID = "aurix:watcher:auto-validate:toggle";
 function sortClause(mode) {
     switch (mode) {
         case "date_asc":
@@ -52,6 +53,49 @@ async function fetchMultiServerUserIds() {
     const rows = await all(`SELECT viewer_user_id FROM aurix_celsius_submissions
      GROUP BY viewer_user_id HAVING COUNT(DISTINCT guild_id) > 1`);
     return new Set(rows.map((r) => r.viewer_user_id));
+}
+export async function isStreamerAutoValidateEnabled(guildId) {
+    const row = await one("SELECT auto_validate_celsius FROM aurix_streamer_settings WHERE guild_id=$1", [guildId]);
+    return row?.auto_validate_celsius === true;
+}
+async function upsertStreamerName(guildId, guildName) {
+    await query(`INSERT INTO aurix_streamer_settings(guild_id, guild_name)
+     VALUES($1, $2)
+     ON CONFLICT(guild_id) DO UPDATE SET
+       guild_name = COALESCE(EXCLUDED.guild_name, aurix_streamer_settings.guild_name)`, [guildId, guildName]);
+}
+async function toggleStreamerAutoValidate(guildId, guildName, updatedBy) {
+    await upsertStreamerName(guildId, guildName);
+    const row = await one(`UPDATE aurix_streamer_settings
+        SET auto_validate_celsius = NOT auto_validate_celsius,
+            guild_name = COALESCE($2, guild_name),
+            updated_by = $3,
+            updated_at = NOW()
+      WHERE guild_id = $1
+      RETURNING auto_validate_celsius`, [guildId, guildName, updatedBy]);
+    return row?.auto_validate_celsius === true;
+}
+async function fetchStreamerAutoValidateSettings() {
+    const rows = await all(`WITH known AS (
+       SELECT guild_id, MAX(guild_name) AS guild_name
+         FROM aurix_celsius_submissions
+        GROUP BY guild_id
+       UNION
+       SELECT guild_id, guild_name
+         FROM aurix_streamer_settings
+     )
+     SELECT k.guild_id::text AS guild_id,
+            MAX(k.guild_name) AS guild_name,
+            COALESCE(BOOL_OR(s.auto_validate_celsius), FALSE) AS auto_validate_celsius
+       FROM known k
+       LEFT JOIN aurix_streamer_settings s ON s.guild_id = k.guild_id
+      GROUP BY k.guild_id
+      ORDER BY COALESCE(MAX(k.guild_name), k.guild_id::text) ASC`);
+    return rows.map((r) => ({
+        guild_id: String(r.guild_id),
+        guild_name: r.guild_name,
+        auto_validate_celsius: r.auto_validate_celsius === true,
+    }));
 }
 function statusBadge(s) {
     if (s === "verified")
@@ -175,6 +219,8 @@ export async function ensureWatcherBoard(guild) {
         await kvSet("watcher_stats_message_id", newStatsId);
     // 3e message sticky : file de traitement (1 demande à la fois + boutons).
     await ensureQueueMessage(guild);
+    // 4e message sticky : configuration auto-validation par streamer.
+    await ensureAutoValidateConfigMessage(guild);
     // Notif ping owner dans 🗂️-gestion (delete+repost pour eviter l'accumulation).
     await ensureGestionNotification(guild);
 }
@@ -541,6 +587,95 @@ export async function ensureQueueMessage(guild) {
     }
     const msg = await ch.send(payload);
     await kvSet("watcher_queue_message_id", msg.id);
+}
+function buildAutoValidateConfigEmbed(settings) {
+    const enabled = settings.filter((s) => s.auto_validate_celsius);
+    const disabled = settings.filter((s) => !s.auto_validate_celsius);
+    const lines = settings.slice(0, 35).map((s) => {
+        const name = s.guild_name || `Guild ${s.guild_id.slice(-4)}`;
+        const state = s.auto_validate_celsius ? "ON auto-validation" : "OFF validation manuelle";
+        return `${s.auto_validate_celsius ? "🟢" : "⚪"} **${name}** · \`${state}\``;
+    });
+    return new EmbedBuilder()
+        .setTitle("⚙️  Auto-validation Celsius par streamer")
+        .setColor(cfg.COLOR.NEUTRAL)
+        .setDescription([
+        "Active l'auto-validation uniquement pour les deals où les joueurs doivent être validés sans passage manuel.",
+        "",
+        `🟢 Auto : \`${enabled.length}\` · ⚪ Manuel : \`${disabled.length}\``,
+        "",
+        lines.length ? lines.join("\n") : "*Aucun streamer connu pour l'instant.*",
+        settings.length > 35 ? `\n… ${settings.length - 35} streamer(s) non affiché(s).` : "",
+    ]
+        .filter(Boolean)
+        .join("\n"))
+        .setFooter({ text: `${cfg.BRAND.NAME} • Sélectionne un streamer ci-dessous pour basculer ON/OFF` });
+}
+function buildAutoValidateConfigRows(settings) {
+    if (settings.length === 0)
+        return [];
+    const select = new StringSelectMenuBuilder()
+        .setCustomId(AUTO_VALIDATE_SELECT_ID)
+        .setPlaceholder("Basculer l'auto-validation d'un streamer…");
+    for (const s of settings.slice(0, 25)) {
+        const name = (s.guild_name || `Guild ${s.guild_id.slice(-4)}`).slice(0, 72);
+        select.addOptions(new StringSelectMenuOptionBuilder()
+            .setLabel(`${s.auto_validate_celsius ? "ON" : "OFF"} · ${name}`.slice(0, 100))
+            .setDescription(s.auto_validate_celsius
+            ? "Clique pour repasser en validation manuelle."
+            : "Clique pour valider automatiquement les futurs joueurs.")
+            .setValue(s.guild_id));
+    }
+    return [new ActionRowBuilder().addComponents(select)];
+}
+export async function ensureAutoValidateConfigMessage(guild) {
+    const ch = await getWatcherChannel(guild);
+    if (!ch)
+        return;
+    const me = guild.members.me;
+    if (!me)
+        return;
+    const settings = await fetchStreamerAutoValidateSettings();
+    const payload = {
+        embeds: [buildAutoValidateConfigEmbed(settings)],
+        components: buildAutoValidateConfigRows(settings),
+    };
+    const existingId = await kvGet("watcher_auto_validate_message_id");
+    if (existingId) {
+        try {
+            const m = await ch.messages.fetch(existingId);
+            if (m.author.id === me.id) {
+                await m.edit(payload);
+                return;
+            }
+        }
+        catch {
+            /* not found, fall through */
+        }
+    }
+    const msg = await ch.send(payload);
+    await kvSet("watcher_auto_validate_message_id", msg.id);
+}
+export async function handleAutoValidateConfigSelect(interaction) {
+    if (!isModerator(interaction)) {
+        await interaction.reply({ content: "Réservé au staff.", ephemeral: true });
+        return;
+    }
+    const guildId = interaction.values[0];
+    const settings = await fetchStreamerAutoValidateSettings();
+    const current = settings.find((s) => s.guild_id === guildId);
+    if (!guildId || !current) {
+        await interaction.reply({ content: "Streamer introuvable dans la configuration.", ephemeral: true });
+        return;
+    }
+    const enabled = await toggleStreamerAutoValidate(guildId, current.guild_name, interaction.user.id);
+    await interaction.deferUpdate();
+    if (interaction.guild)
+        await ensureWatcherBoard(interaction.guild);
+    await interaction.followUp({
+        content: `${enabled ? "🟢" : "⚪"} Auto-validation Celsius **${enabled ? "activée" : "désactivée"}** pour **${current.guild_name || guildId}**.`,
+        ephemeral: true,
+    });
 }
 // ───────────── Queue handlers ─────────────
 export async function handleQueueAccept(interaction) {

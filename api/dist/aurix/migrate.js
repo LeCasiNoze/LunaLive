@@ -211,6 +211,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_aurix_landing_verif_refs_page_slug
     WHERE page_slug IS NOT NULL;
 `,
     },
+    {
+        name: "012_streamer_auto_validate_celsius.sql",
+        sql: `
+CREATE TABLE IF NOT EXISTS aurix_streamer_settings (
+    guild_id              BIGINT PRIMARY KEY,
+    guild_name            TEXT,
+    auto_validate_celsius BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by            BIGINT,
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_aurix_streamer_settings_auto_validate
+    ON aurix_streamer_settings(auto_validate_celsius);
+`,
+    },
 ];
 export async function runMigrations() {
     await pool.query(`

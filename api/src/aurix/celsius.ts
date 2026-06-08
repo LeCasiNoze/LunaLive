@@ -13,8 +13,8 @@ import {
 } from "discord.js";
 import * as cfg from "./config.js";
 import { all, one, query } from "./db.js";
-import { refreshWatcherBoard } from "./watcher.js";
-import { sendCelsiusConfirmationDM } from "./celsius_dm.js";
+import { isStreamerAutoValidateEnabled, refreshWatcherBoard } from "./watcher.js";
+import { sendCelsiusConfirmationDM, sendCelsiusValidatedDM } from "./celsius_dm.js";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -236,12 +236,14 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
 
   const streamerUserId = guild.ownerId;
   const amount = parseDepositAmount(monthlyDeposit);
+  const autoValidate = await isStreamerAutoValidateEnabled(guild.id);
+  const nextStatus = autoValidate ? "verified" : "pending";
 
-  const inserted = await one<{ id: number }>(
+  const inserted = await one<{ id: number; status: "pending" | "verified" }>(
     `INSERT INTO aurix_celsius_submissions
        (guild_id, guild_name, streamer_user_id, viewer_user_id, viewer_username,
-        celsius_pseudo, celsius_email, monthly_deposit, monthly_deposit_amount, status, reject_reason)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending',NULL)
+        celsius_pseudo, celsius_email, monthly_deposit, monthly_deposit_amount, status, reject_reason, decided_by, verified_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,$11,$12)
      ON CONFLICT (guild_id, viewer_user_id) DO UPDATE SET
        guild_name              = EXCLUDED.guild_name,
        streamer_user_id        = EXCLUDED.streamer_user_id,
@@ -250,10 +252,11 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
        celsius_email           = EXCLUDED.celsius_email,
        monthly_deposit         = EXCLUDED.monthly_deposit,
        monthly_deposit_amount  = EXCLUDED.monthly_deposit_amount,
-       status                  = 'pending',
+       status                  = EXCLUDED.status,
        reject_reason           = NULL,
-       verified_at             = NULL
-     RETURNING id`,
+       decided_by              = EXCLUDED.decided_by,
+       verified_at             = EXCLUDED.verified_at
+     RETURNING id, status`,
     [
       guild.id,
       guild.name,
@@ -264,6 +267,9 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
       email,
       monthlyDeposit,
       amount,
+      nextStatus,
+      autoValidate ? interaction.client.user?.id ?? null : null,
+      autoValidate ? new Date() : null,
     ]
   );
 
@@ -272,7 +278,9 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
     .setColor(cfg.COLOR.SUCCESS)
     .setDescription(
       [
-        `Merci <@${interaction.user.id}> — tes infos ont bien été transmises pour vérification.`,
+        autoValidate
+          ? `Merci <@${interaction.user.id}> — tes infos ont bien été enregistrées et ton compte est **validé automatiquement**.`
+          : `Merci <@${interaction.user.id}> — tes infos ont bien été transmises pour vérification.`,
         "",
         `• 🎰 Pseudo Celsius : \`${pseudo}\``,
         `• ✉️ Email : \`${email}\``,
@@ -282,7 +290,9 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
         "",
         VIP_THRESHOLD_LABEL,
         "",
-        `Tu seras notifié dès que ton compte est **vérifié** par ${cfg.BRAND.NAME}.`,
+        autoValidate
+          ? `Tu peux profiter des avantages prévus par le deal de ce streamer.`
+          : `Tu seras notifié dès que ton compte est **vérifié** par ${cfg.BRAND.NAME}.`,
       ].join("\n")
     )
     .setFooter({ text: `${cfg.BRAND.NAME} • ${cfg.BRAND.TAGLINE}` });
@@ -296,14 +306,24 @@ export async function handleCelsiusModal(interaction: ModalSubmitInteraction): P
       console.error("[aurix.celsius] watcher refresh failed:", e);
     }
     try {
-      await sendCelsiusConfirmationDM(interaction.client, {
-        viewerUserId: interaction.user.id,
-        viewerTag: interaction.user.tag,
-        pseudo,
-        email,
-        monthlyDeposit,
-        guildName: guild.name,
-      });
+      if (autoValidate) {
+        await sendCelsiusValidatedDM(interaction.client, {
+          viewerUserId: interaction.user.id,
+          pseudo,
+          monthlyDeposit,
+          monthlyDepositAmount: amount,
+          guildName: guild.name,
+        });
+      } else {
+        await sendCelsiusConfirmationDM(interaction.client, {
+          viewerUserId: interaction.user.id,
+          viewerTag: interaction.user.tag,
+          pseudo,
+          email,
+          monthlyDeposit,
+          guildName: guild.name,
+        });
+      }
     } catch (e) {
       console.error("[aurix.celsius] DM failed:", e);
     }
