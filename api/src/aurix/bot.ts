@@ -59,6 +59,8 @@ import {
   handleQueueFilterSelect,
   handleAutoValidateConfigSelect,
   ensureWatcherBoard,
+  handleAutoValidateRunButton,
+  handleAutoValidateRefreshButton,
 } from "./watcher.js";
 import { triggerManualCheck } from "./landings_verif.js";
 
@@ -211,6 +213,14 @@ export async function startAurixBot(): Promise<void> {
         }
         if (cid.startsWith("aurix:watcher:reject:")) {
           await handleWatcherRejectButton(interaction);
+          return;
+        }
+        if (cid === "aurix:watcher:auto-validate:run") {
+          await handleAutoValidateRunButton(interaction);
+          return;
+        }
+        if (cid === "aurix:watcher:auto-validate:refresh") {
+          await handleAutoValidateRefreshButton(interaction);
           return;
         }
         return;
