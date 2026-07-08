@@ -54,8 +54,9 @@ export async function recomputeViewerWeek(eventId) {
         return { ok: false, error: "wrong_type" };
     if (String(e.state) !== "live")
         return { ok: true, skipped: "not_live" };
-    // weekStartDate Paris (DATE)
-    const wk = await pool.query(`SELECT ${sqlDateParis("$1::timestamptz")} AS d0`, [e.start_at]);
+    // weekStartDate Paris (texte 'YYYY-MM-DD' — le driver pg parse un type DATE en
+    // objet Date JS, donc on force to_char pour récupérer une vraie chaîne datée).
+    const wk = await pool.query(`SELECT to_char(${sqlDateParis("$1::timestamptz")}, 'YYYY-MM-DD') AS d0`, [e.start_at]);
     const d0 = String(wk.rows?.[0]?.d0); // YYYY-MM-DD
     // d7 = d0 + 7 days (exclusive)
     // (on filtre day >= d0 AND day < d0 + 7)
@@ -124,7 +125,8 @@ export async function recomputeViewerWeek(eventId) {
         AND cm.created_at >= $2::timestamptz
         AND cm.created_at <  $3::timestamptz
     ) x
-    WHERE NOT EXISTS (
+    WHERE x.user_id > 0  -- exclut le chat externe (Rumble bridgé, user_id<=0) : pas de vrai compte
+      AND NOT EXISTS (
       SELECT 1
       FROM site_user_bans b
       WHERE b.user_id = x.user_id
