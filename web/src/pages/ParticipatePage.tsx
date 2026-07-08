@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
+import "../components/events/events-theme.css";
 import {
   getEventAccessStatus,
   declareInstaFollow,
@@ -130,17 +131,17 @@ function StepCard({
 
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             {stepKey === "follow_streamer" ? (
-              <Link to="/browse" className="btnGhost2">
+              <Link to="/browse" className="evBtnGhost">
                 Découvrir les streamers →
               </Link>
             ) : null}
 
             {stepKey === "link_discord" ? (
               <>
-                <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer" className="btnGhost2">
+                <a href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer" className="evBtnGhost">
                   Rejoindre le Discord
                 </a>
-                <Link to="/profile" className="btnGhost2">
+                <Link to="/profile" className="evBtnGhost">
                   Lier mon compte →
                 </Link>
               </>
@@ -148,12 +149,12 @@ function StepCard({
 
             {stepKey === "follow_insta" ? (
               <>
-                <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="btnGhost2">
+                <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="evBtnGhost">
                   Ouvrir Instagram
                 </a>
                 <button
                   type="button"
-                  className="btnBrand2"
+                  className="evBtn"
                   disabled={done || declaring}
                   onClick={() => (token ? onDeclareInsta() : onOpenLogin())}
                 >
@@ -163,13 +164,13 @@ function StepCard({
             ) : null}
 
             {stepKey === "daily_claim" ? (
-              <Link to="/" className="btnGhost2">
+              <Link to="/" className="evBtnGhost">
                 Aller à l'accueil →
               </Link>
             ) : null}
 
             {stepKey === "watch_30" ? (
-              <Link to="/" className="btnGhost2">
+              <Link to="/" className="evBtnGhost">
                 Voir les lives →
               </Link>
             ) : null}
@@ -236,156 +237,74 @@ export default function ParticipatePage() {
   const eligible = status?.eligible ?? false;
 
   return (
-    <main className="container" style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))" }}>
-      <style>{`
-        .partWrap{
-          position:relative;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.10));
-          box-shadow: 0 20px 70px rgba(0,0,0,0.32);
-          backdrop-filter: blur(10px);
-          padding: 12px;
-          overflow:hidden;
-        }
-        .partWrap::before{
-          content:"";
-          position:absolute; inset:-40px;
-          pointer-events:none;
-          background:
-            radial-gradient(900px 360px at 18% 0%, rgba(167,139,250,0.24), rgba(0,0,0,0) 62%),
-            radial-gradient(900px 420px at 80% 10%, rgba(80,160,255,0.18), rgba(0,0,0,0) 62%);
-          opacity: 0.85;
-        }
-        .partInner{ position:relative; z-index:1; display:grid; gap:12px; }
-        .partHero{
-          padding: 16px;
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background:
-            radial-gradient(900px 320px at 20% 0%, rgba(167,139,250,0.20), rgba(0,0,0,0) 60%),
-            linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
-          box-shadow: 0 18px 55px rgba(0,0,0,0.25);
-        }
-        .partH1{
-          margin:0;
-          font-weight:1500;
-          letter-spacing:-0.5px;
-          font-size: 22px;
-          line-height:1.1;
-          background: linear-gradient(90deg, rgba(196,181,253,1), rgba(167,139,250,1));
-          -webkit-background-clip:text; background-clip:text; color:transparent;
-        }
-        .partSub{ margin-top:8px; font-size:13px; opacity:0.82; font-weight:800; line-height:1.5; }
-        .btnGhost2{
-          display:inline-flex; align-items:center; justify-content:center;
-          padding: 9px 12px; border-radius: 14px;
-          border: 1px solid rgba(255,255,255,0.12);
-          background: rgba(255,255,255,0.06);
-          color: rgba(255,255,255,0.92);
-          font-weight: 1100; font-size: 12.5px;
-          cursor:pointer; text-decoration:none;
-          min-height: 36px; white-space: nowrap;
-        }
-        .btnGhost2:active{ transform: translateY(1px); }
-        .btnBrand2{
-          display:inline-flex; align-items:center; justify-content:center;
-          padding: 9px 14px; border-radius: 14px;
-          border: 1px solid rgba(167,139,250,0.45);
-          background: linear-gradient(135deg, rgba(167,139,250,0.9), rgba(196,181,253,0.85));
-          color: #17102b;
-          font-weight: 1200; font-size: 12.5px;
-          cursor:pointer; text-decoration:none;
-          min-height: 36px; white-space: nowrap;
-          box-shadow: 0 8px 24px rgba(167,139,250,0.3);
-        }
-        .btnBrand2:disabled{ opacity: 0.6; cursor: default; box-shadow: none; }
-        .btnBrand2:active{ transform: translateY(1px); }
+    <main className="container evRoot" style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))", display: "grid", gap: 14 }}>
+      <section className="evHero">
+        <div className="evMesh" />
+        <div className="evGrain" />
 
-        @media (max-width: 620px) {
-          .partH1{ font-size: 19px; }
-        }
-      `}</style>
+        <div className="evHeroContent" style={{ textAlign: "left", justifyItems: "start" }}>
+          <span className="evStateBadge scheduled">🔓 5 étapes</span>
+          <h1 className="evTitle" style={{ fontSize: "clamp(1.9rem, 6vw, 3rem)" }}>Débloque les événements</h1>
+          <p className="evHeroMeta" style={{ justifyContent: "flex-start", textAlign: "left", opacity: 0.88 }}>
+            5 étapes simples pour apparaître dans les classements d'events et gagner des lots (rubis, tickets roue,
+            badges exclusifs). Les points comptent pour tout le monde dès le départ — ces étapes débloquent juste
+            ton apparition dans le classement et la distribution des lots.
+          </p>
 
-      <div className="partWrap">
-        <div className="partInner">
-          <div className="partHero">
-            <h1 className="partH1">🔓 Débloque les événements LunaLive</h1>
-            <p className="partSub">
-              5 étapes simples pour apparaître dans les classements d'events et gagner des lots (rubis, tickets roue,
-              badges exclusifs). Les points comptent pour tout le monde dès le départ — ces étapes débloquent juste
-              ton apparition dans le classement et la distribution des lots.
-            </p>
-
-            {!token ? (
-              <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <button type="button" className="btnBrand2" onClick={() => setLoginOpen(true)}>
-                  Se connecter
-                </button>
-                <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                  Connecte-toi pour suivre ta progression en direct.
-                </span>
-              </div>
-            ) : loading ? (
-              <div style={{ marginTop: 12, fontSize: 12, opacity: 0.8, fontWeight: 900 }}>Chargement…</div>
-            ) : eligible ? (
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(52,211,153,0.4)",
-                  background: "rgba(52,211,153,0.12)",
-                  color: "#86EFAC",
-                  fontWeight: 1150,
-                  fontSize: 13,
-                  display: "inline-block",
-                }}
-              >
-                ✅ Tu peux participer !
-              </div>
-            ) : null}
-          </div>
-
-          {err ? (
-            <div className="alert" style={{ margin: 0 }}>
-              {err}
+          {!token ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <button type="button" className="evBtn" onClick={() => setLoginOpen(true)}>
+                Se connecter
+              </button>
+              <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
+                Connecte-toi pour suivre ta progression en direct.
+              </span>
             </div>
+          ) : loading ? (
+            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>Chargement…</div>
+          ) : eligible ? (
+            <span className="evStepChip done">✅ Tu peux participer !</span>
           ) : null}
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {STEP_ORDER.map((key, i) => (
-              <Reveal key={key} delay={i * 0.04}>
-                <StepCard
-                  index={i + 1}
-                  stepKey={key}
-                  done={token ? doneMap.get(key) ?? false : false}
-                  token={token}
-                  onOpenLogin={() => setLoginOpen(true)}
-                  onDeclareInsta={onDeclareInsta}
-                  declaring={declaring}
-                />
-              </Reveal>
-            ))}
-          </div>
-
-          <Reveal delay={0.24}>
-            <GlassCard style={{ padding: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 1250, letterSpacing: -0.2 }}>Voir l'event en cours</div>
-                  <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, marginTop: 4 }}>
-                    Classement, lots et détail de tes points.
-                  </div>
-                </div>
-                <Link to="/event" className="btnGhost2">
-                  Aller à l'event →
-                </Link>
-              </div>
-            </GlassCard>
-          </Reveal>
         </div>
+      </section>
+
+      {err ? (
+        <div className="alert" style={{ margin: 0 }}>
+          {err}
+        </div>
+      ) : null}
+
+      <div style={{ display: "grid", gap: 10 }}>
+        {STEP_ORDER.map((key, i) => (
+          <Reveal key={key} delay={i * 0.04}>
+            <StepCard
+              index={i + 1}
+              stepKey={key}
+              done={token ? doneMap.get(key) ?? false : false}
+              token={token}
+              onOpenLogin={() => setLoginOpen(true)}
+              onDeclareInsta={onDeclareInsta}
+              declaring={declaring}
+            />
+          </Reveal>
+        ))}
       </div>
+
+      <Reveal delay={0.24}>
+        <div className="evCard">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 1250, letterSpacing: -0.2 }}>Voir l'event en cours</div>
+              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, marginTop: 4 }}>
+                Classement, lots et détail de tes points.
+              </div>
+            </div>
+            <Link to="/event" className="evBtnGhost">
+              Aller à l'event →
+            </Link>
+          </div>
+        </div>
+      </Reveal>
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </main>
