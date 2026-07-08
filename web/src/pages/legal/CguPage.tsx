@@ -20,7 +20,7 @@ export default function CguPage() {
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "#a78bfa", marginBottom: 12 }}>Objet</h2>
-        <p>Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme LunaLive (lunalive.onrender.com), plateforme française de streaming et de divertissement autour du casino.</p>
+        <p>Les présentes Conditions Générales d'Utilisation (CGU) régissent l'accès et l'utilisation de la plateforme LunaLive (lunalive.win), plateforme française de streaming et de divertissement autour du casino.</p>
       </section>
 
       <section style={{ marginBottom: 32 }}>

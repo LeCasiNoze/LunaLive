@@ -28,7 +28,7 @@ const DEFAULT_AVATARS = [
     "/Avatar/avatar_santa.png",
     "/Avatar/avatar_scient.png",
 ];
-function defaultAvatarPath(userId) {
+export function defaultAvatarPath(userId) {
     const index = userId % DEFAULT_AVATARS.length;
     return DEFAULT_AVATARS[index];
 }

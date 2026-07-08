@@ -190,7 +190,7 @@ export class YouTubeNotifier {
         const embed = {
             author: {
                 name: "LunaLive • Nouveau clip",
-                icon_url: "https://lunalive.onrender.com/favicon.ico" // Fallback si disponible
+                icon_url: "https://lunalive.win/favicon.ico" // Fallback si disponible
             },
             title: this.truncateTitle(video.title, 100), // Tronquer si trop long
             description: this.buildEmbedDescription(streamerName, lunaLiveLink),
@@ -198,7 +198,7 @@ export class YouTubeNotifier {
             timestamp: video.publishedAt.toISOString(),
             footer: {
                 text: "LunaLive Clips",
-                icon_url: "https://lunalive.onrender.com/favicon.ico"
+                icon_url: "https://lunalive.win/favicon.ico"
             }
         };
         // Ajouter la miniature YouTube comme image principale

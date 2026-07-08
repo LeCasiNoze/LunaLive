@@ -39,7 +39,7 @@ const FIRST_REFRESH_DELAY_MS = 60_000;
 const PAID_RECENT_LIMIT     = 15;
 const PAID_RECENT_DAYS      = 30;
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 
 const __filename = fileURLToPath(import.meta.url);

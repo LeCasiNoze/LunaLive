@@ -23,7 +23,7 @@ const ORIGINS: { origin: string; label: string }[] = [
 ];
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
-const MAIN_SITE = (import.meta.env.VITE_MAIN_SITE_BASE ?? "https://lunalive.onrender.com/").replace(/\/$/, "");
+const MAIN_SITE = (import.meta.env.VITE_MAIN_SITE_BASE ?? "https://lunalive.win/").replace(/\/$/, "");
 
 const uiInputStyle: React.CSSProperties = {
   width: "100%",

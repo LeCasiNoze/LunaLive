@@ -13,6 +13,19 @@ import { emitChatAll, emitChatAndStream } from "../socket_emit.js";
 export const publicRouter = Router();
 const HEARTBEAT_TTL_SECONDS = 45;
 
+// Cache in-memory des réponses publiques identiques pour tous les visiteurs.
+// La home repoll /lives toutes les 20 s par visiteur : sous charge, sans ce
+// cache, chaque visiteur relance l'agrégat complet (COUNT DISTINCT sur les
+// sessions actives) → 1 requête DB toutes les 5 s au lieu de N/s.
+const PUBLIC_CACHE_TTL_MS = 5_000;
+const publicCache = new Map<string, { body: unknown; ts: number }>();
+
+function getPublicCache(key: string): unknown | null {
+  const hit = publicCache.get(key);
+  if (hit && Date.now() - hit.ts < PUBLIC_CACHE_TTL_MS) return hit.body;
+  return null;
+}
+
 function tryGetAuthUser(req: Request): AuthUser | null {
   const h = String(req.headers.authorization || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
@@ -57,6 +70,12 @@ publicRouter.get(
 publicRouter.get(
   "/lives",
   a(async (req, res) => {
+    const cached = getPublicCache("lives");
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=5");
+      return res.json(cached);
+    }
+
     const { rows } = await pool.query(
       `
 WITH live_streamers AS (
@@ -108,27 +127,28 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       [HEARTBEAT_TTL_SECONDS]
     );
 
-    res.set("Cache-Control", "public, max-age=5");
-    res.json(
-      rows.map((r: any) => {
-        const slug = String(r.slug || "").trim();
-        const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
-        const platform = String(r.platform || "").trim().toLowerCase();
+    const payload = rows.map((r: any) => {
+      const slug = String(r.slug || "").trim();
+      const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+      const platform = String(r.platform || "").trim().toLowerCase();
 
-        return {
-          id: String(r.id),
-          slug,
-          displayName: String(r.displayName || ""),
-          title: String(r.title || ""),
-          viewers: Number(r.viewers || 0),
-          liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
-          thumbUrl: platform === "rumble"
-            ? (apiThumb || (r.thumbUrlDb ? String(r.thumbUrlDb) : null))
-            : (r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb),
-          avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
-        };
-      })
-    );
+      return {
+        id: String(r.id),
+        slug,
+        displayName: String(r.displayName || ""),
+        title: String(r.title || ""),
+        viewers: Number(r.viewers || 0),
+        liveStartedAt: r.liveStartedAt ? String(r.liveStartedAt) : null,
+        thumbUrl: platform === "rumble"
+          ? (apiThumb || (r.thumbUrlDb ? String(r.thumbUrlDb) : null))
+          : (r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb),
+        avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
+      };
+    });
+
+    publicCache.set("lives", { body: payload, ts: Date.now() });
+    res.set("Cache-Control", "public, max-age=5");
+    res.json(payload);
   })
 );
 
@@ -153,6 +173,12 @@ publicRouter.get(
 publicRouter.get(
   "/streamers",
   a(async (_req, res) => {
+    const cached = getPublicCache("streamers");
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=5");
+      return res.json(cached);
+    }
+
     const { rows } = await pool.query(
       `
 WITH base AS (
@@ -216,6 +242,8 @@ ORDER BY LOWER(b."displayName") ASC
       [HEARTBEAT_TTL_SECONDS]
     );
 
+    publicCache.set("streamers", { body: rows, ts: Date.now() });
+    res.set("Cache-Control", "public, max-age=5");
     res.json(rows);
   })
 );

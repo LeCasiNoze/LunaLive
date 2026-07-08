@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // serve.js — zero-dependency static server for Render Web Service
-// Sert directement depuis *.onrender.com (plus de redirect vers lunalive.win —
-// les liens publics pointent maintenant sur lunalive.onrender.com).
+// Domaine canonique : lunalive.win. Les requêtes arrivant sur *.onrender.com
+// sont redirigées en 301, SAUF les routes /r/:slug (liens affiliés déjà
+// partagés par les influenceurs — ils doivent rester stables et sans branding).
 // Serves web/dist with pre-rendered HTML rewrites + SPA fallback.
 import { createServer } from "node:http";
 import { createReadStream, existsSync, readFileSync } from "node:fs";
@@ -9,6 +10,8 @@ import { join, extname } from "node:path";
 
 const DIST = join(process.cwd(), "web/dist");
 const PORT = parseInt(process.env.PORT || "10000", 10);
+// Domaine canonique. Mettre CANONICAL_HOST="" pour désactiver la redirection.
+const CANONICAL_HOST = process.env.CANONICAL_HOST ?? "lunalive.win";
 
 // ─── Pré-rendu d'un index.html "stripped" pour les routes /r/:slug ──────────
 // But : quand un influenceur partage un lien /r/slug sur Snap/IG/WhatsApp,
@@ -153,6 +156,27 @@ createServer((req, res) => {
   // Remove trailing slash (except root)
   if (pathname.length > 1 && pathname.endsWith("/")) {
     pathname = pathname.slice(0, -1);
+  }
+
+  // 1. Redirection 301 vers le domaine canonique (dédup SEO .win/.onrender),
+  //    sauf /r/:slug (liens affiliés partagés — stables, pas de redirect) et
+  //    localhost (dev). Render fournit le host public dans req.headers.host.
+  const host = String(req.headers.host || "").toLowerCase().split(":")[0];
+  if (
+    CANONICAL_HOST &&
+    host &&
+    host !== CANONICAL_HOST &&
+    !host.startsWith("localhost") &&
+    host !== "127.0.0.1" &&
+    !pathname.startsWith("/r/")
+  ) {
+    res.writeHead(301, {
+      Location: `https://${CANONICAL_HOST}${req.url}`,
+      "Cache-Control": "public, max-age=3600",
+      ...SECURITY_HEADERS,
+    });
+    res.end();
+    return;
   }
 
   // 1b. Intercept /r/:slug → serve stripped index.html (no OG / no preview for crawlers)

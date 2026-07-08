@@ -54,7 +54,7 @@ function buildDmText(cfg) {
         lines.push("");
     }
     // Page offre LunaLive
-    lines.push(`📄 Page complète : https://lunalive.onrender.com/offres_streamers/${cfg.streamer_slug}`);
+    lines.push(`📄 Page complète : https://lunalive.win/offres_streamers/${cfg.streamer_slug}`);
     lines.push("");
     // Discord streamer
     if (cfg.discord_url) {

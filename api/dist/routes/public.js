@@ -9,6 +9,18 @@ import normalizeAppearance from "../appearance.js";
 import { emitChatAll, emitChatAndStream } from "../socket_emit.js";
 export const publicRouter = Router();
 const HEARTBEAT_TTL_SECONDS = 45;
+// Cache in-memory des réponses publiques identiques pour tous les visiteurs.
+// La home repoll /lives toutes les 20 s par visiteur : sous charge, sans ce
+// cache, chaque visiteur relance l'agrégat complet (COUNT DISTINCT sur les
+// sessions actives) → 1 requête DB toutes les 5 s au lieu de N/s.
+const PUBLIC_CACHE_TTL_MS = 5_000;
+const publicCache = new Map();
+function getPublicCache(key) {
+    const hit = publicCache.get(key);
+    if (hit && Date.now() - hit.ts < PUBLIC_CACHE_TTL_MS)
+        return hit.body;
+    return null;
+}
 function tryGetAuthUser(req) {
     const h = String(req.headers.authorization || "");
     const m = h.match(/^Bearer\s+(.+)$/i);
@@ -42,6 +54,11 @@ publicRouter.get("/content/:key", a(async (req, res) => {
 }));
 /* Public */
 publicRouter.get("/lives", a(async (req, res) => {
+    const cached = getPublicCache("lives");
+    if (cached) {
+        res.set("Cache-Control", "public, max-age=5");
+        return res.json(cached);
+    }
     const { rows } = await pool.query(`
 WITH live_streamers AS (
   SELECT
@@ -89,8 +106,7 @@ FROM live_streamers ls
 LEFT JOIN live_viewers v ON v.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       `, [HEARTBEAT_TTL_SECONDS]);
-    res.set("Cache-Control", "public, max-age=5");
-    res.json(rows.map((r) => {
+    const payload = rows.map((r) => {
         const slug = String(r.slug || "").trim();
         const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
         const platform = String(r.platform || "").trim().toLowerCase();
@@ -106,7 +122,10 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
                 : (r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb),
             avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
         };
-    }));
+    });
+    publicCache.set("lives", { body: payload, ts: Date.now() });
+    res.set("Cache-Control", "public, max-age=5");
+    res.json(payload);
 }));
 // ✅ LIST public content tabs (for DailyBonus modal)
 publicRouter.get("/content-list", a(async (_req, res) => {
@@ -118,6 +137,11 @@ publicRouter.get("/content-list", a(async (_req, res) => {
     res.json({ ok: true, items: rows });
 }));
 publicRouter.get("/streamers", a(async (_req, res) => {
+    const cached = getPublicCache("streamers");
+    if (cached) {
+        res.set("Cache-Control", "public, max-age=5");
+        return res.json(cached);
+    }
     const { rows } = await pool.query(`
 WITH base AS (
   SELECT
@@ -177,6 +201,8 @@ LEFT JOIN rumble_lives rl ON b.id = rl.streamer_id
 LEFT JOIN live_viewers v ON v.streamer_id = b.id
 ORDER BY LOWER(b."displayName") ASC
       `, [HEARTBEAT_TTL_SECONDS]);
+    publicCache.set("streamers", { body: rows, ts: Date.now() });
+    res.set("Cache-Control", "public, max-age=5");
     res.json(rows);
 }));
 publicRouter.get("/streamers/:slug", a(async (req, res) => {

@@ -2,7 +2,7 @@
 (function() {
   'use strict';
   
-  const SITE_URL = 'https://lunalive.onrender.com';
+  const SITE_URL = 'https://lunalive.win';
   const currentPath = window.location.pathname;
   
   // Route metadata mapping
@@ -163,13 +163,13 @@ function updateStructuredData(path, metadata) {
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "LunaLive",
-        "url": "https://lunalive.onrender.com",
+        "url": "https://lunalive.win",
         "inLanguage": "fr",
         "potentialAction": {
           "@type": "SearchAction",
           "target": {
             "@type": "EntryPoint",
-            "urlTemplate": "https://lunalive.onrender.com/browse?q={search_term_string}"
+            "urlTemplate": "https://lunalive.win/browse?q={search_term_string}"
           },
           "query-input": "required name=search_term_string"
         }
@@ -178,12 +178,12 @@ function updateStructuredData(path, metadata) {
         "@context": "https://schema.org",
         "@type": "Organization",
         "name": "LunaLive",
-        "url": "https://lunalive.onrender.com",
+        "url": "https://lunalive.win",
         "description": "Plateforme française de streaming casino avec lives en direct, pages casinos, clips et événements",
         "inLanguage": "fr",
         "logo": {
           "@type": "ImageObject",
-          "url": "https://lunalive.onrender.com/logo.png",
+          "url": "https://lunalive.win/logo.png",
           "width": 714,
           "height": 648
         },
@@ -210,22 +210,22 @@ function updateStructuredData(path, metadata) {
         "@context": "https://schema.org",
         "@type": "ItemPage",
         "name": `${name} — Avis Casino | LunaLive`,
-        "url": `https://lunalive.onrender.com/casinos/${slug}`,
+        "url": `https://lunalive.win/casinos/${slug}`,
         "description": `Découvrez ${name} sur LunaLive : avis de la communauté, bonus et informations détaillées sur ce casino en ligne.`,
         "inLanguage": "fr",
         "isPartOf": {
           "@type": "WebSite",
           "name": "LunaLive",
-          "url": "https://lunalive.onrender.com"
+          "url": "https://lunalive.win"
         }
       },
       {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.onrender.com/" },
-          { "@type": "ListItem", "position": 2, "name": "Casinos", "item": "https://lunalive.onrender.com/casinos" },
-          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.onrender.com/casinos/${slug}` }
+          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.win/" },
+          { "@type": "ListItem", "position": 2, "name": "Casinos", "item": "https://lunalive.win/casinos" },
+          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.win/casinos/${slug}` }
         ]
       }
     ];
@@ -240,22 +240,22 @@ function updateStructuredData(path, metadata) {
         "@context": "https://schema.org",
         "@type": "Person",
         "name": name,
-        "url": `https://lunalive.onrender.com/s/${slug}`,
+        "url": `https://lunalive.win/s/${slug}`,
         "description": `Regardez ${slug} en direct sur LunaLive : streams casino, lives et clips de la communauté.`,
         "knowsAbout": "Casino streaming",
         "mainEntityOfPage": {
           "@type": "WebPage",
           "name": `${name} — Streamer Casino`,
-          "url": `https://lunalive.onrender.com/s/${slug}`
+          "url": `https://lunalive.win/s/${slug}`
         }
       },
       {
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
         "itemListElement": [
-          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.onrender.com/" },
-          { "@type": "ListItem", "position": 2, "name": "Streamers", "item": "https://lunalive.onrender.com/browse" },
-          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.onrender.com/s/${slug}` }
+          { "@type": "ListItem", "position": 1, "name": "Accueil", "item": "https://lunalive.win/" },
+          { "@type": "ListItem", "position": 2, "name": "Streamers", "item": "https://lunalive.win/browse" },
+          { "@type": "ListItem", "position": 3, "name": name, "item": `https://lunalive.win/s/${slug}` }
         ]
       }
     ];
@@ -283,7 +283,7 @@ function updateStructuredData(path, metadata) {
       "isPartOf": {
         "@type": "WebSite",
         "name": "LunaLive",
-        "url": "https://lunalive.onrender.com"
+        "url": "https://lunalive.win"
       }
     };
   }

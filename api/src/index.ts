@@ -20,6 +20,7 @@ import { runSlotsUpdate } from "./calls/updater.js";
 
 import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_worker.js";
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
+import { sampleViewersTick } from "./stats_routes.js";
 import { startDiscordBot } from "./discord/bot.js";
 import { startAurixBot } from "./aurix/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
@@ -49,6 +50,9 @@ function startStatsCleanup() {
          AND ls.ended_at IS NULL
          AND s.is_live = FALSE`
     );
+
+    // échantillon minute des viewers (déplacé hors du chemin heartbeat)
+    await sampleViewersTick();
   };
 
   run().catch((e) => console.warn("[stats-cleanup] first run failed", e));
@@ -170,7 +174,7 @@ function setupProcessCrashGuards() {
 
   const io = new IOServer(server, {
     cors: {
-      origin: ["https://lunalive.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
+      origin: ["https://lunalive.win", "https://lunalive.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"],
       credentials: true,
       methods: ["GET", "POST"],
     },

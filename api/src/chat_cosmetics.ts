@@ -52,7 +52,7 @@ const PUBLIC_SITE_BASE = String(
   process.env.PUBLIC_SITE_BASE ||
     process.env.PUBLIC_WEB_BASE ||
     (PUBLIC_API_BASE.includes("lunalive-api.onrender.com")
-      ? PUBLIC_API_BASE.replace("lunalive-api.onrender.com", "lunalive.onrender.com")
+      ? "https://lunalive.win"
       : PUBLIC_API_BASE)
 ).replace(/\/$/, "");
 

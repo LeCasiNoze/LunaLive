@@ -32,6 +32,16 @@ function getPersistedRef(): string | null {
 }
 function clearPersistedRef() { try { sessionStorage.removeItem(REF_KEY); } catch {} }
 
+/* ─── OAuth (Google / Discord) ──────────────────────────────────────── */
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed: "La connexion via ce fournisseur a échoué. Réessaie ou utilise ton pseudo/mot de passe.",
+  oauth_not_configured: "Cette méthode de connexion n'est pas disponible pour le moment.",
+  email_conflict: "Un compte existe déjà avec cet email. Connecte-toi avec ton mot de passe.",
+};
+
 /* ─── CSS injecté UNE FOIS au niveau module (hors composant/hook) ── */
 const STYLE_ID = "lm-styles-v1";
 if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
@@ -172,6 +182,18 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
 }
 .lm-btn-primary:active:not(:disabled){transform:translateY(0);filter:brightness(.95);}
 .lm-btn-primary:disabled{opacity:.38;cursor:not-allowed;}
+.lm-oauth-row{display:flex;gap:8px;}
+.lm-oauth-btn{
+  flex:1;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:7px;
+  border:1px solid rgba(124,92,252,.18);background:rgba(255,255,255,.04);
+  color:rgba(235,232,255,.88);cursor:pointer;font-size:12.5px;font-weight:700;letter-spacing:-.1px;
+  outline:none;-webkit-tap-highlight-color:transparent;
+  transition:background 150ms ease,border-color 150ms ease,transform 120ms cubic-bezier(.22,1,.36,1);
+}
+.lm-oauth-btn:hover:not(:disabled){background:rgba(124,92,252,.10);border-color:rgba(124,92,252,.32);transform:translateY(-1px);}
+.lm-oauth-btn:disabled{opacity:.40;cursor:not-allowed;}
+.lm-oauth-sep{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(167,155,220,.40);}
+.lm-oauth-sep::before,.lm-oauth-sep::after{content:"";flex:1;height:1px;background:rgba(124,92,252,.16);}
 `;
   document.head.appendChild(el);
 }
@@ -183,6 +205,20 @@ const LmField = ({ label, children }: { label: string; children: React.ReactNode
     <div className="lm-label">{label}</div>
     <div className="lm-row">{children}</div>
   </div>
+);
+
+const OAuthButtons = ({ disabled, onSelect }: { disabled: boolean; onSelect: (provider: "google" | "discord") => void }) => (
+  <>
+    <div className="lm-oauth-row">
+      <button className="lm-oauth-btn" type="button" disabled={disabled} onClick={() => onSelect("google")}>
+        Continuer avec Google
+      </button>
+      <button className="lm-oauth-btn" type="button" disabled={disabled} onClick={() => onSelect("discord")}>
+        Continuer avec Discord
+      </button>
+    </div>
+    <div className="lm-oauth-sep">ou</div>
+  </>
 );
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -222,6 +258,17 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     const fn = () => setStep("register_form");
     window.addEventListener("ui:open_register", fn as any);
     return () => window.removeEventListener("ui:open_register", fn as any);
+  }, []);
+
+  // Erreur remontée par le retour du flow OAuth (voir /oauth/done dans App.tsx)
+  React.useEffect(() => {
+    const fn = (ev: any) => {
+      const code = String(ev?.detail?.error || "");
+      setStep("login");
+      setErr(OAUTH_ERROR_MESSAGES[code] || "Erreur de connexion. Réessaie.");
+    };
+    window.addEventListener("ui:oauth_error", fn as any);
+    return () => window.removeEventListener("ui:oauth_error", fn as any);
   }, []);
 
   React.useEffect(() => {
@@ -307,6 +354,16 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   if (!open) return null;
 
   const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+
+  function startOAuth(provider: "google" | "discord") {
+    const ref = readRefFromUrlAndPersist() || refSlug || getPersistedRef();
+    const utm = getStoredUtm();
+    const params = new URLSearchParams();
+    if (ref) params.set("ref", ref);
+    if (utm) params.set("utm", JSON.stringify(utm));
+    const qs = params.toString();
+    window.location.href = `${apiBase()}/auth/oauth/${provider}/start${qs ? `?${qs}` : ""}`;
+  }
 
   async function submitLogin() {
     setBusy(true); setErr(null);
@@ -436,6 +493,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
           {/* ══ LOGIN ══ */}
           {step === "login" && <>
+            <OAuthButtons disabled={busy} onSelect={startOAuth} />
             <LmField label="Pseudo">
               <input className="lm-input" value={username} onChange={e => setUsername(e.target.value)}
                 autoComplete="username" placeholder="ton_pseudo"
@@ -466,6 +524,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
           {/* ══ REGISTER FORM ══ */}
           {step === "register_form" && <>
+            <OAuthButtons disabled={busy} onSelect={startOAuth} />
             {refSlug && <div className="lm-hint is-ref">🎁 Parrainage détecté : <strong>{refSlug}</strong></div>}
             <LmField label="Pseudo">
               <input className="lm-input" value={username} onChange={e => setUsername(e.target.value)}

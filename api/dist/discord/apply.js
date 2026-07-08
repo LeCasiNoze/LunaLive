@@ -233,10 +233,13 @@ export async function approveRequest(requestId) {
             await client.query("ROLLBACK");
             return { ok: false, error: "streamer_missing" };
         }
-        const conn = await ensureAssignedDliveAccount(client, streamerId);
-        if (!conn) {
-            await client.query("ROLLBACK");
-            return { ok: false, error: "no_free_provider_account" };
+        // Assignation DLive best-effort : DLive ferme, streamers Rumble-only qui
+        // lient leur compte via le dashboard. Un pool vide ne bloque plus l'accueil.
+        try {
+            await ensureAssignedDliveAccount(client, streamerId);
+        }
+        catch (e) {
+            console.warn("[discord/apply] DLive assignment skipped:", e?.message || e);
         }
         await client.query("COMMIT");
         return { ok: true, userId, username, streamer: { id: streamerId, slug: String(s.rows[0]?.slug || slug) } };

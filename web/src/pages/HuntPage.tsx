@@ -1601,6 +1601,7 @@ export default function HuntPage() {
         </section>
       </div>
 
+      {user?.role === "admin" && (
       <div
         style={{
           position: "fixed",
@@ -1700,6 +1701,7 @@ export default function HuntPage() {
           </div>
         ) : null}
       </div>
+      )}
     </main>
   );
 }

@@ -1,7 +1,7 @@
 // web/src/pages/ProfilePage.tsx — Rework v3
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { getMyAchievements, myStreamerRequest, type ApiAchievement } from "../lib/api";
+import { getMyAchievements, myStreamerRequest, applyStreamer, type ApiAchievement } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { AchievementsModal } from "../components/AchievementsModal";
 import { XpProgressionCard } from "../components/XpProgressionCard";
@@ -18,7 +18,6 @@ import ProfilePageMobile from "./ProfilePage.mobile";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 const DISCORD_INVITE_URL = "https://discord.gg/93BFrsBWWB";
-const DISCORD_STREAMER_REQUEST_URL = "https://discord.com/channels/1467139956249067717/1467142148431413370";
 
 type Tab = "personalisation" | "social" | "stats" | "settings" | "streamer";
 
@@ -711,6 +710,14 @@ function ProfilePageDesktop() {
   const [achLoading, setAchLoading] = React.useState(false);
   const [achErr, setAchErr]         = React.useState<string | null>(null);
   const [reqStatus, setReqStatus]   = React.useState<string | null>(null);
+  // Formulaire "Devenir streamer" in-app (Rumble-first)
+  const [showApplyForm, setShowApplyForm] = React.useState(false);
+  const [applyRumble, setApplyRumble] = React.useState("");
+  const [applyDiscord, setApplyDiscord] = React.useState("");
+  const [applyNotes, setApplyNotes] = React.useState("");
+  const [applyRules, setApplyRules] = React.useState(false);
+  const [applyBusy, setApplyBusy] = React.useState(false);
+  const [applyErr, setApplyErr] = React.useState<string | null>(null);
   const [q, setQ]                   = React.useState("");
   const dq                          = useDebouncedValue(q, 250);
   const [following, setFollowing]   = React.useState<ApiFollowing[]>([]);
@@ -730,6 +737,34 @@ function ProfilePageDesktop() {
       setReqStatus(r.request?.status ?? null);
     })();
   }, [token]);
+
+  async function submitStreamerApply() {
+    if (!token) return;
+    if (!applyRumble.trim()) { setApplyErr("Indique ta chaîne Rumble."); return; }
+    if (!applyRules) { setApplyErr("Tu dois accepter les règles."); return; }
+    setApplyBusy(true);
+    setApplyErr(null);
+    try {
+      const rumble = applyRumble.trim();
+      const channelUrl = /^https?:\/\//i.test(rumble)
+        ? rumble
+        : `https://rumble.com/user/${rumble.replace(/^@/, "")}`;
+      const r = await applyStreamer(token, {
+        channelUrl,
+        hasChannel: true,
+        discord: applyDiscord.trim() || null,
+        notes: applyNotes.trim() || null,
+        rulesAccepted: true,
+      });
+      setReqStatus(r.request?.status ?? "pending");
+      setShowApplyForm(false);
+      await refreshMe();
+    } catch (e: any) {
+      setApplyErr(e?.message || "Échec de l'envoi. Réessaie.");
+    } finally {
+      setApplyBusy(false);
+    }
+  }
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1059,17 +1094,77 @@ function ProfilePageDesktop() {
                   emoji={isStreamer ? "🚀" : "📨"}
                   label={isStreamer ? "Accès dashboard" : "Statut demande"}
                   value={isStreamer ? "Disponible" : reqStatus ?? "À lancer"}
-                  sub={isStreamer ? "Ouvre ton espace en un clic." : "Le passage se fait via Discord."}
+                  sub={isStreamer ? "Ouvre ton espace en un clic." : "Réponse après validation de l'équipe."}
                 />
-                <StatCard emoji="🔗" label="Discord" value="/link" sub="Lie ton compte pour accéder aux rôles." />
+                <StatCard emoji="📺" label="Plateforme" value="Rumble" sub="Tu lieras ta chaîne après validation." />
               </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {isStreamer
-                  ? <Link to="/dashboard" className="btnPrimary">🚀 Ouvrir le Dashboard</Link>
-                  : <a className="btnPrimary" href={DISCORD_STREAMER_REQUEST_URL} target="_blank" rel="noreferrer">🎥 Faire une demande</a>}
-                <a className="btnGhost" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">Rejoindre le Discord</a>
-                <button className="btnGhost" onClick={() => setTab("settings")}>⚙️ Paramètres du compte</button>
-              </div>
+
+              {/* Streamer déjà validé */}
+              {isStreamer ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Link to="/dashboard" className="btnPrimary">🚀 Ouvrir le Dashboard</Link>
+                  <a className="btnGhost" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">Rejoindre le Discord</a>
+                  <button className="btnGhost" onClick={() => setTab("settings")}>⚙️ Paramètres du compte</button>
+                </div>
+              ) : reqStatus === "pending" ? (
+                <div style={{ fontFamily: FONT, fontSize: 14, color: TXT, background: "rgba(124,92,252,0.08)", border: "1px solid rgba(124,92,252,0.22)", borderRadius: 12, padding: "14px 16px" }}>
+                  ⏳ Ta demande est <b>en attente de validation</b>. On te prévient dès qu'elle est acceptée — tu pourras alors lier ta chaîne Rumble depuis le Dashboard.
+                </div>
+              ) : reqStatus === "approved" ? (
+                <div style={{ fontFamily: FONT, fontSize: 14, color: TXT, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.28)", borderRadius: 12, padding: "14px 16px" }}>
+                  ✅ Demande acceptée ! <Link to="/dashboard" style={{ color: "#8f93ee", fontWeight: 700 }}>Ouvre ton Dashboard</Link> et lie ta chaîne Rumble pour passer en live.
+                </div>
+              ) : !showApplyForm ? (
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button className="btnPrimary" onClick={() => setShowApplyForm(true)}>🎥 Faire une demande</button>
+                  <a className="btnGhost" href={DISCORD_INVITE_URL} target="_blank" rel="noreferrer">Rejoindre le Discord</a>
+                </div>
+              ) : (
+                /* Formulaire in-app Rumble-first */
+                <div style={{ display: "grid", gap: 12, maxWidth: 520, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(124,92,252,0.18)", borderRadius: 14, padding: 18 }}>
+                  <div>
+                    <label style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: TXT, display: "block", marginBottom: 5 }}>
+                      Ta chaîne Rumble <span style={{ color: "#f87171" }}>*</span>
+                    </label>
+                    <input
+                      value={applyRumble}
+                      onChange={(e) => setApplyRumble(e.target.value)}
+                      placeholder="pseudo Rumble ou https://rumble.com/user/…"
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: TXT, fontFamily: FONT, fontSize: 14 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: TXT, display: "block", marginBottom: 5 }}>Pseudo Discord (optionnel)</label>
+                    <input
+                      value={applyDiscord}
+                      onChange={(e) => setApplyDiscord(e.target.value)}
+                      placeholder="ton_pseudo#0000"
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: TXT, fontFamily: FONT, fontSize: 14 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontFamily: FONT, fontSize: 12, fontWeight: 700, color: TXT, display: "block", marginBottom: 5 }}>Quelques mots sur toi (optionnel)</label>
+                    <textarea
+                      value={applyNotes}
+                      onChange={(e) => setApplyNotes(e.target.value)}
+                      placeholder="Horaires de live, moyenne de viewers, réseaux…"
+                      rows={3}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.25)", color: TXT, fontFamily: FONT, fontSize: 14, resize: "vertical" }}
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: FONT, fontSize: 13, color: TXT2, cursor: "pointer" }}>
+                    <input type="checkbox" checked={applyRules} onChange={(e) => setApplyRules(e.target.checked)} />
+                    J'accepte les règles de la plateforme.
+                  </label>
+                  {applyErr && <div style={{ fontFamily: FONT, fontSize: 13, color: "#f87171" }}>{applyErr}</div>}
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button className="btnPrimary" onClick={submitStreamerApply} disabled={applyBusy}>
+                      {applyBusy ? "Envoi…" : "Envoyer ma demande"}
+                    </button>
+                    <button className="btnGhost" onClick={() => setShowApplyForm(false)} disabled={applyBusy}>Annuler</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
             </div>

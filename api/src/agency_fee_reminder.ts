@@ -50,7 +50,7 @@ const PING_USER_IDS = [
   "992099046472831066", // Samyzsis (eowite22)
 ];
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 const FSB_BOARD_URL = `${PUBLIC_WEB_BASE}/FSB_Board`;
 
 const TICK_INTERVAL_MS = 30 * 60_000; // 30 min

@@ -109,10 +109,14 @@ internalBotStreamerRequestsRouter.post("/internal/bot/streamer-requests/:id/appr
             await client.query("ROLLBACK");
             return res.status(500).json({ ok: false, error: "streamer_missing" });
         }
-        const conn = await ensureAssignedDliveAccount(client, streamerId);
-        if (!conn) {
-            await client.query("ROLLBACK");
-            return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+        // Assignation DLive best-effort : DLive ferme, les streamers sont Rumble-only
+        // et lient leur compte via le dashboard. Un pool vide ne doit plus faire
+        // échouer l'approbation (sinon aucune arrivée possible).
+        try {
+            await ensureAssignedDliveAccount(client, streamerId);
+        }
+        catch (e) {
+            console.warn("[bot/approve] DLive assignment skipped:", e?.message || e);
         }
         await client.query("COMMIT");
         res.json({

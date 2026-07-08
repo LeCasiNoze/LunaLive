@@ -92,7 +92,7 @@ function buildDm(opts: {
     discordUrl ?? "",
     "",
     "Retrouve-le en live ici :",
-    `https://lunalive.onrender.com/s/${streamerSlug}`,
+    `https://lunalive.win/s/${streamerSlug}`,
     "",
     `Rejoins aussi le Discord LunaLive pour être au courant de tout :`,
     "https://discord.gg/VSbCZQ4gyT",
