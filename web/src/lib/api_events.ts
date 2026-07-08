@@ -63,16 +63,18 @@ export type ApiViewerWeekRules = {
 };
 
 export type ApiViewerWeekTopRow = {
-  rank: number;
+  rank: number | null;
   userId: number;
   username: string;
   points: number;
   minutesPoints?: number;
+  dayBonusPoints?: number;
   claimPoints?: number;
   wheelPoints?: number;
   callsPoints?: number;
   predJoinPoints?: number;
   predWinPoints?: number;
+  chatPoints?: number;
 };
 
 export type ApiViewerWeekMe = ApiViewerWeekTopRow | null;
@@ -85,12 +87,36 @@ export type ApiViewerWeekResp = {
   me: ApiViewerWeekMe;
 };
 
+export type EventAccessStepKey = "follow_streamer" | "link_discord" | "follow_insta" | "daily_claim" | "watch_30";
+
+export type EventAccessStep = { key: EventAccessStepKey; label: string; done: boolean };
+
+export type ApiEventAccessStatus = {
+  ok: true;
+  eligible: boolean;
+  steps: EventAccessStep[];
+};
+
 export async function getCurrentEvent() {
   return j<{ ok: true; event: ApiEventRow | null }>("/api/events/current");
 }
 
-export async function getCurrentViewerWeek(token: string) {
+// Auth optionnelle : le top est public, "me" n'apparaît que si un token est fourni.
+export async function getCurrentViewerWeek(token?: string | null) {
   return j<ApiViewerWeekResp>("/api/events/current/viewer-week", {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+}
+
+export async function getEventAccessStatus(token: string) {
+  return j<ApiEventAccessStatus>("/api/events/access-status", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function declareInstaFollow(token: string) {
+  return j<ApiEventAccessStatus>("/api/events/insta-declared", {
+    method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
 }

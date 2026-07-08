@@ -1,6 +1,7 @@
 // api/src/events/engine.ts
 import { pool } from "../db.js";
 import { recomputeViewerWeek } from "./viewer_week.js";
+import { closeAndDistribute } from "./rewards.js";
 const TZ = "Europe/Paris";
 const WEEK_MS = 7 * 24 * 3600_000;
 const CYCLE = [
@@ -109,12 +110,25 @@ async function openIfNeeded() {
     `);
 }
 async function closeIfNeeded() {
-    await pool.query(`
+    const closed = await pool.query(`
     UPDATE events
     SET state='closed', updated_at=NOW()
     WHERE state IN ('scheduled','live')
       AND end_at <= NOW()
+    RETURNING id, type
     `);
+    // Clôture générique = state='closed' (fait ci-dessus) pour tous les types.
+    // Distribution réelle branchée uniquement pour viewer_week pour l'instant.
+    for (const row of closed.rows || []) {
+        if (String(row.type) !== "viewer_week")
+            continue;
+        try {
+            await closeAndDistribute(Number(row.id));
+        }
+        catch (e) {
+            console.warn("[events-engine] closeAndDistribute failed", row.id, e?.message || e);
+        }
+    }
 }
 export function startEventsEnginePoller(everyMs = 60_000) {
     const tick = async () => {

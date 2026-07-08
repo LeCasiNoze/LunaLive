@@ -1,8 +1,17 @@
 // web/src/pages/EventPage.tsx
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import { useAuth } from "../auth/AuthProvider";
-import { getCurrentEvent, getCurrentViewerWeek, type ApiEventRow, type ApiViewerWeekResp } from "../lib/api_events";
+import { LoginModal } from "../components/LoginModal";
+import {
+  getCurrentEvent,
+  getCurrentViewerWeek,
+  getEventAccessStatus,
+  type ApiEventRow,
+  type ApiViewerWeekResp,
+  type ApiViewerWeekTopRow,
+} from "../lib/api_events";
 
 function fmtRemain(ms: number) {
   ms = Math.max(0, Math.floor(ms));
@@ -12,15 +21,14 @@ function fmtRemain(ms: number) {
   const d = Math.floor(h / 24);
   const hh = h % 24;
   const mm = m % 60;
-  if (d > 0) return `${d}j ${hh}h`;
-  if (h > 0) return `${h}h ${mm}m`;
-  return `${m}m`;
+  const ss = s % 60;
+  if (d > 0) return `${d}j ${hh}h ${mm}m`;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
 }
 
 function fmtIsoLocal(iso: string) {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return iso;
-  // rendu simple
   return new Date(t).toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
 }
 
@@ -34,7 +42,7 @@ function Pill({
   title?: string;
 }) {
   const map: Record<string, { bg: string; bd: string }> = {
-    brand: { bg: "rgba(140,90,255,0.14)", bd: "rgba(140,90,255,0.28)" },
+    brand: { bg: "rgba(167,139,250,0.16)", bd: "rgba(167,139,250,0.32)" },
     live: { bg: "rgba(255,90,180,0.14)", bd: "rgba(255,90,180,0.26)" },
     gold: { bg: "rgba(255,210,120,0.14)", bd: "rgba(255,210,120,0.28)" },
     neutral: { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.12)" },
@@ -85,76 +93,30 @@ function GlassCard({
   );
 }
 
-function Section({
-  title,
-  right,
-  defaultOpen,
-  children,
-}: {
-  title: string;
-  right?: React.ReactNode;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = React.useState(!!defaultOpen);
+// Reveal on scroll — pas de layout shift (les cartes gardent leur place),
+// juste opacity/translateY. Neutralisé sous prefers-reduced-motion.
+function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return <>{children}</>;
   return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(255,255,255,0.04)",
-        overflow: "hidden",
-      }}
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.5, delay, ease: "easeOut" }}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-          padding: "12px 12px",
-          background: "transparent",
-          border: 0,
-          color: "rgba(255,255,255,0.92)",
-          cursor: "pointer",
-        }}
-      >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
-          <span
-            aria-hidden
-            style={{
-              width: 18,
-              height: 18,
-              display: "inline-grid",
-              placeItems: "center",
-              opacity: 0.9,
-              transform: open ? "rotate(90deg)" : "rotate(0deg)",
-              transition: "transform 140ms ease",
-            }}
-          >
-            ▸
-          </span>
-          <span style={{ fontWeight: 1200, letterSpacing: -0.2 }}>{title}</span>
-        </span>
-        <span style={{ opacity: 0.85 }}>{right}</span>
-      </button>
-      {open ? (
-        <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,0.08)" }}>{children}</div>
-      ) : null}
-    </div>
+      {children}
+    </motion.div>
   );
 }
 
 function eventLabel(type: string) {
-  if (type === "viewer_week") return "Viewer Week";
-  if (type === "wheel_week") return "Wheel Week";
-  if (type === "clip_race") return "Clip Race";
-  if (type === "global_chest") return "Global Chest";
-  if (type === "burn_boss") return "Burn Boss";
-  if (type === "duo_week") return "Duo Week";
+  if (type === "viewer_week") return "Semaine du viewer";
+  if (type === "wheel_week") return "Semaine de la roue";
+  if (type === "clip_race") return "Course aux clips";
+  if (type === "global_chest") return "Coffre communautaire";
+  if (type === "burn_boss") return "Boss à abattre";
+  if (type === "duo_week") return "Semaine en duo";
   return type || "Event";
 }
 
@@ -191,7 +153,7 @@ function TopRow({
         padding: "10px 12px",
         borderRadius: 16,
         border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(0,0,0,0.20)",
+        background: isMe ? "rgba(167,139,250,0.10)" : "rgba(0,0,0,0.20)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -224,241 +186,123 @@ function TopRow({
   );
 }
 
-function ViewerWeekBlock({
-  data,
-  authed,
-}: {
-  data: ApiViewerWeekResp;
-  authed: boolean;
-}) {
-  const topN = Number(data?.rules?.topN ?? 10) || 10;
-  const top = Array.isArray(data?.top) ? data.top.slice(0, topN) : [];
-  const me = data?.me ?? null;
+// Table des lots — reflète EVENT_REWARD_CONFIGS.viewer_week (api/src/events/rewards.ts).
+// Valeurs hardcodées ici volontairement : pas de dépendance runtime au barème
+// serveur pour l'affichage (le classement/les points restent dynamiques).
+const REWARD_TIERS: { rank: string; reward: string; extra?: string; tone: "gold" | "brand" | "neutral" }[] = [
+  { rank: "🥇 #1", reward: "600 rubis", extra: "+ badge exclusif « Champion du mois »", tone: "gold" },
+  { rank: "🥈🥉 #2-3", reward: "300 rubis", tone: "brand" },
+  { rank: "#4-5", reward: "150 rubis", tone: "brand" },
+  { rank: "🎯 Participation (≥ 200 pts)", reward: "40 rubis", extra: "+ 1 ticket roue", tone: "neutral" },
+];
 
-  const values = data?.rules?.values ?? {};
-  const caps = data?.rules?.capsPerDay ?? {};
-
-  // fallback: si backend ne renvoie pas values/caps, on affiche des labels génériques
-  const displayRules = [
-    { k: "minute", label: "1 point / minute de watch (connecté)", v: `+${data?.rules?.pointsPerMinute ?? 1} / min` },
-    { k: "claim", label: "Daily claim", v: values?.CLAIM != null ? `+${values.CLAIM}` : "✓" },
-    { k: "wheel", label: "Wheel spins", v: values?.WHEEL != null ? `+${values.WHEEL}` : "✓" },
-    { k: "pred_join", label: "Participation prédiction", v: values?.PRED_JOIN != null ? `+${values.PRED_JOIN}` : "✓" },
-    { k: "pred_win", label: "Victoire prédiction", v: values?.PRED_WIN != null ? `+${values.PRED_WIN}` : "✓" },
-    { k: "call", label: "Calls actions", v: values?.CALL != null ? `+${values.CALL}` : "✓" },
-  ];
-
-  const capLines = [
-    { k: "wheel", label: "Wheel / jour", v: caps?.WHEEL ?? 5 },
-    { k: "pred_join", label: "Prédictions join / jour", v: caps?.PRED_JOIN ?? 3 },
-    { k: "pred_win", label: "Prédictions win / jour", v: caps?.PRED_WIN ?? 1 },
-    { k: "call", label: "Calls / jour", v: caps?.CALL ?? 20 },
-  ];
-
+function RewardsTable() {
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {/* Leaderboard */}
-      <GlassCard style={{ padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ fontWeight: 1400, letterSpacing: -0.2 }}>🏆 Leaderboard</div>
-          <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>Top {topN}</div>
-        </div>
-
-        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {top.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
-              Pas encore de scores (ou recompute pas encore passé).  
-              <span style={{ opacity: 0.7 }}> Tu peux déjà jouer, ça va apparaître.</span>
-            </div>
-          ) : (
-            top.map((r) => (
-              <TopRow
-                key={`${r.userId}-${r.rank}`}
-                rank={Number(r.rank || 0)}
-                username={String(r.username || `user#${r.userId}`)}
-                points={Number(r.points || 0)}
-                isMe={me ? Number(me.userId) === Number(r.userId) : false}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Me */}
-        <div style={{ marginTop: 12 }}>
-          {authed ? (
-            me ? (
-              <>
-                <div style={{ fontWeight: 1200, letterSpacing: -0.2, marginBottom: 8 }}>🎯 Toi</div>
-                <TopRow
-                  rank={Number(me.rank || 0) || 0}
-                  username={String(me.username || "Moi")}
-                  points={Number(me.points || 0)}
-                  isMe
-                />
-
-                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                  <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>Détail (MVP)</div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Pill tone="neutral" title="Watchtime points">
-                      ⏱ <b>{Math.floor(Number(me.minutesPoints ?? 0))}</b>
-                    </Pill>
-                    <Pill tone="neutral" title="Daily claim points">
-                      🎁 <b>{Math.floor(Number(me.claimPoints ?? 0))}</b>
-                    </Pill>
-                    <Pill tone="neutral" title="Wheel points">
-                      🎡 <b>{Math.floor(Number(me.wheelPoints ?? 0))}</b>
-                    </Pill>
-                    <Pill tone="neutral" title="Calls points">
-                      📣 <b>{Math.floor(Number(me.callsPoints ?? 0))}</b>
-                    </Pill>
-                    <Pill tone="neutral" title="Pred join points">
-                      🔮 <b>{Math.floor(Number(me.predJoinPoints ?? 0))}</b>
-                    </Pill>
-                    <Pill tone="neutral" title="Pred win points">
-                      ✅ <b>{Math.floor(Number(me.predWinPoints ?? 0))}</b>
-                    </Pill>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
-                Connecté ✅ mais “me” est vide (pas éligible / pas encore de score).
-              </div>
-            )
-          ) : (
-            <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
-              Connecte-toi pour voir tes points.
-            </div>
-          )}
-        </div>
-      </GlassCard>
-
-      {/* Rules */}
-      <Section title="📜 Règles & barème" right={<span style={{ opacity: 0.8 }}>points • caps</span>} defaultOpen>
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 950 }}>
-            Éligibilité : comptes <b>welcome-qualified</b> (pas d’anonymes) • ban site = exclu.
-          </div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 1200 }}>Gagner des points</div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {displayRules.map((x) => (
-                <div
-                  key={x.k}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 16,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.18)",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.95 }}>{x.label}</div>
-                  <Pill tone="brand" title="Gain">
-                    {x.v}
-                  </Pill>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 1200 }}>Caps / jour</div>
-            <div style={{ display: "grid", gap: 8 }}>
-              {capLines.map((x) => (
-                <div
-                  key={x.k}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 16,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.18)",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.95 }}>{x.label}</div>
-                  <Pill tone="neutral" title="Cap">
-                    max <b>{Number(x.v)}</b>
-                  </Pill>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* CTA */}
-      <GlassCard style={{ padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 1300, letterSpacing: -0.2 }}>Tu veux grind vite ?</div>
-            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginTop: 4 }}>
-              Regarde un live + daily + wheel + 2-3 calls = tu montes direct.
-            </div>
-          </div>
-          <Link
-            to="/"
+    <GlassCard style={{ padding: 12 }}>
+      <div style={{ fontWeight: 1400, letterSpacing: -0.2 }}>🎁 Table des lots</div>
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        {REWARD_TIERS.map((t) => (
+          <div
+            key={t.rank}
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
-              justifyContent: "center",
+              justifyContent: "space-between",
+              gap: 10,
               padding: "10px 12px",
               borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)",
-              color: "rgba(255,255,255,0.92)",
-              fontWeight: 1150,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
-              minHeight: 40,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(0,0,0,0.20)",
+              flexWrap: "wrap",
             }}
           >
-            Aller aux lives ▶
-          </Link>
-        </div>
-      </GlassCard>
-    </div>
+            <div style={{ fontSize: 13, fontWeight: 1100 }}>{t.rank}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <Pill tone={t.tone} title="Lot">
+                ⭐ <b>{t.reward}</b>
+              </Pill>
+              {t.extra ? <span style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>{t.extra}</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlassCard>
   );
 }
 
-function ComingSoonBlock({ type }: { type: string }) {
+function LeaderboardBlock({ top, meUserId }: { top: ApiViewerWeekTopRow[]; meUserId: number | null }) {
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      <GlassCard style={{ padding: 12 }}>
-        <div style={{ fontWeight: 1400, letterSpacing: -0.2 }}>
-          {eventEmoji(type)} {eventLabel(type)}
-        </div>
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82, fontWeight: 950 }}>
-          UI prête ✅ — le contenu spécifique de cet event sera branché ensuite.
-        </div>
-      </GlassCard>
+    <GlassCard style={{ padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontWeight: 1400, letterSpacing: -0.2 }}>🏆 Classement</div>
+        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>Top {top.length || 10}</div>
+      </div>
 
-      <Section title="📜 Règles" right={<span style={{ opacity: 0.8 }}>placeholder</span>} defaultOpen>
-        <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 950 }}>
-          Cet event arrive bientôt.  
-          On affichera ici : barème • caps • leaderboard • tes points.
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        {top.length === 0 ? (
+          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
+            Pas encore de scores. Suis un streamer et regarde un live pour apparaître ici.
+          </div>
+        ) : (
+          top.map((r) => (
+            <TopRow
+              key={`${r.userId}-${r.rank}`}
+              rank={Number(r.rank || 0)}
+              username={String(r.username || `user#${r.userId}`)}
+              points={Number(r.points || 0)}
+              isMe={meUserId != null ? Number(meUserId) === Number(r.userId) : false}
+            />
+          ))
+        )}
+      </div>
+    </GlassCard>
+  );
+}
+
+// Détail des points perso — visible uniquement connecté + éligible.
+function MyScoreDetail({ me }: { me: NonNullable<ApiViewerWeekResp["me"]> }) {
+  const items: { label: string; value: number; icon: string }[] = [
+    { label: "Minutes de watch", value: me.minutesPoints ?? 0, icon: "⏱" },
+    { label: "Bonus jour actif", value: me.dayBonusPoints ?? 0, icon: "🔥" },
+    { label: "Daily claims", value: me.claimPoints ?? 0, icon: "🎁" },
+    { label: "Chat", value: me.chatPoints ?? 0, icon: "💬" },
+    { label: "Calls", value: me.callsPoints ?? 0, icon: "📣" },
+    { label: "Roue", value: me.wheelPoints ?? 0, icon: "🎡" },
+    { label: "Prédictions (participation)", value: me.predJoinPoints ?? 0, icon: "🔮" },
+    { label: "Prédictions (victoire)", value: me.predWinPoints ?? 0, icon: "✅" },
+  ];
+
+  return (
+    <GlassCard style={{ padding: 12 }}>
+      <div style={{ fontWeight: 1200, letterSpacing: -0.2, marginBottom: 8 }}>🎯 Toi</div>
+      <TopRow rank={Number(me.rank || 0) || 0} username={String(me.username || "Moi")} points={Number(me.points || 0)} isMe />
+
+      <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>Détail des points</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {items.map((it) => (
+            <Pill key={it.label} tone="neutral" title={it.label}>
+              {it.icon} <b>{Math.floor(it.value)}</b>
+            </Pill>
+          ))}
         </div>
-      </Section>
-    </div>
+      </div>
+    </GlassCard>
   );
 }
 
 export default function EventPage() {
-  const auth = useAuth() as any;
-  const token: string | null = auth?.token ?? null;
+  const auth = useAuth();
+  const token = auth?.token ?? null;
+
+  const [loginOpen, setLoginOpen] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
   const [event, setEvent] = React.useState<ApiEventRow | null>(null);
   const [viewerWeek, setViewerWeek] = React.useState<ApiViewerWeekResp | null>(null);
+  const [eligible, setEligible] = React.useState<boolean | null>(null);
 
   // mini timer pour countdown
   const [nowMs, setNowMs] = React.useState(Date.now());
@@ -474,13 +318,24 @@ export default function EventPage() {
       const cur = await getCurrentEvent();
       setEvent(cur?.event ?? null);
 
-      // si viewer_week, et token => fetch le détail (top + me)
       const type = String(cur?.event?.type || "");
-      if (type === "viewer_week" && token) {
+      if (type === "viewer_week" && cur?.event) {
+        // top public toujours chargé ; "me" apparaît seulement si connecté (token optionnel)
         const v = await getCurrentViewerWeek(token);
         setViewerWeek(v);
       } else {
         setViewerWeek(null);
+      }
+
+      if (token) {
+        try {
+          const acc = await getEventAccessStatus(token);
+          setEligible(acc.eligible);
+        } catch {
+          setEligible(null);
+        }
+      } else {
+        setEligible(null);
       }
 
       setLoading(false);
@@ -500,6 +355,8 @@ export default function EventPage() {
   const remaining = endMs > 0 ? fmtRemain(endMs - nowMs) : null;
 
   const title = event ? `${eventEmoji(event.type)} ${eventLabel(event.type)}` : "✨ Event";
+  const isViewerWeek = event?.type === "viewer_week";
+  const meRow = viewerWeek?.me ?? null;
 
   return (
     <main className="container" style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))" }}>
@@ -521,7 +378,7 @@ export default function EventPage() {
           background:
             radial-gradient(900px 360px at 18% 0%, rgba(255,90,180,0.22), rgba(0,0,0,0) 62%),
             radial-gradient(900px 420px at 80% 10%, rgba(80,160,255,0.22), rgba(0,0,0,0) 62%),
-            radial-gradient(900px 520px at 50% 95%, rgba(140,90,255,0.22), rgba(0,0,0,0) 64%);
+            radial-gradient(900px 520px at 50% 95%, rgba(167,139,250,0.24), rgba(0,0,0,0) 64%);
           opacity: 0.85;
         }
         .eventInner{ position:relative; z-index:1; display:grid; gap:12px; }
@@ -531,11 +388,12 @@ export default function EventPage() {
           border-radius: 18px;
           border: 1px solid rgba(255,255,255,0.10);
           background:
-            radial-gradient(900px 320px at 20% 0%, rgba(140,90,255,0.18), rgba(0,0,0,0) 60%),
+            radial-gradient(900px 320px at 20% 0%, rgba(167,139,250,0.20), rgba(0,0,0,0) 60%),
             radial-gradient(900px 320px at 80% 20%, rgba(80,160,255,0.14), rgba(0,0,0,0) 60%),
             linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.12));
           box-shadow: 0 18px 55px rgba(0,0,0,0.25);
           display:flex; justify-content:space-between; align-items:flex-start; gap:12px;
+          flex-wrap: wrap;
         }
         .h1{
           margin:0;
@@ -543,7 +401,7 @@ export default function EventPage() {
           letter-spacing:-0.6px;
           font-size: 24px;
           line-height:1.05;
-          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(180,140,255,1), rgba(80,160,255,1));
+          background: linear-gradient(90deg, rgba(255,90,180,1), rgba(196,181,253,1), rgba(80,160,255,1));
           -webkit-background-clip:text; background-clip:text; color:transparent;
           filter: drop-shadow(0 10px 24px rgba(0,0,0,0.35));
         }
@@ -555,6 +413,10 @@ export default function EventPage() {
           display:flex;
           gap:10px;
           flex-wrap:wrap;
+        }
+        .countdown{
+          font-variant-numeric: tabular-nums;
+          font-size: 13px;
         }
         .btnGhost{
           display:inline-flex;
@@ -572,6 +434,32 @@ export default function EventPage() {
           white-space: nowrap;
         }
         .btnGhost:active{ transform: translateY(1px); }
+        .btnBrand{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          padding: 10px 14px;
+          border-radius: 16px;
+          border: 1px solid rgba(167,139,250,0.45);
+          background: linear-gradient(135deg, rgba(167,139,250,0.9), rgba(196,181,253,0.85));
+          color: #17102b;
+          font-weight: 1200;
+          cursor:pointer;
+          text-decoration:none;
+          min-height: 40px;
+          white-space: nowrap;
+          box-shadow: 0 10px 30px rgba(167,139,250,0.35);
+        }
+        .btnBrand:active{ transform: translateY(1px); }
+
+        @media (prefers-reduced-motion: reduce) {
+          * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+        }
+
+        @media (max-width: 620px) {
+          .h1{ font-size: 20px; }
+          .hero{ flex-direction: column; }
+        }
       `}</style>
 
       <div className="eventWrap">
@@ -583,7 +471,7 @@ export default function EventPage() {
                 {event ? (
                   <>
                     <span style={{ opacity: 0.9 }}>
-                      {event.state === "live" ? "🟢 en cours" : event.state === "scheduled" ? "⏳ scheduled" : "✅ terminé"}
+                      {event.state === "live" ? "🟢 en cours" : event.state === "scheduled" ? "⏳ à venir" : "✅ terminé"}
                     </span>
                     <span style={{ opacity: 0.75 }}>•</span>
                     <span title="Début">{fmtIsoLocal(event.start_at)}</span>
@@ -598,15 +486,13 @@ export default function EventPage() {
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {event ? (
                   <>
-                    <Pill tone="brand" title="Type">{event.type}</Pill>
-                    <Pill tone="neutral" title="Cycle">cycle <b>{Number(event.cycle_index ?? 0)}</b></Pill>
                     {remaining && event.state === "live" ? (
                       <Pill tone="live" title="Temps restant">
-                        ⏳ <b>{remaining}</b>
+                        ⏳ <span className="countdown"><b>{remaining}</b></span>
                       </Pill>
                     ) : null}
                     {startMs > 0 && endMs > 0 ? (
-                      <Pill tone="neutral" title="Fenêtre UTC">
+                      <Pill tone="neutral" title="Fenêtre">
                         {Math.max(0, Math.floor((endMs - startMs) / 3600_000))}h
                       </Pill>
                     ) : null}
@@ -635,32 +521,82 @@ export default function EventPage() {
             <GlassCard style={{ padding: 12 }}>
               <div style={{ fontWeight: 1200 }}>Chargement…</div>
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginTop: 6 }}>
-                Récupération de l’event courant et du leaderboard.
+                Récupération de l'event courant et du classement.
               </div>
             </GlassCard>
           ) : !event ? (
             <GlassCard style={{ padding: 12 }}>
               <div style={{ fontWeight: 1200 }}>Aucun event actif</div>
               <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 950, marginTop: 6 }}>
-                Le moteur d’events n’a peut-être pas encore ouvert l’event (ou la fenêtre est terminée).
+                Le moteur d'events n'a peut-être pas encore ouvert l'event (ou la fenêtre est terminée).
               </div>
             </GlassCard>
-          ) : event.type === "viewer_week" ? (
-            viewerWeek ? (
-              <ViewerWeekBlock data={viewerWeek} authed={!!token} />
-            ) : (
+          ) : isViewerWeek ? (
+            <>
+              <Reveal>
+                <RewardsTable />
+              </Reveal>
+
+              <Reveal delay={0.05}>
+                <LeaderboardBlock top={viewerWeek?.top ?? []} meUserId={viewerWeek?.me?.userId ?? null} />
+              </Reveal>
+
+              <Reveal delay={0.1}>
+                {!token ? (
+                  <GlassCard style={{ padding: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 1300, letterSpacing: -0.2 }}>🔒 Ton score</div>
+                        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginTop: 4 }}>
+                          Connecte-toi pour voir ton rang et le détail de tes points.
+                        </div>
+                      </div>
+                      <button type="button" className="btnBrand" onClick={() => setLoginOpen(true)}>
+                        Se connecter
+                      </button>
+                    </div>
+                  </GlassCard>
+                ) : eligible === false ? (
+                  <GlassCard style={{ padding: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 1300, letterSpacing: -0.2 }}>🔓 Débloque ta participation</div>
+                        <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginTop: 4 }}>
+                          Il te manque des étapes pour apparaître dans le classement et gagner des lots.
+                        </div>
+                      </div>
+                      <Link to="/participer" className="btnBrand">
+                        Voir les étapes →
+                      </Link>
+                    </div>
+                  </GlassCard>
+                ) : meRow ? (
+                  <MyScoreDetail me={meRow} />
+                ) : (
+                  <GlassCard style={{ padding: 12 }}>
+                    <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
+                      Éligible ✅ mais pas encore de score. Regarde un live pour commencer à marquer des points.
+                    </div>
+                  </GlassCard>
+                )}
+              </Reveal>
+            </>
+          ) : (
+            <Reveal>
               <GlassCard style={{ padding: 12 }}>
-                <div style={{ fontWeight: 1300, letterSpacing: -0.2 }}>🔒 Viewer Week</div>
-                <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 950, marginTop: 6 }}>
-                  Connecte-toi pour voir le leaderboard et tes points.
+                <div style={{ fontWeight: 1400, letterSpacing: -0.2 }}>
+                  {eventEmoji(event.type)} {eventLabel(event.type)}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82, fontWeight: 950 }}>
+                  Cet event arrive bientôt — le contenu spécifique sera branché ensuite.
                 </div>
               </GlassCard>
-            )
-          ) : (
-            <ComingSoonBlock type={event.type} />
+            </Reveal>
           )}
         </div>
       </div>
+
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </main>
   );
 }

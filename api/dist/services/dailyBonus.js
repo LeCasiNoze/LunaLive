@@ -71,7 +71,7 @@ async function getParisNow(client) {
         weekStart: String(r.rows[0].week_start),
     };
 }
-async function addToken(client, userId, token, amount) {
+export async function addToken(client, userId, token, amount) {
     await client.query(`
     INSERT INTO user_tokens (user_id, token, amount)
     VALUES ($1, $2, $3)
@@ -80,7 +80,7 @@ async function addToken(client, userId, token, amount) {
                   updated_at = NOW();
     `, [userId, token, amount]);
 }
-async function grantEntitlement(client, userId, kind, code) {
+export async function grantEntitlement(client, userId, kind, code) {
     const r = await client.query(`
     INSERT INTO user_entitlements (user_id, kind, code)
     VALUES ($1, $2, $3)

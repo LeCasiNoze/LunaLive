@@ -18,6 +18,7 @@ const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
 const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ default: m.ShopPage })));
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
+const ParticipatePage = React.lazy(() => import("./pages/ParticipatePage"));
 
 // Lazy load heavy admin pages for performance
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
@@ -350,6 +351,7 @@ function AppInner() {
             }
           />
           <Route path="/event" element={<EventPage />} />
+          <Route path="/participer" element={<ParticipatePage />} />
           <Route path="/oauth/done" element={<LoadingFallback />} />
 
           {/* Debug routes */}
