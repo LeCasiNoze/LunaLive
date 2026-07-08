@@ -74,11 +74,13 @@ const STEP_ICON: Record<EventAccessStepKey, string> = {
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
   const reduceMotion = useReducedMotion();
   if (reduceMotion) return <>{children}</>;
+  // animate on mount (pas whileInView) : garantit que le contenu est TOUJOURS
+  // visible même hors écran initial / en capture pleine page. whileInView
+  // laissait le contenu sous la ligne de flottaison à opacity:0 (vide fantôme).
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-40px" }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay, ease: "easeOut" }}
     >
       {children}
@@ -320,7 +322,8 @@ export default function EventPage() {
   const endMs = event?.end_at ? new Date(event.end_at).getTime() : 0;
   const startMs = event?.start_at ? new Date(event.start_at).getTime() : 0;
 
-  const title = event ? `${eventEmoji(event.type)} ${eventLabel(event.type)}` : "✨ Event";
+  const titleEmoji = event ? eventEmoji(event.type) : "✨";
+  const titleLabel = event ? eventLabel(event.type) : "Event";
   const isViewerWeek = event?.type === "viewer_week";
   const meRow = viewerWeek?.me ?? null;
   const meUserId = viewerWeek?.me?.userId ?? null;
@@ -369,7 +372,7 @@ export default function EventPage() {
         </div>
 
         <div className="evHeroContent">
-          <h1 className="evTitle">{title}</h1>
+          <h1 className="evTitle"><span className="evTitleEmoji">{titleEmoji}</span>{titleLabel}</h1>
           {event ? (
             <div className="evHeroMeta">
               <span title="Début">{fmtIsoLocal(event.start_at)}</span>
