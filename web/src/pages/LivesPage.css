@@ -1068,3 +1068,49 @@
   font-size: 11px;
   color: rgba(140,145,195,0.55);
 }
+
+/* ══════════════════════════════════════════════════════
+   SKELETON (chargement) + ÉTAT VIDE (0 live) — desktop
+══════════════════════════════════════════════════════ */
+.liveSkeletonCard{
+  border-radius: var(--radius-card);
+  border: 1px solid var(--ll-border-subtle);
+  background: rgba(13,11,24,0.82);
+  overflow: hidden;
+}
+.sk-shimmer{
+  position: relative;
+  overflow: hidden;
+  background: rgba(124,92,252,0.06);
+}
+.sk-shimmer::after{
+  content:"";
+  position:absolute; inset:0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+  animation: sk-sweep 1.35s ease-in-out infinite;
+}
+.sk-thumb{ height:176px; }
+.sk-line{ height:12px; border-radius:6px; margin:12px 14px; }
+.sk-line.short{ width:45%; }
+@keyframes sk-sweep{ 100%{ transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce){
+  .sk-shimmer::after{ animation: none; }
+}
+
+.emptyLives{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:10px; text-align:center;
+  padding:48px 20px;
+  border-radius: var(--radius-card);
+  border:1px dashed rgba(124,92,252,0.22);
+  background: rgba(124,92,252,0.04);
+}
+.emptyLives .emoji{ font-size:34px; opacity:0.85; }
+.emptyLives .title{
+  font-family:'Syne', system-ui, sans-serif;
+  font-weight:800; font-size:16px; color: rgba(220,222,245,0.92);
+}
+.emptyLives .sub{
+  font-size:13px; color: rgba(167,155,220,0.6); max-width: 34em; line-height:1.5;
+}

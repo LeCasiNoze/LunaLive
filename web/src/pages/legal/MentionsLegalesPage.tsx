@@ -20,7 +20,7 @@ export default function MentionsLegalesPage() {
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: "#a78bfa", marginBottom: 12 }}>Éditeur du site</h2>
-        <p>Le site <strong>LunaLive</strong> (lunalive.onrender.com) est édité par LunaLive.</p>
+        <p>Le site <strong>LunaLive</strong> (lunalive.win) est édité par LunaLive.</p>
         <p style={{ marginTop: 8 }}>Contact : <a href="mailto:lunalivepro@gmail.com" style={{ color: "#a78bfa" }}>lunalivepro@gmail.com</a></p>
       </section>
 

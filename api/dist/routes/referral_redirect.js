@@ -10,10 +10,10 @@ referralRedirectRouter.get("/r/:slug", a(async (req, res) => {
     // optionnel: vérifier que le streamer existe (sinon redirect home)
     const r = await pool.query(`SELECT 1 FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`, [slug]);
     if (!r.rows?.[0]) {
-        const fb = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com");
+        const fb = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win");
         return res.redirect(302, fb);
     }
-    const web = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+    const web = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
     const url = `${web}/signup?ref=${encodeURIComponent(slug)}`;
     return res.redirect(302, url);
 }));

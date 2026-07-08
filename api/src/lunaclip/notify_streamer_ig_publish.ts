@@ -34,7 +34,7 @@ type Pool = any;
 const LOG = "[ig-publish-notify]";
 const LUNALIVE_RADIO_SLUGS = new Set(["lunalive", "lunalive-2424"]);
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 const COLLAB_REQUEST_CHANNEL_ID = "1467142337460437255";
 const DISCORD_INVITE_URL = "https://discord.gg/VSbCZQ4gyT";
 const IG_ACTIVITY_URL = "https://www.instagram.com/accounts/activity/";

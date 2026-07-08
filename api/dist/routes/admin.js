@@ -95,10 +95,12 @@ adminRouter.post("/admin/requests/:id/approve", requireAdminKey, a(async (req, r
             await client.query("ROLLBACK");
             return res.status(500).json({ ok: false, error: "streamer_missing" });
         }
-        const conn = await ensureAssignedDliveAccount(client, streamerId);
-        if (!conn) {
-            await client.query("ROLLBACK");
-            return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+        // Assignation DLive best-effort (voir /approve) — ne bloque plus l'accueil.
+        try {
+            await ensureAssignedDliveAccount(client, streamerId);
+        }
+        catch (e) {
+            console.warn("[admin/approve] DLive assignment skipped:", e?.message || e);
         }
         await client.query("COMMIT");
         res.json({ ok: true });
@@ -263,11 +265,13 @@ adminRouter.post("/admin/streamers/:slug/unban", requireAdminKey, a(async (req, 
         await client.query(`UPDATE streamers
          SET suspended_until=NULL, updated_at=NOW()
          WHERE id=$1`, [streamerId]);
-        // ré-assign provider account (si possible)
-        const conn = await ensureAssignedDliveAccount(client, streamerId);
-        if (!conn) {
-            await client.query("ROLLBACK");
-            return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+        // ré-assign provider account DLive : best-effort (DLive ferme, streamers
+        // Rumble-only → un pool vide ne doit plus bloquer).
+        try {
+            await ensureAssignedDliveAccount(client, streamerId);
+        }
+        catch (e) {
+            console.warn("[admin] DLive re-assign skipped:", e?.message || e);
         }
         await client.query("COMMIT");
         res.json({ ok: true });
@@ -431,10 +435,12 @@ adminRouter.patch("/admin/users/:id", requireAdminKey, a(async (req, res) => {
                 const streamerId = Number(s.rows[0]?.id || 0);
                 if (!streamerId)
                     throw new Error("streamer_missing");
-                const conn = await ensureAssignedDliveAccount(client, streamerId);
-                if (!conn) {
-                    await client.query("ROLLBACK");
-                    return res.status(409).json({ ok: false, error: "no_free_provider_account" });
+                // Assignation DLive best-effort (voir /approve) — ne bloque plus.
+                try {
+                    await ensureAssignedDliveAccount(client, streamerId);
+                }
+                catch (e) {
+                    console.warn("[admin] DLive assignment skipped:", e?.message || e);
                 }
                 await client.query("COMMIT");
             }

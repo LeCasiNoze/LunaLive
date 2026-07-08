@@ -1167,11 +1167,20 @@ export default function LivesPage() {
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
             <Pill tone="live" title="Nombre de lives en direct">🔴 Live <b>{totals.liveCount}</b></Pill>
-            <Pill tone="neutral" title="Viewers total sur la plateforme">👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill>
+            {totals.viewersTotal > 0 && (
+              <Pill tone="neutral" title="Viewers total sur la plateforme">👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill>
+            )}
           </div>
         </div>
 
-        {err ? <div className="alert" style={{ marginTop: 12 }}>{err}</div> : null}
+        {err ? (
+          <div className="alert" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>Impossible de charger les lives pour le moment.</span>
+            <button className="btn" onClick={() => load()} disabled={loading} style={{ marginLeft: "auto" }}>
+              {loading ? "Chargement…" : "Réessayer"}
+            </button>
+          </div>
+        ) : null}
 
         <div className="livesLayout">
 
@@ -1285,7 +1294,31 @@ export default function LivesPage() {
 
           {/* ── Main lives ── */}
           <section className="livesMain">
-            {loading && lives.length === 0 ? null : (
+            {loading && lives.length === 0 ? (
+              /* Skeleton pendant le chargement (cold-start Render ~30s) —
+                 évite la zone blanche qui donne l'impression d'un site cassé. */
+              <section className="livesGrid" aria-hidden>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="liveSkeletonCard">
+                    <div className="sk-shimmer sk-thumb" />
+                    <div className="sk-shimmer sk-line" />
+                    <div className="sk-shimmer sk-line short" />
+                  </div>
+                ))}
+              </section>
+            ) : !err && featuredLives.length === 0 && normalLives.length === 0 ? (
+              /* État vide accueillant quand personne n'est en live. */
+              <div className="emptyLives">
+                <span className="emoji" aria-hidden>🌙</span>
+                <div className="title">Personne en live pour le moment</div>
+                <div className="sub">
+                  Reviens un peu plus tard, ou explore les streamers et leurs derniers clips en attendant le prochain live.
+                </div>
+                <Link to="/browse" className="btn" style={{ marginTop: 4, textDecoration: "none" }}>
+                  Voir tous les streamers
+                </Link>
+              </div>
+            ) : (
               <>
                 {/* Featured */}
                 {featuredLives.length > 0 && (
@@ -1309,7 +1342,9 @@ export default function LivesPage() {
                               </div>
                               <div className="liveBottomRow">
                                 <span />
-                                <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                                {Number(live.viewers) > 0
+                                  ? <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                                  : <span />}
                               </div>
                             </div>
                             <LiveCardBody live={live as any} accentColor="rgba(251,191,36,0.24)" />
@@ -1337,7 +1372,9 @@ export default function LivesPage() {
                             </div>
                             <div className="liveBottomRow">
                               <span />
-                              <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                              {Number(live.viewers) > 0
+                                ? <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
+                                : <span />}
                             </div>
                           </div>
                           <LiveCardBody live={live as any} accentColor="rgba(124,92,252,0.20)" />

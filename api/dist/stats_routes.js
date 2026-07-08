@@ -4,6 +4,18 @@ import { requireAuth } from "./auth.js";
 import { getClientIp } from "./utils/client_ip.js";
 const TZ = "Europe/Oslo";
 const HEARTBEAT_TTL_SECONDS = 45;
+// ── Caches in-memory du chemin heartbeat ──────────────────────────────────
+// À 500 viewers, le heartbeat (15 s) faisait 6 requêtes DB par battement dont
+// un UPSERT sur UNE ligne par streamer (stream_viewer_samples) → verrou de
+// ligne sérialisé entre tous les viewers d'un même stream. On cache
+// meta/session/compteur ici, et l'échantillon minute est écrit par le cron
+// stats (sampleViewersTick) au lieu du chemin heartbeat.
+const STREAMER_META_TTL_MS = 30_000;
+const LIVE_SESSION_TTL_MS = 30_000;
+const VIEWERS_COUNT_TTL_MS = 10_000;
+const streamerMetaCache = new Map();
+const liveSessionCache = new Map();
+const viewersCountCache = new Map();
 function getJwtSecret() {
     const s = process.env.JWT_SECRET;
     if (!s)
@@ -40,22 +52,36 @@ async function getStreamerBySlug(slug) {
     const s = String(slug || "").trim();
     if (!s)
         return null;
+    const key = s.toLowerCase();
+    const hit = streamerMetaCache.get(key);
+    if (hit && Date.now() - hit.ts < STREAMER_META_TTL_MS)
+        return hit.meta;
     const r = await pool.query(`SELECT id, slug, is_live AS "isLive", live_started_at AS "liveStartedAt", updated_at AS "updatedAt"
      FROM streamers
      WHERE lower(slug)=lower($1)
      LIMIT 1`, [s]);
     const row = r.rows?.[0];
-    if (!row)
-        return null;
-    return {
-        id: Number(row.id),
-        slug: String(row.slug),
-        isLive: !!row.isLive,
-        liveStartedAt: row.liveStartedAt ? new Date(row.liveStartedAt) : null,
-        updatedAt: row.updatedAt ? new Date(row.updatedAt) : null,
-    };
+    const meta = row
+        ? {
+            id: Number(row.id),
+            slug: String(row.slug),
+            isLive: !!row.isLive,
+            liveStartedAt: row.liveStartedAt ? new Date(row.liveStartedAt) : null,
+            updatedAt: row.updatedAt ? new Date(row.updatedAt) : null,
+        }
+        : null;
+    streamerMetaCache.set(key, { meta, ts: Date.now() });
+    return meta;
 }
 async function ensureOpenLiveSession(streamerId) {
+    const hit = liveSessionCache.get(streamerId);
+    if (hit && Date.now() - hit.ts < LIVE_SESSION_TTL_MS)
+        return hit.id;
+    const id = await ensureOpenLiveSessionDb(streamerId);
+    liveSessionCache.set(streamerId, { id, ts: Date.now() });
+    return id;
+}
+async function ensureOpenLiveSessionDb(streamerId) {
     const cur = await pool.query(`SELECT id FROM live_sessions WHERE streamer_id=$1 AND ended_at IS NULL LIMIT 1`, [streamerId]);
     if (cur.rows?.[0]?.id)
         return Number(cur.rows[0].id);
@@ -69,12 +95,37 @@ async function ensureOpenLiveSession(streamerId) {
     return Number(ins.rows[0].id);
 }
 async function countActiveViewers(liveSessionId) {
+    const hit = viewersCountCache.get(liveSessionId);
+    if (hit && Date.now() - hit.ts < VIEWERS_COUNT_TTL_MS)
+        return hit.n;
     const r = await pool.query(`SELECT COUNT(*)::int AS n
      FROM viewer_sessions
      WHERE live_session_id=$1
        AND ended_at IS NULL
        AND last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))`, [liveSessionId, HEARTBEAT_TTL_SECONDS]);
-    return Number(r.rows?.[0]?.n || 0);
+    const n = Number(r.rows?.[0]?.n || 0);
+    viewersCountCache.set(liveSessionId, { n, ts: Date.now() });
+    return n;
+}
+/**
+ * Échantillon minute des viewers (peak/avg + charts) pour TOUTES les sessions
+ * live ouvertes, en UNE requête. Appelé par le cron stats (60 s) — remplace
+ * l'UPSERT par battement qui sérialisait tous les viewers sur la même ligne.
+ */
+export async function sampleViewersTick() {
+    await pool.query(`INSERT INTO stream_viewer_samples (streamer_id, live_session_id, bucket_ts, viewers)
+     SELECT ls.streamer_id, ls.id, date_trunc('minute', NOW()), COALESCE(v.n, 0)
+     FROM live_sessions ls
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*)::int AS n
+       FROM viewer_sessions vs
+       WHERE vs.live_session_id = ls.id
+         AND vs.ended_at IS NULL
+         AND vs.last_heartbeat_at >= (NOW() - ($1::int * INTERVAL '1 second'))
+     ) v ON TRUE
+     WHERE ls.ended_at IS NULL
+     ON CONFLICT (streamer_id, bucket_ts)
+     DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`, [HEARTBEAT_TTL_SECONDS]);
 }
 function assertPeriod(p) {
     const s = String(p || "daily");
@@ -142,12 +193,8 @@ export function registerStatsRoutes(app) {
             WHERE live_session_id=$1
             AND viewer_key=$2
             AND ended_at IS NULL`, [liveSessionId, `u:${user.id}`]);
+                // l'échantillon minute est écrit par sampleViewersTick (cron stats)
                 const viewersNow = await countActiveViewers(liveSessionId);
-                // sample / minute (même si 0 viewer : ça trace l'état)
-                await pool.query(`INSERT INTO stream_viewer_samples (streamer_id, live_session_id, bucket_ts, viewers)
-            VALUES ($1,$2,date_trunc('minute', NOW()),$3)
-            ON CONFLICT (streamer_id, bucket_ts)
-            DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`, [meta.id, liveSessionId, viewersNow]);
                 return res.json({ ok: true, isLive: true, viewersNow, self: true });
             }
         }
@@ -168,12 +215,8 @@ export function registerStatsRoutes(app) {
         VALUES
         ($1,$2,date_trunc('minute', NOW()),$3,$4,$5)
         ON CONFLICT DO NOTHING`, [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId]);
+        // l'échantillon minute est écrit par sampleViewersTick (cron stats)
         const viewersNow = await countActiveViewers(liveSessionId);
-        // sample / minute (pour peak/avg + chart viewers)
-        await pool.query(`INSERT INTO stream_viewer_samples (streamer_id, live_session_id, bucket_ts, viewers)
-        VALUES ($1,$2,date_trunc('minute', NOW()),$3)
-        ON CONFLICT (streamer_id, bucket_ts)
-        DO UPDATE SET viewers=EXCLUDED.viewers, live_session_id=EXCLUDED.live_session_id`, [meta.id, liveSessionId, viewersNow]);
         res.json({ ok: true, isLive: true, viewersNow });
     }));
     /**

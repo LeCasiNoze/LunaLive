@@ -46,7 +46,7 @@ const DEFAULT_LANDING_OWNER_DISCORD_ID = "682472610868887567";
 
 const QG_CHANNEL_ID = "1501890674620891268";
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 const PUBLIC_LANDAURAX_BASE = String(process.env.PUBLIC_LANDAURAX_BASE || process.env.VITE_LANDAURAX_SITE_URL || "https://landaurax.onrender.com").replace(/\/$/, "");
 const LANDING_EDITOR_RETURN_TO = "/FSB_Board?section=tools";
 

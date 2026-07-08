@@ -373,7 +373,7 @@ export class InstagramNotifier {
     const knownStreamers = ["fabiozsis", "lecasinoze", "lunalive", "twitch"];
     for (const streamer of knownStreamers) {
       if (description.toLowerCase().includes(streamer.toLowerCase())) {
-        return `https://lunalive.onrender.com/s/${streamer}`;
+        return `https://lunalive.win/s/${streamer}`;
       }
     }
     
@@ -446,7 +446,7 @@ export class InstagramNotifier {
     const embed: any = {
       author: {
         name: "LunaLive • Nouveau Reel Instagram",
-        icon_url: "https://lunalive.onrender.com/favicon.ico"
+        icon_url: "https://lunalive.win/favicon.ico"
       },
       title: finalTitle,
       description: this.buildEmbedDescription(streamerName, lunaLiveLink),
@@ -454,7 +454,7 @@ export class InstagramNotifier {
       timestamp: reel.publishedAt.toISOString(),
       footer: {
         text: "LunaLive Clips",
-        icon_url: "https://lunalive.onrender.com/favicon.ico"
+        icon_url: "https://lunalive.win/favicon.ico"
       }
     };
 

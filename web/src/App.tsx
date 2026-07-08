@@ -1,6 +1,6 @@
 // web/src/App.tsx
 import * as React from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
@@ -78,11 +78,13 @@ const LoadingFallback = () => (
 import { BgEffect } from "./components/Bgeffects";
 import { captureUtmFromUrl } from "./lib/utm";
 import { LevelUpToast } from "./components/LevelUpToast";
+import { me } from "./lib/api";
 
 function AppInner() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const { logout, token } = useAuth();
+  const { logout, token, setAuth } = useAuth();
 
   // Capture UTM params on every route change (in case user navigates from
   // an ad-tagged URL into the app). No-op if no utm_* params present.
@@ -121,6 +123,40 @@ function AppInner() {
       window.dispatchEvent(new CustomEvent("ui:open_register"));
     }
   }, [location.pathname, location.search]);
+
+  // Retour du flow OAuth Google/Discord (voir api/src/routes/oauth.ts) :
+  // le token JWT arrive en fragment d'URL (#token=...), jamais en query,
+  // pour ne pas fuiter dans les logs serveur/CDN.
+  React.useEffect(() => {
+    if (location.pathname !== "/oauth/done") return;
+
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const oauthToken = params.get("token");
+    const oauthError = params.get("error");
+
+    (async () => {
+      if (oauthToken) {
+        try {
+          const r = await me(oauthToken);
+          setAuth(oauthToken, r.user);
+          window.dispatchEvent(new CustomEvent("ui:login_success"));
+        } catch {
+          // token invalide/expiré côté API → on ignore, l'utilisateur reste déconnecté
+        }
+      }
+      navigate("/", { replace: true });
+      if (oauthError) {
+        // ⚠️ délai nécessaire : l'effet "reset loginOpen sur changement de route"
+        // (juste au-dessus) tourne aussi sur ce changement de pathname et
+        // fermerait la modale si on l'ouvrait dans le même tick (même trick
+        // que onLoginSuccess plus bas pour le WelcomeModal).
+        setTimeout(() => {
+          setLoginOpen(true);
+          window.dispatchEvent(new CustomEvent("ui:oauth_error", { detail: { error: oauthError } }));
+        }, 200);
+      }
+    })();
+  }, [location.pathname, navigate, setAuth]);
 
   // listeners globaux (si tu les utilises avec CallsToast actions)
   React.useEffect(() => {
@@ -314,6 +350,7 @@ function AppInner() {
             }
           />
           <Route path="/event" element={<EventPage />} />
+          <Route path="/oauth/done" element={<LoadingFallback />} />
 
           {/* Debug routes */}
           <Route

@@ -13,7 +13,7 @@ import { r2Enabled, getR2PublicBase, putR2Buffer } from "../clips/r2.js";
 
 export const adminR2AssetsRouter = Router();
 
-const STATIC_ORIGIN = (process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const STATIC_ORIGIN = (process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 
 // Liste des assets à migrer (chemins relatifs au static site)
 const VARIANTS = ["amethyst", "emerald", "gold", "jade", "obsidian", "rose", "ruby", "sapphire"] as const;

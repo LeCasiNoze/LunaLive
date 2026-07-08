@@ -72,6 +72,10 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
   const [levelsUI, setLevelsUI] = React.useState<LevelOpt[]>([{ key: "auto", label: "Auto (recommandé)" }]);
   const [canChooseQuality, setCanChooseQuality] = React.useState(false);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // Erreur fatale (flux HLS abandonné) → overlay + bouton réessayer, au lieu
+  // d'un écran noir figé qui oblige le viewer à recharger toute la page.
+  const [fatalError, setFatalError] = React.useState(false);
+  const [reloadKey, setReloadKey] = React.useState(0);
 
   // Fermer le menu en cliquant dehors
   React.useEffect(() => {
@@ -106,6 +110,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video || !isLive || !hlsUrl) return;
+    setFatalError(false);
 
     const proxiedUrl = toProxiedHls(hlsUrl);
 
@@ -258,11 +263,11 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       try {
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           if (mediaErrorRetries < 3) { mediaErrorRetries++; hls.recoverMediaError(); }
-          else hls.destroy();
+          else { hls.destroy(); setFatalError(true); }
         } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
           hls.startLoad(-1);
         } else {
-          hls.destroy();
+          hls.destroy(); setFatalError(true);
         }
       } catch {}
     });
@@ -315,7 +320,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       try { hls.destroy(); } catch {}
       hlsRef.current = null;
     };
-  }, [isLive, hlsUrl]);
+  }, [isLive, hlsUrl, reloadKey]);
 
   // Éviter la pause au fullscreen / visibilitychange
   React.useEffect(() => {
@@ -352,6 +357,28 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           poster={thumbnailUrl || undefined}
           style={{ width: "100%", display: "block", background: "rgba(0,0,0,0.25)" }}
         />
+
+        {fatalError && (
+          <div style={{
+            position: "absolute", inset: 0, zIndex: 6,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+            background: "rgba(6,10,20,0.82)", backdropFilter: "blur(2px)",
+            textAlign: "center", padding: 20,
+          }}>
+            <div style={{ fontSize: 30 }} aria-hidden>📡</div>
+            <div style={{ color: "#dde8ff", fontWeight: 700, fontSize: 15 }}>Le flux s'est interrompu</div>
+            <div style={{ color: "rgba(167,179,214,0.75)", fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
+              La connexion au direct a été perdue. Le stream est peut-être en train de revenir.
+            </div>
+            <button
+              className="btn"
+              onClick={() => { setFatalError(false); setReloadKey((k) => k + 1); }}
+              style={{ marginTop: 4 }}
+            >
+              Réessayer
+            </button>
+          </div>
+        )}
 
         {canChooseQuality && (
           // Positionné en haut à droite pour ne pas chevaucher la barre de contrôles

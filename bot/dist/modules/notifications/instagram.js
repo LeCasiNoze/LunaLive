@@ -26,6 +26,8 @@ export class InstagramNotifier {
     timer = null;
     lastReelId = null;
     isPolling = false; // Protection contre les polls chevauchants
+    consecutiveHttpErrors = 0;
+    autoDisabled = false;
     constructor(pool, env, config = {}) {
         this.pool = pool;
         this.env = env;
@@ -39,6 +41,10 @@ export class InstagramNotifier {
     start() {
         if (this.timer)
             return;
+        if (String(process.env.IG_NOTIFIER_DISABLED || "").trim() === "1") {
+            console.log("[bot] instagram notifier disabled via IG_NOTIFIER_DISABLED=1");
+            return;
+        }
         console.log("[bot] instagram notifier start", {
             username: INSTAGRAM_USERNAME,
             pollIntervalMs: this.config.pollIntervalMs,
@@ -187,9 +193,22 @@ export class InstagramNotifier {
                 ok: response.ok
             });
             if (!response.ok) {
-                console.log("[bot] instagram graphql HTTP error:", response.status, response.statusText);
+                this.consecutiveHttpErrors++;
+                // Auto-disable apres 10 erreurs consecutives (~30 min de spam) → session expiree
+                if (this.consecutiveHttpErrors === 1 || this.consecutiveHttpErrors === 10) {
+                    console.log("[bot] instagram graphql HTTP error:", response.status, response.statusText, "consecutive=", this.consecutiveHttpErrors);
+                }
+                if (this.consecutiveHttpErrors >= 10 && !this.autoDisabled) {
+                    this.autoDisabled = true;
+                    console.warn("[bot] instagram notifier auto-disabled after 10 consecutive HTTP errors. Session likely expired. Refresh INSTAGRAM_SESSION and redeploy or set IG_NOTIFIER_DISABLED=1.");
+                    if (this.timer) {
+                        clearInterval(this.timer);
+                        this.timer = null;
+                    }
+                }
                 return [];
             }
+            this.consecutiveHttpErrors = 0;
             const jsonResponse = await response.json();
             console.log("[bot] instagram graphql response analysis:", {
                 hasData: !!jsonResponse.data,
@@ -294,7 +313,7 @@ export class InstagramNotifier {
         const knownStreamers = ["fabiozsis", "lecasinoze", "lunalive", "twitch"];
         for (const streamer of knownStreamers) {
             if (description.toLowerCase().includes(streamer.toLowerCase())) {
-                return `https://lunalive.onrender.com/s/${streamer}`;
+                return `https://lunalive.win/s/${streamer}`;
             }
         }
         return null;
@@ -353,7 +372,7 @@ export class InstagramNotifier {
         const embed = {
             author: {
                 name: "LunaLive • Nouveau Reel Instagram",
-                icon_url: "https://lunalive.onrender.com/favicon.ico"
+                icon_url: "https://lunalive.win/favicon.ico"
             },
             title: finalTitle,
             description: this.buildEmbedDescription(streamerName, lunaLiveLink),
@@ -361,7 +380,7 @@ export class InstagramNotifier {
             timestamp: reel.publishedAt.toISOString(),
             footer: {
                 text: "LunaLive Clips",
-                icon_url: "https://lunalive.onrender.com/favicon.ico"
+                icon_url: "https://lunalive.win/favicon.ico"
             }
         };
         // Ajouter la miniature si disponible

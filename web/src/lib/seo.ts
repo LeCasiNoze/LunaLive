@@ -1,7 +1,7 @@
 const ORIGIN =
   typeof window !== "undefined"
     ? window.location.origin
-    : "https://lunalive.onrender.com";
+    : "https://lunalive.win";
 
 const DEFAULT_OG_IMAGE = `${ORIGIN}/logo.png`;
 

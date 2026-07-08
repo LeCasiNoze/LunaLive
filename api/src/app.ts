@@ -12,6 +12,7 @@ import { registerStatsRoutes } from "./stats_routes.js";
 // Core routers
 import { publicRouter } from "./routes/public.js";
 import { authRouter } from "./routes/auth.js";
+import { oauthRouter } from "./routes/oauth.js";
 import { streamerRouter } from "./routes/streamer.js";
 import { adminRouter } from "./routes/admin.js";
 
@@ -252,6 +253,7 @@ export function createApp() {
   app.use(publicRouter);
   app.use("/public", publicRouter);
   app.use(authRouter);
+  app.use(oauthRouter);
   app.use(accountActionsRouter);
   app.use(meDiscordLinkRouter);
 

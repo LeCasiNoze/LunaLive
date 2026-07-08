@@ -35,7 +35,7 @@ const FIRST_REFRESH_DELAY_MS = 90_000;
 const WINDOW_DAYS            = 30;
 const REELS_LIMIT            = 12;
 
-const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.onrender.com").replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirnameLocal = path.dirname(__filename);
