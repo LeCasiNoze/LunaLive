@@ -2,7 +2,10 @@ import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { addToken, grantEntitlement } from "../services/dailyBonus.js";
 import { eventRewardEligibilitySql } from "./eligibility.js";
-import { VIEWER_WEEK_SCORING } from "./viewer_week.js";
+// Nombre de lignes figées dans events.result.top à la clôture. Générique
+// (pas de dépendance à un event précis) : tous les types partagent la même
+// taille de snapshot top.
+const REWARD_TOP_SNAPSHOT_N = 10;
 export const EVENT_REWARD_CONFIGS = {
     viewer_week: {
         tiers: [
@@ -12,6 +15,36 @@ export const EVENT_REWARD_CONFIGS = {
         ],
         participation: { minScore: 200, rubis: 40, wheelTickets: 1, maxRecipients: 40 },
         rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+    },
+    wheel_week: {
+        tiers: [
+            { rankFrom: 1, rankTo: 1, rubis: 600, entitlement: { kind: "title", codeTemplate: "wheel_king_YYYYMM" } },
+            { rankFrom: 2, rankTo: 3, rubis: 300 },
+            { rankFrom: 4, rankTo: 5, rubis: 150 },
+        ],
+        // minScore=50 : ~5 jours de spin gratuit à la moyenne de la roue (gain
+        // moyen/spin ≈ 10,3 rubis d'après la pondération des segments dans
+        // wheel.ts) — atteignable par la simple régularité, sans dépendre d'un
+        // gros lot de chance.
+        participation: { minScore: 50, rubis: 40, wheelTickets: 1, maxRecipients: 40 },
+        rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+    },
+    global_chest: {
+        mode: "collective",
+        collective: {
+            // Petite commu actuelle (cf memory reference_rumble_*) : avec le barème
+            // events/global_chest.ts (60 pts/j watch cap + claims/calls/chat/spins),
+            // une quinzaine de contributeurs réguliers sur la semaine atteignent déjà
+            // 100-250 pts chacun sans rien dépenser ; quelques dépôts rubis (sink)
+            // suffisent à franchir 3000. Objectif volontairement modeste pour que le
+            // premier tirage du cycle soit un succès visible — à remonter une fois le
+            // volume réel de la commu mesuré sur un premier run.
+            goal: 3000,
+            minContribution: 50,
+            rubis: 150,
+            entitlement: { kind: "title", codeTemplate: "chest_YYYYMM" },
+            rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+        },
     },
 };
 async function rankViewerWeek(client, eventId) {
@@ -30,8 +63,25 @@ async function rankViewerWeek(client, eventId) {
         rank: idx + 1,
     }));
 }
+async function rankWheelWeek(client, eventId) {
+    const r = await client.query(`
+    SELECT s.user_id, u.username, s.points
+    FROM event_scores s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.event_id = $1
+      AND ${eventRewardEligibilitySql("s.user_id")}
+    ORDER BY s.points DESC, s.updated_at ASC
+    `, [eventId]);
+    return (r.rows || []).map((row, idx) => ({
+        userId: Number(row.user_id),
+        username: String(row.username),
+        points: Number(row.points),
+        rank: idx + 1,
+    }));
+}
 const RANKING_PROVIDERS = {
     viewer_week: rankViewerWeek,
+    wheel_week: rankWheelWeek,
 };
 /**
  * Fige le classement d'un event dans events.result puis distribue les lots
@@ -51,8 +101,7 @@ export async function closeAndDistribute(eventId) {
             return { ok: false, error: "event_not_found" };
         }
         const config = EVENT_REWARD_CONFIGS[event.type];
-        const rankingProvider = RANKING_PROVIDERS[event.type];
-        if (!config || !rankingProvider) {
+        if (!config) {
             await client.query("ROLLBACK");
             return { ok: false, error: "unsupported_type" };
         }
@@ -64,10 +113,18 @@ export async function closeAndDistribute(eventId) {
             const rubisTotal = existing.rows.reduce((sum, r) => sum + Number(r.rubis || 0), 0);
             return { ok: true, alreadyDistributed: true, winners, participants, rubisTotal };
         }
+        if (config.mode === "collective") {
+            return await distributeCollective(client, eventId, event, config.collective);
+        }
+        const rankingProvider = RANKING_PROVIDERS[event.type];
+        if (!rankingProvider) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "unsupported_type" };
+        }
         const ranked = await rankingProvider(client, eventId);
         const ymRes = await client.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'Europe/Paris', 'YYYYMM') AS ym`, [event.start_at]);
         const ym = String(ymRes.rows?.[0]?.ym ?? "");
-        const topSnapshot = ranked.slice(0, VIEWER_WEEK_SCORING.TOP_N).map((r) => ({
+        const topSnapshot = ranked.slice(0, REWARD_TOP_SNAPSHOT_N).map((r) => ({
             userId: r.userId,
             username: r.username,
             points: r.points,
@@ -142,6 +199,66 @@ export async function closeAndDistribute(eventId) {
     finally {
         client.release();
     }
+}
+/**
+ * Distribution "collective" (ex. Coffre communautaire) : pas de classement,
+ * un seul total (SUM event_scores.points) comparé à un goal. Si atteint,
+ * TOUS les contributeurs éligibles au-dessus de minContribution reçoivent la
+ * MÊME récompense — écrits en tier='participation' (pas de notion de rang en
+ * mode collectif, rank=NULL). Appelée depuis closeAndDistribute, dans la
+ * même transaction (elle fait le COMMIT/ROLLBACK final).
+ */
+async function distributeCollective(client, eventId, event, cfg) {
+    const totalRes = await client.query(`SELECT COALESCE(SUM(points), 0)::int AS total FROM event_scores WHERE event_id=$1`, [eventId]);
+    const communityTotal = Number(totalRes.rows?.[0]?.total ?? 0);
+    const reached = communityTotal >= cfg.goal;
+    if (!reached) {
+        await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+            eventId,
+            JSON.stringify({ reached: false }),
+        ]);
+        await client.query("COMMIT");
+        return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
+    }
+    const contributors = await client.query(`
+    SELECT s.user_id
+    FROM event_scores s
+    WHERE s.event_id = $1
+      AND s.points >= $2
+      AND ${eventRewardEligibilitySql("s.user_id")}
+    `, [eventId, cfg.minContribution]);
+    const ymRes = await client.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'Europe/Paris', 'YYYYMM') AS ym`, [event.start_at]);
+    const ym = String(ymRes.rows?.[0]?.ym ?? "");
+    await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+        eventId,
+        JSON.stringify({ communityTotal, goal: cfg.goal, reached: true, winners: contributors.rowCount ?? 0 }),
+    ]);
+    let participants = 0;
+    let rubisTotal = 0;
+    for (const row of contributors.rows) {
+        const userId = Number(row.user_id);
+        await earnRubisTx(client, userId, cfg.rubisOrigin, cfg.rubis, {
+            purpose: "event_reward",
+            eventId,
+            eventType: event.type,
+            tier: "participation",
+        });
+        const extras = {};
+        if (cfg.entitlement) {
+            const code = cfg.entitlement.codeTemplate.replace("YYYYMM", ym);
+            await grantEntitlement(client, userId, cfg.entitlement.kind, code);
+            extras.entitlement = { kind: cfg.entitlement.kind, code };
+        }
+        await client.query(`
+      INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
+      VALUES ($1,$2,'participation',NULL,$3,$4::jsonb)
+      ON CONFLICT (event_id, user_id) DO NOTHING
+      `, [eventId, userId, cfg.rubis, JSON.stringify(extras)]);
+        participants += 1;
+        rubisTotal += cfg.rubis;
+    }
+    await client.query("COMMIT");
+    return { ok: true, alreadyDistributed: false, winners: 0, participants, rubisTotal };
 }
 /**
  * Helper réutilisable pour offrir un abo promo (même pattern que welcome.ts /

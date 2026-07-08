@@ -1,7 +1,9 @@
 // api/src/events/engine.ts
 import { pool } from "../db.js";
 import { recomputeViewerWeek } from "./viewer_week.js";
-import { closeAndDistribute } from "./rewards.js";
+import { recomputeWheelWeek } from "./wheel_week.js";
+import { recomputeGlobalChest } from "./global_chest.js";
+import { closeAndDistribute, EVENT_REWARD_CONFIGS } from "./rewards.js";
 const TZ = "Europe/Paris";
 const WEEK_MS = 7 * 24 * 3600_000;
 const CYCLE = [
@@ -118,9 +120,10 @@ async function closeIfNeeded() {
     RETURNING id, type
     `);
     // Clôture générique = state='closed' (fait ci-dessus) pour tous les types.
-    // Distribution réelle branchée uniquement pour viewer_week pour l'instant.
+    // Distribution réelle branchée pour tout type ayant une config de reward
+    // (cf EVENT_REWARD_CONFIGS + son ranking provider dans rewards.ts).
     for (const row of closed.rows || []) {
-        if (String(row.type) !== "viewer_week")
+        if (!EVENT_REWARD_CONFIGS[String(row.type)])
             continue;
         try {
             await closeAndDistribute(Number(row.id));
@@ -142,6 +145,12 @@ export function startEventsEnginePoller(everyMs = 60_000) {
             const cur = await getCurrentEvent();
             if (cur && cur.type === "viewer_week" && cur.state === "live") {
                 await recomputeViewerWeek(cur.id);
+            }
+            if (cur && cur.type === "wheel_week" && cur.state === "live") {
+                await recomputeWheelWeek(cur.id);
+            }
+            if (cur && cur.type === "global_chest" && cur.state === "live") {
+                await recomputeGlobalChest(cur.id);
             }
         }
         catch (e) {
