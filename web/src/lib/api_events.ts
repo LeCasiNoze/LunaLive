@@ -63,16 +63,18 @@ export type ApiViewerWeekRules = {
 };
 
 export type ApiViewerWeekTopRow = {
-  rank: number;
+  rank: number | null;
   userId: number;
   username: string;
   points: number;
   minutesPoints?: number;
+  dayBonusPoints?: number;
   claimPoints?: number;
   wheelPoints?: number;
   callsPoints?: number;
   predJoinPoints?: number;
   predWinPoints?: number;
+  chatPoints?: number;
 };
 
 export type ApiViewerWeekMe = ApiViewerWeekTopRow | null;

@@ -96,7 +96,7 @@ async function getParisNow(client: PoolClient) {
   };
 }
 
-async function addToken(client: PoolClient, userId: number, token: string, amount: number) {
+export async function addToken(client: PoolClient, userId: number, token: string, amount: number) {
   await client.query(
     `
     INSERT INTO user_tokens (user_id, token, amount)
@@ -109,7 +109,7 @@ async function addToken(client: PoolClient, userId: number, token: string, amoun
   );
 }
 
-async function grantEntitlement(client: PoolClient, userId: number, kind: "skin" | "title", code: string) {
+export async function grantEntitlement(client: PoolClient, userId: number, kind: "skin" | "title", code: string) {
   const r = await client.query(
     `
     INSERT INTO user_entitlements (user_id, kind, code)

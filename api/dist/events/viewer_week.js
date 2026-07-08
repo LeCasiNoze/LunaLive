@@ -1,23 +1,27 @@
 import { pool } from "../db.js";
 const TZ = "Europe/Paris";
-// Barème + caps (facile à modifier)
-export const VIEWER_WEEK = {
+// Barème + caps (facile à modifier). Les CAP_PER_DAY sont TOUJOURS des caps
+// sur le NOMBRE d'unités qualifiées comptées par jour (Europe/Paris), pas un
+// cap direct sur les points (même logique que roue/prédictions ci-dessous).
+export const VIEWER_WEEK_SCORING = {
     TOP_N: 10,
     P: {
         MINUTE: 1,
-        CLAIM: 25,
-        WHEEL: 10,
-        PRED_JOIN: 10,
-        PRED_WIN: 25,
-        CALL: 5,
-        CHAT: 1, // (pas branché MVP)
+        DAY_BONUS: 25, // +25 / jour distinct (Paris) avec >=1 activité — levier régularité
+        CLAIM: 30,
+        CHAT: 2,
+        CALL: 8,
+        WHEEL: 12,
+        PRED_JOIN: 12,
+        PRED_WIN: 30,
     },
     CAP_PER_DAY: {
-        CHAT: 30, // (pas branché MVP)
+        MINUTE: 90, // minutes distinctes/jour (anti-AFK)
+        CHAT: 30, // messages/jour
+        CALL: 80, // calls/jour
         WHEEL: 5,
         PRED_JOIN: 3,
         PRED_WIN: 1,
-        CALL: 20,
     },
 };
 function sqlDateParis(expr) {
@@ -56,13 +60,12 @@ export async function recomputeViewerWeek(eventId) {
     // d7 = d0 + 7 days (exclusive)
     // (on filtre day >= d0 AND day < d0 + 7)
     // -----------------------------
-    // Minutes points (1 point / minute active)
-    // Eligible = user_id NOT NULL + welcome_rewards exists
-    // -----------------------------
     // Pour limiter, on supprime puis re-insert (safe MVP).
     await pool.query(`DELETE FROM event_scores_viewer_week WHERE event_id=$1`, [eventId]);
-    // ✅ Seed participants: toute personne qui a fait AU MOINS 1 action dans la fenêtre
-    // (et a welcome_rewards + pas ban)
+    // ✅ Seed participants: toute personne qui a fait AU MOINS 1 action dans la fenêtre.
+    // ⚠️ Plus de gate "welcome_rewards" ici : les points comptent pour TOUT LE MONDE.
+    // L'éligibilité (follow + claim + 30min) ne filtre que le classement public et
+    // les lots — cf events/eligibility.ts + events/rewards.ts.
     await pool.query(`
     INSERT INTO event_scores_viewer_week(event_id, user_id, points, updated_at)
     SELECT $1::bigint, x.user_id::bigint, 0, NOW()
@@ -112,8 +115,15 @@ export async function recomputeViewerWeek(eventId) {
         AND b.choice = p.resolved_option
         AND p.bets_close_at >= $2::timestamptz
         AND p.bets_close_at <  $3::timestamptz
+
+      UNION
+      -- chat (created_at)
+      SELECT cm.user_id
+      FROM chat_messages cm
+      WHERE cm.deleted_at IS NULL
+        AND cm.created_at >= $2::timestamptz
+        AND cm.created_at <  $3::timestamptz
     ) x
-    JOIN welcome_rewards wr ON wr.user_id = x.user_id
     WHERE NOT EXISTS (
       SELECT 1
       FROM site_user_bans b
@@ -123,7 +133,7 @@ export async function recomputeViewerWeek(eventId) {
     )
     ON CONFLICT (event_id, user_id) DO NOTHING
     `, [eventId, e.start_at, e.end_at, d0]);
-    // Minutes
+    // Minutes (cap = minutes DISTINCTES/jour, anti-farm multi-live simultané)
     await pool.query(`
     UPDATE event_scores_viewer_week s
     SET
@@ -131,24 +141,76 @@ export async function recomputeViewerWeek(eventId) {
       points = points + x.pts,
       updated_at = NOW()
     FROM (
-      SELECT svm.user_id::bigint AS user_id,
-            (COUNT(*)::int * $2::int) AS pts
-      FROM stream_viewer_minutes svm
-      JOIN welcome_rewards wr ON wr.user_id = svm.user_id
-      WHERE svm.user_id IS NOT NULL
-        AND svm.bucket_ts >= $3::timestamptz
-        AND svm.bucket_ts <  $4::timestamptz
-        AND NOT EXISTS (
-          SELECT 1
-          FROM site_user_bans b
-          WHERE b.user_id = svm.user_id
-            AND b.revoked_at IS NULL
-            AND (b.until IS NULL OR b.until > NOW())
-        )
-      GROUP BY svm.user_id
+      SELECT user_id::bigint AS user_id,
+             SUM(LEAST(cnt, $2::int) * $3::int)::int AS pts
+      FROM (
+        SELECT svm.user_id,
+               ${sqlDateParis("svm.bucket_ts")} AS day,
+               COUNT(DISTINCT svm.bucket_ts)::int AS cnt
+        FROM stream_viewer_minutes svm
+        WHERE svm.user_id IS NOT NULL
+          AND svm.bucket_ts >= $4::timestamptz
+          AND svm.bucket_ts <  $5::timestamptz
+          AND ${NOT_BANNED_SQL}
+        GROUP BY svm.user_id, day
+      ) per_day
+      GROUP BY user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.P.MINUTE, e.start_at, e.end_at]);
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.MINUTE, VIEWER_WEEK_SCORING.P.MINUTE, e.start_at, e.end_at]);
+    // Bonus "jour actif" : +25 par jour distinct (Paris) avec >=1 activité
+    // (watch minute OU claim OU wheel OU call OU prédiction OU chat).
+    await pool.query(`
+    UPDATE event_scores_viewer_week s
+    SET
+      day_bonus_points = x.pts,
+      points = points + x.pts,
+      updated_at = NOW()
+    FROM (
+      SELECT user_id::bigint AS user_id,
+             COUNT(*)::int * $2::int AS pts
+      FROM (
+        SELECT svm.user_id, ${sqlDateParis("svm.bucket_ts")} AS day
+        FROM stream_viewer_minutes svm
+        WHERE svm.user_id IS NOT NULL
+          AND svm.bucket_ts >= $3::timestamptz
+          AND svm.bucket_ts <  $4::timestamptz
+
+        UNION
+        SELECT c.user_id, c.day
+        FROM daily_bonus_claims c
+        WHERE c.day >= $5::date
+          AND c.day < ($5::date + INTERVAL '7 days')
+
+        UNION
+        SELECT w.user_id, w.day
+        FROM daily_wheel_spins w
+        WHERE w.day >= $5::date
+          AND w.day < ($5::date + INTERVAL '7 days')
+
+        UNION
+        SELECT ca.user_id, ${sqlDateParis("ca.created_at")} AS day
+        FROM calls_actions ca
+        WHERE ca.created_at >= $3::timestamptz
+          AND ca.created_at <  $4::timestamptz
+
+        UNION
+        SELECT b.user_id, ${sqlDateParis("b.created_at")} AS day
+        FROM prediction_bets b
+        WHERE b.created_at >= $3::timestamptz
+          AND b.created_at <  $4::timestamptz
+
+        UNION
+        SELECT cm.user_id, ${sqlDateParis("cm.created_at")} AS day
+        FROM chat_messages cm
+        WHERE cm.deleted_at IS NULL
+          AND cm.created_at >= $3::timestamptz
+          AND cm.created_at <  $4::timestamptz
+      ) days
+      GROUP BY user_id
+    ) x
+    WHERE s.event_id=$1 AND s.user_id=x.user_id
+    `, [eventId, VIEWER_WEEK_SCORING.P.DAY_BONUS, e.start_at, e.end_at, d0]);
     // Claims (daily_bonus_claims.day already Paris)
     await pool.query(`
     UPDATE event_scores_viewer_week s
@@ -160,14 +222,37 @@ export async function recomputeViewerWeek(eventId) {
       SELECT c.user_id::bigint AS user_id,
              (COUNT(*)::int * $2::int) AS pts
       FROM daily_bonus_claims c
-      JOIN welcome_rewards wr ON wr.user_id = c.user_id
       WHERE c.day >= $3::date
         AND c.day < ($3::date + INTERVAL '7 days')
       GROUP BY c.user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.P.CLAIM, d0]);
-    // Wheel (cap 5/day) via daily_wheel_spins.day
+    `, [eventId, VIEWER_WEEK_SCORING.P.CLAIM, d0]);
+    // Chat (cap = messages/jour) via chat_messages.created_at
+    await pool.query(`
+    UPDATE event_scores_viewer_week s
+    SET
+      chat_points = x.pts,
+      points = points + x.pts,
+      updated_at = NOW()
+    FROM (
+      SELECT user_id::bigint AS user_id,
+             SUM(LEAST(cnt, $2::int) * $3::int)::int AS pts
+      FROM (
+        SELECT cm.user_id,
+               ${sqlDateParis("cm.created_at")} AS day,
+               COUNT(*)::int AS cnt
+        FROM chat_messages cm
+        WHERE cm.deleted_at IS NULL
+          AND cm.created_at >= $4::timestamptz
+          AND cm.created_at <  $5::timestamptz
+        GROUP BY cm.user_id, day
+      ) per_day
+      GROUP BY user_id
+    ) x
+    WHERE s.event_id=$1 AND s.user_id=x.user_id
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.CHAT, VIEWER_WEEK_SCORING.P.CHAT, e.start_at, e.end_at]);
+    // Wheel (cap spins/day) via daily_wheel_spins.day
     await pool.query(`
     UPDATE event_scores_viewer_week s
     SET
@@ -180,7 +265,6 @@ export async function recomputeViewerWeek(eventId) {
       FROM (
         SELECT w.user_id, w.day, COUNT(*)::int AS cnt
         FROM daily_wheel_spins w
-        JOIN welcome_rewards wr ON wr.user_id = w.user_id
         WHERE w.day >= $4::date
           AND w.day < ($4::date + INTERVAL '7 days')
         GROUP BY w.user_id, w.day
@@ -188,8 +272,8 @@ export async function recomputeViewerWeek(eventId) {
       GROUP BY user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.CAP_PER_DAY.WHEEL, VIEWER_WEEK.P.WHEEL, d0]);
-    // Calls (cap 20/day) via calls_actions.created_at
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.WHEEL, VIEWER_WEEK_SCORING.P.WHEEL, d0]);
+    // Calls (cap calls/day) via calls_actions.created_at
     await pool.query(`
     UPDATE event_scores_viewer_week s
     SET
@@ -204,7 +288,6 @@ export async function recomputeViewerWeek(eventId) {
                ${sqlDateParis("ca.created_at")} AS day,
                COUNT(*)::int AS cnt
         FROM calls_actions ca
-        JOIN welcome_rewards wr ON wr.user_id = ca.user_id
         WHERE ca.created_at >= $4::timestamptz
           AND ca.created_at <  $5::timestamptz
         GROUP BY ca.user_id, day
@@ -212,8 +295,8 @@ export async function recomputeViewerWeek(eventId) {
       GROUP BY user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.CAP_PER_DAY.CALL, VIEWER_WEEK.P.CALL, e.start_at, e.end_at]);
-    // Predictions join (cap 3/day) via prediction_bets.created_at
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.CALL, VIEWER_WEEK_SCORING.P.CALL, e.start_at, e.end_at]);
+    // Predictions join (cap/day) via prediction_bets.created_at
     await pool.query(`
     UPDATE event_scores_viewer_week s
     SET
@@ -228,7 +311,6 @@ export async function recomputeViewerWeek(eventId) {
                ${sqlDateParis("b.created_at")} AS day,
                COUNT(*)::int AS cnt
         FROM prediction_bets b
-        JOIN welcome_rewards wr ON wr.user_id = b.user_id
         WHERE b.created_at >= $4::timestamptz
           AND b.created_at <  $5::timestamptz
         GROUP BY b.user_id, day
@@ -236,8 +318,8 @@ export async function recomputeViewerWeek(eventId) {
       GROUP BY user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.CAP_PER_DAY.PRED_JOIN, VIEWER_WEEK.P.PRED_JOIN, e.start_at, e.end_at]);
-    // Predictions win bonus (cap 1/day) : proxy via predictions.bets_close_at (close ~= resolve)
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.PRED_JOIN, VIEWER_WEEK_SCORING.P.PRED_JOIN, e.start_at, e.end_at]);
+    // Predictions win bonus (cap/day) : proxy via predictions.bets_close_at (close ~= resolve)
     await pool.query(`
     UPDATE event_scores_viewer_week s
     SET
@@ -253,7 +335,6 @@ export async function recomputeViewerWeek(eventId) {
                COUNT(*)::int AS cnt
         FROM prediction_bets b
         JOIN predictions p ON p.id = b.prediction_id
-        JOIN welcome_rewards wr ON wr.user_id = b.user_id
         WHERE p.status='resolved'
           AND p.resolved_option IS NOT NULL
           AND b.choice = p.resolved_option
@@ -264,6 +345,6 @@ export async function recomputeViewerWeek(eventId) {
       GROUP BY user_id
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
-    `, [eventId, VIEWER_WEEK.CAP_PER_DAY.PRED_WIN, VIEWER_WEEK.P.PRED_WIN, e.start_at, e.end_at]);
+    `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.PRED_WIN, VIEWER_WEEK_SCORING.P.PRED_WIN, e.start_at, e.end_at]);
     return { ok: true };
 }

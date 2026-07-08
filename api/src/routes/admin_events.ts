@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
+import { closeAndDistribute } from "../events/rewards.js";
 
 const ALLOWED = new Set([
   "clip_race",
@@ -139,5 +140,21 @@ adminEventsRouter.post(
     } finally {
       client.release();
     }
+  })
+);
+
+/**
+ * POST /admin/events/:id/close-distribute
+ * -> fige le classement + distribue les lots (idempotent). Pour tester la
+ * boucle score->clôture->classement->distribution sans attendre la clôture auto.
+ */
+adminEventsRouter.post(
+  "/:id/close-distribute",
+  a(async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) return res.status(400).json({ ok: false, error: "bad_id" });
+
+    const result = await closeAndDistribute(id);
+    res.json(result);
   })
 );
