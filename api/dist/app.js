@@ -106,6 +106,8 @@ import { adminRumbleRouter } from "./routes/admin_rumble.js";
 import { adminR2AssetsRouter } from "./routes/admin_r2_assets.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
+import { eventsWheelWeekRouter } from "./routes/events_wheel_week.js";
+import { eventsChestRouter } from "./routes/events_chest.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
 import { lunaclipRouter } from "./lunaclip/routes.js";
 // Debug routes
@@ -169,6 +171,8 @@ export function createApp() {
     app.use("/api", dliveRepostRouter);
     app.use("/api", eventsRouter);
     app.use("/api", eventsViewerWeekRouter);
+    app.use("/api", eventsWheelWeekRouter);
+    app.use("/api", eventsChestRouter);
     app.use("/api", igCommentsRouter);
     app.use("/api", offresStreamersRouter);
     app.use("/api", igConfigRouter);
