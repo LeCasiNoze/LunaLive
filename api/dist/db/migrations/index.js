@@ -126,6 +126,7 @@ import { mig120_affi_vip_leads } from "./mig120_affi_vip_leads.js";
 import { mig121_affi_pages_publish_domain } from "./mig121_affi_pages_publish_domain.js";
 import { mig122_oauth_identities } from "./mig122_oauth_identities.js";
 import { mig123_event_rewards } from "./mig123_event_rewards.js";
+import { mig124_event_access_flags } from "./mig124_event_access_flags.js";
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
 import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
@@ -257,6 +258,7 @@ export async function migrateAll(pool) {
     await mig121_affi_pages_publish_domain(pool);
     await mig122_oauth_identities(pool);
     await mig123_event_rewards(pool);
+    await mig124_event_access_flags(pool);
     // Rumble migrations
     await mig040_rumble_info(pool);
     await mig041_rumble_accounts(pool);

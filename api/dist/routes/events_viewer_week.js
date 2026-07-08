@@ -1,10 +1,30 @@
 import { Router } from "express";
+import jwt from "jsonwebtoken";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
-import { requireAuth } from "../auth.js";
 import { VIEWER_WEEK_SCORING } from "../events/viewer_week.js";
 import { eventRewardEligibilitySql } from "../events/eligibility.js";
 export const eventsViewerWeekRouter = Router();
+// Le TOP est public (SEO/attractivité) ; "me" n'apparaît que si un JWT valide
+// est fourni. Même pattern que decodeOptionalUser dans stats_routes.ts.
+function getJwtSecret() {
+    const s = process.env.JWT_SECRET;
+    if (!s)
+        throw new Error("JWT_SECRET missing");
+    return s;
+}
+function decodeOptionalUser(req) {
+    const h = String(req.headers.authorization || "");
+    const m = h.match(/^Bearer\s+(.+)$/i);
+    if (!m)
+        return null;
+    try {
+        return jwt.verify(m[1], getJwtSecret());
+    }
+    catch {
+        return null;
+    }
+}
 function mapRow(row) {
     return {
         rank: row.rank != null ? Number(row.rank) : null,
@@ -22,8 +42,10 @@ function mapRow(row) {
     };
 }
 // GET /api/events/current/viewer-week
-eventsViewerWeekRouter.get("/events/current/viewer-week", requireAuth, a(async (req, res) => {
-    const userId = Number(req.user?.id || 0);
+// Auth optionnelle : le top est public, "me" n'apparaît que si connecté.
+eventsViewerWeekRouter.get("/events/current/viewer-week", a(async (req, res) => {
+    const user = decodeOptionalUser(req);
+    const userId = Number(user?.id || 0);
     const ev = await pool.query(`
       SELECT *
       FROM events
@@ -48,21 +70,26 @@ eventsViewerWeekRouter.get("/events/current/viewer-week", requireAuth, a(async (
       ORDER BY r.rank ASC
       LIMIT $2
       `, [event.id, VIEWER_WEEK_SCORING.TOP_N]);
-    // "me" : mes points comptent toujours ; mon rang n'existe que si je suis éligible.
-    const me = await pool.query(`
-      WITH ranked AS (
-        SELECT s.*, ROW_NUMBER() OVER (ORDER BY s.points DESC, s.updated_at ASC) AS rank
+    // "me" : uniquement si connecté. Mes points comptent toujours ; mon rang
+    // n'existe que si je suis éligible.
+    let meRow = null;
+    if (userId) {
+        const me = await pool.query(`
+        WITH ranked AS (
+          SELECT s.*, ROW_NUMBER() OVER (ORDER BY s.points DESC, s.updated_at ASC) AS rank
+          FROM event_scores_viewer_week s
+          WHERE s.event_id = $1
+            AND ${eventRewardEligibilitySql("s.user_id")}
+        )
+        SELECT s.*, u.username, ranked.rank
         FROM event_scores_viewer_week s
-        WHERE s.event_id = $1
-          AND ${eventRewardEligibilitySql("s.user_id")}
-      )
-      SELECT s.*, u.username, ranked.rank
-      FROM event_scores_viewer_week s
-      JOIN users u ON u.id = s.user_id
-      LEFT JOIN ranked ON ranked.user_id = s.user_id
-      WHERE s.event_id = $1 AND s.user_id = $2
-      LIMIT 1
-      `, [event.id, userId]);
+        JOIN users u ON u.id = s.user_id
+        LEFT JOIN ranked ON ranked.user_id = s.user_id
+        WHERE s.event_id = $1 AND s.user_id = $2
+        LIMIT 1
+        `, [event.id, userId]);
+        meRow = me.rows?.[0] ?? null;
+    }
     res.json({
         ok: true,
         event,
@@ -73,6 +100,6 @@ eventsViewerWeekRouter.get("/events/current/viewer-week", requireAuth, a(async (
             topN: VIEWER_WEEK_SCORING.TOP_N,
         },
         top: (top.rows || []).map(mapRow),
-        me: me.rows?.[0] ? mapRow(me.rows[0]) : null,
+        me: meRow ? mapRow(meRow) : null,
     });
 }));
