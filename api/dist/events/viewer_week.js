@@ -350,3 +350,71 @@ export async function recomputeViewerWeek(eventId) {
     `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.PRED_WIN, VIEWER_WEEK_SCORING.P.PRED_WIN, e.start_at, e.end_at]);
     return { ok: true };
 }
+export async function rankViewerWeekStreamers(eventId, limit = 10) {
+    const ev = await pool.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+    const e = ev.rows?.[0];
+    if (!e)
+        return [];
+    const r = await pool.query(`
+    WITH vsm AS (
+      -- minutes distinctes par (viewer, streamer), hors auto-watch
+      SELECT svm.user_id AS viewer_id, svm.streamer_id,
+             COUNT(DISTINCT svm.bucket_ts) AS mins
+      FROM stream_viewer_minutes svm
+      JOIN streamers st ON st.id = svm.streamer_id
+      WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
+        AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
+        AND (st.user_id IS NULL OR st.user_id <> svm.user_id)
+      GROUP BY svm.user_id, svm.streamer_id
+    ),
+    top_per_viewer AS (
+      -- streamer le plus regardé par chaque viewer
+      SELECT DISTINCT ON (viewer_id) viewer_id, streamer_id
+      FROM vsm
+      ORDER BY viewer_id, mins DESC, streamer_id
+    ),
+    agg AS (
+      SELECT t.streamer_id, SUM(s.points)::int AS points, COUNT(*)::int AS viewers
+      FROM top_per_viewer t
+      JOIN event_scores_viewer_week s ON s.user_id = t.viewer_id AND s.event_id = $1
+      GROUP BY t.streamer_id
+    )
+    SELECT a.streamer_id, st.slug, st.display_name, st.user_id, a.points, a.viewers,
+           ROW_NUMBER() OVER (ORDER BY a.points DESC, a.viewers DESC, a.streamer_id) AS rank
+    FROM agg a
+    JOIN streamers st ON st.id = a.streamer_id
+    ORDER BY rank
+    LIMIT $4
+    `, [eventId, e.start_at, e.end_at, limit]);
+    return (r.rows || []).map((x) => ({
+        streamerId: Number(x.streamer_id),
+        slug: String(x.slug ?? ""),
+        displayName: String(x.display_name ?? x.slug ?? ""),
+        userId: x.user_id != null ? Number(x.user_id) : null,
+        points: Number(x.points ?? 0),
+        viewers: Number(x.viewers ?? 0),
+        rank: Number(x.rank),
+    }));
+}
+// Streamer que CE viewer booste (son plus regardé de la semaine, hors auto-watch).
+export async function getViewerBoostedStreamer(eventId, userId) {
+    const ev = await pool.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+    const e = ev.rows?.[0];
+    if (!e)
+        return null;
+    const r = await pool.query(`
+    SELECT svm.streamer_id, st.slug, st.display_name, COUNT(DISTINCT svm.bucket_ts) AS mins
+    FROM stream_viewer_minutes svm
+    JOIN streamers st ON st.id = svm.streamer_id
+    WHERE svm.user_id = $1
+      AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
+      AND (st.user_id IS NULL OR st.user_id <> svm.user_id)
+    GROUP BY svm.streamer_id, st.slug, st.display_name
+    ORDER BY mins DESC, svm.streamer_id
+    LIMIT 1
+    `, [userId, e.start_at, e.end_at]);
+    const row = r.rows?.[0];
+    if (!row)
+        return null;
+    return { streamerId: Number(row.streamer_id), slug: String(row.slug ?? ""), displayName: String(row.display_name ?? row.slug ?? "") };
+}
