@@ -350,12 +350,12 @@ export async function recomputeViewerWeek(eventId) {
     `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.PRED_WIN, VIEWER_WEEK_SCORING.P.PRED_WIN, e.start_at, e.end_at]);
     return { ok: true };
 }
-export async function rankViewerWeekStreamers(eventId, limit = 10) {
-    const ev = await pool.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+export async function rankViewerWeekStreamers(eventId, limit = 10, db = pool) {
+    const ev = await db.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
     const e = ev.rows?.[0];
     if (!e)
         return [];
-    const r = await pool.query(`
+    const r = await db.query(`
     WITH vsm AS (
       -- minutes distinctes par (viewer, streamer), hors auto-watch
       SELECT svm.user_id AS viewer_id, svm.streamer_id,
