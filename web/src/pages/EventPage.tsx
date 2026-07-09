@@ -19,6 +19,7 @@ import {
   getEventAccessStatus,
   postBossBurn,
   postChestDeposit,
+  postChestPalierClaim,
   postClipRaceVote,
   postViewerWeekBoostBuy,
   postViewerWeekPalierClaim,
@@ -375,11 +376,18 @@ const WHEEL_WEEK_REWARD_TIERS: RewardTierDisplay[] = [
 
 const CHEST_REWARD_TIERS: RewardTierDisplay[] = [
   {
-    key: "reached",
-    rank: "🎁 Coffre rempli (3000 pts communs)",
-    amount: "150",
-    extra: "pour chaque contributeur ≥ 50 pts + badge exclusif",
+    key: "top3",
+    rank: "🏰 Top 3 contributeurs",
+    amount: "Skin",
+    extra: "cadre exclusif « Coffre-fort » (permanent, réservé aux tops)",
     gold: true,
+  },
+  { key: "n1", rank: "👑 #1 contributeur", amount: "Titre", extra: "« Baron du Coffre » — remis en jeu à chaque édition" },
+  {
+    key: "paliers",
+    rank: "🎁 Paliers collectifs",
+    amount: "30→100",
+    extra: "rubis + tickets de roue à chaque palier franchi, pour tout contributeur ≥ 50 pts",
   },
 ];
 
@@ -1125,7 +1133,21 @@ function ChestPanel({
   onLoginClick: () => void;
   onRefresh: () => void;
 }) {
-  const pct = resp.goal > 0 ? Math.min(100, Math.round((resp.communityTotal / resp.goal) * 100)) : 0;
+  const [tab, setTab] = React.useState<"coffre" | "contributeurs" | "recompenses">("coffre");
+  const [claimingPalier, setClaimingPalier] = React.useState(false);
+  const [palierFlash, setPalierFlash] = React.useState<string[] | null>(null);
+
+  const communityTotal = resp.communityTotal;
+  const paliers = resp.paliers;
+  const minContribution = resp.minContribution;
+  const myContribution = resp.myContribution ?? 0;
+  const maxThreshold = paliers.length ? paliers[paliers.length - 1].threshold : resp.goal;
+  const palierPct = maxThreshold > 0 ? Math.min(100, (Math.min(communityTotal, maxThreshold) / maxThreshold) * 100) : 0;
+  const claimedSet = new Set(resp.myPaliers?.claimed ?? []);
+  const canClaimGate = !!token && myContribution >= minContribution;
+  const reachedUnclaimed = canClaimGate ? paliers.filter((p) => communityTotal >= p.threshold && !claimedSet.has(p.index)) : [];
+  const nextPalier = paliers.find((p) => communityTotal < p.threshold) ?? null;
+
   const contributors: EvTopRow[] = resp.topContributors.map((c, i) => ({
     rank: i + 1,
     userId: c.userId,
@@ -1133,63 +1155,127 @@ function ChestPanel({
     points: c.points,
   }));
 
+  async function handlePalierClaim() {
+    if (!token) return;
+    setClaimingPalier(true);
+    try {
+      const r = await postChestPalierClaim(token);
+      if (r.claimed.length > 0) {
+        setPalierFlash(r.claimed.map((c) => c.label));
+        window.setTimeout(() => setPalierFlash(null), 4500);
+      }
+      onRefresh();
+    } catch {
+      /* silencieux — la barre se resynchronise au prochain refresh */
+    } finally {
+      setClaimingPalier(false);
+    }
+  }
+
   return (
-    <>
-      <Reveal>
-        <div>
-          <div className="evSectionTitle">🎁 Coffre communautaire</div>
-          <div className="evCard">
-            <div className="evBarHead">
-              <span><CountUp value={resp.communityTotal} /> / {resp.goal} pts</span>
-              {resp.reached ? <span className="evStateBadge live">✅ Palier atteint !</span> : null}
-            </div>
-            <div className="evBar">
-              <div className="evBarFill" style={{ width: `${pct}%` }} />
-            </div>
-          </div>
+    <div className="evWheel2">
+      <div className="evWheel2Status">
+        <div className="evW2Stats">
+          <div className="evW2Stat"><span className="evW2Label">Coffre commun</span><span className="evW2Val">🎁 {communityTotal} / {maxThreshold}</span></div>
+          <div className="evW2Stat"><span className="evW2Label">Ta contribution</span><span className="evW2Val">💎 {myContribution}</span></div>
         </div>
-      </Reveal>
+      </div>
 
-      {contributors.length > 0 ? (
-        <Reveal delay={0.05}>
-          <div>
-            <div className="evSectionTitle">📊 Top contributeurs</div>
-            <LeaderboardList rows={contributors} meUserId={meUserId} />
-          </div>
-        </Reveal>
-      ) : null}
+      <div className="evTabs" role="tablist">
+        {([
+          ["coffre", "🎁", "Coffre"],
+          ["contributeurs", "📊", "Contributeurs"],
+          ["recompenses", "🏆", "Récompenses"],
+        ] as const).map(([k, icon, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
+            <span className="evTabIcon">{icon}</span>
+            <span className="evTabLabel">{label}</span>
+            {k === "coffre" && reachedUnclaimed.length > 0 ? <span className="evTabBadge">{reachedUnclaimed.length}</span> : null}
+          </button>
+        ))}
+      </div>
 
-      <Reveal delay={0.08}>
-        <div>
-          <div className="evSectionTitle">🎁 Vitrine des lots</div>
-          <RewardsShowcase tiers={CHEST_REWARD_TIERS} />
-        </div>
-      </Reveal>
+      <div className="evTabPanel">
+        {tab === "coffre" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div className="evPalierBlock">
+              <div className="evPalierHead">
+                <span className="evPalierHeadTitle">🏁 Paliers du coffre</span>
+                <span className="evPalierHeadPts"><CountUp value={communityTotal} /> / {maxThreshold}</span>
+              </div>
+              <div className="evPalierTrack">
+                <div className="evPalierFill" style={{ width: `${palierPct}%` }} />
+                {paliers.map((p) => {
+                  const done = communityTotal >= p.threshold;
+                  const left = maxThreshold > 0 ? Math.min(100, (p.threshold / maxThreshold) * 100) : 0;
+                  return <div key={p.index} className={`evPalierMark${done ? " done" : ""}`} style={{ left: `${left}%` }} title={`${p.threshold} pts — ${p.label}`}>{done ? "✓" : p.threshold}</div>;
+                })}
+              </div>
+              {nextPalier ? (
+                <div className="evPalierNext">🎯 Plus que {nextPalier.threshold - communityTotal} pts avant « {nextPalier.label} »</div>
+              ) : (
+                <div className="evPalierNext">🏆 Tous les paliers atteints !</div>
+              )}
 
-      <Reveal delay={0.12}>
-        <div>
-          <div className="evSectionTitle">🎯 Ton statut</div>
-          {!token ? (
-            <LoginGate onLogin={onLoginClick} text="Connecte-toi pour déposer des rubis dans le coffre commun." />
-          ) : (
-            <MyStatusCard
-              icon="💎"
-              title="Ta contribution"
-              meta={<><CountUp value={resp.myContribution ?? 0} /> pts déposés</>}
-            >
-              <RubisAmountForm
+              {!token ? null : !canClaimGate ? (
+                <div className="evPalierNext">Contribue au moins {minContribution} pts (regarde, chatte ou dépose des rubis) pour débloquer les récompenses de palier.</div>
+              ) : reachedUnclaimed.length > 0 ? (
+                <div className="evPalierClaim" style={{ marginTop: 14 }}>
+                  <div className="evPalierClaimList">
+                    {reachedUnclaimed.map((p) => <span className="evPalierClaimChip" key={p.index}>🎁 {p.label}</span>)}
+                  </div>
+                  <button type="button" className="evBtn evPalierClaimBtn" onClick={handlePalierClaim} disabled={claimingPalier}>
+                    {claimingPalier ? "…" : `Récupérer ${reachedUnclaimed.length} palier${reachedUnclaimed.length > 1 ? "s" : ""}`}
+                  </button>
+                </div>
+              ) : null}
+              {palierFlash ? <div className="evPalierFlash" style={{ marginTop: 10 }}>✅ Récupéré : {palierFlash.join(" · ")}</div> : null}
+
+              <div className="evPalierList" style={{ marginTop: 12 }}>
+                {paliers.map((p) => {
+                  const done = communityTotal >= p.threshold;
+                  const claimedByMe = claimedSet.has(p.index);
+                  return (
+                    <div className={`evPalierRow${claimedByMe ? " done" : done ? " reached" : ""}`} key={p.index}>
+                      <span className="evPalierRowThresh">{p.threshold}</span>
+                      <span className="evPalierRowLabel">{p.label}</span>
+                      <span className="evPalierRowState">{claimedByMe ? "✓ récupéré" : done ? "à récupérer" : ""}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!token ? (
+              <LoginGate onLogin={onLoginClick} text="Connecte-toi pour déposer des rubis dans le coffre commun." />
+            ) : (
+              <MyStatusCard
                 icon="💎"
-                buttonLabel="Déposer des rubis"
-                onSubmit={async (n) => {
-                  await postChestDeposit(token, n);
-                  onRefresh();
-                }}
-              />
-            </MyStatusCard>
-          )}
-        </div>
-      </Reveal>
-    </>
+                title="Déposer dans le coffre"
+                meta={<>Chaque rubis déposé fait monter la barre commune — irréversible.</>}
+              >
+                <RubisAmountForm
+                  icon="💎"
+                  buttonLabel="Déposer des rubis"
+                  onSubmit={async (n) => {
+                    await postChestDeposit(token, n);
+                    onRefresh();
+                  }}
+                />
+              </MyStatusCard>
+            )}
+          </div>
+        ) : tab === "contributeurs" ? (
+          contributors.length === 0 ? (
+            <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Pas encore de contributeur — dépose des rubis ou sois actif pour ouvrir le bal.</div>
+          ) : (
+            <LeaderboardList rows={contributors} meUserId={meUserId} />
+          )
+        ) : (
+          <RewardsShowcase tiers={CHEST_REWARD_TIERS} />
+        )}
+      </div>
+    </div>
   );
 }
 

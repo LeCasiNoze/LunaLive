@@ -30,10 +30,14 @@ Format par event : Badge commun · Cosmétique permanent (palier final) · Cadre
 - **Cadre animé exclusif** — `frame_clip_*` · idée : bordure "pellicule de film" animée.
 - **Titre streamer gagnant** — `title_clip_race_streamer` (déjà référencé dans le code) · "Roi du clip".
 
-## 🎁 Coffre communautaire (global_chest) — à créer
-- **Badge participation** — `cos_chest_*` (déjà `chest_YYYYMM` en code) · donné à tous si palier atteint.
-- **Cosmétique permanent** — si on veut un palier prestige collectif.
-- (Event collectif : pas de classement top-3 ni #1 → pas de cadre/titre exclusif nécessaire, sauf si on ajoute un top-contributeurs.)
+## 🎁 Coffre communautaire (global_chest) — SPÉCIFIÉ
+Décision Lucas : on ajoute un **classement des contributeurs** → le top-3 est récompensé
+(cosmétique réservé aux tops, pas de cosmétique « à tout le monde »). Le lot collectif
+« tout le monde » = les **paliers escaladants** (rubis + tickets, réclamés en direct).
+- **Cadre de message EXCLUSIF (top-3 contributeurs)** — code `frame_chest_vault` · kind `skin` · thème coffre-fort / trésor (idée : bordure or + serrure/pièces animées). **Permanent** une fois obtenu (comme `frame_wheel_roulette`), s'accumule (plusieurs porteurs). Référencé dans `EVENT_REWARD_CONFIGS.global_chest.collective.topSkinCode`.
+- **Titre (#1 contributeur)** — code `title_chest_baron` · « Baron du Coffre » · unique, **remis en jeu** à chaque retour de l'event (cf `revokePreviousTitle`). Référencé dans `topTitleCode`.
+- (Note : l'ancien badge `chest_YYYYMM` « à tous » a été retiré — remplacé par les paliers.)
+- (Rappel « 6 semaines » : les skins n'ont PAS d'expiration en base — permanent, comme la roue. Le « 6 semaines » ressenti = le cycle entre deux passages de l'event. Une vraie expiration nécessiterait une colonne `expires_at` sur `user_entitlements` + un nettoyage — chantier séparé si voulu.)
 
 ## 🔥 Boss à abattre (burn_boss) — à créer
 - **Badge slayer** — `boss_slayer_YYYYMM` (déjà en code) · à tous les contributeurs si boss tué.
