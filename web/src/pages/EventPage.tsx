@@ -1595,6 +1595,7 @@ export default function EventPage() {
   const viewerPoints = myViewerPaliers?.points ?? 0;
   const viewerClaimedSet = new Set(myViewerPaliers?.claimed ?? []);
   const viewerReachedUnclaimed = viewerPaliers.filter((p) => viewerPoints >= p.threshold && !viewerClaimedSet.has(p.index));
+  const [viewerTab, setViewerTab] = React.useState<"classement" | "progression" | "quetes" | "streamers">("classement");
 
   const myBoost = viewerWeek?.myBoost ?? null;
   const [buyingBoost, setBuyingBoost] = React.useState(false);
@@ -1743,6 +1744,24 @@ export default function EventPage() {
             </div>
           </div>
 
+          <div className="evTabs" role="tablist">
+            {([
+              ["classement", "🏆", "Classement"],
+              ["progression", "🏁", "Progression"],
+              ["quetes", "🎯", "Quêtes"],
+              ["streamers", "🏅", "Streamers"],
+            ] as const).map(([k, icon, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={viewerTab === k} className={`evTab${viewerTab === k ? " active" : ""}`} onClick={() => setViewerTab(k)}>
+                <span className="evTabIcon">{icon}</span>
+                <span className="evTabLabel">{label}</span>
+                {k === "progression" && viewerReachedUnclaimed.length > 0 ? <span className="evTabBadge">{viewerReachedUnclaimed.length}</span> : null}
+              </button>
+            ))}
+          </div>
+
+          <div className="evTabPanel">
+
+          {viewerTab === "classement" ? (
           <div className="evViewerMainGrid">
             <Reveal>
               <div className="evViewerPanel evViewerPodiumPanel">
@@ -1758,8 +1777,10 @@ export default function EventPage() {
               </div>
             </Reveal>
           </div>
+          ) : null}
 
-          {token && viewerPaliers.length > 0 ? (
+          {viewerTab === "progression" ? (
+            token && viewerPaliers.length > 0 ? (
             <Reveal delay={0.05}>
               <div className="evViewerPanel">
                 <div className="evPanelHead"><span>🏁 Paliers de points</span><small>{viewerPoints} / {viewerMaxThreshold}</small></div>
@@ -1809,9 +1830,13 @@ export default function EventPage() {
                 </div>
               </div>
             </Reveal>
+            ) : (
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Connecte-toi pour voir ta progression et tes paliers.</div>
+            )
           ) : null}
 
-          {viewerQuests && (viewerQuests.daily.length > 0 || viewerQuests.weekly.length > 0) ? (
+          {viewerTab === "quetes" ? (
+            viewerQuests && (viewerQuests.daily.length > 0 || viewerQuests.weekly.length > 0) ? (
             <Reveal delay={0.055}>
               <div className="evViewerPanel">
                 <div className="evPanelHead"><span>🎯 Quêtes</span><small>Aide-toi à scorer</small></div>
@@ -1840,9 +1865,13 @@ export default function EventPage() {
                 </div>
               </div>
             </Reveal>
+            ) : (
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Connecte-toi pour voir tes quêtes.</div>
+            )
           ) : null}
 
-          {topStreamers.length > 0 ? (
+          {viewerTab === "streamers" ? (
+            topStreamers.length > 0 ? (
             <Reveal delay={0.06}>
               <div className="evViewerPanel">
                 <div className="evPanelHead"><span>🏅 Classement des streamers</span><small>Leur communauté les fait grimper</small></div>
@@ -1861,9 +1890,12 @@ export default function EventPage() {
                 </div>
               </div>
             </Reveal>
+            ) : (
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Pas encore de streamer classé — regarde des lives pour lancer la course.</div>
+            )
           ) : null}
 
-          {rest.length > 0 ? (
+          {viewerTab === "classement" && rest.length > 0 ? (
             <Reveal delay={0.08}>
               <div className="evViewerPanel">
                 <div className="evPanelHead"><span>📊 Classement complet</span><small>{rest.length + 3} joueurs</small></div>
@@ -1872,6 +1904,7 @@ export default function EventPage() {
             </Reveal>
           ) : null}
 
+          {viewerTab === "classement" ? (
           <Reveal delay={0.12}>
             <div className="evViewerPanel">
               <div className="evPanelHead"><span>🎯 Ton espace</span><small>Progression personnelle</small></div>
@@ -1923,6 +1956,9 @@ export default function EventPage() {
               )}
             </div>
           </Reveal>
+          ) : null}
+
+          </div>
         </div>
       ) : event.type === "wheel_week" && wheelWeek && wheelWeek.event ? (
         <WheelWeekPanel
