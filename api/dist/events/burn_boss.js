@@ -1,5 +1,6 @@
 import { pool } from "../db.js";
 import { EVENT_REWARD_CONFIGS } from "./rewards.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 const TZ = "Europe/Paris";
 // Barème IDENTIQUE à global_chest.ts (cf docs/events-design.md #5 — le burn
 // de rubis est un ACCÉLÉRATEUR de dégâts, pas la seule voie : l'activité
@@ -64,6 +65,7 @@ export async function recomputeBurnBoss(eventId) {
           FROM stream_viewer_minutes svm
           WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
             AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
+            AND ${notEventExcludedStreamerSql("svm.streamer_id")}
           GROUP BY svm.user_id, day
         ) per_day
         GROUP BY user_id

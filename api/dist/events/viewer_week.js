@@ -1,5 +1,6 @@
 import { pool } from "../db.js";
 import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 const TZ = "Europe/Paris";
 // Paliers de points viewer (récupérés manuellement, en direct). Récompenses
 // SIMPLES : rubis + tickets de roue, PAS de cosmétique (réservés aux tops
@@ -394,6 +395,7 @@ export async function recomputeViewerWeek(eventId) {
           AND svm.bucket_ts >= $4::timestamptz
           AND svm.bucket_ts <  $5::timestamptz
           AND ${NOT_BANNED_SQL}
+          AND ${notEventExcludedStreamerSql("svm.streamer_id")}
         GROUP BY svm.user_id, day
       ) per_day
       GROUP BY user_id
@@ -417,6 +419,7 @@ export async function recomputeViewerWeek(eventId) {
         WHERE svm.user_id IS NOT NULL
           AND svm.bucket_ts >= $3::timestamptz
           AND svm.bucket_ts <  $4::timestamptz
+          AND ${notEventExcludedStreamerSql("svm.streamer_id")}
 
         UNION
         SELECT c.user_id, c.day
@@ -621,6 +624,7 @@ export async function rankViewerWeekStreamers(eventId, limit = 10, db = pool) {
       WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
         AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
         AND (st.user_id IS NULL OR st.user_id <> svm.user_id)
+        AND ${notEventExcludedStreamerSql("svm.streamer_id")}
       GROUP BY svm.user_id, svm.streamer_id
     ),
     top_per_viewer AS (
