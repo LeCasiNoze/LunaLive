@@ -382,6 +382,7 @@ export type ApiBossResp =
       totalDamage: number;
       killed: boolean;
       myDamage?: number;
+      myRank?: number;
       topDamagers: ApiBossDamager[];
     };
 
