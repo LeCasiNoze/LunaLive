@@ -100,30 +100,28 @@ meProfileRouter.get("/me/stats", requireAuth, async (req, res) => {
       `, [userId]),
         pool.query(`
       SELECT COALESCE(SUM(amount),0)::int AS n
-      FROM rubis_tx
-      WHERE status='succeeded'
-        AND to_user_id=$1
-        AND kind IN ('mint','transfer','adjust')
+      FROM wallet_tx
+      WHERE user_id=$1
+        AND kind='earn'
       `, [userId]),
         pool.query(`
       SELECT COALESCE(SUM(amount),0)::int AS n
-      FROM rubis_tx
-      WHERE status='succeeded'
-        AND from_user_id=$1
-        AND kind IN ('support','sink','transfer','adjust')
+      FROM wallet_tx
+      WHERE user_id=$1
+        AND kind='spend'
       `, [userId]),
         pool.query(`
       SELECT COALESCE(SUM(amount),0)::int AS n
-      FROM rubis_tx
-      WHERE status='succeeded'
-        AND from_user_id=$1
-        AND kind='support'
+      FROM wallet_tx
+      WHERE user_id=$1
+        AND kind='spend'
+        AND spend_kind='support'
       `, [userId]),
         pool.query(`
-      SELECT COALESCE(SUM(burn_amount),0)::int AS n
-      FROM rubis_tx
-      WHERE status='succeeded'
-        AND from_user_id=$1
+      SELECT COALESCE(SUM(amount - COALESCE(streamer_earn_rubis,0) - COALESCE(platform_cut_rubis,0)),0)::int AS n
+      FROM wallet_tx
+      WHERE user_id=$1
+        AND kind='spend'
       `, [userId]),
         pool.query(`
       SELECT COUNT(*)::int AS spins,

@@ -2,7 +2,7 @@
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
-import { cashoutRequest } from "../economy/engine.js";
+import { cashoutFromStreamerWallet } from "../wallet_engine.js";
 
 export const cashoutRouter = express.Router();
 
@@ -22,11 +22,10 @@ cashoutRouter.post("/streamer/me/cashout/request", requireAuth, async (req, res)
   if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
   try {
-    const out = await cashoutRequest({
-      streamerOwnerUserId: Number(req.user!.id),
+    const out = await cashoutFromStreamerWallet({
       streamerId: Number(streamer.id),
       eurosCents,
-      meta: { note },
+      note,
     });
 
     res.json({ ok: true, request: out });

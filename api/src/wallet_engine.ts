@@ -203,3 +203,64 @@ export async function spendRubis(opts: SpendOpts) {
     client.release();
   }
 }
+
+/**
+ * Demande de cashout streamer, alignée sur le ledger vivant.
+ * La valeur cashable d'un streamer vit dans streamer_wallets.available_rubis :
+ * elle est créditée par spendRubisTx(spendKind='support') = streamerEarnRubis,
+ * déjà pondérée à l'origine (seuls les lots paid_topup/event_full_value y
+ * contribuent). 1 rubis cashable = 1 centime (RUBIS_PER_EUR=100), donc
+ * eurosCents == rubis à débiter. On ne touche PAS users.rubis (wallet perso,
+ * "show value") — uniquement le wallet d'earnings.
+ */
+export async function cashoutFromStreamerWallet(params: {
+  streamerId: number;
+  eurosCents: number;
+  note?: string | null;
+}) {
+  const streamerId = Number(params.streamerId);
+  const eurosCents = Math.floor(Number(params.eurosCents));
+  if (!Number.isFinite(eurosCents) || eurosCents <= 0) throw new Error("bad_amount");
+  const rubisNeeded = eurosCents; // 1 rubis cashable = 1 centime
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const w = await client.query(
+      `SELECT available_rubis FROM streamer_wallets WHERE streamer_id=$1 FOR UPDATE`,
+      [streamerId]
+    );
+    const available = Number(w.rows?.[0]?.available_rubis ?? 0);
+    if (!w.rows?.[0] || available < rubisNeeded) throw new Error("insufficient_balance");
+
+    await client.query(
+      `UPDATE streamer_wallets
+       SET available_rubis = available_rubis - $2, updated_at = NOW()
+       WHERE streamer_id=$1`,
+      [streamerId, rubisNeeded]
+    );
+
+    const ins = await client.query(
+      `INSERT INTO cashout_requests (streamer_id, amount_rubis, status, note)
+       VALUES ($1,$2,'pending',$3)
+       RETURNING id, amount_rubis, status, created_at`,
+      [streamerId, rubisNeeded, params.note ?? null]
+    );
+
+    await client.query("COMMIT");
+    const row = ins.rows[0];
+    return {
+      id: String(row.id),
+      amountRubis: Number(row.amount_rubis),
+      eurosCents,
+      status: String(row.status),
+      createdAt: row.created_at,
+    };
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
