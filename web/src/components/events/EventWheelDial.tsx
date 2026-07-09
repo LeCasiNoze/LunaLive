@@ -2,6 +2,11 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import type { ApiWheelSegment } from "../../lib/api_events";
+import { EventAvatar } from "./EventAvatar";
+
+// Durée d'un tour de roue (partagée avec le parent pour caler le timeout du
+// résultat). Longue exprès : plus de suspens.
+export const WHEEL_SPIN_MS = 4800;
 
 const SEGMENT_COLORS = ["#5b21b6", "#d97706", "#3730a3", "#be185d", "#047857", "#7c3aed", "#b45309", "#4338ca"];
 
@@ -40,62 +45,76 @@ export function computeWheelSegments(wheel: ApiWheelSegment[]): WheelSegmentMeta
   });
 }
 
-// Roue CSS conic-gradient + pointeur fixe. Le pivot (rotationDeg) est piloté
-// par le parent, qui calcule la cible d'alignement à partir de la réponse du
-// spin — ce composant ne connaît que l'angle final à atteindre.
+// Roue SVG + pointeur fixe. Le pivot (rotationDeg) est piloté par le parent.
+// Les LABELS ne sont pas dans le SVG tournant : ils vivent dans une couche qui
+// tourne avec la roue MAIS contre-tourne chaque libellé (−rotationDeg, même
+// transition) → les textes restent TOUJOURS droits, quelle que soit la position
+// de la roue (fini les textes à l'envers). L'avatar de l'utilisateur (perso ou
+// défaut) est au moyeu central.
 export function EventWheelDial({
   wheel,
   rotationDeg,
   spinning,
+  avatarUserId,
+  avatarName,
 }: {
   wheel: ApiWheelSegment[];
   rotationDeg: number;
   spinning: boolean;
+  avatarUserId?: number | null;
+  avatarName?: string;
 }) {
   const reduceMotion = useReducedMotion();
   const segMeta = React.useMemo(() => computeWheelSegments(wheel), [wheel]);
-  const gradient = React.useMemo(
-    () => (segMeta.length > 0 ? `conic-gradient(${segMeta.map((m) => `${m.color} ${m.startDeg}deg ${m.endDeg}deg`).join(", ")})` : undefined),
-    [segMeta]
-  );
+  const spinTransition = !spinning || reduceMotion ? { duration: 0 } : { duration: WHEEL_SPIN_MS / 1000, ease: [0.12, 0.9, 0.16, 1] as const };
 
   return (
     <div className="evWheelStage">
       <div className="evWheelGlow" />
       <div className="evWheelPointer"><span /></div>
-      <motion.div
-        className="evWheelDial"
-        style={{ background: gradient }}
-        animate={{ rotate: rotationDeg }}
-        transition={!spinning || reduceMotion ? { duration: 0 } : { duration: 2.6, ease: [0.13, 0.85, 0.22, 1] }}
-      >
+
+      <motion.div className="evWheelDial" animate={{ rotate: rotationDeg }} transition={spinTransition}>
         <svg className="evWheelSvg" viewBox="0 0 100 100" role="img" aria-label="Roue des gains">
           <circle cx="50" cy="50" r="49" className="evWheelSvgBack" />
-          {wheel.map((segment, index) => {
+          {wheel.map((_segment, index) => {
             const meta = segMeta[index];
-            const pos = polarPoint(meta.midDeg, 34);
-            const label = shortWheelLabel(segment);
-            const textRotation = meta.midDeg > 90 && meta.midDeg < 270 ? meta.midDeg + 180 : meta.midDeg;
             return (
-              <g key={`${index}-${label}`} className="evWheelSlice">
+              <g key={index} className="evWheelSlice">
                 <path d={wedgePath(meta.startDeg, meta.endDeg)} fill={meta.color} />
-                <text
-                  x={pos.x}
-                  y={pos.y}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  transform={`rotate(${textRotation} ${pos.x} ${pos.y})`}
-                >
-                  {label}
-                </text>
               </g>
             );
           })}
-          <circle cx="50" cy="50" r="47" className="evWheelSvgInnerRim" />
+          <circle cx="50" cy="50" r="47" className="evWheelSvgInnerRim" fill="none" />
         </svg>
         <div className="evWheelRimLights" aria-hidden="true" />
+
+        {/* Labels : positionnés dans la roue tournante, mais chacun contre-tourne
+            pour rester droit. */}
+        <div className="evWheelLabelLayer">
+          {segMeta.map((meta, index) => {
+            const p = polarPoint(meta.midDeg, 32);
+            return (
+              <motion.div
+                key={index}
+                className="evWheelLabelItem"
+                style={{ left: `${p.x}%`, top: `${p.y}%`, x: "-50%", y: "-50%" }}
+                animate={{ rotate: -rotationDeg }}
+                transition={spinTransition}
+              >
+                {shortWheelLabel(wheel[index])}
+              </motion.div>
+            );
+          })}
+        </div>
       </motion.div>
-      <div className="evWheelHub"><span>LL</span><small>SPIN</small></div>
+
+      <div className="evWheelHub">
+        {avatarUserId ? (
+          <EventAvatar userId={avatarUserId} username={avatarName || ""} size={58} className="evWheelHubAvatar" />
+        ) : (
+          <><span>LL</span><small>SPIN</small></>
+        )}
+      </div>
     </div>
   );
 }

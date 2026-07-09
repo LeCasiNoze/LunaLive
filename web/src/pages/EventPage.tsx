@@ -6,7 +6,8 @@ import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
 import { CountUp } from "../components/events/CountUp";
 import { EventAvatar } from "../components/events/EventAvatar";
-import { computeWheelSegments, EventWheelDial } from "../components/events/EventWheelDial";
+import { computeWheelSegments, EventWheelDial, WHEEL_SPIN_MS } from "../components/events/EventWheelDial";
+import { playSpinSound } from "../components/events/wheelSound";
 import "../components/events/events-theme.css";
 import {
   getCurrentBoss,
@@ -687,11 +688,13 @@ function WheelWeekPanel({
   resp,
   token,
   meUserId,
+  meName,
   onLoginClick,
 }: {
   resp: Extract<ApiWheelPageResp, { event: ApiEventRow }>;
   token: string | null;
   meUserId: number | null;
+  meName: string;
   onLoginClick: () => void;
 }) {
   const [me, setMe] = React.useState(resp.me);
@@ -716,11 +719,11 @@ function WheelWeekPanel({
   const [spinErr, setSpinErr] = React.useState<string | null>(null);
 
   // Fait tourner la roue jusqu'à ce que le segment `index` s'aligne sous le
-  // repère (12h), avec 4 tours pleins de spectacle. Ne recule jamais (normMod).
+  // repère (12h), avec 6 tours pleins de spectacle. Ne recule jamais (normMod).
   function animateToSegment(index: number) {
     const mid = index >= 0 && segMeta[index] ? segMeta[index].midDeg : Math.random() * 360;
     const targetMod = normMod(360 - mid, 360);
-    setRotation((prev) => prev + normMod(targetMod - normMod(prev, 360), 360) + 360 * 4);
+    setRotation((prev) => prev + normMod(targetMod - normMod(prev, 360), 360) + 360 * 6);
   }
 
   async function handleSpin() {
@@ -732,12 +735,13 @@ function WheelWeekPanel({
     try {
       const r = await postWheelSpin(token);
       animateToSegment(r.segment.index);
+      playSpinSound(WHEEL_SPIN_MS);
       window.setTimeout(() => {
         setSpinResult({ points: r.segment.points, xp: r.segment.xp, lotLabel: r.segment.lotLabel });
         setMe((cur) => cur ? { ...cur, tickets: r.tickets, points: r.points, freeSpinAvailable: false } : cur);
         setHasSpun(true);
         setSpinning(false);
-      }, 2650);
+      }, WHEEL_SPIN_MS + 120);
     } catch (e: any) {
       setSpinErr(e?.message || "Le tour a échoué, réessaie.");
       setSpinning(false);
@@ -757,11 +761,12 @@ function WheelWeekPanel({
       const r = await postWheelShopBuy(token, "reroll");
       const seg = r.granted?.segment;
       animateToSegment(seg ? Number(seg.index) : -1);
+      playSpinSound(WHEEL_SPIN_MS);
       window.setTimeout(() => {
         if (seg) setSpinResult({ points: Number(seg.points), xp: Number(seg.xp), lotLabel: seg.lotLabel });
         if (seg) setMe((cur) => cur ? { ...cur, points: cur.points + Number(seg.points || 0) } : cur);
         setSpinning(false);
-      }, 2650);
+      }, WHEEL_SPIN_MS + 120);
     } catch (e: any) {
       setSpinErr(e?.message || "Relance impossible (rubis insuffisants ou limite atteinte).");
       setSpinning(false);
@@ -891,7 +896,7 @@ function WheelWeekPanel({
             <div className="evWheelArena">
               <div className="evWheelMachine">
                 <div className="evWheelEyebrow">LUNALIVE JACKPOT</div>
-                <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
+                <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} avatarUserId={meUserId} avatarName={meName} />
                 {spinResult ? (
                   <div className="evSpinFlash">
                     <div className="evSpinFlashPts">+{spinResult.points} pts · +{spinResult.xp} XP</div>
@@ -1718,6 +1723,7 @@ export default function EventPage() {
           resp={wheelWeek}
           token={token}
           meUserId={auth?.user?.id ?? null}
+          meName={auth?.user?.username ?? ""}
           onLoginClick={() => setLoginOpen(true)}
         />
       ) : event.type === "global_chest" && chest && chest.event ? (
