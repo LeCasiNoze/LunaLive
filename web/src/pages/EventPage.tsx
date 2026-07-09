@@ -386,15 +386,13 @@ const CHEST_REWARD_TIERS: RewardTierDisplay[] = [
 const CLIP_RACE_REWARD_TIERS: RewardTierDisplay[] = [
   {
     key: "streamer",
-    rank: "🏅 Streamer #1 (classement streamers)",
-    amount: "400",
-    extra: "dans son coffre + mis en avant 7 jours",
+    rank: "🏅 Streamer gagnant",
+    amount: "500",
+    extra: "dans son coffre + 3 subs + mis en avant 7 jours",
     gold: true,
   },
-  { key: "clip1", rank: "🥇 Clip #1", amount: "250", extra: "+ abonnement offert 7 jours au créateur" },
-  { key: "clip2", rank: "🥈 Clip #2", amount: "120" },
-  { key: "clip3", rank: "🥉 Clip #3", amount: "60" },
-  { key: "part", rank: "🎯 Votants actifs", amount: "25" },
+  { key: "clip1", rank: "🥇 Meilleur clip", amount: "200", extra: "+ abonnement 7 jours offert au créateur" },
+  { key: "part", rank: "🎯 Votants", amount: "10", extra: "par vote, plafond 50 rubis" },
 ];
 
 const BOSS_REWARD_TIERS: RewardTierDisplay[] = [
