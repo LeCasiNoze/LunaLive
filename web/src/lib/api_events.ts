@@ -101,7 +101,15 @@ export type ApiViewerWeekResp = {
   myStreamer: { streamerId: number; slug: string; displayName: string } | null;
   paliers: ApiViewerPalier[];
   myPaliers: { points: number; claimed: number[] } | null;
+  myBoost: { active: boolean; bought: number; cost: number; capPerEvent: number; canBuy: boolean; durationHours: number } | null;
 };
+
+export async function postViewerWeekBoostBuy(token: string) {
+  return j<{ ok: true; rubis: number; bought: number }>(
+    "/api/events/viewer-week/boost/buy",
+    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
 
 export async function postViewerWeekPalierClaim(token: string) {
   return j<{ ok: true; claimed: { index: number; label: string }[]; count: number }>(

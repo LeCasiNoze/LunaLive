@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
 import type { AuthUser } from "../auth.js";
-import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer, VIEWER_WEEK_PALIERS, getViewerPaliersState, claimViewerPaliers } from "../events/viewer_week.js";
+import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer, VIEWER_WEEK_PALIERS, getViewerPaliersState, claimViewerPaliers, getViewerBoostState, buyViewerBoost } from "../events/viewer_week.js";
 import { eventRewardEligibilitySql } from "../events/eligibility.js";
 import { requireAuth } from "../auth.js";
 
@@ -114,6 +114,7 @@ eventsViewerWeekRouter.get(
     const topStreamers = await rankViewerWeekStreamers(Number(event.id), 10);
     const myStreamer = userId ? await getViewerBoostedStreamer(Number(event.id), userId) : null;
     const myPaliers = userId ? await getViewerPaliersState(pool, Number(event.id), userId) : null;
+    const myBoost = userId ? await getViewerBoostState(pool, Number(event.id), userId) : null;
 
     res.json({
       ok: true,
@@ -130,7 +131,25 @@ eventsViewerWeekRouter.get(
       myStreamer,
       paliers: VIEWER_WEEK_PALIERS.map((p) => ({ index: p.index, threshold: p.threshold, label: p.label })),
       myPaliers,
+      myBoost,
     });
+  })
+);
+
+// POST /api/events/viewer-week/boost/buy — achète un booster de points (×1.2 24h).
+eventsViewerWeekRouter.post(
+  "/events/viewer-week/boost/buy",
+  requireAuth,
+  a(async (req: any, res) => {
+    const uid = Number(req.user?.id || 0);
+    const ev = await pool.query(
+      `SELECT id FROM events WHERE type='viewer_week' AND state='live' AND start_at<=NOW() AND NOW()<end_at ORDER BY start_at DESC LIMIT 1`
+    );
+    const eventId = ev.rows?.[0]?.id;
+    if (!eventId) return res.status(400).json({ ok: false, error: "no_event" });
+    const r = await buyViewerBoost(Number(eventId), uid);
+    if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+    res.json({ ...r, ok: true });
   })
 );
 
