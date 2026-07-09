@@ -1208,6 +1208,10 @@ function ClipRacePanel({
   const [votingClipId, setVotingClipId] = React.useState<number | null>(null);
   const [voteErr, setVoteErr] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<"clips" | "streamers" | "recompenses">("clips");
+  // Vidéos chargées À LA DEMANDE (aucun téléchargement tant qu'on ne clique pas
+  // ▶) — évite 24+ requêtes R2 par visite. Les mp4 viennent de R2 (CDN), le
+  // serveur n'est jamais sollicité pour la vidéo.
+  const [playing, setPlaying] = React.useState<Set<number>>(new Set());
   const votesLeft = resp.myVotesLeft ?? 0;
   const votedSet = new Set(resp.myVotedClipIds ?? []);
   const canVote = !!token && votesLeft > 0;
@@ -1270,7 +1274,13 @@ function ClipRacePanel({
                   return (
                     <div className="evClipCard" key={c.clipId}>
                       <div className="evClipMedia">
-                        {c.mp4Url ? <video src={c.mp4Url} controls preload="metadata" playsInline /> : <div className="evClipNoMedia">🎬</div>}
+                        {!c.mp4Url ? (
+                          <div className="evClipNoMedia">🎬</div>
+                        ) : playing.has(c.clipId) ? (
+                          <video src={c.mp4Url} controls autoPlay preload="auto" playsInline />
+                        ) : (
+                          <button type="button" className="evClipPlay" onClick={() => setPlaying((s) => { const n = new Set(s); n.add(c.clipId); return n; })} aria-label="Lire le clip">▶</button>
+                        )}
                         <span className="evClipRank">#{c.rank}</span>
                       </div>
                       <div className="evClipTitle" title={c.title ?? undefined}>{c.title || "Clip sans titre"}</div>
@@ -1980,14 +1990,14 @@ export default function EventPage() {
           token={token}
           meUserId={auth?.user?.id ?? null}
           onLoginClick={() => setLoginOpen(true)}
-          onRefresh={() => load().catch(() => {})}
+          onRefresh={async () => { try { setChest(await getCurrentChest(token)); } catch {} }}
         />
       ) : event.type === "clip_race" && clipRace && clipRace.event ? (
         <ClipRacePanel
           resp={clipRace}
           token={token}
           onLoginClick={() => setLoginOpen(true)}
-          onRefresh={() => load().catch(() => {})}
+          onRefresh={async () => { try { setClipRace(await getCurrentClipRace(token)); } catch {} }}
         />
       ) : event.type === "burn_boss" && boss && boss.event ? (
         <BossPanel
@@ -1995,7 +2005,7 @@ export default function EventPage() {
           token={token}
           meUserId={auth?.user?.id ?? null}
           onLoginClick={() => setLoginOpen(true)}
-          onRefresh={() => load().catch(() => {})}
+          onRefresh={async () => { try { setBoss(await getCurrentBoss(token)); } catch {} }}
         />
       ) : (
         <Reveal>

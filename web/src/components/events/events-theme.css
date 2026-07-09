@@ -1007,6 +1007,8 @@
 .evClipMedia { position:relative; aspect-ratio:16/9; border-radius:12px; overflow:hidden; background:#0b0a12; }
 .evClipMedia video { width:100%; height:100%; object-fit:contain; display:block; background:#0b0a12; }
 .evClipNoMedia { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:2.4rem; opacity:.4; }
+.evClipPlay { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:2.2rem; color:#fff; cursor:pointer; border:none; background:radial-gradient(circle at 50% 45%, rgba(167,139,250,.28), rgba(11,10,18,.92)); transition:background 150ms ease; }
+.evClipPlay:hover { background:radial-gradient(circle at 50% 45%, rgba(167,139,250,.45), rgba(11,10,18,.92)); }
 .evClipRank { position:absolute; top:8px; left:8px; font-family:"Bebas Neue",sans-serif; font-size:1rem; padding:2px 8px; border-radius:999px; background:rgba(0,0,0,.6); color:#fde68a; }
 .evClipTitle { font-family:"Syne",sans-serif; font-weight:800; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .evClipMeta { font-family:"DM Sans",sans-serif; font-size:11px; opacity:.6; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
