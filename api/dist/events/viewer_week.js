@@ -1,5 +1,5 @@
 import { pool } from "../db.js";
-import { earnRubisTx } from "../wallet_engine.js";
+import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
 const TZ = "Europe/Paris";
 // Paliers de points viewer (récupérés manuellement, en direct). Récompenses
 // SIMPLES : rubis + tickets de roue, PAS de cosmétique (réservés aux tops
@@ -57,6 +57,61 @@ export async function claimViewerPaliers(eventId, userId) {
         client.release();
     }
 }
+export async function getViewerBoostState(db, eventId, userId) {
+    const r = await db.query(`SELECT COUNT(*)::int AS bought,
+            BOOL_OR(created_at > NOW() - ($3 || ' hours')::interval) AS active
+     FROM event_shop_purchases
+     WHERE event_id=$1 AND user_id=$2 AND item_code=$4`, [eventId, userId, VIEWER_BOOST.durationHours, VIEWER_BOOST.code]);
+    const row = r.rows?.[0] ?? {};
+    const bought = Number(row.bought ?? 0);
+    return {
+        active: Boolean(row.active),
+        bought,
+        cost: VIEWER_BOOST.cost,
+        capPerEvent: VIEWER_BOOST.capPerEvent,
+        canBuy: bought < VIEWER_BOOST.capPerEvent,
+        durationHours: VIEWER_BOOST.durationHours,
+    };
+}
+export async function buyViewerBoost(eventId, userId) {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        // sérialise les achats concurrents du même user (cap fiable, cf TOCTOU roue)
+        await client.query(`SELECT pg_advisory_xact_lock($1, $2)`, [0x5642 /* "VB" */, userId]);
+        const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM event_shop_purchases WHERE event_id=$1 AND user_id=$2 AND item_code=$3`, [eventId, userId, VIEWER_BOOST.code]);
+        const bought0 = Number(cnt.rows?.[0]?.n ?? 0);
+        if (bought0 >= VIEWER_BOOST.capPerEvent) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "cap_reached" };
+        }
+        try {
+            await spendRubisTx(client, { userId, amount: VIEWER_BOOST.cost, spendKind: "sink", spendType: "event_viewer_boost", meta: { eventId } });
+        }
+        catch (e) {
+            await client.query("ROLLBACK");
+            if (String(e?.message) === "insufficient_rubis")
+                return { ok: false, error: "not_enough_rubis" };
+            throw e;
+        }
+        await client.query(`INSERT INTO event_shop_purchases (event_id, user_id, item_code, day_date)
+       VALUES ($1,$2,$3, (NOW() AT TIME ZONE '${TZ}')::date)`, [eventId, userId, VIEWER_BOOST.code]);
+        const rubisRow = await client.query(`SELECT rubis FROM users WHERE id=$1`, [userId]);
+        const rubis = Number(rubisRow.rows?.[0]?.rubis ?? 0);
+        await client.query("COMMIT");
+        return { ok: true, rubis, bought: bought0 + 1 };
+    }
+    catch (e) {
+        try {
+            await client.query("ROLLBACK");
+        }
+        catch { }
+        throw e;
+    }
+    finally {
+        client.release();
+    }
+}
 // Barème + caps (facile à modifier). Les CAP_PER_DAY sont TOUJOURS des caps
 // sur le NOMBRE d'unités qualifiées comptées par jour (Europe/Paris), pas un
 // cap direct sur les points (même logique que roue/prédictions ci-dessous).
@@ -80,6 +135,16 @@ export const VIEWER_WEEK_SCORING = {
         PRED_JOIN: 3,
         PRED_WIN: 1,
     },
+};
+// Booster de points (boutique viewer) : ×1.2 pendant 24h, payé en rubis (sink).
+// Achat tracé dans event_shop_purchases (item_code='viewer_boost'). N'affecte
+// QUE le classement viewer + les paliers (pas le total streamer, dé-boosté).
+export const VIEWER_BOOST = {
+    code: "viewer_boost",
+    cost: 200,
+    durationHours: 24,
+    multiplierBp: 12000, // ×1.2 (+20%)
+    capPerEvent: 3,
 };
 function sqlDateParis(expr) {
     return `(${expr} AT TIME ZONE '${TZ}')::date`;
@@ -405,6 +470,22 @@ export async function recomputeViewerWeek(eventId) {
     ) x
     WHERE s.event_id=$1 AND s.user_id=x.user_id
     `, [eventId, VIEWER_WEEK_SCORING.CAP_PER_DAY.PRED_WIN, VIEWER_WEEK_SCORING.P.PRED_WIN, e.start_at, e.end_at]);
+    // BOOSTER de points (boutique) : ×1.2 sur le TOTAL des users ayant un boost
+    // actif (achat event_shop_purchases 'viewer_boost' < 24h). Appliqué en dernier
+    // (le recompute reconstruit `points` from scratch chaque tick → jamais cumulé).
+    // ⚠️ N'affecte QUE le classement viewer + les paliers ; le total streamer
+    // dé-booste (cf rankViewerWeekStreamers) pour ne pas gonfler le streamer.
+    await pool.query(`
+    UPDATE event_scores_viewer_week s
+    SET points = FLOOR(points * $2 / 10000.0)::int, updated_at = NOW()
+    WHERE s.event_id = $1
+      AND EXISTS (
+        SELECT 1 FROM event_shop_purchases esp
+        WHERE esp.event_id = $1 AND esp.user_id = s.user_id
+          AND esp.item_code = 'viewer_boost'
+          AND esp.created_at > NOW() - ($3 || ' hours')::interval
+      )
+    `, [eventId, VIEWER_BOOST.multiplierBp, VIEWER_BOOST.durationHours]);
     return { ok: true };
 }
 export async function rankViewerWeekStreamers(eventId, limit = 10, db = pool) {
@@ -431,7 +512,19 @@ export async function rankViewerWeekStreamers(eventId, limit = 10, db = pool) {
       ORDER BY viewer_id, mins DESC, streamer_id
     ),
     agg AS (
-      SELECT t.streamer_id, SUM(s.points)::int AS points, COUNT(*)::int AS viewers
+      -- dé-boost : un viewer boosté (×1.2 sur son classement) ne doit PAS
+      -- gonfler le total de son streamer -> on ramène ses points au brut.
+      SELECT t.streamer_id,
+             SUM(CASE
+                   WHEN EXISTS (
+                     SELECT 1 FROM event_shop_purchases esp
+                     WHERE esp.event_id=$1 AND esp.user_id=s.user_id
+                       AND esp.item_code='viewer_boost'
+                       AND esp.created_at > NOW() - ($5 || ' hours')::interval
+                   ) THEN ROUND(s.points * 10000.0 / $6)
+                   ELSE s.points
+                 END)::int AS points,
+             COUNT(*)::int AS viewers
       FROM top_per_viewer t
       JOIN event_scores_viewer_week s ON s.user_id = t.viewer_id AND s.event_id = $1
       GROUP BY t.streamer_id
@@ -442,7 +535,7 @@ export async function rankViewerWeekStreamers(eventId, limit = 10, db = pool) {
     JOIN streamers st ON st.id = a.streamer_id
     ORDER BY rank
     LIMIT $4
-    `, [eventId, e.start_at, e.end_at, limit]);
+    `, [eventId, e.start_at, e.end_at, limit, VIEWER_BOOST.durationHours, VIEWER_BOOST.multiplierBp]);
     return (r.rows || []).map((x) => ({
         streamerId: Number(x.streamer_id),
         slug: String(x.slug ?? ""),

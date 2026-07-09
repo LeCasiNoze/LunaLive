@@ -20,6 +20,7 @@ import {
   postBossBurn,
   postChestDeposit,
   postClipRaceVote,
+  postViewerWeekBoostBuy,
   postViewerWeekPalierClaim,
   postWheelPalierClaim,
   postWheelQuestClaim,
@@ -1486,6 +1487,7 @@ export default function EventPage() {
           myStreamer: null,
           paliers: [],
           myPaliers: null,
+          myBoost: null,
         });
         setWheelWeek(null);
         setChest(null);
@@ -1591,6 +1593,23 @@ export default function EventPage() {
   const viewerPoints = myViewerPaliers?.points ?? 0;
   const viewerClaimedSet = new Set(myViewerPaliers?.claimed ?? []);
   const viewerReachedUnclaimed = viewerPaliers.filter((p) => viewerPoints >= p.threshold && !viewerClaimedSet.has(p.index));
+
+  const myBoost = viewerWeek?.myBoost ?? null;
+  const [buyingBoost, setBuyingBoost] = React.useState(false);
+  const [boostErr, setBoostErr] = React.useState<string | null>(null);
+  async function handleBuyBoost() {
+    if (!token) { setLoginOpen(true); return; }
+    setBoostErr(null);
+    setBuyingBoost(true);
+    try {
+      await postViewerWeekBoostBuy(token);
+      try { const v = await getCurrentViewerWeek(token); setViewerWeek(v); } catch {}
+    } catch (e: any) {
+      setBoostErr(e?.message === "not_enough_rubis" ? "Rubis insuffisants." : e?.message === "cap_reached" ? "Limite de boosts atteinte pour cet event." : "Achat impossible.");
+    } finally {
+      setBuyingBoost(false);
+    }
+  }
 
   const [claimingViewerPalier, setClaimingViewerPalier] = React.useState(false);
   const [viewerPalierFlash, setViewerPalierFlash] = React.useState<string[] | null>(null);
@@ -1727,6 +1746,17 @@ export default function EventPage() {
             <Reveal delay={0.05}>
               <div className="evViewerPanel">
                 <div className="evPanelHead"><span>🏁 Paliers de points</span><small>{viewerPoints} / {viewerMaxThreshold}</small></div>
+                {myBoost ? (
+                  <div className="evBoostBox">
+                    <span className={myBoost.active ? "evBoostActive" : "evBoostIdle"}>
+                      {myBoost.active ? "⚡ Boost actif ×1,2 sur ton classement" : `⚡ Booste tes points +20% pendant ${myBoost.durationHours}h`}
+                    </span>
+                    <button type="button" className="evBtnGhost" onClick={handleBuyBoost} disabled={buyingBoost || !myBoost.canBuy}>
+                      {buyingBoost ? "…" : !myBoost.canBuy ? "Max atteint" : `Activer · 💎 ${myBoost.cost}`}
+                    </button>
+                  </div>
+                ) : null}
+                {boostErr ? <div className="evErrLine">{boostErr}</div> : null}
                 <div className="evPalierTrack">
                   <div className="evPalierFill" style={{ width: `${viewerMaxThreshold > 0 ? Math.min(100, (Math.min(viewerPoints, viewerMaxThreshold) / viewerMaxThreshold) * 100) : 0}%` }} />
                   {viewerPaliers.map((p) => {
