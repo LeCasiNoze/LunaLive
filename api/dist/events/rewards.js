@@ -61,21 +61,24 @@ export const EVENT_REWARD_CONFIGS = {
     clip_race: {
         mode: "clip_race",
         clipRace: {
-            streamerWin: {
-                rubisToChest: 400,
-                // Même poids que les lots "chest_auto" (cf chest_jobs.ts OUT_WEIGHT_BP) :
-                // pleinement tirable, pas un lot symbolique noyé dans le coffre.
-                chestLotWeightBp: 2000,
-                entitlement: { kind: "title", codeTemplate: "clip_race_streamer_YYYYMM" },
+            streamerTiers: {
+                chestLotWeightBp: 2000, // pleinement tirable (cf chest_auto)
                 featuredDays: 7,
+                entitlement: { kind: "title", codeTemplate: "clip_race_streamer_YYYYMM" },
+                // Subs BAS (validé Lucas : 20 subs/semaine = trop, tout le monde serait sub).
+                tiers: [
+                    { rank: 1, subs: 3, rubisToChest: 500 },
+                    { rank: 2, subs: 2, rubisToChest: 300 },
+                    { rank: 3, subs: 1, rubisToChest: 150 },
+                ],
             },
             clipTiers: [
-                { rank: 1, rubis: 250 },
+                { rank: 1, rubis: 200 },
                 { rank: 2, rubis: 120 },
                 { rank: 3, rubis: 60 },
             ],
             creatorSubDays: 7,
-            participation: { rubis: 25, maxRecipients: 40 },
+            participation: { rubisPerVote: 10, maxRubis: 50, maxRecipients: 100 },
             rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
         },
     },
@@ -544,32 +547,29 @@ async function distributeClipRace(client, eventId, event, cfg) {
     // ── Streamer gagnant (rang 1 du classement streamer) : badge + featured
     // temporaire + dépôt dans SON coffre de commu (pas son wallet perso — cf
     // streamer_chest_lots, même poids que les lots "chest_auto") ────────────
-    const winnerStreamer = rankedStreamers[0];
-    if (winnerStreamer) {
-        await client.query(`INSERT INTO streamer_chests (streamer_id) VALUES ($1) ON CONFLICT (streamer_id) DO NOTHING`, [winnerStreamer.streamerId]);
+    for (const stTier of cfg.streamerTiers.tiers) {
+        const st = rankedStreamers.find((s) => s.rank === stTier.rank);
+        if (!st)
+            continue;
+        await client.query(`INSERT INTO streamer_chests (streamer_id) VALUES ($1) ON CONFLICT (streamer_id) DO NOTHING`, [st.streamerId]);
         await client.query(`INSERT INTO streamer_chest_lots (streamer_id, origin, weight_bp, amount_remaining, meta)
-       VALUES ($1, 'event_clip_race', $2, $3, $4::jsonb)`, [
-            winnerStreamer.streamerId,
-            cfg.streamerWin.chestLotWeightBp,
-            cfg.streamerWin.rubisToChest,
-            JSON.stringify({ eventId, eventType: "clip_race" }),
-        ]);
-        await client.query(`
-      UPDATE streamers
-      SET featured = true, featured_until = NOW() + ($2::int * INTERVAL '1 day'), updated_at = NOW()
-      WHERE id = $1
-      `, [winnerStreamer.streamerId, cfg.streamerWin.featuredDays]);
-        if (winnerStreamer.userId) {
-            const code = cfg.streamerWin.entitlement.codeTemplate.replace("YYYYMM", ym);
-            await grantEntitlement(client, winnerStreamer.userId, cfg.streamerWin.entitlement.kind, code);
-            addGrant(winnerStreamer.userId, "win", 1, 0, {
-                kind: "streamer_win",
-                streamerId: winnerStreamer.streamerId,
-                streamerSlug: winnerStreamer.slug,
-                chestDeposit: cfg.streamerWin.rubisToChest,
-                entitlement: { kind: cfg.streamerWin.entitlement.kind, code },
-                featuredDays: cfg.streamerWin.featuredDays,
-            });
+       VALUES ($1, 'event_clip_race', $2, $3, $4::jsonb)`, [st.streamerId, cfg.streamerTiers.chestLotWeightBp, stTier.rubisToChest, JSON.stringify({ eventId, eventType: "clip_race", rank: stTier.rank })]);
+        if (stTier.rank === 1 && cfg.streamerTiers.featuredDays > 0) {
+            await client.query(`UPDATE streamers SET featured=true, featured_until=NOW() + ($2::int * INTERVAL '1 day'), updated_at=NOW() WHERE id=$1`, [st.streamerId, cfg.streamerTiers.featuredDays]);
+        }
+        if (st.userId) {
+            if (stTier.subs > 0) {
+                await client.query(`INSERT INTO user_coupons (user_id, code, qty, updated_at) VALUES ($1,'sub_ticket',$2,NOW())
+           ON CONFLICT (user_id, code) DO UPDATE SET qty = user_coupons.qty + $2, updated_at = NOW()`, [st.userId, stTier.subs]);
+            }
+            const extras = { kind: "streamer_win", streamerId: st.streamerId, streamerSlug: st.slug, rank: stTier.rank, subs: stTier.subs, chestDeposit: stTier.rubisToChest };
+            if (stTier.rank === 1) {
+                const code = cfg.streamerTiers.entitlement.codeTemplate.replace("YYYYMM", ym);
+                await grantEntitlement(client, st.userId, cfg.streamerTiers.entitlement.kind, code);
+                extras.entitlement = { kind: cfg.streamerTiers.entitlement.kind, code };
+                extras.featuredDays = cfg.streamerTiers.featuredDays;
+            }
+            addGrant(st.userId, "win", stTier.rank, 0, extras);
         }
     }
     // ── Top clips (rubis croissants + abo 7j pour le créateur du #1) ────────
@@ -604,33 +604,12 @@ async function distributeClipRace(client, eventId, event, cfg) {
     // ci-dessus) : contribution = votes castés + votes reçus, gate éligibilité
     // standard (cf eligibility.ts) comme les autres tiers "participation" ────
     const partRes = await client.query(`
-    WITH voters AS (
-      SELECT user_id, COUNT(*)::int AS votes_cast
-      FROM event_clip_votes
-      WHERE event_id = $1
-      GROUP BY user_id
-    ),
-    creators AS (
-      SELECT u.id AS user_id, SUM(ecs.votes)::int AS votes_received
-      FROM event_clip_scores ecs
-      JOIN bot_clips bc ON bc.id = ecs.clip_id
-      JOIN users u ON lower(u.username) = lower(bc.author)
-      WHERE ecs.event_id = $1
-        AND bc.author IS NOT NULL AND btrim(bc.author) <> ''
-        AND lower(bc.author) <> 'lunaclip'
-      GROUP BY u.id
-    ),
-    combined AS (
-      SELECT
-        COALESCE(v.user_id, c.user_id) AS user_id,
-        (COALESCE(v.votes_cast,0) + COALESCE(c.votes_received,0)) AS score
-      FROM voters v
-      FULL OUTER JOIN creators c ON c.user_id = v.user_id
-    )
-    SELECT user_id, score
-    FROM combined
-    WHERE ${eventRewardEligibilitySql("combined.user_id")}
-    ORDER BY score DESC, user_id ASC
+    SELECT v.user_id, COUNT(*)::int AS votes_cast
+    FROM event_clip_votes v
+    WHERE v.event_id = $1
+      AND ${eventRewardEligibilitySql("v.user_id")}
+    GROUP BY v.user_id
+    ORDER BY votes_cast DESC, v.user_id ASC
     `, [eventId]);
     let partCount = 0;
     for (const row of partRes.rows || []) {
@@ -639,9 +618,11 @@ async function distributeClipRace(client, eventId, event, cfg) {
         const userId = Number(row.user_id);
         if (grants.has(userId))
             continue; // déjà récompensé en 'win' ci-dessus
-        addGrant(userId, "participation", null, cfg.participation.rubis, {
+        const votesCast = Number(row.votes_cast);
+        const rubis = Math.min(votesCast * cfg.participation.rubisPerVote, cfg.participation.maxRubis);
+        addGrant(userId, "participation", null, rubis, {
             kind: "participation",
-            score: Number(row.score),
+            votesCast,
         });
         partCount += 1;
     }

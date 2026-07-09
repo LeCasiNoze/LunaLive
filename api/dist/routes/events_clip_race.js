@@ -2,7 +2,7 @@ import { Router } from "express";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
-import { CLIP_RACE_VOTE_BUDGET, countUserVotes, getRankedClips, getRankedStreamers, recomputeClipRace } from "../events/clip_race.js";
+import { CLIP_RACE_VOTES_PER_DAY, countUserVotesToday, getRankedClips, getRankedStreamers, recomputeClipRace } from "../events/clip_race.js";
 export const eventsClipRaceRouter = Router();
 /**
  * POST /api/events/clip-race/vote { clipId }
@@ -56,11 +56,11 @@ eventsClipRaceRouter.post("/events/clip-race/vote", requireAuth, a(async (req, r
             await client.query("ROLLBACK");
             return res.status(404).json({ ok: false, error: "clip_not_eligible" });
         }
-        const usedCount = await countUserVotes(client, eventId, userId);
+        const usedToday = await countUserVotesToday(client, eventId, userId);
         const already = await client.query(`SELECT 1 FROM event_clip_votes WHERE event_id=$1 AND user_id=$2 AND clip_id=$3 LIMIT 1`, [eventId, userId, clipId]);
         const alreadyVoted = !!already.rows?.length;
         if (!alreadyVoted) {
-            if (usedCount >= CLIP_RACE_VOTE_BUDGET) {
+            if (usedToday >= CLIP_RACE_VOTES_PER_DAY) {
                 await client.query("ROLLBACK");
                 return res.status(400).json({ ok: false, error: "budget_exceeded", votesLeft: 0 });
             }
@@ -69,10 +69,14 @@ eventsClipRaceRouter.post("/events/clip-race/vote", requireAuth, a(async (req, r
                 userId,
                 clipId,
             ]);
+            // Un coup de cœur vaut aussi un LIKE (si pas déjà liké) → un seul geste,
+            // et le clip remonte dans les clips du mois (le rang y = COUNT clip_likes).
+            await client.query(`INSERT INTO clip_likes (clip_id, user_id, created_ts) VALUES ($1,$2,$3)
+           ON CONFLICT (clip_id, user_id) DO NOTHING`, [clipId, userId, Date.now()]);
         }
         await client.query("COMMIT");
-        const newCount = alreadyVoted ? usedCount : usedCount + 1;
-        committed = { eventId, votesLeft: Math.max(0, CLIP_RACE_VOTE_BUDGET - newCount) };
+        const newCount = alreadyVoted ? usedToday : usedToday + 1;
+        committed = { eventId, votesLeft: Math.max(0, CLIP_RACE_VOTES_PER_DAY - newCount) };
     }
     catch (e) {
         try {
@@ -117,9 +121,12 @@ eventsClipRaceRouter.get("/events/current/clip-race", a(async (req, res) => {
         getRankedStreamers(pool, Number(event.id), 10),
     ]);
     let myVotesLeft;
+    let myVotedClipIds = [];
     if (userId) {
-        const used = await countUserVotes(pool, Number(event.id), userId);
-        myVotesLeft = Math.max(0, CLIP_RACE_VOTE_BUDGET - used);
+        const used = await countUserVotesToday(pool, Number(event.id), userId);
+        myVotesLeft = Math.max(0, CLIP_RACE_VOTES_PER_DAY - used);
+        const voted = await pool.query(`SELECT clip_id FROM event_clip_votes WHERE event_id=$1 AND user_id=$2`, [Number(event.id), userId]);
+        myVotedClipIds = (voted.rows || []).map((r) => Number(r.clip_id));
     }
-    res.json({ ok: true, event, topClips, topStreamers, myVotesLeft });
+    res.json({ ok: true, event, topClips, topStreamers, myVotesLeft, myVotedClipIds });
 }));

@@ -317,6 +317,7 @@ export type ApiRankedClip = {
   votes: number;
   title: string | null;
   author: string | null;
+  mp4Url: string | null;
 };
 
 export type ApiRankedStreamer = {
@@ -336,6 +337,7 @@ export type ApiClipRaceResp =
       topClips: ApiRankedClip[];
       topStreamers: ApiRankedStreamer[];
       myVotesLeft?: number;
+      myVotedClipIds?: number[];
     };
 
 export type ApiClipRaceVoteResp = { ok: true; votesLeft: number };

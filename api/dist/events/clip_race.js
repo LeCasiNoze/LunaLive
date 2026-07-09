@@ -1,9 +1,10 @@
 import { pool } from "../db.js";
-// Budget de "coups de cœur" (votes limités) par compte pour TOUTE la durée de
-// l'event — cf docs/events-design.md #3 ("1/jour ou 3/semaine par compte").
-// Ajustable : la rareté est le levier anti-farm principal ici (tue les likes
-// de solidarité), donc rester bas si on change ce chiffre.
-export const CLIP_RACE_VOTE_BUDGET = 3;
+import { buildPublicUrl } from "../clips/r2.js";
+// "Coups de cœur" : 1 PAR JOUR (Paris) par compte (validé Lucas). Rare exprès
+// pour tuer les likes de solidarité. Un coup de cœur vaut aussi un LIKE du clip
+// (cf events_clip_race.ts) → un seul bouton, et le clip remonte dans les clips
+// du mois. Revoter le MÊME clip est idempotent (ne reconsomme pas).
+export const CLIP_RACE_VOTES_PER_DAY = 1;
 const NOT_BANNED_VOTER_SQL = `
   NOT EXISTS (
     SELECT 1
@@ -23,7 +24,7 @@ export async function getRankedClips(db, eventId, limit = 10) {
     const r = await db.query(`
     SELECT
       ecs.clip_id, ecs.streamer_id, ecs.votes,
-      bc.title, bc.author,
+      bc.title, bc.author, bc.mp4_key,
       s.slug AS streamer_slug, s.display_name AS streamer_display_name
     FROM event_clip_scores ecs
     JOIN bot_clips bc ON bc.id = ecs.clip_id
@@ -41,6 +42,7 @@ export async function getRankedClips(db, eventId, limit = 10) {
         votes: Number(row.votes || 0),
         title: row.title ?? null,
         author: row.author ?? null,
+        mp4Url: row.mp4_key ? buildPublicUrl(String(row.mp4_key)) : null,
     }));
 }
 /**
@@ -88,8 +90,11 @@ export async function resolveClipCreatorUserId(db, author) {
     const id = Number(r.rows?.[0]?.id || 0);
     return id > 0 ? id : null;
 }
-export async function countUserVotes(db, eventId, userId) {
-    const r = await db.query(`SELECT COUNT(*)::int AS n FROM event_clip_votes WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+// Votes utilisés AUJOURD'HUI (jour Paris) — le budget est journalier (1/jour).
+export async function countUserVotesToday(db, eventId, userId) {
+    const r = await db.query(`SELECT COUNT(*)::int AS n FROM event_clip_votes
+     WHERE event_id=$1 AND user_id=$2
+       AND (created_at AT TIME ZONE 'Europe/Paris')::date = (NOW() AT TIME ZONE 'Europe/Paris')::date`, [eventId, userId]);
     return Number(r.rows?.[0]?.n || 0);
 }
 /**
