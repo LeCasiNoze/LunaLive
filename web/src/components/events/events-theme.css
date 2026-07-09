@@ -493,6 +493,73 @@
   font-size: 0.9rem;
 }
 
+/* ── Duo : cartes de duo + gestion streamer ───────────────────────── */
+.evDuoCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.evDuoCard.top {
+  background: rgba(124, 92, 240, 0.14);
+  border-color: rgba(124, 92, 240, 0.4);
+}
+.evDuoCard.focus {
+  border-color: var(--ev-accL);
+  box-shadow: 0 0 0 1px var(--ev-accL) inset;
+}
+.evDuoRank {
+  min-width: 34px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 1.05rem;
+}
+.evDuoPair {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 800;
+}
+.evDuoPair.big {
+  font-size: 1.12rem;
+  margin: 6px 0 2px;
+}
+.evDuoAmp {
+  opacity: 0.5;
+  font-weight: 900;
+}
+.evDuoScore {
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  color: var(--ev-accL);
+  white-space: nowrap;
+}
+.evDuoMeta {
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+.evDuoMine {
+  display: grid;
+  gap: 4px;
+}
+.evDuoActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.evBtn.ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+
 /* ── Formulaire montant rubis (dépôt coffre / burn boss) ──────────── */
 .evAmountInput {
   min-height: 40px;
@@ -945,6 +1012,11 @@
 .evPalierRowState { font-size: 10.5px; font-weight: 800; opacity: 0.8; white-space: nowrap; }
 .evPalierRow.reached .evPalierRowState { color: #fbbf24; }
 .evPalierRow.done .evPalierRowState { color: #6ee7b7; }
+
+/* ── Duo : détail quêtes/paliers (mini-barre par quête) ───────────── */
+.evDuoPalierDetail { display: grid; gap: 10px; margin: 2px 0 4px; }
+.evDuoQuestLabel { display: grid; gap: 4px; min-width: 0; }
+.evDuoQuestTrack { height: 6px; }
 
 .evShopTab, .evQuestTab, .evRankTab { display: grid; gap: 12px; }
 .evQuestGroup { display: grid; gap: 8px; }

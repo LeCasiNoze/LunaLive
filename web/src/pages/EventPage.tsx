@@ -13,6 +13,7 @@ import {
   getCurrentBoss,
   getCurrentChest,
   getCurrentClipRace,
+  getCurrentDuo,
   getCurrentEvent,
   getCurrentViewerWeek,
   getCurrentWheel,
@@ -21,6 +22,8 @@ import {
   postChestDeposit,
   postChestPalierClaim,
   postClipRaceVote,
+  postDuoAccept,
+  postDuoRefresh,
   postViewerWeekBoostBuy,
   postViewerWeekPalierClaim,
   postViewerWeekQuestClaim,
@@ -31,6 +34,8 @@ import {
   type ApiBossResp,
   type ApiChestResp,
   type ApiClipRaceResp,
+  type ApiDuoPalier,
+  type ApiDuoResp,
   type ApiEventAccessStatus,
   type ApiEventRow,
   type ApiViewerWeekResp,
@@ -90,7 +95,7 @@ const EVENT_TEASER: Record<string, string> = {
   clip_race: "Le clip le plus vu ou le plus liké de la semaine grimpe au classement et remporte la mise.",
   global_chest: "Toute la communauté remplit un coffre ensemble. Une fois plein, tout le monde reçoit une récompense.",
   burn_boss: "Un boss avec une jauge de vie commune. Chaque action de la communauté lui inflige des dégâts jusqu'à sa chute.",
-  duo_week: "Forme un duo avec un autre viewer et cumulez vos points ensemble pour grimper au classement.",
+  duo_week: "Deux streamers à l'audience commune font équipe : leurs deux communautés cumulent leur activité pour grimper au classement.",
 };
 
 const STEP_ICON: Record<EventAccessStepKey, string> = {
@@ -259,27 +264,27 @@ const EVENT_RULES: Record<string, EventRules> = {
   },
   duo_week: {
     summary:
-      "LunaLive te forme un duo avec un autre viewer proche de tes centres d'intérêt. À deux, vos points s'additionnent pour grimper dans le classement !",
+      "LunaLive associe deux streamers à l'audience commune en duo. Leurs deux communautés cumulent leur activité pour hisser le duo en tête du classement !",
     items: [
       {
         icon: "🤝",
-        title: "Comment participer ?",
-        text: "LunaLive te propose automatiquement un partenaire, choisi parmi les viewers qui regardent les mêmes streamers que toi. Tu as quelques jours pour accepter.",
+        title: "Comment ça marche ?",
+        text: "LunaLive apparie automatiquement les streamers qui partagent le plus de viewers. Toi, tu fais gagner ton streamer préféré : chaque minute regardée, message et call nourrit le score de son duo.",
       },
       {
         icon: "🔄",
-        title: "Pas convaincu par ton duo ?",
-        text: "Tu peux refuser une fois pour recevoir une nouvelle proposition. Après ça, ton duo est figé pour le reste de la semaine.",
+        title: "Le duo ne convient pas à un streamer ?",
+        text: "Chaque streamer peut refuser une fois pour être ré-apparié à son 2ᵉ meilleur partenaire. Ensuite, le duo est figé pour la semaine.",
       },
       {
         icon: "⭐",
         title: "Comment marquer des points ?",
-        text: "Toutes les actions de toi et de ton partenaire (watch, chat, calls…) s'additionnent dans un score de duo commun.",
+        text: "Toutes les actions des deux communautés (watch, chat, calls…) s'additionnent dans un score de duo commun.",
       },
       {
         icon: "🎁",
-        title: "Ce que tu peux gagner",
-        text: "Le duo en tête du classement remporte une récompense pour lui, et sa communauté (celle des deux streamers concernés) en profite aussi.",
+        title: "Ce que le duo gagnant remporte",
+        text: "Les 2 streamers du duo #1 reçoivent un titre exclusif, et les membres actifs de leurs deux communautés repartent avec des rubis.",
       },
       {
         icon: "⏳",
@@ -417,6 +422,22 @@ const BOSS_REWARD_TIERS: RewardTierDisplay[] = [
   { key: "b4", rank: "🔥 Rang 4 à 10", amount: "60" },
   { key: "b5", rank: "🔥 Rang 11 à 50", amount: "30" },
   { key: "b6", rank: "🔥 Rang 51 à 100", amount: "15" },
+];
+
+const DUO_REWARD_TIERS: RewardTierDisplay[] = [
+  {
+    key: "champ",
+    rank: "👑 Duo #1 — les 2 streamers",
+    amount: "Titre",
+    extra: "titre exclusif « Champion en duo » remis en jeu chaque édition",
+    gold: true,
+  },
+  {
+    key: "commu",
+    rank: "🤝 Les 2 communautés du duo #1",
+    amount: "40",
+    extra: "rubis à chaque membre actif des deux commus (jusqu'à 200)",
+  },
 ];
 
 function RewardsShowcase({ tiers }: { tiers: RewardTierDisplay[] }) {
@@ -1566,6 +1587,185 @@ function BossPanel({
   );
 }
 
+// Normalise un ApiDuoPalier : quand la source est resp.palierDefs (config
+// brute, pas d'évaluation), current/done sont absents côté API — fallback
+// "non atteint" pour que le rendu reste cohérent (cf api_events.ts, note sur
+// ApiDuoResp.palierDefs).
+function normalizeDuoPalier(p: ApiDuoPalier): ApiDuoPalier {
+  return {
+    index: p.index,
+    name: p.name,
+    done: p.done ?? false,
+    quests: (p.quests || []).map((q) => ({ ...q, current: q.current ?? 0, done: q.done ?? false })),
+  };
+}
+
+// Détail des paliers/quêtes d'un seul duo (celui mis en avant) — réutilise
+// evPalierBlock/evPalierList/evPalierRow/evPalierTrack/evPalierFill (mêmes
+// classes que la barre de paliers wheel_week/viewer_week), avec une mini
+// barre de progression par quête plutôt qu'une seule barre commune.
+function DuoPaliersDetail({ paliers }: { paliers: ApiDuoPalier[] }) {
+  return (
+    <div className="evDuoPalierDetail">
+      {paliers.map((p) => (
+        <div className="evPalierBlock" key={p.index}>
+          <div className="evPalierHead">
+            <span className="evPalierHeadTitle">Palier {p.index + 1} · {p.name}</span>
+            <span className="evPalierHeadPts">{p.done ? "✓ complété" : "en cours"}</span>
+          </div>
+          <div className="evPalierList">
+            {p.quests.map((q) => {
+              const pct = q.goal > 0 ? Math.min(100, (q.current / q.goal) * 100) : q.done ? 100 : 0;
+              return (
+                <div className={`evPalierRow${q.done ? " done" : ""}`} key={q.key}>
+                  <span className="evPalierRowThresh">{q.impartial ? "🎯" : q.done ? "✓" : "…"}</span>
+                  <div className="evDuoQuestLabel">
+                    <span className="evPalierRowLabel">{q.label}</span>
+                    <div className="evPalierTrack evDuoQuestTrack">
+                      <div className="evPalierFill" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <span className="evPalierRowState">{q.current}/{q.goal}{q.unit ? ` ${q.unit}` : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── duo_week : duos de STREAMERS appariés par audience commune ────────
+function DuoPanel({
+  resp,
+  token,
+  onLoginClick,
+  onRefresh,
+}: {
+  resp: Extract<ApiDuoResp, { event: ApiEventRow }>;
+  token: string | null;
+  onLoginClick: () => void;
+  onRefresh: () => void;
+}) {
+  const [tab, setTab] = React.useState<"classement" | "recompenses">("classement");
+  const [acting, setActing] = React.useState<null | "accept" | "refresh">(null);
+  const [actErr, setActErr] = React.useState<string | null>(null);
+  const duos = resp.duos;
+  const myDuo = resp.myDuo;
+
+  // Duo dont le détail des paliers est affiché : celui du viewer s'il est
+  // streamer apparié, sinon le #1 du classement (hors scope v1 : pas de
+  // "duo de mon streamer préféré" pour un viewer normal, cf spec).
+  const focusDuo = myDuo ?? duos[0] ?? null;
+  const focusPaliers = (focusDuo && focusDuo.paliers.length > 0 ? focusDuo.paliers : resp.palierDefs ?? []).map(
+    normalizeDuoPalier
+  );
+
+  const statusLabel = (s: string) => (s === "accepted" ? "✅ accepté" : s === "refreshed" ? "🔄 ré-apparié" : "⏳ proposé");
+  const medal = (rank: number) => (rank === 1 ? "👑" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`);
+
+  async function doAccept() {
+    if (!token) { onLoginClick(); return; }
+    setActErr(null); setActing("accept");
+    try { await postDuoAccept(token); onRefresh(); }
+    catch (e: any) { setActErr(e?.message || "Action impossible."); }
+    finally { setActing(null); }
+  }
+  async function doRefresh() {
+    if (!token) { onLoginClick(); return; }
+    setActErr(null); setActing("refresh");
+    try { await postDuoRefresh(token); onRefresh(); }
+    catch (e: any) { setActErr(e?.message || "Plus de changement disponible."); }
+    finally { setActing(null); }
+  }
+
+  return (
+    <div className="evWheel2">
+      <div className="evWheel2Status">
+        <div className="evW2Stats">
+          <div className="evW2Stat"><span className="evW2Label">Duos en lice</span><span className="evW2Val">🤝 {duos.length}</span></div>
+          {myDuo ? <div className="evW2Stat"><span className="evW2Label">Ton duo</span><span className="evW2Val">#{myDuo.rank}</span></div> : null}
+        </div>
+      </div>
+
+      {/* Carte de gestion : visible seulement pour un streamer apparié (myDuo). */}
+      {myDuo ? (
+        <div className="evCard evDuoMine">
+          <div className="evPanelHead"><span>🤝 Ton duo</span><small>{statusLabel(myDuo.status)}</small></div>
+          <div className="evDuoPair big">
+            <span>{myDuo.streamerA.displayName}</span>
+            <span className="evDuoAmp">&</span>
+            <span>{myDuo.streamerB?.displayName ?? "en attente d'un partenaire"}</span>
+          </div>
+          <div className="evDuoMeta">{myDuo.paliersDone}/5 paliers · {myDuo.shared} viewers communs</div>
+          <div className="evDuoActions">
+            {myDuo.status !== "accepted" ? (
+              <button type="button" className="evBtn" onClick={doAccept} disabled={acting !== null}>
+                {acting === "accept" ? "…" : "✅ Accepter ce duo"}
+              </button>
+            ) : null}
+            {myDuo.refreshedCount < 1 ? (
+              <button type="button" className="evBtn ghost" onClick={doRefresh} disabled={acting !== null}>
+                {acting === "refresh" ? "…" : "🔄 Changer de partenaire (1 fois)"}
+              </button>
+            ) : null}
+          </div>
+          {actErr ? <div className="evErrLine">{actErr}</div> : null}
+        </div>
+      ) : null}
+
+      <div className="evTabs" role="tablist">
+        {([
+          ["classement", "🏆", "Duos"],
+          ["recompenses", "🎁", "Récompenses"],
+        ] as const).map(([k, icon, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
+            <span className="evTabIcon">{icon}</span>
+            <span className="evTabLabel">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="evTabPanel">
+        {tab === "classement" ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <div className="evLockedSub" style={{ textAlign: "center", marginBottom: 2 }}>
+              Regarde ton streamer préféré — chaque minute, host et coffre fait avancer son duo dans les paliers.
+            </div>
+            {duos.length === 0 ? (
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "10px 0" }}>Aucun duo formé pour l'instant — l'appariement se fait dès qu'assez de streamers partagent une audience.</div>
+            ) : (
+              duos.map((d) => {
+                const isFocus = focusDuo?.duoId === d.duoId;
+                return (
+                  <React.Fragment key={d.duoId}>
+                    <div className={`evDuoCard${d.rank <= 3 ? " top" : ""}${isFocus ? " focus" : ""}`}>
+                      <div className="evDuoRank">{medal(d.rank)}</div>
+                      <div className="evDuoPair">
+                        <span>{d.streamerA.displayName}</span>
+                        <span className="evDuoAmp">&</span>
+                        <span>{d.streamerB?.displayName ?? "—"}</span>
+                      </div>
+                      <div className="evDuoScore"><CountUp value={d.paliersDone} />/5 paliers</div>
+                    </div>
+                    {isFocus ? <DuoPaliersDetail paliers={focusPaliers} /> : null}
+                  </React.Fragment>
+                );
+              })
+            )}
+            <div className="evLockedSub" style={{ textAlign: "center", fontSize: 11, opacity: 0.65 }}>
+              🎯 = quête équitable (accessible aux petits duos)
+            </div>
+          </div>
+        ) : (
+          <RewardsShowcase tiers={DUO_REWARD_TIERS} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EventTeaser({ event }: { event: ApiEventRow }) {
   const pitch = EVENT_TEASER[event.type] || "Un nouvel event arrive bientôt sur LunaLive. Reviens vite pour découvrir les règles et le classement.";
   return (
@@ -1611,6 +1811,7 @@ export default function EventPage() {
   const [chest, setChest] = React.useState<ApiChestResp | null>(null);
   const [clipRace, setClipRace] = React.useState<ApiClipRaceResp | null>(null);
   const [boss, setBoss] = React.useState<ApiBossResp | null>(null);
+  const [duo, setDuo] = React.useState<ApiDuoResp | null>(null);
   const [accessStatus, setAccessStatus] = React.useState<ApiEventAccessStatus | null>(null);
 
   // mini timer pour countdown
@@ -1666,6 +1867,7 @@ export default function EventPage() {
         setChest(null);
         setClipRace(null);
         setBoss(null);
+        setDuo(null);
         setLoading(false);
         return;
       }
@@ -1721,6 +1923,14 @@ export default function EventPage() {
         if (forcedType) resolvedEvent = b.event ?? null;
       } else {
         setBoss(null);
+      }
+
+      if (type === "duo_week") {
+        const d = await getCurrentDuo(token);
+        setDuo(d);
+        if (forcedType) resolvedEvent = d.event ?? null;
+      } else {
+        setDuo(null);
       }
 
       setEvent(resolvedEvent);
@@ -2165,6 +2375,13 @@ export default function EventPage() {
           meUserId={auth?.user?.id ?? null}
           onLoginClick={() => setLoginOpen(true)}
           onRefresh={async () => { try { setBoss(await getCurrentBoss(token)); } catch {} }}
+        />
+      ) : event.type === "duo_week" && duo && duo.event ? (
+        <DuoPanel
+          resp={duo}
+          token={token}
+          onLoginClick={() => setLoginOpen(true)}
+          onRefresh={async () => { try { setDuo(await getCurrentDuo(token)); } catch {} }}
         />
       ) : (
         <Reveal>

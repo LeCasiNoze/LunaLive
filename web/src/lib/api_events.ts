@@ -403,3 +403,54 @@ export async function postBossBurn(token: string, amount: number) {
     body: JSON.stringify({ amount }),
   });
 }
+
+// ── duo_week (duos de STREAMERS appariés par audience commune) ────────
+export type ApiDuoStreamer = { id: number; slug: string; displayName: string };
+export type ApiDuoQuest = {
+  key: string;
+  label: string;
+  cat: "streamer" | "commu" | "collab";
+  impartial: boolean;
+  goal: number;
+  current: number;
+  done: boolean;
+  unit: string;
+};
+export type ApiDuoPalier = { index: number; name: string; done: boolean; quests: ApiDuoQuest[] };
+export type ApiDuo = {
+  duoId: number;
+  streamerA: ApiDuoStreamer;
+  streamerB: ApiDuoStreamer | null;
+  status: string;
+  shared: number;
+  refreshedCount: number;
+  points: number;
+  rank: number;
+  paliersDone: number;
+  paliers: ApiDuoPalier[];
+};
+export type ApiDuoResp =
+  | { ok: true; event: null; duos: [] }
+  | { ok: true; event: ApiEventRow; duos: ApiDuo[]; myDuo: ApiDuo | null; palierDefs?: ApiDuoPalier[] };
+
+// Auth optionnelle : le classement des duos est public ; "myDuo" n'apparaît que
+// si le compte connecté est un streamer apparié pour l'event courant.
+export async function getCurrentDuo(token?: string | null) {
+  return j<ApiDuoResp>("/api/events/current/duo", {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+}
+
+export async function postDuoAccept(token: string) {
+  return j<{ ok: true; duo: any }>("/api/events/duo/accept", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function postDuoRefresh(token: string) {
+  return j<{ ok: true; duo: any }>("/api/events/duo/refresh", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}

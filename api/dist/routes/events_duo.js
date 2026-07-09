@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
-import { acceptDuoForStreamer, getRankedDuos, refreshDuoForStreamer } from "../events/duo_week.js";
+import { acceptDuoForStreamer, DUO_PALIERS, getRankedDuos, recomputeDuoWeek, refreshDuoForStreamer } from "../events/duo_week.js";
 export const eventsDuoRouter = Router();
 async function getLiveDuoEvent() {
     const r = await pool.query(`
@@ -31,6 +31,8 @@ function mapDuo(d) {
         refreshedCount: d.refreshedCount,
         points: d.points,
         rank: d.rank,
+        paliersDone: d.paliersDone,
+        paliers: d.paliers,
     };
 }
 // GET /api/events/current/duo
@@ -42,6 +44,7 @@ eventsDuoRouter.get("/events/current/duo", a(async (req, res) => {
     const event = await getLiveDuoEvent();
     if (!event)
         return res.json({ ok: true, event: null, duos: [] });
+    await recomputeDuoWeek(Number(event.id));
     const ranked = await getRankedDuos(pool, Number(event.id), 50);
     const duos = ranked.map(mapDuo);
     let myDuo = null;
@@ -51,7 +54,7 @@ eventsDuoRouter.get("/events/current/duo", a(async (req, res) => {
             myDuo = duos.find((d) => d.streamerA.id === streamerId || d.streamerB?.id === streamerId) ?? null;
         }
     }
-    res.json({ ok: true, event, duos, myDuo });
+    res.json({ ok: true, event, duos, myDuo, palierDefs: DUO_PALIERS });
 }));
 // POST /api/events/duo/accept
 // Auth = streamer (compte lié à streamers.user_id) : accepte le duo dans
