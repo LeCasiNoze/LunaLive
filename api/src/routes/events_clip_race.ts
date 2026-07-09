@@ -154,7 +154,7 @@ eventsClipRaceRouter.get(
     if (!event) return res.json({ ok: true, event: null });
 
     const [topClips, topStreamers] = await Promise.all([
-      getRankedClips(pool, Number(event.id), 10),
+      getRankedClips(pool, Number(event.id), 24),
       getRankedStreamers(pool, Number(event.id), 10),
     ]);
 
