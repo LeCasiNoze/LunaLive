@@ -433,7 +433,7 @@ function RewardsShowcase({ tiers }: { tiers: RewardTierDisplay[] }) {
   );
 }
 
-function Podium({ top, meUserId }: { top: EvTopRow[]; meUserId: number | null }) {
+function Podium({ top, meUserId, unit = "pts" }: { top: EvTopRow[]; meUserId: number | null; unit?: string }) {
   const slots = [1, 2, 3].map((rank) => top.find((r) => Number(r.rank) === rank) ?? null);
   const medalOf = (rank: number) => (rank === 1 ? "👑" : rank === 2 ? "🥈" : "🥉");
 
@@ -459,7 +459,7 @@ function Podium({ top, meUserId }: { top: EvTopRow[]; meUserId: number | null })
               <div className="evPodName" title={row.username}>{row.username}</div>
               {isMe ? <div className="evPodMe">C'est toi !</div> : null}
               <div className="evPodPoints">
-                <CountUp value={Number(row.points || 0)} /> pts
+                <CountUp value={Number(row.points || 0)} /> {unit}
               </div>
             </div>
           );
@@ -471,6 +471,18 @@ function Podium({ top, meUserId }: { top: EvTopRow[]; meUserId: number | null })
         </div>
       ) : null}
     </>
+  );
+}
+
+// Carte "Ton rang" réutilisable — à afficher sous chaque classement (Boss,
+// Coffre, Roue…). Rend le rang toujours visible, même hors du top affiché.
+function MyRankCard({ rank, score, unit = "pts" }: { rank?: number | null; score?: number | null; unit?: string }) {
+  return (
+    <div className="evMyRank">
+      <span className="evMyRankLabel">🎯 Ton rang</span>
+      <span className="evMyRankPos">{rank ? `#${rank}` : "—"}</span>
+      <span className="evMyRankScore"><CountUp value={Number(score ?? 0)} /> {unit}</span>
+    </div>
   );
 }
 
@@ -1074,6 +1086,7 @@ function WheelWeekPanel({
                 Personne au classement pour l'instant — tourne la roue pour y entrer !
               </div>
             )}
+            {me ? <MyRankCard rank={me.rank} score={me.points} /> : null}
             {rest.length > 0 ? <div style={{ marginTop: 14 }}><LeaderboardList rows={rest} meUserId={meUserId} /></div> : null}
             <div style={{ marginTop: 18 }}>
               <div className="evSectionTitle">🎁 Récompenses de fin de semaine</div>
@@ -1273,7 +1286,15 @@ function ChestPanel({
           contributors.length === 0 ? (
             <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Pas encore de contributeur — dépose des rubis ou sois actif pour ouvrir le bal.</div>
           ) : (
-            <LeaderboardList rows={contributors} meUserId={meUserId} />
+            <div>
+              <Podium top={contributors.filter((c) => (c.rank ?? 99) <= 3)} meUserId={meUserId} />
+              {meUserId != null ? <MyRankCard rank={resp.myRank} score={resp.myContribution} /> : null}
+              {contributors.some((c) => (c.rank ?? 99) > 3) ? (
+                <div style={{ marginTop: 14 }}>
+                  <LeaderboardList rows={contributors.filter((c) => (c.rank ?? 99) > 3)} meUserId={meUserId} />
+                </div>
+              ) : null}
+            </div>
           )
         ) : (
           <RewardsShowcase tiers={CHEST_REWARD_TIERS} />
@@ -1527,7 +1548,15 @@ function BossPanel({
           damagers.length === 0 ? (
             <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Pas encore de dégâts — sois le premier à frapper le boss.</div>
           ) : (
-            <LeaderboardList rows={damagers} meUserId={meUserId} unit="dégâts" />
+            <div>
+              <Podium top={damagers.filter((d) => (d.rank ?? 99) <= 3)} meUserId={meUserId} unit="dégâts" />
+              {meUserId != null ? <MyRankCard rank={resp.myRank} score={resp.myDamage} unit="dégâts" /> : null}
+              {damagers.some((d) => (d.rank ?? 99) > 3) ? (
+                <div style={{ marginTop: 14 }}>
+                  <LeaderboardList rows={damagers.filter((d) => (d.rank ?? 99) > 3)} meUserId={meUserId} unit="dégâts" />
+                </div>
+              ) : null}
+            </div>
           )
         ) : (
           <RewardsShowcase tiers={BOSS_REWARD_TIERS} />

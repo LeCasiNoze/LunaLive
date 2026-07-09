@@ -96,10 +96,18 @@ eventsChestRouter.get("/events/current/chest", a(async (req, res) => {
       LIMIT 10
       `, [event.id]);
     let myContribution;
+    let myRank;
     let myPaliers = null;
     if (userId) {
         myPaliers = await getChestPaliersState(Number(event.id), userId);
         myContribution = myPaliers.myContribution;
+        const rk = await pool.query(`
+        SELECT rank FROM (
+          SELECT user_id, ROW_NUMBER() OVER (ORDER BY points DESC, updated_at ASC) AS rank
+          FROM event_scores WHERE event_id=$1
+        ) t WHERE user_id=$2
+        `, [event.id, userId]);
+        myRank = rk.rows?.[0]?.rank != null ? Number(rk.rows[0].rank) : undefined;
     }
     res.json({
         ok: true,
@@ -108,6 +116,7 @@ eventsChestRouter.get("/events/current/chest", a(async (req, res) => {
         communityTotal,
         reached: communityTotal >= firstThreshold,
         myContribution,
+        myRank,
         minContribution: CHEST_MIN_CONTRIBUTION,
         paliers: CHEST_PALIERS,
         myPaliers,
