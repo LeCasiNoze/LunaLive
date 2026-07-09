@@ -964,15 +964,15 @@
   background:rgba(167,139,250,.14); border:1px solid rgba(167,139,250,.3);
 }
 .evBoostNote strong { color:#c4b5fd; }
-.evStreamerRank { display:grid; gap:6px; }
+.evStreamerRank { display:grid; gap:6px; max-width:100%; }
 .evStreamerRow {
-  display:grid; grid-template-columns:34px 1fr auto auto; align-items:center; gap:10px;
-  padding:9px 12px; border-radius:12px;
+  display:grid; grid-template-columns:34px minmax(0,1fr) auto auto; align-items:center; gap:10px;
+  padding:9px 12px; border-radius:12px; max-width:100%; overflow:hidden;
   background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07);
 }
 .evStreamerRow.mine { border-color:rgba(167,139,250,.45); background:rgba(167,139,250,.1); }
 .evStreamerRk { font-family:"Bebas Neue",sans-serif; font-size:1.05rem; color:#fde68a; }
-.evStreamerName { font-family:"Syne",sans-serif; font-weight:800; font-size:13.5px; }
+.evStreamerName { font-family:"Syne",sans-serif; font-weight:800; font-size:13.5px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .evStreamerMeta { font-family:"DM Sans",sans-serif; font-size:11px; opacity:.6; font-weight:700; white-space:nowrap; }
 .evStreamerPts { font-family:"Bebas Neue",sans-serif; font-size:1.05rem; color:#c4b5fd; white-space:nowrap; }
 
