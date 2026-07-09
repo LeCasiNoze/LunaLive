@@ -208,17 +208,13 @@ export const EVENT_REWARD_CONFIGS: Record<string, EventRewardConfig> = {
         chestLotWeightBp: 2000, // pleinement tirable (cf chest_auto)
         featuredDays: 7,
         entitlement: { kind: "title", codeTemplate: "clip_race_streamer_YYYYMM" },
-        // Subs BAS (validé Lucas : 20 subs/semaine = trop, tout le monde serait sub).
+        // UN SEUL gagnant (validé Lucas). Subs BAS (20/sem = trop).
         tiers: [
           { rank: 1, subs: 3, rubisToChest: 500 },
-          { rank: 2, subs: 2, rubisToChest: 300 },
-          { rank: 3, subs: 1, rubisToChest: 150 },
         ],
       },
       clipTiers: [
         { rank: 1, rubis: 200 },
-        { rank: 2, rubis: 120 },
-        { rank: 3, rubis: 60 },
       ],
       creatorSubDays: 7,
       participation: { rubisPerVote: 10, maxRubis: 50, maxRecipients: 100 },
