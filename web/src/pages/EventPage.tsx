@@ -1481,6 +1481,8 @@ export default function EventPage() {
           rules: { pointsPerMinute: 1, topN: 100 },
           top: [],
           me: null,
+          topStreamers: [],
+          myStreamer: null,
         });
         setWheelWeek(null);
         setChest(null);
@@ -1578,6 +1580,8 @@ export default function EventPage() {
   const meUserId = viewerWeek?.me?.userId ?? null;
   const top3 = viewerWeek?.top ?? [];
   const rest = top3.slice(3);
+  const topStreamers = viewerWeek?.topStreamers ?? [];
+  const myStreamer = viewerWeek?.myStreamer ?? null;
 
   const eligible = accessStatus?.eligible ?? null;
   const steps = accessStatus?.steps ?? [];
@@ -1690,6 +1694,27 @@ export default function EventPage() {
               </div>
             </Reveal>
           </div>
+
+          {topStreamers.length > 0 ? (
+            <Reveal delay={0.06}>
+              <div className="evViewerPanel">
+                <div className="evPanelHead"><span>🏅 Classement des streamers</span><small>Leur communauté les fait grimper</small></div>
+                {myStreamer ? (
+                  <div className="evBoostNote">🚀 Tu boostes actuellement <strong>{myStreamer.displayName}</strong> — regarde-le plus pour le faire monter !</div>
+                ) : null}
+                <div className="evStreamerRank">
+                  {topStreamers.map((st) => (
+                    <div className={`evStreamerRow${myStreamer?.streamerId === st.streamerId ? " mine" : ""}`} key={st.streamerId}>
+                      <span className="evStreamerRk">#{st.rank}</span>
+                      <span className="evStreamerName">{st.displayName}</span>
+                      <span className="evStreamerMeta">{st.viewers} viewer{st.viewers > 1 ? "s" : ""}</span>
+                      <span className="evStreamerPts">{st.points} pts</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          ) : null}
 
           {rest.length > 0 ? (
             <Reveal delay={0.08}>

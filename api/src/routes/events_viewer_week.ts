@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
 import type { AuthUser } from "../auth.js";
-import { VIEWER_WEEK_SCORING } from "../events/viewer_week.js";
+import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer } from "../events/viewer_week.js";
 import { eventRewardEligibilitySql } from "../events/eligibility.js";
 
 export const eventsViewerWeekRouter = Router();
@@ -58,7 +58,8 @@ eventsViewerWeekRouter.get(
       `
       SELECT *
       FROM events
-      WHERE start_at <= NOW() AND NOW() < end_at
+      WHERE type='viewer_week' AND state='live'
+        AND start_at <= NOW() AND NOW() < end_at
       ORDER BY start_at DESC
       LIMIT 1
       `
@@ -108,6 +109,10 @@ eventsViewerWeekRouter.get(
       meRow = me.rows?.[0] ?? null;
     }
 
+    // Classement STREAMERS (team) + streamer que le user connecté booste.
+    const topStreamers = await rankViewerWeekStreamers(Number(event.id), 10);
+    const myStreamer = userId ? await getViewerBoostedStreamer(Number(event.id), userId) : null;
+
     res.json({
       ok: true,
       event,
@@ -119,6 +124,8 @@ eventsViewerWeekRouter.get(
       },
       top: (top.rows || []).map(mapRow),
       me: meRow ? mapRow(meRow) : null,
+      topStreamers,
+      myStreamer,
     });
   })
 );

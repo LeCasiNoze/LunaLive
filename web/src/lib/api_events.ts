@@ -79,12 +79,24 @@ export type ApiViewerWeekTopRow = {
 
 export type ApiViewerWeekMe = ApiViewerWeekTopRow | null;
 
+export type ApiViewerStreamer = {
+  rank: number;
+  streamerId: number;
+  slug: string;
+  displayName: string;
+  userId: number | null;
+  points: number;
+  viewers: number;
+};
+
 export type ApiViewerWeekResp = {
   ok: true;
   event: ApiEventRow;
   rules: ApiViewerWeekRules;
   top: ApiViewerWeekTopRow[];
   me: ApiViewerWeekMe;
+  topStreamers: ApiViewerStreamer[];
+  myStreamer: { streamerId: number; slug: string; displayName: string } | null;
 };
 
 export type EventAccessStepKey = "follow_streamer" | "link_discord" | "follow_insta" | "daily_claim" | "watch_30";
