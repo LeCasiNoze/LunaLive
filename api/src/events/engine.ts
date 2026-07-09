@@ -3,6 +3,7 @@ import { pool } from "../db.js";
 import { recomputeViewerWeek } from "./viewer_week.js";
 import { recomputeWheelWeek } from "./wheel_week.js";
 import { recomputeGlobalChest } from "./global_chest.js";
+import { recomputeClipRace } from "./clip_race.js";
 import { closeAndDistribute, EVENT_REWARD_CONFIGS } from "./rewards.js";
 
 type EventRow = {
@@ -167,6 +168,18 @@ async function closeIfNeeded() {
   }
 }
 
+// Récompense "featured temporaire" (clip_race, cf rewards.ts distributeClipRace) :
+// nettoyage générique, indépendant du type d'event courant.
+async function unfeatureExpiredStreamers() {
+  await pool.query(
+    `
+    UPDATE streamers
+    SET featured = false, featured_until = NULL, updated_at = NOW()
+    WHERE featured_until IS NOT NULL AND featured_until <= NOW()
+    `
+  );
+}
+
 export function startEventsEnginePoller(everyMs = 60_000) {
   const tick = async () => {
     try {
@@ -176,6 +189,7 @@ export function startEventsEnginePoller(everyMs = 60_000) {
       await closeIfNeeded();
       await openIfNeeded();
       await ensureWeekEvent(ws + WEEK_MS);
+      await unfeatureExpiredStreamers();
 
       // ✅ recompute dans le tick (donc toutes les minutes)
       const cur = await getCurrentEvent();
@@ -187,6 +201,9 @@ export function startEventsEnginePoller(everyMs = 60_000) {
       }
       if (cur && cur.type === "global_chest" && cur.state === "live") {
         await recomputeGlobalChest(cur.id);
+      }
+      if (cur && cur.type === "clip_race" && cur.state === "live") {
+        await recomputeClipRace(cur.id);
       }
     } catch (e: any) {
       console.warn("[events-engine] tick failed", e?.message || e);

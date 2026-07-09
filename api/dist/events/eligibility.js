@@ -9,6 +9,12 @@
  * (event_access_flags.insta_declared_at) + réclamer 1 bonus quotidien +
  * 30 min de watch cumulées (anti-farm : minutes distinctes, pas de lignes),
  * hors bannis.
+ *
+ * ⚠️ TOUJOURS passer une colonne QUALIFIÉE (ex. "s.user_id", "combined.user_id").
+ * Une colonne nue ("user_id") est capturée par les tables internes des EXISTS
+ * (f/dl/c/svm/b ont toutes une colonne user_id) → corrélation cassée : les
+ * EXISTS deviennent toujours vrais et le NOT EXISTS bans devient faux dès
+ * qu'un seul compte est banni (0 ligne éligible).
  */
 export function eventRewardEligibilitySql(userIdExpr) {
     return `(
