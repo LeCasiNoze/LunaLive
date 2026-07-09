@@ -1,5 +1,6 @@
 import { pool } from "../db.js";
 import { EVENT_REWARD_CONFIGS } from "./rewards.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 
 const TZ = "Europe/Paris";
 
@@ -71,6 +72,7 @@ export async function recomputeBurnBoss(eventId: number) {
           FROM stream_viewer_minutes svm
           WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
             AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
+            AND ${notEventExcludedStreamerSql("svm.streamer_id")}
           GROUP BY svm.user_id, day
         ) per_day
         GROUP BY user_id

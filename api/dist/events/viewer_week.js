@@ -395,6 +395,7 @@ export async function recomputeViewerWeek(eventId) {
           AND svm.bucket_ts >= $4::timestamptz
           AND svm.bucket_ts <  $5::timestamptz
           AND ${NOT_BANNED_SQL}
+          AND ${notEventExcludedStreamerSql("svm.streamer_id")}
         GROUP BY svm.user_id, day
       ) per_day
       GROUP BY user_id
@@ -418,6 +419,7 @@ export async function recomputeViewerWeek(eventId) {
         WHERE svm.user_id IS NOT NULL
           AND svm.bucket_ts >= $3::timestamptz
           AND svm.bucket_ts <  $4::timestamptz
+          AND ${notEventExcludedStreamerSql("svm.streamer_id")}
 
         UNION
         SELECT c.user_id, c.day

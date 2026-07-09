@@ -1,5 +1,6 @@
 import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 const TZ = "Europe/Paris";
 // Barème simplifié (mix activité gratuite + dépôts rubis, cf
 // docs/events-design.md #4). Contrairement à viewer_week, une seule source
@@ -61,6 +62,7 @@ export async function recomputeGlobalChest(eventId) {
           FROM stream_viewer_minutes svm
           WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
             AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
+            AND ${notEventExcludedStreamerSql("svm.streamer_id")}
           GROUP BY svm.user_id, day
         ) per_day
         GROUP BY user_id
