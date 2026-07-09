@@ -1209,7 +1209,9 @@ function ClipRacePanel({
 }) {
   const [votingClipId, setVotingClipId] = React.useState<number | null>(null);
   const [voteErr, setVoteErr] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<"clips" | "streamers" | "recompenses">("clips");
   const votesLeft = resp.myVotesLeft ?? 0;
+  const votedSet = new Set(resp.myVotedClipIds ?? []);
   const canVote = !!token && votesLeft > 0;
 
   async function vote(clipId: number) {
@@ -1230,89 +1232,88 @@ function ClipRacePanel({
   }
 
   return (
-    <>
-      <Reveal>
-        <div className="evTwoCol">
-          <div>
-            <div className="evSectionTitle">🎬 Top clips</div>
+    <div className="evWheel2">
+      <div className="evWheel2Status">
+        <div className="evW2Stats">
+          <div className="evW2Stat"><span className="evW2Label">Coups de cœur aujourd'hui</span><span className="evW2Val">❤️ {votesLeft}</span></div>
+          <div className="evW2Stat"><span className="evW2Label">Clips en lice</span><span className="evW2Val">{resp.topClips.length}</span></div>
+        </div>
+      </div>
+
+      <div className="evTabs" role="tablist">
+        {([
+          ["clips", "🎬", "Clips"],
+          ["streamers", "🏅", "Streamers"],
+          ["recompenses", "🎁", "Récompenses"],
+        ] as const).map(([k, icon, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
+            <span className="evTabIcon">{icon}</span>
+            <span className="evTabLabel">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="evTabPanel">
+        {tab === "clips" ? (
+          <div className="evClipTab">
+            <div className="evLockedSub" style={{ textAlign: "center", marginBottom: 4 }}>
+              {!token
+                ? "Connecte-toi pour ton coup de cœur (1/jour) — il vaut aussi un like."
+                : votesLeft > 0
+                ? `Il te reste ${votesLeft} coup de cœur aujourd'hui — il vaut aussi un like.`
+                : "Tu as utilisé ton coup de cœur du jour — reviens demain !"}
+            </div>
             {resp.topClips.length === 0 ? (
-              <div className="evCard" style={{ textAlign: "center", fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                Pas encore de clip en lice — le premier clip posté cette semaine apparaîtra ici.
-              </div>
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "10px 0" }}>Pas encore de clip en lice — le premier clip posté cette semaine apparaîtra ici.</div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
-                {resp.topClips.map((c) => (
-                  <div className="evRow" key={c.clipId}>
-                    <div className="evRowRank">#{c.rank}</div>
-                    <div className="evRowName" title={c.title ?? undefined}>
-                      {c.title || "Clip sans titre"}
-                      <span style={{ opacity: 0.65 }}> · {c.streamerDisplayName}</span>
+              <div className="evClipGrid">
+                {resp.topClips.map((c) => {
+                  const voted = votedSet.has(c.clipId);
+                  return (
+                    <div className="evClipCard" key={c.clipId}>
+                      <div className="evClipMedia">
+                        {c.mp4Url ? <video src={c.mp4Url} controls preload="metadata" playsInline /> : <div className="evClipNoMedia">🎬</div>}
+                        <span className="evClipRank">#{c.rank}</span>
+                      </div>
+                      <div className="evClipTitle" title={c.title ?? undefined}>{c.title || "Clip sans titre"}</div>
+                      <div className="evClipMeta">{c.streamerDisplayName}{c.author ? ` · par ${c.author}` : ""}</div>
+                      <div className="evClipFoot">
+                        <span className="evClipVotes">{c.votes} ❤️</span>
+                        <button
+                          type="button"
+                          className={`evBtn evClipVoteBtn${voted ? " voted" : ""}`}
+                          onClick={() => (!token ? onLoginClick() : voted ? undefined : vote(c.clipId))}
+                          disabled={voted || (token != null && !canVote) || votingClipId !== null}
+                        >
+                          {votingClipId === c.clipId ? "…" : voted ? "❤️ Voté" : "❤️ Coup de cœur"}
+                        </button>
+                      </div>
                     </div>
-                    <div className="evRowPts">{c.votes} ❤️</div>
-                    {token ? (
-                      <button
-                        type="button"
-                        className="evBtnGhost"
-                        onClick={() => vote(c.clipId)}
-                        disabled={!canVote || votingClipId !== null}
-                        title={canVote ? "Coup de cœur" : "Plus de votes disponibles"}
-                        style={{ marginLeft: 6 }}
-                      >
-                        {votingClipId === c.clipId ? "…" : "❤️"}
-                      </button>
-                    ) : null}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+            {voteErr ? <div className="evErrLine">{voteErr}</div> : null}
           </div>
-
-          <div>
-            <div className="evSectionTitle">🏅 Top streamers</div>
+        ) : tab === "streamers" ? (
+          <div style={{ display: "grid", gap: 8 }}>
             {resp.topStreamers.length === 0 ? (
-              <div className="evCard" style={{ textAlign: "center", fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-                Pas encore de streamer classé — les votes sur ses clips le feront grimper ici.
-              </div>
+              <div className="evLockedSub" style={{ textAlign: "center" }}>Pas encore de streamer classé — les votes sur ses clips le feront grimper ici.</div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
-                {resp.topStreamers.map((s) => (
-                  <div className="evRow" key={s.streamerId}>
-                    <div className="evRowRank">#{s.rank}</div>
-                    <div className="evRowName">{s.displayName}</div>
-                    <div className="evRowPts">{s.votes} ❤️</div>
-                  </div>
-                ))}
-              </div>
+              resp.topStreamers.map((s) => (
+                <div className="evRow" key={s.streamerId}>
+                  <div className="evRowRank">#{s.rank}</div>
+                  <div className="evRowName">{s.displayName}</div>
+                  <div className="evRowPts">{s.votes} ❤️</div>
+                </div>
+              ))
             )}
           </div>
-        </div>
-      </Reveal>
-
-      <Reveal delay={0.08}>
-        <div>
-          <div className="evSectionTitle">🎁 Vitrine des lots</div>
+        ) : (
           <RewardsShowcase tiers={CLIP_RACE_REWARD_TIERS} />
-        </div>
-      </Reveal>
-
-      <Reveal delay={0.12}>
-        <div>
-          <div className="evSectionTitle">🎯 Ton statut</div>
-          {!token ? (
-            <LoginGate onLogin={onLoginClick} text="Connecte-toi pour voter pour tes clips préférés." />
-          ) : (
-            <>
-              <MyStatusCard
-                icon="❤️"
-                title="Coups de cœur restants"
-                meta={<>{votesLeft} vote{votesLeft > 1 ? "s" : ""} disponible{votesLeft > 1 ? "s" : ""} cette semaine</>}
-              />
-              {voteErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{voteErr}</div> : null}
-            </>
-          )}
-        </div>
-      </Reveal>
-    </>
+        )}
+      </div>
+    </div>
   );
 }
 
