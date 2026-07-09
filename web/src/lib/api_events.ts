@@ -289,6 +289,7 @@ export type ApiChestResp =
       communityTotal: number;
       reached: boolean;
       myContribution?: number;
+      myRank?: number;
       minContribution: number;
       paliers: ApiChestPalier[];
       myPaliers: ApiChestMyPaliers | null;
