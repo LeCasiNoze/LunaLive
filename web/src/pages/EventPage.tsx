@@ -1,6 +1,6 @@
 // web/src/pages/EventPage.tsx
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion";
 import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
@@ -1404,8 +1404,26 @@ function EventTeaser({ event }: { event: ApiEventRow }) {
   );
 }
 
+// Slugs d'URL /event/:type -> type d'event réel. Permet de consulter n'importe
+// quel event live directement (ex. /event/roue) sans qu'il soit l'event courant.
+const SLUG_TO_TYPE: Record<string, string> = {
+  roue: "wheel_week",
+  wheel: "wheel_week",
+  viewer: "viewer_week",
+  clips: "clip_race",
+  clip: "clip_race",
+  coffre: "global_chest",
+  chest: "global_chest",
+  boss: "burn_boss",
+  duo: "duo_week",
+};
+
 export default function EventPage() {
   const auth = useAuth();
+  const routeParams = useParams();
+  const rawSlug = String(routeParams.type || "").toLowerCase();
+  // null => event courant (rotation). "__unknown__" => slug inconnu (aucun event).
+  const forcedType = rawSlug ? (SLUG_TO_TYPE[rawSlug] ?? "__unknown__") : null;
   const token = auth?.token ?? null;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
@@ -1471,45 +1489,61 @@ export default function EventPage() {
         setLoading(false);
         return;
       }
-      const cur = await getCurrentEvent();
-      setEvent(cur?.event ?? null);
+      // Type imposé par l'URL /event/:type (consulter un event précis sans qu'il
+      // soit l'event "courant" de la rotation), sinon type de l'event courant.
+      // Chaque endpoint de type trouve l'event LIVE de son type indépendamment.
+      let type: string;
+      let baseEvent: ApiEventRow | null = null;
+      if (forcedType) {
+        type = forcedType;
+      } else {
+        const cur = await getCurrentEvent();
+        baseEvent = cur?.event ?? null;
+        type = String(baseEvent?.type || "");
+      }
+      let resolvedEvent: ApiEventRow | null = baseEvent;
 
-      const type = String(cur?.event?.type || "");
-      if (type === "viewer_week" && cur?.event) {
-        // top public toujours chargé ; "me" apparaît seulement si connecté (token optionnel)
+      if (type === "viewer_week") {
         const v = await getCurrentViewerWeek(token);
         setViewerWeek(v);
+        if (forcedType) resolvedEvent = v.event ?? null;
       } else {
         setViewerWeek(null);
       }
 
-      if (type === "wheel_week" && cur?.event) {
+      if (type === "wheel_week") {
         const w = await getCurrentWheel(token);
         setWheelWeek(w);
+        if (forcedType) resolvedEvent = w.event ?? null;
       } else {
         setWheelWeek(null);
       }
 
-      if (type === "global_chest" && cur?.event) {
+      if (type === "global_chest") {
         const c = await getCurrentChest(token);
         setChest(c);
+        if (forcedType) resolvedEvent = c.event ?? null;
       } else {
         setChest(null);
       }
 
-      if (type === "clip_race" && cur?.event) {
+      if (type === "clip_race") {
         const cr = await getCurrentClipRace(token);
         setClipRace(cr);
+        if (forcedType) resolvedEvent = cr.event ?? null;
       } else {
         setClipRace(null);
       }
 
-      if (type === "burn_boss" && cur?.event) {
+      if (type === "burn_boss") {
         const b = await getCurrentBoss(token);
         setBoss(b);
+        if (forcedType) resolvedEvent = b.event ?? null;
       } else {
         setBoss(null);
       }
+
+      setEvent(resolvedEvent);
 
       if (token) {
         try {
@@ -1532,7 +1566,7 @@ export default function EventPage() {
   React.useEffect(() => {
     load().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, forcedType]);
 
   const endMs = event?.end_at ? new Date(event.end_at).getTime() : 0;
   const startMs = event?.start_at ? new Date(event.start_at).getTime() : 0;
