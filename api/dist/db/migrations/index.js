@@ -130,6 +130,7 @@ import { mig124_event_access_flags } from "./mig124_event_access_flags.js";
 import { mig125_event_scores } from "./mig125_event_scores.js";
 import { mig126_event_chest } from "./mig126_event_chest.js";
 import { mig127_clip_race } from "./mig127_clip_race.js";
+import { mig128_event_boss } from "./mig128_event_boss.js";
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
 import { mig041_rumble_accounts } from "./mig041_rumble_accounts.js";
@@ -265,6 +266,7 @@ export async function migrateAll(pool) {
     await mig125_event_scores(pool);
     await mig126_event_chest(pool);
     await mig127_clip_race(pool);
+    await mig128_event_boss(pool);
     // Rumble migrations
     await mig040_rumble_info(pool);
     await mig041_rumble_accounts(pool);

@@ -68,6 +68,31 @@ export const EVENT_REWARD_CONFIGS = {
             rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
         },
     },
+    burn_boss: {
+        mode: "boss",
+        boss: {
+            // HP choisi pour rester ATTEIGNABLE par la petite commu actuelle (cf
+            // memory reference_rumble_*) : le barème events/burn_boss.ts (identique
+            // à global_chest, cap 60 pts/j watch + claims/calls/chat/spins) fait
+            // déjà 150-300 pts/semaine par contributeur régulier SANS rien
+            // dépenser ; une quinzaine de réguliers couvrent une bonne part de
+            // 4000, le burn rubis (ratio 1:1, sink pur) n'étant qu'un accélérateur
+            // optionnel pour finir plus vite. Même logique de calibrage que
+            // global_chest.collective.goal=3000 — à remonter une fois le volume
+            // réel mesuré sur un premier run.
+            hp: 4000,
+            ratio: 1, // 1 rubis brûlé = 1 dégât
+            minDamage: 50, // même seuil que global_chest.minContribution
+            baseRubis: 120,
+            entitlement: { kind: "title", codeTemplate: "boss_slayer_YYYYMM" },
+            topTiers: [
+                { rank: 3, rubis: 180 },
+                { rank: 2, rubis: 300 },
+                { rank: 1, rubis: 500 },
+            ],
+            rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+        },
+    },
 };
 async function rankViewerWeek(client, eventId) {
     const r = await client.query(`
@@ -140,6 +165,9 @@ export async function closeAndDistribute(eventId) {
         }
         if (config.mode === "clip_race") {
             return await distributeClipRace(client, eventId, event, config.clipRace);
+        }
+        if (config.mode === "boss") {
+            return await distributeBoss(client, eventId, event, config.boss);
         }
         const rankingProvider = RANKING_PROVIDERS[event.type];
         if (!rankingProvider) {
@@ -284,6 +312,110 @@ async function distributeCollective(client, eventId, event, cfg) {
     }
     await client.query("COMMIT");
     return { ok: true, alreadyDistributed: false, winners: 0, participants, rubisTotal };
+}
+/**
+ * Distribution "boss" (Boss à abattre, cf docs/events-design.md #5). Comme
+ * distributeCollective, un seul total (SUM event_scores.points, mix activité
+ * + burns rubis × ratio, cf events/burn_boss.ts) comparé à un seuil (hp). Si
+ * le boss n'est PAS tué : events.result {killed:false}, aucun grant (spec
+ * Lucas — pas de lot de consolation). Si tué, DEUX récompenses cumulables
+ * pour un même compte (pattern Map `grants`, comme distributeClipRace) :
+ *  - base : tout contributeur ≥ minDamage (tier='participation', badge inclus)
+ *  - bonus : top-N dégâts (tier='win', rang = rang dégâts, rubis croissants)
+ * Le badge "boss_slayer" n'est accordé qu'aux contributeurs ayant atteint
+ * minDamage — un top-N théorique en dessous du seuil garde son bonus rubis
+ * mais pas le badge. Appelée depuis closeAndDistribute, dans la même
+ * transaction (elle fait le COMMIT/ROLLBACK final).
+ */
+async function distributeBoss(client, eventId, event, cfg) {
+    const totalRes = await client.query(`SELECT COALESCE(SUM(points), 0)::int AS total FROM event_scores WHERE event_id=$1`, [eventId]);
+    const totalDamage = Number(totalRes.rows?.[0]?.total ?? 0);
+    const killed = totalDamage >= cfg.hp;
+    if (!killed) {
+        await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+            eventId,
+            JSON.stringify({ totalDamage, hp: cfg.hp, killed: false }),
+        ]);
+        await client.query("COMMIT");
+        return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
+    }
+    const rankedRes = await client.query(`
+    SELECT s.user_id, u.username, s.points,
+           ROW_NUMBER() OVER (ORDER BY s.points DESC, s.updated_at ASC) AS rank
+    FROM event_scores s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.event_id = $1
+      AND ${eventRewardEligibilitySql("s.user_id")}
+    ORDER BY s.points DESC, s.updated_at ASC
+    `, [eventId]);
+    const ranked = (rankedRes.rows || []).map((r) => ({
+        userId: Number(r.user_id),
+        username: String(r.username),
+        points: Number(r.points),
+        rank: Number(r.rank),
+    }));
+    const ymRes = await client.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'Europe/Paris', 'YYYYMM') AS ym`, [event.start_at]);
+    const ym = String(ymRes.rows?.[0]?.ym ?? "");
+    const topDamagers = ranked.slice(0, REWARD_TOP_SNAPSHOT_N).map((r) => ({
+        userId: r.userId,
+        username: r.username,
+        damage: r.points,
+        rank: r.rank,
+    }));
+    await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+        eventId,
+        JSON.stringify({ totalDamage, hp: cfg.hp, killed: true, topDamagers }),
+    ]);
+    const grants = new Map();
+    for (const row of ranked) {
+        if (row.points < cfg.minDamage)
+            continue;
+        grants.set(row.userId, { tier: "participation", rank: null, rubis: cfg.baseRubis, badge: true });
+    }
+    for (const tierCfg of cfg.topTiers) {
+        const row = ranked.find((r) => r.rank === tierCfg.rank);
+        if (!row)
+            continue;
+        const cur = grants.get(row.userId);
+        if (cur) {
+            cur.tier = "win";
+            cur.rank = tierCfg.rank;
+            cur.rubis += tierCfg.rubis;
+        }
+        else {
+            grants.set(row.userId, { tier: "win", rank: tierCfg.rank, rubis: tierCfg.rubis, badge: false });
+        }
+    }
+    let winners = 0;
+    let participants = 0;
+    let rubisTotal = 0;
+    for (const [userId, acc] of grants) {
+        await earnRubisTx(client, userId, cfg.rubisOrigin, acc.rubis, {
+            purpose: "event_reward",
+            eventId,
+            eventType: event.type,
+            tier: acc.tier,
+            rank: acc.rank,
+        });
+        const extras = {};
+        if (acc.badge) {
+            const code = cfg.entitlement.codeTemplate.replace("YYYYMM", ym);
+            await grantEntitlement(client, userId, cfg.entitlement.kind, code);
+            extras.entitlement = { kind: cfg.entitlement.kind, code };
+        }
+        await client.query(`
+      INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+      ON CONFLICT (event_id, user_id) DO NOTHING
+      `, [eventId, userId, acc.tier, acc.rank, acc.rubis, JSON.stringify(extras)]);
+        if (acc.tier === "win")
+            winners += 1;
+        else
+            participants += 1;
+        rubisTotal += acc.rubis;
+    }
+    await client.query("COMMIT");
+    return { ok: true, alreadyDistributed: false, winners, participants, rubisTotal };
 }
 /**
  * Distribution "sur mesure" (Course aux clips, cf docs/events-design.md #3).
