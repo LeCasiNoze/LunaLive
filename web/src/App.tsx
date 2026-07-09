@@ -351,6 +351,7 @@ function AppInner() {
             }
           />
           <Route path="/event" element={<EventPage />} />
+          <Route path="/event/:type" element={<EventPage />} />
           <Route path="/participer" element={<ParticipatePage />} />
           <Route path="/oauth/done" element={<LoadingFallback />} />
 
