@@ -120,7 +120,8 @@ eventsBossRouter.get("/events/current/boss", a(async (req, res) => {
         killed: totalDamage >= hp,
         myDamage,
         myRank,
-        topDamagers: (topRes.rows || []).map((r) => ({
+        topDamagers: (topRes.rows || []).map((r, idx) => ({
+            rank: idx + 1,
             userId: Number(r.user_id),
             username: String(r.username ?? ""),
             damage: Number(r.points ?? 0),
