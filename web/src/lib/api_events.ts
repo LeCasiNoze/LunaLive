@@ -102,7 +102,18 @@ export type ApiViewerWeekResp = {
   paliers: ApiViewerPalier[];
   myPaliers: { points: number; claimed: number[] } | null;
   myBoost: { active: boolean; bought: number; cost: number; capPerEvent: number; canBuy: boolean; durationHours: number } | null;
+  quests: { daily: ApiViewerQuest[]; weekly: ApiViewerQuest[] } | null;
 };
+
+export type ApiViewerQuest = { key: string; label: string; goal: number; progress: number; done: boolean; claimed: boolean; reward: string };
+
+export async function postViewerWeekQuestClaim(token: string, key: string) {
+  return j<{ ok: true; reward: string }>("/api/events/viewer-week/quest/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+}
 
 export async function postViewerWeekBoostBuy(token: string) {
   return j<{ ok: true; rubis: number; bought: number }>(

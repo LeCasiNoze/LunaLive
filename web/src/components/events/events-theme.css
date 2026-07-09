@@ -985,3 +985,17 @@
 }
 .evBoostActive { font-family:"DM Sans",sans-serif; font-weight:800; font-size:12.5px; color:#fbbf24; }
 .evBoostIdle { font-family:"DM Sans",sans-serif; font-weight:800; font-size:12.5px; opacity:.85; }
+
+/* ── Quêtes viewer ──────────────────────────────────────────────────── */
+.evVQGroups { display:grid; gap:14px; }
+.evVQGroup { display:grid; gap:8px; }
+.evVQGroupTitle { font-size:11px; font-weight:800; opacity:.6; text-transform:uppercase; letter-spacing:.08em; }
+.evVQRow { display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); }
+.evVQRow.done { border-color:rgba(251,191,36,.35); background:rgba(251,191,36,.08); }
+.evVQRow.claimed { border-color:rgba(52,211,153,.3); background:rgba(52,211,153,.07); }
+.evVQInfo { flex:1; min-width:0; display:grid; gap:5px; }
+.evVQLabel { font-family:"Syne",sans-serif; font-weight:800; font-size:13px; }
+.evVQBar { height:6px; border-radius:999px; background:rgba(0,0,0,.3); overflow:hidden; }
+.evVQBarFill { height:100%; border-radius:999px; background:linear-gradient(90deg,var(--ev-accG),#fbbf24); transition:width 500ms ease; }
+.evVQMeta { font-family:"DM Sans",sans-serif; font-size:11px; opacity:.7; font-weight:700; }
+.evVQBtn { flex-shrink:0; min-width:92px; }

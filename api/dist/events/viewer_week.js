@@ -112,6 +112,124 @@ export async function buyViewerBoost(eventId, userId) {
         client.release();
     }
 }
+export const VIEWER_QUESTS = {
+    daily: [
+        { key: "watch_30", label: "Regarder 30 min de live", goal: 30, rubis: 20, wheelTickets: 0 },
+        { key: "chat_10", label: "Envoyer 10 messages", goal: 10, rubis: 15, wheelTickets: 0 },
+        { key: "call_1", label: "Faire 1 call", goal: 1, rubis: 15, wheelTickets: 0 },
+    ],
+    weekly: [
+        { key: "active_3d", label: "3 jours actifs", goal: 3, rubis: 0, wheelTickets: 1 },
+        { key: "watch_2h", label: "2h de watch cumulées", goal: 120, rubis: 30, wheelTickets: 1 },
+    ],
+};
+function viewerQuestRewardLabel(q) {
+    const parts = [];
+    if (q.rubis > 0)
+        parts.push(`${q.rubis} rubis`);
+    if (q.wheelTickets > 0)
+        parts.push(`${q.wheelTickets} ticket${q.wheelTickets > 1 ? "s" : ""} de roue`);
+    return parts.join(" + ") || "—";
+}
+function viewerQuestKey(period, key, today) {
+    return period === "daily" ? `vq:${key}:${today}` : `vq:${key}`;
+}
+async function todayParis(db) {
+    const r = await db.query(`SELECT (NOW() AT TIME ZONE '${TZ}')::date::text AS d`);
+    return String(r.rows?.[0]?.d || "");
+}
+async function viewerQuestProgress(db, key, userId, today, start, end) {
+    const one = async (sql, params) => Number((await db.query(sql, params)).rows?.[0]?.n ?? 0);
+    switch (key) {
+        case "watch_30":
+            return one(`SELECT COUNT(DISTINCT bucket_ts)::int n FROM stream_viewer_minutes WHERE user_id=$1 AND (bucket_ts AT TIME ZONE '${TZ}')::date = $2::date`, [userId, today]);
+        case "chat_10":
+            return one(`SELECT COUNT(*)::int n FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL AND (created_at AT TIME ZONE '${TZ}')::date = $2::date`, [userId, today]);
+        case "call_1":
+            return one(`SELECT COUNT(*)::int n FROM calls_actions WHERE user_id=$1 AND (created_at AT TIME ZONE '${TZ}')::date = $2::date`, [userId, today]);
+        case "active_3d":
+            return one(`SELECT COUNT(DISTINCT (bucket_ts AT TIME ZONE '${TZ}')::date)::int n FROM stream_viewer_minutes WHERE user_id=$1 AND bucket_ts>=$2::timestamptz AND bucket_ts<$3::timestamptz`, [userId, start, end]);
+        case "watch_2h":
+            return one(`SELECT COUNT(DISTINCT bucket_ts)::int n FROM stream_viewer_minutes WHERE user_id=$1 AND bucket_ts>=$2::timestamptz AND bucket_ts<$3::timestamptz`, [userId, start, end]);
+        default:
+            return 0;
+    }
+}
+export async function getViewerQuestsState(db, eventId, userId) {
+    const evr = await db.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+    const e = evr.rows?.[0] ?? {};
+    const today = await todayParis(db);
+    const build = async (period, list) => {
+        const out = [];
+        for (const q of list) {
+            const progress = await viewerQuestProgress(db, q.key, userId, today, e.start_at, e.end_at);
+            const cl = await db.query(`SELECT 1 FROM event_quest_claims WHERE event_id=$1 AND user_id=$2 AND quest_key=$3`, [eventId, userId, viewerQuestKey(period, q.key, today)]);
+            out.push({ key: q.key, label: q.label, goal: q.goal, progress: Math.min(progress, q.goal), done: progress >= q.goal, claimed: (cl.rowCount ?? 0) > 0, reward: viewerQuestRewardLabel(q) });
+        }
+        return out;
+    };
+    return { daily: await build("daily", VIEWER_QUESTS.daily), weekly: await build("weekly", VIEWER_QUESTS.weekly) };
+}
+export async function claimViewerQuest(eventId, userId, key) {
+    let period = null;
+    let quest = null;
+    for (const q of VIEWER_QUESTS.daily)
+        if (q.key === key) {
+            period = "daily";
+            quest = q;
+        }
+    for (const q of VIEWER_QUESTS.weekly)
+        if (q.key === key) {
+            period = "weekly";
+            quest = q;
+        }
+    if (!quest || !period)
+        return { ok: false, error: "unknown_quest" };
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const evr = await client.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+        const e = evr.rows?.[0];
+        if (!e) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "no_event" };
+        }
+        const today = await todayParis(client);
+        const skey = viewerQuestKey(period, key, today);
+        const already = await client.query(`SELECT 1 FROM event_quest_claims WHERE event_id=$1 AND user_id=$2 AND quest_key=$3`, [eventId, userId, skey]);
+        if ((already.rowCount ?? 0) > 0) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "already_claimed" };
+        }
+        const progress = await viewerQuestProgress(client, key, userId, today, e.start_at, e.end_at);
+        if (progress < quest.goal) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "not_done" };
+        }
+        const ins = await client.query(`INSERT INTO event_quest_claims (event_id,user_id,quest_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING 1`, [eventId, userId, skey]);
+        if ((ins.rowCount ?? 0) === 0) {
+            await client.query("ROLLBACK");
+            return { ok: false, error: "already_claimed" };
+        }
+        if (quest.rubis > 0)
+            await earnRubisTx(client, userId, "event_platform", quest.rubis, { purpose: "event_quest", eventId, eventType: "viewer_week", quest: key });
+        if (quest.wheelTickets > 0) {
+            await client.query(`INSERT INTO user_event_tickets (user_id, amount) VALUES ($1, LEAST($2,50)) ON CONFLICT (user_id) DO UPDATE SET amount = LEAST(user_event_tickets.amount + $2, 50)`, [userId, quest.wheelTickets]);
+        }
+        await client.query("COMMIT");
+        return { ok: true, reward: viewerQuestRewardLabel(quest) };
+    }
+    catch (e) {
+        try {
+            await client.query("ROLLBACK");
+        }
+        catch { }
+        throw e;
+    }
+    finally {
+        client.release();
+    }
+}
 // Barème + caps (facile à modifier). Les CAP_PER_DAY sont TOUJOURS des caps
 // sur le NOMBRE d'unités qualifiées comptées par jour (Europe/Paris), pas un
 // cap direct sur les points (même logique que roue/prédictions ci-dessous).
