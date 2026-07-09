@@ -48,20 +48,35 @@ export type RankedStreamer = {
  * distributeClipRace dans rewards.ts.
  */
 export async function getRankedClips(db: Db, eventId: number, limit = 10): Promise<RankedClip[]> {
+  // TOUS les clips ÉLIGIBLES (créés dans la fenêtre, publics), avec leur compte
+  // de votes (0 si aucun) — pas seulement event_clip_scores (qui n'a que les
+  // clips déjà votés), sinon un clip à 0 vote n'apparaîtrait jamais et personne
+  // ne pourrait voter dessus.
+  const ev = await db.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+  const e = ev.rows?.[0];
+  if (!e) return [];
+  const startMs = new Date(e.start_at).getTime();
+  const endMs = new Date(e.end_at).getTime();
+
   const r = await db.query(
     `
     SELECT
-      ecs.clip_id, ecs.streamer_id, ecs.votes,
-      bc.title, bc.author, bc.mp4_key,
-      s.slug AS streamer_slug, s.display_name AS streamer_display_name
-    FROM event_clip_scores ecs
-    JOIN bot_clips bc ON bc.id = ecs.clip_id
-    JOIN streamers s ON s.id = ecs.streamer_id
-    WHERE ecs.event_id = $1
-    ORDER BY ecs.votes DESC, ecs.updated_at ASC, ecs.clip_id ASC
-    LIMIT $2
+      bc.id AS clip_id, bc.streamer_id, bc.title, bc.author, bc.mp4_key, bc.created_ts,
+      s.slug AS streamer_slug, s.display_name AS streamer_display_name,
+      COALESCE(vc.votes, 0) AS votes
+    FROM bot_clips bc
+    JOIN streamers s ON s.id = bc.streamer_id
+    LEFT JOIN (
+      SELECT clip_id, COUNT(*)::int AS votes
+      FROM event_clip_votes WHERE event_id = $1 GROUP BY clip_id
+    ) vc ON vc.clip_id = bc.id
+    WHERE bc.deleted_ts IS NULL
+      AND bc.hidden_by_streamer = false
+      AND bc.created_ts >= $2::bigint AND bc.created_ts < $3::bigint
+    ORDER BY votes DESC, bc.created_ts DESC, bc.id ASC
+    LIMIT $4
     `,
-    [eventId, limit]
+    [eventId, startMs, endMs, limit]
   );
 
   return (r.rows || []).map((row: any, idx: number) => ({
