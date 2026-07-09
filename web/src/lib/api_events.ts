@@ -89,6 +89,8 @@ export type ApiViewerStreamer = {
   viewers: number;
 };
 
+export type ApiViewerPalier = { index: number; threshold: number; label: string };
+
 export type ApiViewerWeekResp = {
   ok: true;
   event: ApiEventRow;
@@ -97,7 +99,16 @@ export type ApiViewerWeekResp = {
   me: ApiViewerWeekMe;
   topStreamers: ApiViewerStreamer[];
   myStreamer: { streamerId: number; slug: string; displayName: string } | null;
+  paliers: ApiViewerPalier[];
+  myPaliers: { points: number; claimed: number[] } | null;
 };
+
+export async function postViewerWeekPalierClaim(token: string) {
+  return j<{ ok: true; claimed: { index: number; label: string }[]; count: number }>(
+    "/api/events/viewer-week/palier/claim",
+    { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+  );
+}
 
 export type EventAccessStepKey = "follow_streamer" | "link_discord" | "follow_insta" | "daily_claim" | "watch_30";
 

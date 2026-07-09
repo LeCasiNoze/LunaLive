@@ -1,8 +1,68 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../db.js";
+import { earnRubisTx } from "../wallet_engine.js";
 
 type Db = Pool | PoolClient;
 const TZ = "Europe/Paris";
+
+// Paliers de points viewer (récupérés manuellement, en direct). Récompenses
+// SIMPLES : rubis + tickets de roue, PAS de cosmétique (réservés aux tops
+// d'event). Dernier palier volontairement EXIGEANT (hyper-actif sur la semaine).
+// À affiner aux tests. Réutilise la table générique event_palier_claims.
+export const VIEWER_WEEK_PALIERS: Array<{ index: number; threshold: number; rubis: number; wheelTickets: number; label: string }> = [
+  { index: 0, threshold: 800, rubis: 50, wheelTickets: 0, label: "50 rubis" },
+  { index: 1, threshold: 2000, rubis: 80, wheelTickets: 1, label: "80 rubis + 1 ticket de roue" },
+  { index: 2, threshold: 4000, rubis: 150, wheelTickets: 1, label: "150 rubis + 1 ticket de roue" },
+  { index: 3, threshold: 8000, rubis: 250, wheelTickets: 2, label: "250 rubis + 2 tickets de roue" },
+];
+
+export async function getViewerPaliersState(db: Db, eventId: number, userId: number) {
+  const pts = await db.query(`SELECT COALESCE(points,0) AS points FROM event_scores_viewer_week WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+  const points = Number(pts.rows?.[0]?.points ?? 0);
+  const claimsRes = await db.query(`SELECT palier_index FROM event_palier_claims WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+  const claimed = (claimsRes.rows || []).map((r: any) => Number(r.palier_index));
+  return { points, claimed };
+}
+
+// Récupère tous les paliers atteints non encore réclamés (points >= seuil).
+export async function claimViewerPaliers(eventId: number, userId: number): Promise<Array<{ index: number; label: string }>> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const ptsRes = await client.query(`SELECT COALESCE(points,0) AS points FROM event_scores_viewer_week WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+    const points = Number(ptsRes.rows?.[0]?.points ?? 0);
+    const already = await client.query(`SELECT palier_index FROM event_palier_claims WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+    const claimed = new Set((already.rows || []).map((r: any) => Number(r.palier_index)));
+
+    const newly: Array<{ index: number; label: string }> = [];
+    for (const p of VIEWER_WEEK_PALIERS) {
+      if (points < p.threshold || claimed.has(p.index)) continue;
+      const ins = await client.query(
+        `INSERT INTO event_palier_claims (event_id, user_id, palier_index) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING 1`,
+        [eventId, userId, p.index]
+      );
+      if ((ins.rowCount ?? 0) === 0) continue; // course concurrente
+      if (p.rubis > 0) {
+        await earnRubisTx(client, userId, "event_platform", p.rubis, { purpose: "event_palier", eventId, eventType: "viewer_week", palier: p.index });
+      }
+      if (p.wheelTickets > 0) {
+        await client.query(
+          `INSERT INTO user_event_tickets (user_id, amount) VALUES ($1, LEAST($2,50))
+           ON CONFLICT (user_id) DO UPDATE SET amount = LEAST(user_event_tickets.amount + $2, 50)`,
+          [userId, p.wheelTickets]
+        );
+      }
+      newly.push({ index: p.index, label: p.label });
+    }
+    await client.query("COMMIT");
+    return newly;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
 
 // Barème + caps (facile à modifier). Les CAP_PER_DAY sont TOUJOURS des caps
 // sur le NOMBRE d'unités qualifiées comptées par jour (Europe/Paris), pas un
