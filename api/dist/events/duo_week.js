@@ -5,19 +5,6 @@ const TZ = "Europe/Paris";
 // l'historique d'audience RÉCENT, pas sur la semaine qui vient de démarrer
 // où il n'y a encore aucune donnée. Cf docs/events-design.md #6.
 const SHARED_AUDIENCE_WINDOW_DAYS = 30;
-// Barème d'activité SIMPLE pour la commu d'un duo (cf docs/events-design.md
-// #6 — "actions combinées des deux commus"). Même famille que
-// GLOBAL_CHEST_SCORING / BURN_BOSS_SCORING (watch cap/jour + claim + call +
-// chat), sans spin : un duo n'a pas de mécanique de roue dédiée. Dupliqué
-// plutôt que réutilisé, comme les autres events collectifs (cf burn_boss.ts
-// : "chaque event garde son barème indépendant").
-export const DUO_WEEK_SCORING = {
-    MINUTE: 1,
-    MINUTE_CAP_PER_DAY: 60,
-    CLAIM: 10,
-    CALL: 5,
-    CHAT: 2,
-};
 /**
  * Pour chaque paire de streamers ayant eu de l'audience sur les
  * SHARED_AUDIENCE_WINDOW_DAYS derniers jours, compte les viewers COMMUNS
@@ -89,15 +76,174 @@ export async function proposeDuos(eventId) {
     }
     return { ok: true, duos: duos.length, unmatched: unmatched.length };
 }
+export const DUO_PALIERS = [
+    {
+        index: 0,
+        name: "Rencontre",
+        quests: [
+            { key: "p1_live", label: "Les 2 streamers live ≥ 1 jour chacun", cat: "streamer", impartial: true, goal: 1, metric: "each_days", unit: "j" },
+            { key: "p1_watch", label: "300 min de watch cumulées", cat: "commu", impartial: false, goal: 300, metric: "watch", unit: "min" },
+        ],
+    },
+    {
+        index: 1,
+        name: "Régularité",
+        quests: [
+            { key: "p2_days", label: "Chaque streamer ≥ 2 jours de live", cat: "streamer", impartial: true, goal: 2, metric: "each_days", unit: "j" },
+            { key: "p2_chest", label: "100 rubis déposés dans les coffres", cat: "commu", impartial: false, goal: 100, metric: "chest_dep", unit: "rubis" },
+        ],
+    },
+    {
+        index: 2,
+        name: "Alliance",
+        quests: [
+            { key: "p3_host", label: "Host mutuel entre les 2 streamers", cat: "collab", impartial: true, goal: 1, metric: "host_mutual", unit: "" },
+            { key: "p3_hours", label: "6 h de stream cumulées", cat: "streamer", impartial: false, goal: 6, metric: "combined_hours", unit: "h" },
+            { key: "p3_watch", label: "1 500 min de watch cumulées", cat: "commu", impartial: false, goal: 1500, metric: "watch", unit: "min" },
+        ],
+    },
+    {
+        index: 3,
+        name: "Symbiose",
+        quests: [
+            { key: "p4_days3", label: "Chaque streamer ≥ 3 jours dont un à 2h+", cat: "streamer", impartial: true, goal: 3, metric: "each_days_2h", unit: "j" },
+            { key: "p4_open", label: "Chaque streamer ouvre un coffre", cat: "streamer", impartial: false, goal: 2, metric: "each_open", unit: "" },
+            { key: "p4_sub", label: "Le duo reçoit ≥ 1 sub", cat: "commu", impartial: false, goal: 1, metric: "subs", unit: "sub" },
+        ],
+    },
+    {
+        index: 4,
+        name: "Duo légendaire",
+        quests: [
+            { key: "p5_days5", label: "Chaque streamer 5 jours (ou 15h cumulées)", cat: "streamer", impartial: true, goal: 5, metric: "each_days5_or_15h", unit: "j" },
+            { key: "p5_watch", label: "5 000 min de watch cumulées", cat: "commu", impartial: false, goal: 5000, metric: "watch", unit: "min" },
+            { key: "p5_chest", label: "500 rubis déposés dans les coffres", cat: "commu", impartial: false, goal: 500, metric: "chest_dep", unit: "rubis" },
+        ],
+    },
+];
+/**
+ * Mesure brute des 2 streamers d'un duo sur [start, end). `bId` peut être
+ * null (duo sans partenaire, ex. après un refus non ré-apparié) : b est
+ * alors traité comme totalement absent (0 partout, hostMutual=false) — un
+ * `ARRAY[$1,$2]` avec $2=NULL ne matche simplement jamais aucune ligne pour
+ * b, pas besoin de brancher le SQL différemment.
+ */
+export async function computeDuoMetrics(db, aId, bId, start, end) {
+    const [streamRes, watchRes, chestRes, opensRes, hostRes, subsRes] = await Promise.all([
+        db.query(`
+      WITH per_day AS (
+        SELECT streamer_id, (started_at AT TIME ZONE '${TZ}')::date AS d,
+               SUM(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))) AS secs
+        FROM live_sessions
+        WHERE streamer_id = ANY(ARRAY[$1,$2]::int[])
+          AND started_at >= $3::timestamptz AND started_at < $4::timestamptz
+        GROUP BY streamer_id, d
+      )
+      SELECT streamer_id, COUNT(*)::int AS days, COALESCE(SUM(secs),0)/3600.0 AS hours, BOOL_OR(secs >= 7200) AS has2h
+      FROM per_day
+      GROUP BY streamer_id
+      `, [aId, bId, start, end]),
+        db.query(`SELECT COUNT(*)::int AS watch FROM stream_viewer_minutes
+       WHERE streamer_id = ANY(ARRAY[$1,$2]::int[]) AND bucket_ts >= $3::timestamptz AND bucket_ts < $4::timestamptz`, [aId, bId, start, end]),
+        db.query(`SELECT COALESCE(SUM(amount),0)::int AS dep FROM wallet_tx
+       WHERE spend_type='chest_deposit' AND streamer_id = ANY(ARRAY[$1,$2]::int[])
+         AND created_at >= $3::timestamptz AND created_at < $4::timestamptz`, [aId, bId, start, end]),
+        db.query(`SELECT streamer_id, COUNT(*)::int AS n FROM streamer_chest_openings
+       WHERE streamer_id = ANY(ARRAY[$1,$2]::int[]) AND created_at >= $3::timestamptz AND created_at < $4::timestamptz
+       GROUP BY streamer_id`, [aId, bId, start, end]),
+        bId
+            ? db.query(`SELECT
+             EXISTS(SELECT 1 FROM streamer_hosts WHERE hoster_streamer_id=$1 AND target_streamer_id=$2) AS a_hosts_b,
+             EXISTS(SELECT 1 FROM streamer_hosts WHERE hoster_streamer_id=$2 AND target_streamer_id=$1) AS b_hosts_a`, [aId, bId])
+            : Promise.resolve({ rows: [{ a_hosts_b: false, b_hosts_a: false }] }),
+        db.query(`SELECT COUNT(*)::int AS subs FROM sub_gift_claims
+       WHERE streamer_id = ANY(ARRAY[$1,$2]::int[]) AND claimed_at >= $3::timestamptz AND claimed_at < $4::timestamptz`, [aId, bId, start, end]),
+    ]);
+    const streamByStreamer = new Map();
+    for (const row of streamRes.rows || []) {
+        streamByStreamer.set(Number(row.streamer_id), {
+            days: Number(row.days || 0),
+            hours: Number(row.hours || 0),
+            has2h: Boolean(row.has2h),
+        });
+    }
+    const opensByStreamer = new Map();
+    for (const row of opensRes.rows || []) {
+        opensByStreamer.set(Number(row.streamer_id), Number(row.n || 0));
+    }
+    const a = streamByStreamer.get(aId) ?? { days: 0, hours: 0, has2h: false };
+    const b = bId != null ? streamByStreamer.get(bId) ?? { days: 0, hours: 0, has2h: false } : { days: 0, hours: 0, has2h: false };
+    const hostRow = hostRes.rows?.[0] ?? { a_hosts_b: false, b_hosts_a: false };
+    return {
+        daysA: a.days,
+        daysB: b.days,
+        hoursA: a.hours,
+        hoursB: b.hours,
+        has2hA: a.has2h,
+        has2hB: b.has2h,
+        combinedHours: a.hours + b.hours,
+        watch: Number(watchRes.rows?.[0]?.watch || 0),
+        chestDep: Number(chestRes.rows?.[0]?.dep || 0),
+        openA: opensByStreamer.get(aId) ?? 0,
+        openB: bId != null ? opensByStreamer.get(bId) ?? 0 : 0,
+        hostMutual: Boolean(hostRow.a_hosts_b) && Boolean(hostRow.b_hosts_a),
+        subs: Number(subsRes.rows?.[0]?.subs || 0),
+    };
+}
+function evaluateQuest(q, m) {
+    switch (q.metric) {
+        case "each_days":
+            return { current: Math.min(m.daysA, m.daysB), done: m.daysA >= q.goal && m.daysB >= q.goal };
+        case "each_days_2h":
+            return {
+                current: Math.min(m.daysA, m.daysB),
+                done: m.daysA >= q.goal && m.daysB >= q.goal && m.has2hA && m.has2hB,
+            };
+        case "each_days5_or_15h":
+            return {
+                current: Math.min(m.daysA, m.daysB),
+                done: (m.daysA >= 5 && m.daysB >= 5) || m.combinedHours >= 15,
+            };
+        case "each_open":
+            return { current: (m.openA > 0 ? 1 : 0) + (m.openB > 0 ? 1 : 0), done: m.openA > 0 && m.openB > 0 };
+        case "combined_hours":
+            return { current: Math.round(m.combinedHours * 10) / 10, done: m.combinedHours >= q.goal };
+        case "watch":
+            return { current: m.watch, done: m.watch >= q.goal };
+        case "chest_dep":
+            return { current: m.chestDep, done: m.chestDep >= q.goal };
+        case "host_mutual":
+            return { current: m.hostMutual ? 1 : 0, done: m.hostMutual };
+        case "subs":
+            return { current: m.subs, done: m.subs >= q.goal };
+        default: {
+            const _exhaustive = q.metric;
+            throw new Error(`metric duo inconnue: ${_exhaustive}`);
+        }
+    }
+}
+/**
+ * Règle d'équité (cf docs/events-design.md #6) : un palier est complété SSI
+ * sa quête impartiale (indépendante de la taille de commu) est faite ET AU
+ * MOINS UNE autre quête du palier l'est aussi — un petit duo peut donc
+ * toujours progresser sur la quête impartiale sans jamais dépendre
+ * uniquement de l'activité de sa commu.
+ */
+export function evaluatePaliers(m) {
+    return DUO_PALIERS.map((p) => {
+        const quests = p.quests.map((q) => ({ ...q, ...evaluateQuest(q, m) }));
+        const impartialDone = quests.find((q) => q.impartial)?.done ?? false;
+        const otherDone = quests.some((q) => !q.impartial && q.done);
+        return { index: p.index, name: p.name, done: impartialDone && otherDone, quests };
+    });
+}
 /**
  * Recompute (pattern global_chest.ts / burn_boss.ts) : pour chaque duo de
- * l'event, points = activité combinée des deux COMMUS. "Commu d'un
- * streamer" = viewers dont le streamer le PLUS REGARDÉ (le plus de minutes
- * distinctes) sur la fenêtre de l'event est ce streamer — CTE home_streamer
- * (DISTINCT ON). Un viewer qui ne regarde ni A ni B en priorité ne compte
- * pour aucun des deux, même s'il les a un peu croisés : anti-dilution, évite
- * qu'un gros viewer d'un streamer tiers gonfle artificiellement un duo qu'il
- * ne suit pas vraiment.
+ * l'event, évalue les quêtes/paliers (cf DUO_PALIERS/evaluatePaliers) et
+ * stocke `points` = nombre de paliers complétés (ce qui définit le
+ * classement/champion, cf getRankedDuos + distributeDuo dans rewards.ts) et
+ * `detail` = la progression complète, réutilisée telle quelle par la route
+ * publique pour l'affichage front.
  */
 export async function recomputeDuoWeek(eventId) {
     const ev = await pool.query(`
@@ -117,110 +263,24 @@ export async function recomputeDuoWeek(eventId) {
     if (String(e.state) !== "live")
         return { ok: true, skipped: "not_live" };
     await pool.query(`DELETE FROM event_duo_scores WHERE event_id=$1`, [eventId]);
-    await pool.query(`
-    WITH minutes_per_user_streamer AS (
-      SELECT svm.user_id, svm.streamer_id, COUNT(DISTINCT svm.bucket_ts)::int AS minutes
-      FROM stream_viewer_minutes svm
-      WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
-        AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
-      GROUP BY svm.user_id, svm.streamer_id
-    ),
-    home_streamer AS (
-      SELECT DISTINCT ON (user_id) user_id, streamer_id
-      FROM minutes_per_user_streamer
-      ORDER BY user_id, minutes DESC, streamer_id ASC
-    ),
-    duo_members AS (
-      SELECT ed.id AS duo_id, hs.user_id,
-             CASE WHEN hs.streamer_id = ed.streamer_a_id THEN 'a' ELSE 'b' END AS side
-      FROM event_duos ed
-      JOIN home_streamer hs
-        ON hs.streamer_id = ed.streamer_a_id OR hs.streamer_id = ed.streamer_b_id
-      WHERE ed.event_id = $1
-    ),
-    activity AS (
-      SELECT user_id, SUM(pts)::int AS pts
-      FROM (
-        SELECT user_id, SUM(LEAST(cnt, $4::int) * $5::int)::int AS pts
-        FROM (
-          SELECT svm.user_id,
-                 (svm.bucket_ts AT TIME ZONE '${TZ}')::date AS day,
-                 COUNT(DISTINCT svm.bucket_ts)::int AS cnt
-          FROM stream_viewer_minutes svm
-          WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
-            AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
-          GROUP BY svm.user_id, day
-        ) per_day
-        GROUP BY user_id
-
-        UNION ALL
-
-        SELECT dbc.user_id, (COUNT(*) * $6::int)::int AS pts
-        FROM daily_bonus_claims dbc
-        WHERE dbc.user_id > 0
-          AND dbc.created_at >= $2::timestamptz AND dbc.created_at < $3::timestamptz
-        GROUP BY dbc.user_id
-
-        UNION ALL
-
-        SELECT ca.user_id, (COUNT(*) * $7::int)::int AS pts
-        FROM calls_actions ca
-        WHERE ca.user_id > 0
-          AND ca.created_at >= $2::timestamptz AND ca.created_at < $3::timestamptz
-        GROUP BY ca.user_id
-
-        UNION ALL
-
-        SELECT cm.user_id, (COUNT(*) * $8::int)::int AS pts
-        FROM chat_messages cm
-        WHERE cm.deleted_at IS NULL AND cm.user_id > 0
-          AND cm.created_at >= $2::timestamptz AND cm.created_at < $3::timestamptz
-        GROUP BY cm.user_id
-      ) src
-      GROUP BY user_id
-    ),
-    per_duo_side AS (
-      SELECT dm.duo_id, dm.side,
-             COALESCE(SUM(a.pts), 0)::int AS pts,
-             COUNT(*)::int AS members
-      FROM duo_members dm
-      LEFT JOIN activity a ON a.user_id = dm.user_id
-      GROUP BY dm.duo_id, dm.side
-    ),
-    per_duo AS (
-      SELECT duo_id,
-             COALESCE(SUM(pts) FILTER (WHERE side='a'), 0)::int AS a_pts,
-             COALESCE(SUM(pts) FILTER (WHERE side='b'), 0)::int AS b_pts,
-             COALESCE(SUM(members) FILTER (WHERE side='a'), 0)::int AS a_members,
-             COALESCE(SUM(members) FILTER (WHERE side='b'), 0)::int AS b_members
-      FROM per_duo_side
-      GROUP BY duo_id
-    )
-    INSERT INTO event_duo_scores (event_id, duo_id, points, detail, updated_at)
-    SELECT $1::bigint, pd.duo_id, (pd.a_pts + pd.b_pts)::int,
-           jsonb_build_object(
-             'streamerAPts', pd.a_pts,
-             'streamerBPts', pd.b_pts,
-             'members', jsonb_build_object('streamerA', pd.a_members, 'streamerB', pd.b_members)
-           ),
-           NOW()
-    FROM per_duo pd
-    `, [
-        eventId,
-        e.start_at,
-        e.end_at,
-        DUO_WEEK_SCORING.MINUTE_CAP_PER_DAY,
-        DUO_WEEK_SCORING.MINUTE,
-        DUO_WEEK_SCORING.CLAIM,
-        DUO_WEEK_SCORING.CALL,
-        DUO_WEEK_SCORING.CHAT,
-    ]);
+    const duosRes = await pool.query(`SELECT id, streamer_a_id, streamer_b_id FROM event_duos WHERE event_id=$1`, [eventId]);
+    for (const row of duosRes.rows || []) {
+        const duoId = Number(row.id);
+        const aId = Number(row.streamer_a_id);
+        const bId = row.streamer_b_id != null ? Number(row.streamer_b_id) : null;
+        const metrics = await computeDuoMetrics(pool, aId, bId, e.start_at, e.end_at);
+        const paliers = evaluatePaliers(metrics);
+        const paliersDone = paliers.filter((p) => p.done).length;
+        await pool.query(`INSERT INTO event_duo_scores (event_id, duo_id, points, detail, updated_at)
+       VALUES ($1,$2,$3,$4::jsonb,NOW())`, [eventId, duoId, paliersDone, JSON.stringify({ paliers })]);
+    }
     return { ok: true };
 }
 /**
- * Classement des duos (points desc). `db` accepte pool OU client de
- * transaction — utilisé à la fois par la route publique et par distributeDuo
- * dans rewards.ts (même pattern que clip_race.ts getRankedClips).
+ * Classement des duos (paliers complétés desc = eds.points, cf
+ * recomputeDuoWeek). `db` accepte pool OU client de transaction — utilisé à
+ * la fois par la route publique et par distributeDuo dans rewards.ts (même
+ * pattern que clip_race.ts getRankedClips).
  */
 export async function getRankedDuos(db, eventId, limit = 20) {
     const r = await db.query(`
@@ -228,7 +288,7 @@ export async function getRankedDuos(db, eventId, limit = 20) {
       ed.id AS duo_id, ed.status, ed.shared_viewers, ed.refreshed_count,
       sa.id AS a_id, sa.slug AS a_slug, sa.display_name AS a_name, sa.user_id AS a_user_id,
       sb.id AS b_id, sb.slug AS b_slug, sb.display_name AS b_name, sb.user_id AS b_user_id,
-      COALESCE(eds.points, 0)::int AS points
+      COALESCE(eds.points, 0)::int AS points, eds.detail AS detail
     FROM event_duos ed
     JOIN streamers sa ON sa.id = ed.streamer_a_id
     LEFT JOIN streamers sb ON sb.id = ed.streamer_b_id
@@ -252,6 +312,8 @@ export async function getRankedDuos(db, eventId, limit = 20) {
         sharedViewers: Number(row.shared_viewers || 0),
         refreshedCount: Number(row.refreshed_count || 0),
         points: Number(row.points || 0),
+        paliersDone: Number(row.points || 0),
+        paliers: (row.detail?.paliers ?? []),
     }));
 }
 export async function acceptDuoForStreamer(eventId, streamerId) {

@@ -34,6 +34,7 @@ import {
   type ApiBossResp,
   type ApiChestResp,
   type ApiClipRaceResp,
+  type ApiDuoPalier,
   type ApiDuoResp,
   type ApiEventAccessStatus,
   type ApiEventRow,
@@ -1586,6 +1587,55 @@ function BossPanel({
   );
 }
 
+// Normalise un ApiDuoPalier : quand la source est resp.palierDefs (config
+// brute, pas d'évaluation), current/done sont absents côté API — fallback
+// "non atteint" pour que le rendu reste cohérent (cf api_events.ts, note sur
+// ApiDuoResp.palierDefs).
+function normalizeDuoPalier(p: ApiDuoPalier): ApiDuoPalier {
+  return {
+    index: p.index,
+    name: p.name,
+    done: p.done ?? false,
+    quests: (p.quests || []).map((q) => ({ ...q, current: q.current ?? 0, done: q.done ?? false })),
+  };
+}
+
+// Détail des paliers/quêtes d'un seul duo (celui mis en avant) — réutilise
+// evPalierBlock/evPalierList/evPalierRow/evPalierTrack/evPalierFill (mêmes
+// classes que la barre de paliers wheel_week/viewer_week), avec une mini
+// barre de progression par quête plutôt qu'une seule barre commune.
+function DuoPaliersDetail({ paliers }: { paliers: ApiDuoPalier[] }) {
+  return (
+    <div className="evDuoPalierDetail">
+      {paliers.map((p) => (
+        <div className="evPalierBlock" key={p.index}>
+          <div className="evPalierHead">
+            <span className="evPalierHeadTitle">Palier {p.index + 1} · {p.name}</span>
+            <span className="evPalierHeadPts">{p.done ? "✓ complété" : "en cours"}</span>
+          </div>
+          <div className="evPalierList">
+            {p.quests.map((q) => {
+              const pct = q.goal > 0 ? Math.min(100, (q.current / q.goal) * 100) : q.done ? 100 : 0;
+              return (
+                <div className={`evPalierRow${q.done ? " done" : ""}`} key={q.key}>
+                  <span className="evPalierRowThresh">{q.impartial ? "🎯" : q.done ? "✓" : "…"}</span>
+                  <div className="evDuoQuestLabel">
+                    <span className="evPalierRowLabel">{q.label}</span>
+                    <div className="evPalierTrack evDuoQuestTrack">
+                      <div className="evPalierFill" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <span className="evPalierRowState">{q.current}/{q.goal}{q.unit ? ` ${q.unit}` : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── duo_week : duos de STREAMERS appariés par audience commune ────────
 function DuoPanel({
   resp,
@@ -1603,6 +1653,14 @@ function DuoPanel({
   const [actErr, setActErr] = React.useState<string | null>(null);
   const duos = resp.duos;
   const myDuo = resp.myDuo;
+
+  // Duo dont le détail des paliers est affiché : celui du viewer s'il est
+  // streamer apparié, sinon le #1 du classement (hors scope v1 : pas de
+  // "duo de mon streamer préféré" pour un viewer normal, cf spec).
+  const focusDuo = myDuo ?? duos[0] ?? null;
+  const focusPaliers = (focusDuo && focusDuo.paliers.length > 0 ? focusDuo.paliers : resp.palierDefs ?? []).map(
+    normalizeDuoPalier
+  );
 
   const statusLabel = (s: string) => (s === "accepted" ? "✅ accepté" : s === "refreshed" ? "🔄 ré-apparié" : "⏳ proposé");
   const medal = (rank: number) => (rank === 1 ? "👑" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`);
@@ -1640,7 +1698,7 @@ function DuoPanel({
             <span className="evDuoAmp">&</span>
             <span>{myDuo.streamerB?.displayName ?? "en attente d'un partenaire"}</span>
           </div>
-          <div className="evDuoMeta">{myDuo.points} pts · {myDuo.shared} viewers communs</div>
+          <div className="evDuoMeta">{myDuo.paliersDone}/5 paliers · {myDuo.shared} viewers communs</div>
           <div className="evDuoActions">
             {myDuo.status !== "accepted" ? (
               <button type="button" className="evBtn" onClick={doAccept} disabled={acting !== null}>
@@ -1659,7 +1717,7 @@ function DuoPanel({
 
       <div className="evTabs" role="tablist">
         {([
-          ["classement", "🏆", "Classement"],
+          ["classement", "🏆", "Duos"],
           ["recompenses", "🎁", "Récompenses"],
         ] as const).map(([k, icon, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
@@ -1673,23 +1731,32 @@ function DuoPanel({
         {tab === "classement" ? (
           <div style={{ display: "grid", gap: 10 }}>
             <div className="evLockedSub" style={{ textAlign: "center", marginBottom: 2 }}>
-              Regarde ton streamer préféré — chaque minute, message et call fait grimper le duo de sa communauté.
+              Regarde ton streamer préféré — chaque minute, host et coffre fait avancer son duo dans les paliers.
             </div>
             {duos.length === 0 ? (
               <div className="evLockedSub" style={{ textAlign: "center", padding: "10px 0" }}>Aucun duo formé pour l'instant — l'appariement se fait dès qu'assez de streamers partagent une audience.</div>
             ) : (
-              duos.map((d) => (
-                <div className={`evDuoCard${d.rank <= 3 ? " top" : ""}`} key={d.duoId}>
-                  <div className="evDuoRank">{medal(d.rank)}</div>
-                  <div className="evDuoPair">
-                    <span>{d.streamerA.displayName}</span>
-                    <span className="evDuoAmp">&</span>
-                    <span>{d.streamerB?.displayName ?? "—"}</span>
-                  </div>
-                  <div className="evDuoScore"><CountUp value={d.points} /> pts</div>
-                </div>
-              ))
+              duos.map((d) => {
+                const isFocus = focusDuo?.duoId === d.duoId;
+                return (
+                  <React.Fragment key={d.duoId}>
+                    <div className={`evDuoCard${d.rank <= 3 ? " top" : ""}${isFocus ? " focus" : ""}`}>
+                      <div className="evDuoRank">{medal(d.rank)}</div>
+                      <div className="evDuoPair">
+                        <span>{d.streamerA.displayName}</span>
+                        <span className="evDuoAmp">&</span>
+                        <span>{d.streamerB?.displayName ?? "—"}</span>
+                      </div>
+                      <div className="evDuoScore"><CountUp value={d.paliersDone} />/5 paliers</div>
+                    </div>
+                    {isFocus ? <DuoPaliersDetail paliers={focusPaliers} /> : null}
+                  </React.Fragment>
+                );
+              })
             )}
+            <div className="evLockedSub" style={{ textAlign: "center", fontSize: 11, opacity: 0.65 }}>
+              🎯 = quête équitable (accessible aux petits duos)
+            </div>
           </div>
         ) : (
           <RewardsShowcase tiers={DUO_REWARD_TIERS} />

@@ -507,6 +507,10 @@
   background: rgba(124, 92, 240, 0.14);
   border-color: rgba(124, 92, 240, 0.4);
 }
+.evDuoCard.focus {
+  border-color: var(--ev-accL);
+  box-shadow: 0 0 0 1px var(--ev-accL) inset;
+}
 .evDuoRank {
   min-width: 34px;
   text-align: center;
@@ -1008,6 +1012,11 @@
 .evPalierRowState { font-size: 10.5px; font-weight: 800; opacity: 0.8; white-space: nowrap; }
 .evPalierRow.reached .evPalierRowState { color: #fbbf24; }
 .evPalierRow.done .evPalierRowState { color: #6ee7b7; }
+
+/* ── Duo : détail quêtes/paliers (mini-barre par quête) ───────────── */
+.evDuoPalierDetail { display: grid; gap: 10px; margin: 2px 0 4px; }
+.evDuoQuestLabel { display: grid; gap: 4px; min-width: 0; }
+.evDuoQuestTrack { height: 6px; }
 
 .evShopTab, .evQuestTab, .evRankTab { display: grid; gap: 12px; }
 .evQuestGroup { display: grid; gap: 8px; }

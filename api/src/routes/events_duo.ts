@@ -2,7 +2,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
-import { acceptDuoForStreamer, getRankedDuos, refreshDuoForStreamer } from "../events/duo_week.js";
+import { acceptDuoForStreamer, DUO_PALIERS, getRankedDuos, recomputeDuoWeek, refreshDuoForStreamer } from "../events/duo_week.js";
 
 export const eventsDuoRouter = Router();
 
@@ -37,6 +37,8 @@ function mapDuo(d: Awaited<ReturnType<typeof getRankedDuos>>[number]) {
     refreshedCount: d.refreshedCount,
     points: d.points,
     rank: d.rank,
+    paliersDone: d.paliersDone,
+    paliers: d.paliers,
   };
 }
 
@@ -52,6 +54,8 @@ eventsDuoRouter.get(
     const event = await getLiveDuoEvent();
     if (!event) return res.json({ ok: true, event: null, duos: [] });
 
+    await recomputeDuoWeek(Number(event.id));
+
     const ranked = await getRankedDuos(pool, Number(event.id), 50);
     const duos = ranked.map(mapDuo);
 
@@ -63,7 +67,7 @@ eventsDuoRouter.get(
       }
     }
 
-    res.json({ ok: true, event, duos, myDuo });
+    res.json({ ok: true, event, duos, myDuo, palierDefs: DUO_PALIERS });
   })
 );
 
