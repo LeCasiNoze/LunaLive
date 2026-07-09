@@ -107,6 +107,7 @@ import { adminR2AssetsRouter } from "./routes/admin_r2_assets.js";
 import { eventsRouter } from "./routes/events.js";
 import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { eventsWheelWeekRouter } from "./routes/events_wheel_week.js";
+import { eventsWheelRouter } from "./routes/events_wheel.js";
 import { eventsChestRouter } from "./routes/events_chest.js";
 import { eventsClipRaceRouter } from "./routes/events_clip_race.js";
 import { eventsBossRouter } from "./routes/events_boss.js";
@@ -175,6 +176,7 @@ export function createApp() {
     app.use("/api", eventsRouter);
     app.use("/api", eventsViewerWeekRouter);
     app.use("/api", eventsWheelWeekRouter);
+    app.use("/api", eventsWheelRouter);
     app.use("/api", eventsChestRouter);
     app.use("/api", eventsClipRaceRouter);
     app.use("/api", eventsBossRouter);

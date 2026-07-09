@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
 import { CountUp } from "../components/events/CountUp";
 import { EventAvatar } from "../components/events/EventAvatar";
+import { computeWheelSegments, EventWheelDial } from "../components/events/EventWheelDial";
 import "../components/events/events-theme.css";
 import {
   getCurrentBoss,
@@ -13,18 +14,22 @@ import {
   getCurrentClipRace,
   getCurrentEvent,
   getCurrentViewerWeek,
-  getCurrentWheelWeek,
+  getCurrentWheel,
   getEventAccessStatus,
   postBossBurn,
   postChestDeposit,
   postClipRaceVote,
+  postWheelQuestClaim,
+  postWheelShopBuy,
+  postWheelSpin,
   type ApiBossResp,
   type ApiChestResp,
   type ApiClipRaceResp,
   type ApiEventAccessStatus,
   type ApiEventRow,
   type ApiViewerWeekResp,
-  type ApiWheelWeekResp,
+  type ApiWheelPageResp,
+  type ApiWheelQuest,
   type EventAccessStepKey,
 } from "../lib/api_events";
 
@@ -32,6 +37,12 @@ import {
 // wheel_week, top contributeurs coffre, top dégâts boss) — permet de
 // réutiliser Podium/LeaderboardList pour n'importe quel type d'event.
 type EvTopRow = { rank: number | null; userId: number; username: string; points: number };
+
+// Modulo toujours positif — utilisé pour aligner la roue sur un angle cible
+// sans jamais la faire reculer visuellement (voir handleSpin de WheelWeekPanel).
+function normMod(n: number, m: number) {
+  return ((n % m) + m) % m;
+}
 
 function splitRemain(ms: number) {
   ms = Math.max(0, Math.floor(ms));
@@ -84,6 +95,223 @@ const STEP_ICON: Record<EventAccessStepKey, string> = {
   watch_30: "⏱",
 };
 
+// ── Section règles "Comment ça marche ?" — un texte clair et non-technique
+// par type d'event, affiché quel que soit l'état (scheduled/live/closed).
+type RuleItem = { icon: string; title: string; text: string };
+type EventRules = { summary: string; items: RuleItem[] };
+
+const EVENT_RULES: Record<string, EventRules> = {
+  viewer_week: {
+    summary:
+      "Chaque minute passée sur les lives LunaLive te fait gagner des points. Le viewer le plus actif de la semaine grimpe en tête du classement — et ton streamer préféré en profite aussi !",
+    items: [
+      {
+        icon: "🔓",
+        title: "Comment participer ?",
+        text: "Connecte-toi, suis un streamer et débloque ta participation (quelques étapes rapides sur la page Participer). Ensuite, regarde un live pour commencer à marquer des points.",
+      },
+      {
+        icon: "⭐",
+        title: "Comment gagner des points ?",
+        text: "Le temps passé à regarder un live, les jours où tu reviens, tes bonus quotidiens réclamés, tes messages dans le chat, tes appels et tes tours de roue rapportent tous des points.",
+      },
+      {
+        icon: "🤝",
+        title: "Un bonus pour ton streamer",
+        text: "Tes points comptent aussi pour le streamer que tu as le plus regardé cette semaine : il grimpe dans un classement streamers à part.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Le top du classement remporte des rubis, avec un badge exclusif « Champion du mois » pour le #1. Tous les participants actifs repartent avec des rubis et un ticket de roue.",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "L'event dure une semaine. À la fin, le classement est figé et les récompenses sont distribuées automatiquement.",
+      },
+    ],
+  },
+  wheel_week: {
+    summary:
+      "Chaque jour, tu as un tour de roue gratuit. Gagne des tickets, tourne, cumule des points et découvre un vrai lot à chaque tour !",
+    items: [
+      {
+        icon: "🎟",
+        title: "Comment participer ?",
+        text: "Connecte-toi : tu reçois un tour de roue gratuit chaque jour. En accomplissant des petites quêtes, tu gagnes des tickets supplémentaires pour tourner encore plus.",
+      },
+      {
+        icon: "🎡",
+        title: "Comment gagner des points ?",
+        text: "Chaque tour de roue rapporte des points qui s'ajoutent à ton classement de la semaine, et parfois un vrai lot en plus : rubis, XP, ticket bonus, cosmétique, voire le jackpot.",
+      },
+      {
+        icon: "🏁",
+        title: "Les paliers de la roue",
+        text: "En cumulant tes points, tu débloques automatiquement des paliers avec des lots de plus en plus beaux — pas besoin de les réclamer, ils tombent tout seuls.",
+      },
+      {
+        icon: "🛍",
+        title: "La boutique",
+        text: "Tu peux dépenser tes rubis pour racheter des tours de roue, rejouer un tour raté, ou booster ton XP pendant l'event.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Le classement est réservé au prestige : le podium reçoit un cadre de message exclusif, et le #1 remporte un abonnement offert de 7 jours et le titre « Roi de la Roue ».",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "L'event dure une semaine, classement remis à zéro chaque dimanche soir. Les tickets non utilisés sont gardés pour le prochain event de la roue.",
+      },
+    ],
+  },
+  clip_race: {
+    summary:
+      "Poste tes meilleurs moments en clip pendant l'event et utilise tes coups de cœur pour faire grimper les vidéos que tu préfères.",
+    items: [
+      {
+        icon: "🎬",
+        title: "Comment participer ?",
+        text: "Utilise la commande !clip pendant un live pour créer un clip. Chaque clip posté pendant la semaine de l'event entre automatiquement en lice.",
+      },
+      {
+        icon: "❤️",
+        title: "Comment voter ?",
+        text: "Connecte-toi et utilise tes coups de cœur (un nombre limité par semaine) pour soutenir tes clips préférés. Choisis bien, chaque vote compte !",
+      },
+      {
+        icon: "🏅",
+        title: "Deux classements",
+        text: "Le classement des clips récompense les meilleures vidéos individuelles. Le classement des streamers récompense celui dont la communauté a cumulé le plus de votes.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Le streamer #1 reçoit des subs à distribuer, une mise en avant et un dépôt dans le coffre de sa commu. Les 3 meilleurs clips remportent des rubis (et un abonnement offert pour le #1). Les votants actifs reçoivent aussi une récompense.",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "L'event dure une semaine. Le classement final est figé à la fin et les lots sont distribués automatiquement.",
+      },
+    ],
+  },
+  global_chest: {
+    summary:
+      "Toute la communauté remplit un coffre commun ensemble. Une fois le palier atteint, tout le monde repart avec une récompense !",
+    items: [
+      {
+        icon: "🤲",
+        title: "Comment participer ?",
+        text: "Connecte-toi et reste actif : tes bonus quotidiens, tes tours de roue, tes appels et tes messages remplissent automatiquement le coffre commun. Tu peux aussi y déposer des rubis directement.",
+      },
+      {
+        icon: "📈",
+        title: "Comment ça avance ?",
+        text: "Chaque action de chaque joueur fait monter la barre commune. Plus la communauté est active (et généreuse), plus vite le coffre se remplit.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Dès que le palier est atteint, tous les contributeurs actifs reçoivent une récompense en rubis, plus un badge exclusif.",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "Le coffre peut se remplir avant la fin de la semaine : dans ce cas, l'event se termine dès que le palier est atteint. Sinon, il se clôture à la fin de la semaine.",
+      },
+    ],
+  },
+  burn_boss: {
+    summary:
+      "Un boss avec une jauge de vie commune s'invite sur LunaLive. Toute la communauté doit s'unir pour le faire tomber avant la fin de la semaine.",
+    items: [
+      {
+        icon: "👊",
+        title: "Comment participer ?",
+        text: "Regarde les lives, discute, participe aux appels : chaque action de la communauté inflige des dégâts au boss. Tu peux aussi brûler des rubis pour taper plus fort.",
+      },
+      {
+        icon: "🔥",
+        title: "Comment infliger des dégâts ?",
+        text: "Le temps de watch, les messages, les appels et tes rubis brûlés comptent tous comme des dégâts. Pas besoin de dépenser pour participer : rester actif suffit.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Quand le boss tombe, tous les contributeurs reçoivent une récompense et le badge « Boss Slayer ». Les joueurs qui ont infligé le plus de dégâts remportent un bonus supplémentaire.",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "Dès que la jauge de vie du boss tombe à zéro, ou à la fin de la semaine si le boss résiste.",
+      },
+    ],
+  },
+  duo_week: {
+    summary:
+      "LunaLive te forme un duo avec un autre viewer proche de tes centres d'intérêt. À deux, vos points s'additionnent pour grimper dans le classement !",
+    items: [
+      {
+        icon: "🤝",
+        title: "Comment participer ?",
+        text: "LunaLive te propose automatiquement un partenaire, choisi parmi les viewers qui regardent les mêmes streamers que toi. Tu as quelques jours pour accepter.",
+      },
+      {
+        icon: "🔄",
+        title: "Pas convaincu par ton duo ?",
+        text: "Tu peux refuser une fois pour recevoir une nouvelle proposition. Après ça, ton duo est figé pour le reste de la semaine.",
+      },
+      {
+        icon: "⭐",
+        title: "Comment marquer des points ?",
+        text: "Toutes les actions de toi et de ton partenaire (watch, chat, calls…) s'additionnent dans un score de duo commun.",
+      },
+      {
+        icon: "🎁",
+        title: "Ce que tu peux gagner",
+        text: "Le duo en tête du classement remporte une récompense pour lui, et sa communauté (celle des deux streamers concernés) en profite aussi.",
+      },
+      {
+        icon: "⏳",
+        title: "Quand ça se termine ?",
+        text: "L'event dure une semaine. Le classement des duos est figé à la fin et les lots sont distribués automatiquement.",
+      },
+    ],
+  },
+};
+
+function EventRulesBlock({ type }: { type: string }) {
+  const rules = EVENT_RULES[type];
+  const [open, setOpen] = React.useState(true);
+  if (!rules) return null;
+  return (
+    <div className="evCard evRules">
+      <button type="button" className="evRulesHead" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="evRulesTitle">📖 Comment ça marche ?</span>
+        <span className={`evRulesChevron${open ? " open" : ""}`} aria-hidden="true">▾</span>
+      </button>
+      <div className="evRulesSummary">{rules.summary}</div>
+      {open ? (
+        <div className="evRulesBody">
+          {rules.items.map((it) => (
+            <div className="evRuleItem" key={it.title}>
+              <span className="evRuleIcon">{it.icon}</span>
+              <div>
+                <div className="evRuleItemTitle">{it.title}</div>
+                <div className="evRuleItemText">{it.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // Reveal on scroll — opacity/translateY, pas de layout shift. Neutralisé
 // sous prefers-reduced-motion (le CSS coupe aussi les animations continues).
 function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -133,11 +361,11 @@ const VIEWER_WEEK_REWARD_TIERS: RewardTierDisplay[] = [
   { key: "part", rank: "🎯 Participation (≥ 200 pts)", amount: "40", extra: "+ 1 ticket roue" },
 ];
 
+// Classement wheel_week v2 = prestige only (pas de rubis) : le podium
+// remporte un cadre de message exclusif, le #1 en plus un abo + un titre.
 const WHEEL_WEEK_REWARD_TIERS: RewardTierDisplay[] = [
-  { key: "gold", rank: "🥇 #1", amount: "600", extra: "+ titre exclusif « Roi de la roue »", gold: true },
-  { key: "s23", rank: "🥈🥉 #2-3", amount: "300" },
-  { key: "s45", rank: "#4-5", amount: "150" },
-  { key: "part", rank: "🎯 Participation (≥ 50 pts)", amount: "40", extra: "+ 1 ticket roue" },
+  { key: "gold", rank: "👑 #1", amount: "Abo 7j", extra: "+ titre exclusif « Roi de la Roue » + cadre de message", gold: true },
+  { key: "top3", rank: "🥈🥉 #2-3", amount: "Cadre", extra: "cadre de message exclusif « Roulette »" },
 ];
 
 const CHEST_REWARD_TIERS: RewardTierDisplay[] = [
@@ -402,31 +630,356 @@ function RubisAmountForm({
   );
 }
 
-// ── wheel_week : podium + classement + vitrine + statut ──────────────
+// Une ligne de quêtes (daily ou weekly) — barre de progression + bouton
+// Réclamer si complétée et pas déjà récupérée.
+function QuestGroup({
+  quests,
+  token,
+  claimingKey,
+  lastClaim,
+  onClaim,
+  onLoginClick,
+}: {
+  quests: ApiWheelQuest[];
+  token: string | null;
+  claimingKey: string | null;
+  lastClaim: { key: string; ticketsAwarded: number } | null;
+  onClaim: (key: string) => void;
+  onLoginClick: () => void;
+}) {
+  return (
+    <div className="evQuestList">
+      {quests.map((q) => {
+        const pct = q.goal > 0 ? Math.min(100, Math.round((q.progress / q.goal) * 100)) : 0;
+        const justClaimed = lastClaim?.key === q.key;
+        const cls = `evQuest${q.claimed ? " claimed" : q.done ? " claimable" : ""}`;
+        return (
+          <div className={cls} key={q.key}>
+            <div className="evQuestHead">
+              <div className="evQuestLabel">{q.label}</div>
+              {justClaimed ? (
+                <span className="evQuestReward">🎉 +{lastClaim!.ticketsAwarded} 🎟</span>
+              ) : !token ? (
+                <button type="button" className="evBtnGhost" onClick={onLoginClick}>Se connecter</button>
+              ) : q.claimed ? (
+                <span className="evQuestReward">✓ Récupéré</span>
+              ) : q.done ? (
+                <button type="button" className="evBtnGhost" onClick={() => onClaim(q.key)} disabled={claimingKey !== null}>
+                  {claimingKey === q.key ? "…" : "🎟 Réclamer"}
+                </button>
+              ) : null}
+            </div>
+            <div className="evQuestBar"><div className="evQuestBarFill" style={{ width: `${pct}%` }} /></div>
+            <div className="evQuestFoot">
+              <span>{Math.min(q.progress, q.goal)}/{q.goal}</span>
+              <span>{q.claimed ? "Récupéré" : q.done ? "Prêt !" : `${pct}%`}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── wheel_week : roue + paliers + boutique + quêtes + classement ─────
 function WheelWeekPanel({
   resp,
   token,
+  meUserId,
   onLoginClick,
+  onRefresh,
 }: {
-  resp: Extract<ApiWheelWeekResp, { event: ApiEventRow }>;
+  resp: Extract<ApiWheelPageResp, { event: ApiEventRow }>;
   token: string | null;
+  meUserId: number | null;
   onLoginClick: () => void;
+  onRefresh: () => void;
 }) {
-  const top3 = resp.top.slice(0, 3);
-  const rest = resp.top.slice(3);
-  const meUserId = resp.me?.userId ?? null;
+  const me = resp.me;
+  const top3 = resp.leaderboard.slice(0, 3);
+  const rest = resp.leaderboard.slice(3);
+  const segMeta = React.useMemo(() => computeWheelSegments(resp.wheel), [resp.wheel]);
+
+  const [rotation, setRotation] = React.useState(0);
+  const [spinning, setSpinning] = React.useState(false);
+  const [spinResult, setSpinResult] = React.useState<{
+    points: number;
+    xp: number;
+    lotLabel?: string | null;
+    palierUnlocked?: { index: number; rewardLabel: string } | null;
+  } | null>(null);
+  const [spinErr, setSpinErr] = React.useState<string | null>(null);
+
+  async function handleSpin() {
+    if (!token) { onLoginClick(); return; }
+    if (!me || (me.tickets < 1 && !me.freeSpinAvailable) || spinning) return;
+    setSpinErr(null);
+    setSpinResult(null);
+    setSpinning(true);
+    try {
+      const r = await postWheelSpin(token);
+      const idx = resp.wheel.findIndex(
+        (w) => w.points === r.segment.points && (w.lotLabel ?? null) === (r.segment.lotLabel ?? null)
+      );
+      const mid = idx >= 0 ? segMeta[idx].midDeg : Math.random() * 360;
+      const targetMod = normMod(360 - mid, 360);
+      setRotation((prev) => prev + normMod(targetMod - normMod(prev, 360), 360) + 360 * 4);
+      window.setTimeout(() => {
+        setSpinResult({
+          points: r.segment.points,
+          xp: r.segment.xp,
+          lotLabel: r.segment.lotLabel,
+          palierUnlocked: r.palierUnlocked ?? null,
+        });
+        setSpinning(false);
+        onRefresh();
+      }, 2650);
+    } catch (e: any) {
+      setSpinErr(e?.message || "Le tour a échoué, réessaie.");
+      setSpinning(false);
+    }
+  }
+
+  const [buyingCode, setBuyingCode] = React.useState<string | null>(null);
+  const [buyErr, setBuyErr] = React.useState<string | null>(null);
+
+  async function handleBuy(code: string) {
+    if (!token) { onLoginClick(); return; }
+    setBuyErr(null);
+    setBuyingCode(code);
+    try {
+      await postWheelShopBuy(token, code);
+      onRefresh();
+    } catch (e: any) {
+      setBuyErr(e?.message || "Achat impossible, réessaie.");
+    } finally {
+      setBuyingCode(null);
+    }
+  }
+
+  const [claimingKey, setClaimingKey] = React.useState<string | null>(null);
+  const [claimErr, setClaimErr] = React.useState<string | null>(null);
+  const [lastClaim, setLastClaim] = React.useState<{ key: string; ticketsAwarded: number } | null>(null);
+
+  async function handleClaimQuest(key: string) {
+    if (!token) { onLoginClick(); return; }
+    setClaimErr(null);
+    setClaimingKey(key);
+    try {
+      const r = await postWheelQuestClaim(token, key);
+      setLastClaim({ key, ticketsAwarded: r.ticketsAwarded });
+      window.setTimeout(() => setLastClaim((cur) => (cur?.key === key ? null : cur)), 3500);
+      onRefresh();
+    } catch (e: any) {
+      setClaimErr(e?.message || "Réclamation impossible, réessaie.");
+    } finally {
+      setClaimingKey(null);
+    }
+  }
+
+  const maxThreshold = resp.paliers.length ? resp.paliers[resp.paliers.length - 1].threshold : 0;
+  const palierPct = maxThreshold > 0 ? Math.min(100, Math.round((Math.min(me?.points ?? 0, maxThreshold) / maxThreshold) * 100)) : 0;
+  const claimedSet = new Set(me?.paliersClaimed ?? []);
+  const nextPalierReward = me?.nextPalier ? resp.paliers.find((p) => p.index === me.nextPalier!.index) : null;
 
   return (
     <>
       <Reveal>
         <div>
-          <div className="evSectionTitle">🏆 Podium</div>
+          <div className="evSectionTitle">🎡 La roue</div>
+          <div className="evCard">
+            <div className="evWheelRow">
+              <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
+
+              <div>
+                {resp.wheel.length > 0 ? (
+                  <div className="evWheelLegend">
+                    {resp.wheel.map((seg, i) => (
+                      <div className="evWheelLegendItem" key={`${seg.points}-${seg.lotLabel ?? i}`}>
+                        <span className="evWheelSwatch" style={{ background: segMeta[i]?.color }} />
+                        <span>{seg.lotLabel ? seg.lotLabel : `${seg.points} pts`}</span>
+                        <span className="evWheelLegendProba">{seg.proba}%</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {!token ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="evLockedSub">Connecte-toi pour tourner la roue et cumuler des points.</div>
+                    <button type="button" className="evBtn evSpinBtn" onClick={onLoginClick}>Se connecter</button>
+                  </div>
+                ) : me ? (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="evHeroMeta" style={{ justifyContent: "flex-start", marginBottom: 10 }}>
+                      Rang actuel : #{me.rank ?? "?"} · <CountUp value={Number(me.points || 0)} /> pts
+                    </div>
+                    <div className="evTicketsPill">
+                      🎟 {me.tickets} ticket{me.tickets > 1 ? "s" : ""}
+                      {me.freeSpinAvailable ? <span className="evFreeSpinPill">🎁 Spin gratuit dispo</span> : null}
+                    </div>
+                    <button
+                      type="button"
+                      className="evBtn evSpinBtn"
+                      onClick={handleSpin}
+                      disabled={spinning || (me.tickets < 1 && !me.freeSpinAvailable)}
+                    >
+                      {spinning
+                        ? "Ça tourne…"
+                        : me.freeSpinAvailable
+                        ? "🎁 Spin gratuit du jour"
+                        : me.tickets < 1
+                        ? "Plus de tickets"
+                        : "🎡 Tourner (1 ticket)"}
+                    </button>
+                    {spinErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{spinErr}</div> : null}
+                    {spinResult ? (
+                      <div className="evWheelResult">
+                        <div className="evWheelResultAmount">+{spinResult.points} pts · +{spinResult.xp} XP</div>
+                        {spinResult.lotLabel ? <div className="evWheelResultLot">🎉 {spinResult.lotLabel}</div> : null}
+                        {spinResult.palierUnlocked ? (
+                          <div className="evWheelResultLot">🏆 Palier débloqué : {spinResult.palierUnlocked.rewardLabel}</div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="evLockedSub" style={{ marginTop: 14 }}>
+                    Éligible ! Tourne la roue gratuite pour commencer à marquer des points.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Reveal>
+
+      {resp.paliers.length > 0 ? (
+        <Reveal delay={0.04}>
+          <div>
+            <div className="evSectionTitle">🏁 Paliers de points</div>
+            <div className="evCard">
+              <div className="evPalierBar">
+                <div className="evPalierTrack">
+                  <div className="evPalierFill" style={{ width: `${palierPct}%` }} />
+                  {resp.paliers.map((p) => {
+                    const left = maxThreshold > 0 ? Math.min(100, (p.threshold / maxThreshold) * 100) : 0;
+                    const done = claimedSet.has(p.index);
+                    const isNext = me?.nextPalier?.index === p.index;
+                    return (
+                      <div
+                        key={p.index}
+                        className={`evPalierMark${done ? " done" : ""}${isNext ? " next" : ""}`}
+                        style={{ left: `${left}%` }}
+                        title={`${p.threshold} pts — ${p.rewardLabel}`}
+                      >
+                        {done ? "✓" : p.threshold}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="evPalierLabels">
+                  {resp.paliers.map((p) => {
+                    const left = maxThreshold > 0 ? Math.min(100, (p.threshold / maxThreshold) * 100) : 0;
+                    return (
+                      <div className="evPalierLotLabel" key={p.index} style={{ left: `${left}%` }}>
+                        {p.rewardLabel}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {me && nextPalierReward ? (
+                <div className="evPalierNext">
+                  🎯 {me.nextPalier!.remaining} pts avant « {nextPalierReward.rewardLabel} »
+                </div>
+              ) : me ? (
+                <div className="evPalierNext">🏆 Tous les paliers sont débloqués !</div>
+              ) : null}
+            </div>
+          </div>
+        </Reveal>
+      ) : null}
+
+      {resp.shop.length > 0 ? (
+        <Reveal delay={0.06}>
+          <div>
+            <div className="evSectionTitle">🛍 Boutique d'event</div>
+            <div className="evCard">
+              <div className="evShopGrid">
+                {resp.shop.map((item) => (
+                  <div className="evShopItem" key={item.code}>
+                    <div className="evShopLabel">{item.label}</div>
+                    <div className="evShopPrice">{item.nextPrice != null ? `💎 ${item.nextPrice}` : "Épuisé"}</div>
+                    <div className="evShopCap">{item.boughtToday}/{item.capPerDay} aujourd'hui</div>
+                    <button
+                      type="button"
+                      className="evBtnGhost evShopBuyBtn"
+                      onClick={() => (token ? handleBuy(item.code) : onLoginClick())}
+                      disabled={(token != null && item.soldOut) || buyingCode !== null}
+                    >
+                      {buyingCode === item.code ? "…" : item.soldOut ? "Épuisé" : "Acheter"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {buyErr ? <div style={{ marginTop: 10, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{buyErr}</div> : null}
+              {!token ? <div className="evLockedSub" style={{ marginTop: 10 }}>Connecte-toi pour acheter dans la boutique.</div> : null}
+            </div>
+          </div>
+        </Reveal>
+      ) : null}
+
+      {resp.quests.daily.length > 0 || resp.quests.weekly.length > 0 ? (
+        <Reveal delay={0.08}>
+          <div>
+            <div className="evSectionTitle">🎯 Quêtes</div>
+            <div style={{ display: "grid", gap: 14 }}>
+              {resp.quests.daily.length > 0 ? (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.65, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Quotidiennes
+                  </div>
+                  <QuestGroup
+                    quests={resp.quests.daily}
+                    token={token}
+                    claimingKey={claimingKey}
+                    lastClaim={lastClaim}
+                    onClaim={handleClaimQuest}
+                    onLoginClick={onLoginClick}
+                  />
+                </div>
+              ) : null}
+              {resp.quests.weekly.length > 0 ? (
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.65, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    Hebdomadaires
+                  </div>
+                  <QuestGroup
+                    quests={resp.quests.weekly}
+                    token={token}
+                    claimingKey={claimingKey}
+                    lastClaim={lastClaim}
+                    onClaim={handleClaimQuest}
+                    onLoginClick={onLoginClick}
+                  />
+                </div>
+              ) : null}
+            </div>
+            {claimErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{claimErr}</div> : null}
+          </div>
+        </Reveal>
+      ) : null}
+
+      <Reveal delay={0.1}>
+        <div>
+          <div className="evSectionTitle">🏆 Classement</div>
           <Podium top={top3} meUserId={meUserId} />
         </div>
       </Reveal>
 
       {rest.length > 0 ? (
-        <Reveal delay={0.05}>
+        <Reveal delay={0.12}>
           <div>
             <div className="evSectionTitle">📊 Classement complet</div>
             <LeaderboardList rows={rest} meUserId={meUserId} />
@@ -434,32 +987,10 @@ function WheelWeekPanel({
         </Reveal>
       ) : null}
 
-      <Reveal delay={0.08}>
+      <Reveal delay={0.14}>
         <div>
           <div className="evSectionTitle">🎁 Vitrine des lots</div>
           <RewardsShowcase tiers={WHEEL_WEEK_REWARD_TIERS} />
-        </div>
-      </Reveal>
-
-      <Reveal delay={0.12}>
-        <div>
-          <div className="evSectionTitle">🎯 Ton statut</div>
-          {!token ? (
-            <LoginGate onLogin={onLoginClick} text="Ton classement à la roue s'affichera ici dès que tu es connecté." />
-          ) : resp.me ? (
-            <MyStatusCard
-              icon="🎡"
-              title="Tu participes"
-              meta={<>Rang actuel : #{resp.me.rank ?? "?"} · <CountUp value={Number(resp.me.points || 0)} /> pts</>}
-            />
-          ) : (
-            <div className="evCard" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 26 }}>✅</div>
-              <div className="evLockedSub" style={{ marginTop: 8 }}>
-                Éligible ! Tourne la roue gratuite pour commencer à marquer des points.
-              </div>
-            </div>
-          )}
         </div>
       </Reveal>
     </>
@@ -774,7 +1305,7 @@ export default function EventPage() {
 
   const [event, setEvent] = React.useState<ApiEventRow | null>(null);
   const [viewerWeek, setViewerWeek] = React.useState<ApiViewerWeekResp | null>(null);
-  const [wheelWeek, setWheelWeek] = React.useState<ApiWheelWeekResp | null>(null);
+  const [wheelWeek, setWheelWeek] = React.useState<ApiWheelPageResp | null>(null);
   const [chest, setChest] = React.useState<ApiChestResp | null>(null);
   const [clipRace, setClipRace] = React.useState<ApiClipRaceResp | null>(null);
   const [boss, setBoss] = React.useState<ApiBossResp | null>(null);
@@ -818,7 +1349,7 @@ export default function EventPage() {
       }
 
       if (type === "wheel_week" && cur?.event) {
-        const w = await getCurrentWheelWeek(token);
+        const w = await getCurrentWheel(token);
         setWheelWeek(w);
       } else {
         setWheelWeek(null);
@@ -940,6 +1471,12 @@ export default function EventPage() {
         <div className="alert" style={{ margin: 0 }}>{err}</div>
       ) : null}
 
+      {event ? (
+        <Reveal>
+          <EventRulesBlock type={event.type} />
+        </Reveal>
+      ) : null}
+
       {loading ? (
         <div className="evCard">
           <div style={{ fontWeight: 1200 }}>Chargement…</div>
@@ -1032,7 +1569,13 @@ export default function EventPage() {
           </Reveal>
         </>
       ) : event.type === "wheel_week" && wheelWeek && wheelWeek.event ? (
-        <WheelWeekPanel resp={wheelWeek} token={token} onLoginClick={() => setLoginOpen(true)} />
+        <WheelWeekPanel
+          resp={wheelWeek}
+          token={token}
+          meUserId={auth?.user?.id ?? null}
+          onLoginClick={() => setLoginOpen(true)}
+          onRefresh={() => load().catch(() => {})}
+        />
       ) : event.type === "global_chest" && chest && chest.event ? (
         <ChestPanel
           resp={chest}

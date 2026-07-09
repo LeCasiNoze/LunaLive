@@ -121,28 +121,103 @@ export async function declareInstaFollow(token: string) {
   });
 }
 
-// ── wheel_week ──────────────────────────────────────────────────────
-export type ApiWheelWeekTopRow = {
-  rank: number | null;
-  userId: number;
-  username: string;
+// ── wheel_week (roue d'event : tickets, paliers, boutique, quêtes) ───
+export type ApiWheelSegment = { proba: number; points: number; lotLabel?: string | null };
+
+export type ApiWheelPalier = { index: number; threshold: number; rewardLabel: string };
+
+export type ApiWheelMe = {
+  tickets: number;
   points: number;
-  detail?: Record<string, any>;
+  rank: number | null;
+  paliersClaimed: number[];
+  nextPalier: { index: number; threshold: number; remaining: number } | null;
+  freeSpinAvailable: boolean;
 };
 
-export type ApiWheelWeekResp =
+export type ApiWheelLeaderboardRow = { rank: number; userId: number; username: string; points: number };
+
+export type ApiWheelShopItem = {
+  code: string;
+  label: string;
+  nextPrice: number | null; // null quand l'item est épuisé (cap atteint)
+  capPerDay: number;
+  boughtToday: number;
+  soldOut: boolean;
+};
+
+export type ApiWheelQuest = {
+  key: string;
+  label: string;
+  goal: number;
+  progress: number;
+  done: boolean;
+  claimed: boolean;
+};
+
+export type ApiWheelQuests = { daily: ApiWheelQuest[]; weekly: ApiWheelQuest[] };
+
+export type ApiWheelPageResp =
   | { ok: true; event: null }
   | {
       ok: true;
       event: ApiEventRow;
-      top: ApiWheelWeekTopRow[];
-      me: ApiWheelWeekTopRow | null;
+      wheel: ApiWheelSegment[];
+      paliers: ApiWheelPalier[];
+      me: ApiWheelMe | null;
+      leaderboard: ApiWheelLeaderboardRow[];
+      shop: ApiWheelShopItem[];
+      quests: ApiWheelQuests;
     };
 
-// Auth optionnelle : le top est public, "me" n'apparaît que si connecté.
-export async function getCurrentWheelWeek(token?: string | null) {
-  return j<ApiWheelWeekResp>("/api/events/current/wheel-week", {
+// Auth optionnelle : la roue/paliers/leaderboard/boutique sont publics,
+// "me" et les quêtes personnelles n'apparaissent que si connecté.
+export async function getCurrentWheel(token?: string | null) {
+  return j<ApiWheelPageResp>("/api/events/current/wheel", {
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+}
+
+export type ApiWheelSpinResp = {
+  ok: true;
+  segment: { points: number; xp: number; lotLabel?: string | null };
+  tickets: number;
+  points: number;
+  // le backend ne renvoie qu'{index, rewardLabel} sur un palier fraîchement franchi
+  palierUnlocked?: { index: number; rewardLabel: string } | null;
+};
+
+export async function postWheelSpin(token: string) {
+  return j<ApiWheelSpinResp>("/api/events/wheel/spin", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type ApiWheelShopBuyResp = {
+  ok: true;
+  spentRubis: number;
+  rubis: number;
+  granted: string;
+  boughtToday: number;
+  nextPrice: number | null;
+};
+
+export async function postWheelShopBuy(token: string, code: string) {
+  return j<ApiWheelShopBuyResp>("/api/events/wheel/shop/buy", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export type ApiWheelQuestClaimResp = { ok: true; ticketsAwarded: number; tickets: number };
+
+export async function postWheelQuestClaim(token: string, key: string) {
+  return j<ApiWheelQuestClaimResp>("/api/events/wheel/quest/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
   });
 }
 

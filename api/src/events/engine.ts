@@ -1,7 +1,6 @@
 // api/src/events/engine.ts
 import { pool } from "../db.js";
 import { recomputeViewerWeek } from "./viewer_week.js";
-import { recomputeWheelWeek } from "./wheel_week.js";
 import { recomputeGlobalChest } from "./global_chest.js";
 import { recomputeClipRace } from "./clip_race.js";
 import { recomputeBurnBoss } from "./burn_boss.js";
@@ -198,9 +197,9 @@ export function startEventsEnginePoller(everyMs = 60_000) {
       if (cur && cur.type === "viewer_week" && cur.state === "live") {
         await recomputeViewerWeek(cur.id);
       }
-      if (cur && cur.type === "wheel_week" && cur.state === "live") {
-        await recomputeWheelWeek(cur.id);
-      }
+      // wheel_week n'est PLUS recomputé ici : les points s'accumulent à
+      // chaque spin (event_scores.points +=, cf events/wheel_event.ts
+      // performSpin) — un recompute écraserait cet accumulateur.
       if (cur && cur.type === "global_chest" && cur.state === "live") {
         await recomputeGlobalChest(cur.id);
       }
