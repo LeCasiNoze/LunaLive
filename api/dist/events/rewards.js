@@ -19,17 +19,15 @@ export const EVENT_REWARD_CONFIGS = {
         rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
     },
     wheel_week: {
-        tiers: [
-            { rankFrom: 1, rankTo: 1, rubis: 600, entitlement: { kind: "title", codeTemplate: "wheel_king_YYYYMM" } },
-            { rankFrom: 2, rankTo: 3, rubis: 300 },
-            { rankFrom: 4, rankTo: 5, rubis: 150 },
-        ],
-        // minScore=50 : ~5 jours de spin gratuit à la moyenne de la roue (gain
-        // moyen/spin ≈ 10,3 rubis d'après la pondération des segments dans
-        // wheel.ts) — atteignable par la simple régularité, sans dépendre d'un
-        // gros lot de chance.
-        participation: { minScore: 50, rubis: 40, wheelTickets: 1, maxRecipients: 40 },
-        rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+        mode: "wheel",
+        wheel: {
+            // Codes cf docs/events-cosmetics-todo.md — fixes (pas de YYYYMM) : le
+            // cadre s'accumule (permanent, plusieurs joueurs peuvent le porter),
+            // le titre est unique et remis en jeu à chaque retour de l'event.
+            frameCode: "frame_wheel_roulette",
+            titleCode: "title_wheel_king",
+            championSubDays: 7,
+        },
     },
     global_chest: {
         mode: "collective",
@@ -144,9 +142,10 @@ async function rankWheelWeek(client, eventId) {
         rank: idx + 1,
     }));
 }
+// wheel_week n'y figure plus (mode:'wheel', branché directement dans
+// closeAndDistribute) — rankWheelWeek reste utilisée par distributeWheel.
 const RANKING_PROVIDERS = {
     viewer_week: rankViewerWeek,
-    wheel_week: rankWheelWeek,
 };
 /**
  * Fige le classement d'un event dans events.result puis distribue les lots
@@ -189,6 +188,9 @@ export async function closeAndDistribute(eventId) {
         }
         if (config.mode === "duo") {
             return await distributeDuo(client, eventId, event, config.duo);
+        }
+        if (config.mode === "wheel") {
+            return await distributeWheel(client, eventId, event, config.wheel);
         }
         const rankingProvider = RANKING_PROVIDERS[event.type];
         if (!rankingProvider) {
@@ -714,13 +716,84 @@ async function distributeDuo(client, eventId, event, cfg) {
     return { ok: true, alreadyDistributed: false, winners, participants, rubisTotal };
 }
 /**
+ * Distribution "roue" (Semaine de la roue REDESIGN v2, cf
+ * docs/events-design.md #2). Contrairement aux autres modes, PAS de rubis de
+ * classement ni de lot de participation à distribuer ici : les paliers sont
+ * déjà réclamés EN DIRECT pendant l'event (cf events/wheel_event.ts
+ * claimPaliers). À la clôture, seul le classement compte, prestige only :
+ * top-3 = cadre de message exclusif (permanent) ; #1 = titre "remis en jeu"
+ * (révoqué au précédent titulaire avant réattribution, cf
+ * revokePreviousTitle) + abo viewer offert. Appelée depuis
+ * closeAndDistribute, dans la même transaction (COMMIT/ROLLBACK final).
+ */
+async function distributeWheel(client, eventId, event, cfg) {
+    const ranked = await rankWheelWeek(client, eventId);
+    const topSnapshot = ranked.slice(0, REWARD_TOP_SNAPSHOT_N).map((r) => ({
+        userId: r.userId,
+        username: r.username,
+        points: r.points,
+        rank: r.rank,
+    }));
+    await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+        eventId,
+        JSON.stringify({ rankedAt: new Date().toISOString(), topLeaderboard: topSnapshot, reached: ranked.length > 0 }),
+    ]);
+    if (!ranked.length) {
+        await client.query("COMMIT");
+        return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
+    }
+    const top3 = ranked.filter((r) => r.rank <= 3);
+    let winners = 0;
+    for (const row of top3) {
+        const extras = {};
+        await grantEntitlement(client, row.userId, "skin", cfg.frameCode);
+        extras.entitlement = { kind: "skin", code: cfg.frameCode };
+        if (row.rank === 1) {
+            await revokePreviousTitle(client, cfg.titleCode);
+            await grantEntitlement(client, row.userId, "title", cfg.titleCode);
+            const subGranted = await grantPromoSubscriptionTx(client, row.userId, "viewer", cfg.championSubDays);
+            extras.title = cfg.titleCode;
+            // subGranted=false si le champion détient déjà un abo payant en cours
+            // (préservé) — ne pas prétendre dans l'audit qu'on a offert un abo.
+            if (subGranted)
+                extras.promoSubDays = cfg.championSubDays;
+        }
+        await client.query(`
+      INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
+      VALUES ($1,$2,'win',$3,0,$4::jsonb)
+      ON CONFLICT (event_id, user_id) DO NOTHING
+      `, [eventId, row.userId, row.rank, JSON.stringify(extras)]);
+        winners += 1;
+    }
+    await client.query("COMMIT");
+    return { ok: true, alreadyDistributed: false, winners, participants: 0, rubisTotal: 0 };
+}
+/**
+ * Pattern générique "titre remis en jeu" (cf docs/events-design.md wheel_week
+ * — "Titre champion remis en jeu à chaque distribution d'un event, révoquer
+ * le titre du champion précédent de cette famille avant d'accorder le
+ * nouveau"). Un titre "remis en jeu" a un code FIXE (pas de suffixe YYYYMM
+ * comme les titres mensuels classiques) : un seul compte le porte à la fois.
+ * Réutilisable par tout event ayant ce pattern (wheel_week aujourd'hui —
+ * viewer_week/burn_boss/duo_week utilisent encore des titres mensuels
+ * permanents, non révoqués).
+ */
+export async function revokePreviousTitle(client, code) {
+    await client.query(`DELETE FROM user_entitlements WHERE kind='title' AND code=$1`, [code]);
+}
+/**
  * Helper réutilisable pour offrir un abo promo (même pattern que welcome.ts /
  * user_subscriptions). Pas utilisé par viewer_week aujourd'hui (ses tiers
  * n'incluent pas d'abo) — prêt pour les events qui en auront besoin (ex.
  * Course aux clips : "abo top-1").
  */
 export async function grantPromoSubscriptionTx(client, userId, planCode, days) {
-    await client.query(`
+    // Ne JAMAIS écraser un abo payant (provider<>'promo') encore dans sa période,
+    // quel que soit son statut : un abo Stripe en dunning (past_due/unpaid) garde
+    // current_period_end dans le futur pendant la grâce — l'écraser casserait le
+    // lien Stripe (provider_subscription_id) et offrirait un accès gratuit. On
+    // n'overwrite que notre propre promo OU un abo expiré/sans période.
+    const res = await client.query(`
     INSERT INTO user_subscriptions (
       user_id, plan_code, provider, provider_subscription_id,
       status, current_period_start, current_period_end, cancel_at_period_end,
@@ -742,7 +815,9 @@ export async function grantPromoSubscriptionTx(client, userId, planCode, days) {
       updated_at=NOW()
     WHERE
       user_subscriptions.provider='promo'
-      OR user_subscriptions.status NOT IN ('active','trialing')
-      OR (user_subscriptions.current_period_end IS NOT NULL AND user_subscriptions.current_period_end <= NOW())
+      OR user_subscriptions.current_period_end IS NULL
+      OR user_subscriptions.current_period_end <= NOW()
+    RETURNING 1
     `, [userId, planCode, `promo_event:${planCode}:${userId}:${Date.now()}`, days]);
+    return (res.rowCount ?? 0) > 0;
 }

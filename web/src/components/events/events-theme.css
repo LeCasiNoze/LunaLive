@@ -451,6 +451,239 @@
   .evTwoCol { grid-template-columns: 1fr; }
 }
 
+/* ── Bloc règles "Comment ça marche ?" (tous les events) ──────────── */
+.evRulesHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.evRulesTitle { font-family: "Syne", sans-serif; font-weight: 800; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.evRulesChevron { transition: transform 250ms ease; opacity: 0.7; font-size: 13px; }
+.evRulesChevron.open { transform: rotate(180deg); }
+.evRulesSummary { font-family: "DM Sans", sans-serif; font-size: 13px; opacity: 0.82; font-weight: 700; line-height: 1.55; margin-top: 10px; }
+.evRulesBody { display: grid; gap: 12px; margin-top: 14px; }
+.evRuleItem { display: flex; gap: 10px; align-items: flex-start; }
+.evRuleIcon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.evRuleItemTitle { font-family: "Syne", sans-serif; font-weight: 800; font-size: 12.5px; letter-spacing: 0.01em; }
+.evRuleItemText { font-family: "DM Sans", sans-serif; font-size: 12.5px; opacity: 0.8; font-weight: 700; line-height: 1.55; margin-top: 2px; }
+
+/* ── Roue d'event (wheel_week) ────────────────────────────────────── */
+.evWheelRow { display: grid; grid-template-columns: minmax(0, 260px) 1fr; gap: 22px; align-items: center; }
+@media (max-width: 780px) { .evWheelRow { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+
+.evWheelStage { position: relative; width: min(240px, 72vw); aspect-ratio: 1 / 1; margin: 0 auto; flex-shrink: 0; }
+.evWheelGlow {
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(167, 139, 250, 0.28), transparent 68%);
+  pointer-events: none;
+}
+.evWheelPointer {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  width: 0;
+  height: 0;
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+  border-top: 18px solid #fff;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5));
+}
+.evWheelDial {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 3px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 0 0 6px rgba(0, 0, 0, 0.18);
+}
+.evWheelHub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  background: rgba(11, 10, 18, 0.92);
+  border: 2px solid rgba(167, 139, 250, 0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.evWheelLegend { display: grid; gap: 6px; }
+.evWheelLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  font-family: "DM Sans", sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.evWheelSwatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.evWheelLegendProba { opacity: 0.6; margin-left: auto; white-space: nowrap; }
+
+.evTicketsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.24);
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.evFreeSpinPill {
+  margin-left: 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  background: rgba(74, 222, 128, 0.14);
+  color: #86efac;
+  font-family: "DM Sans", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.evSpinBtn { width: 100%; margin-top: 10px; font-size: 15px; padding: 14px 18px; }
+.evSpinBtn:disabled { opacity: 0.45; cursor: default; box-shadow: none; }
+
+.evWheelResult {
+  margin-top: 14px;
+  text-align: center;
+  border-radius: 16px;
+  padding: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.14), rgba(0, 0, 0, 0.18));
+  animation: evRewardPop 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes evRewardPop {
+  0% { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.evWheelResultAmount { font-family: "Bebas Neue", sans-serif; font-size: 1.6rem; color: #fde68a; }
+.evWheelResultLot { font-family: "DM Sans", sans-serif; font-size: 12px; font-weight: 800; opacity: 0.85; margin-top: 4px; }
+
+/* ── Barre de paliers (points cumulés) ────────────────────────────── */
+.evPalierBar { position: relative; padding-top: 14px; }
+.evPalierTrack {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  overflow: visible;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.evPalierFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ev-accG), #fbbf24);
+  box-shadow: 0 0 18px rgba(251, 191, 36, 0.4);
+  transition: width 800ms ease;
+}
+.evPalierMark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8.5px;
+  font-weight: 800;
+  font-family: "DM Sans", sans-serif;
+  background: rgba(11, 10, 18, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  z-index: 2;
+}
+.evPalierMark.done { border-color: #34d399; background: rgba(52, 211, 153, 0.25); color: #d1fae5; }
+.evPalierMark.next { border-color: #fbbf24; box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.22); }
+.evPalierLabels { display: flex; margin-top: 26px; position: relative; height: 32px; }
+.evPalierLotLabel {
+  position: absolute;
+  transform: translateX(-50%);
+  font-family: "DM Sans", sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  width: 84px;
+  opacity: 0.78;
+  line-height: 1.35;
+}
+.evPalierNext {
+  margin-top: 12px;
+  text-align: center;
+  font-family: "DM Sans", sans-serif;
+  font-size: 12.5px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+@media (max-width: 560px) {
+  .evPalierLotLabel { width: 58px; font-size: 9px; }
+  .evPalierMark { width: 16px; height: 16px; font-size: 7.5px; }
+}
+
+/* ── Boutique d'event ─────────────────────────────────────────────── */
+.evShopGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.evShopItem {
+  border-radius: 16px;
+  padding: 14px 12px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.2);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+.evShopLabel { font-family: "Syne", sans-serif; font-weight: 800; font-size: 13px; }
+.evShopPrice { font-family: "Bebas Neue", sans-serif; font-size: 1.3rem; color: #fde68a; }
+.evShopCap { font-family: "DM Sans", sans-serif; font-size: 10.5px; opacity: 0.65; font-weight: 700; }
+.evShopBuyBtn { width: 100%; margin-top: 4px; }
+
+/* ── Quêtes d'event (daily/weekly) ────────────────────────────────── */
+.evQuestList { display: grid; gap: 8px; }
+.evQuest {
+  border-radius: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.2);
+  display: grid;
+  gap: 8px;
+}
+.evQuest.claimable { border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.08); }
+.evQuest.claimed { opacity: 0.55; }
+.evQuestHead { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.evQuestLabel { font-family: "DM Sans", sans-serif; font-weight: 800; font-size: 13px; }
+.evQuestReward { font-family: "Bebas Neue", sans-serif; font-size: 14px; color: var(--ev-accL); white-space: nowrap; }
+.evQuestBar { height: 8px; border-radius: 999px; overflow: hidden; background: rgba(0, 0, 0, 0.3); }
+.evQuestBarFill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--ev-accG), var(--ev-accL)); transition: width 500ms ease; }
+.evQuestFoot { display: flex; justify-content: space-between; align-items: center; font-size: 11px; opacity: 0.75; font-weight: 700; }
+
 /* ── Teaser (events pas encore implémentés) ───────────────────────── */
 .evTeaser { text-align: center; padding: 30px 18px; display: grid; gap: 10px; justify-items: center; }
 .evTeaserEmoji { font-size: 42px; }

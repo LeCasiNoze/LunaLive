@@ -47,13 +47,50 @@ proposés par event au moment du build et validés un par un.
   a **le plus regardé de la semaine** → classement de streamers en plus du viewer.
 - **Récompense** : top-N + participation.
 
-### 2. Semaine de la roue
-- **Roue modifiée pour l'event** : drop de lots à **équivalence en POINTS** (pas
-  des rubis) → évite d'inonder le site de rubis.
-- **Score** = total de points gagnés à la roue pendant la semaine.
-- **Spins bonus** via **quêtes quotidiennes modifiées** (elles donnent des tickets
-  roue pendant l'event) → raison de revenir chaque jour.
-- **Récompense** : top-N + participation.
+### 2. Semaine de la roue (REDESIGN v2 — validé + simulé, 9 juil)
+Roue d'event SÉPARÉE (pas la roue quotidienne). 3 couches de récompense. Systèmes
+génériques (paliers + boutique + tickets) à réutiliser sur les autres events.
+
+**Tickets (inventaire persistant, stackable, cap ~50)** : 1 spin gratuit/jour (reset 00h)
++ 3 quêtes daily d'event (1 ticket chacune) + 5 quêtes hebdo d'event (3 tickets chacune)
+= jusqu'à 43/semaine F2P. Les tickets NON utilisés se gardent pour un prochain event.
+
+**La roue** (chaque spin = points + 15 XP ; lot réel rare) :
+| proba | points | lot |
+|---|---|---|
+| 30% / 15% / 8% | 100 / 200 / 300(x3) | — (le x3 collé au jackpot = near-miss) |
+| 20% | 100 | 20 rubis |
+| 12% | 100 | +55 XP |
+| 10% | 100 | +1 ticket |
+| 4% | 100 | cosmétique commun |
+| 0,8% | 100 | ticket de sub |
+| 0,2% | 100 | jackpot roue : 300 rubis + cosmétique rare |
+→ 53% des spins = points seuls. Table de taux publiée (confiance/casino-adjacent).
+
+**Paliers de points cumulés** (barre goal-gradient, départ pré-rempli ~15%) :
+250 (badge "Spinner" commun + 30 rubis) · 600 (2 tickets) · 1300 (60 rubis + cosmo commun)
+· 2400 (ticket sub + 100 XP) · 4000 (120 rubis + boost XP 7j) · **7500 (cosmétique PERMANENT
+rare)**. Le hardcore plafonne ~5/6 ; le 7500 exige stacking (~15 tickets d'un event précédent)
+OU grosse dépense boutique. Paliers réclamés EN DIRECT (pas à la clôture).
+
+**Classement** (points, reset dimanche soir) : prestige only → top-3 = cadre message
+exclusif "roulette" · #1 = abo viewer 7j + titre "Roi de la Roue" (remis en jeu chaque retour).
+
+**Boutique d'event (= le PUITS de rubis, P0 de l'éco)** — on ne vend JAMAIS le prestige :
+| item | prix | cap/jour | effet |
+|---|---|---|---|
+| ticket de roue | escalier 50/60/70/80/90/100 | 6 | +1 spin |
+| re-roll (rejoue la roue) | 75 | 3 | relance le dernier spin |
+| boost XP 7j | 250 | 1/event | +X% XP |
+| ticket de sub | 400 | 2/event | offrir un sub |
+
+**Score & anti-inflation** : points = classement/paliers (non-dépensables, expirent hebdo).
+Rubis = dépensable (boutique). Simulé net-NÉGATIF en rubis (l'event draine le surplus).
+
+**Titre champion "remis en jeu"** : à chaque distribution d'un event, révoquer le titre du
+champion précédent de cette famille avant d'accorder le nouveau (garde ~1 rotation).
+
+**Cosmétiques à créer** : cf docs/events-cosmetics-todo.md.
 
 ### 3. Course aux clips (streamer-centric — nourrit l'Insta)
 - **Double classement** : (a) streamer qui cumule le plus, (b) meilleur clip
