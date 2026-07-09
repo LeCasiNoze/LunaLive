@@ -404,15 +404,19 @@ const CLIP_RACE_REWARD_TIERS: RewardTierDisplay[] = [
 ];
 
 const BOSS_REWARD_TIERS: RewardTierDisplay[] = [
-  { key: "gold", rank: "🥇 #1 dégâts", amount: "500", extra: "cumulable avec la récompense de base", gold: true },
-  { key: "s2", rank: "🥈 #2 dégâts", amount: "300" },
-  { key: "s3", rank: "🥉 #3 dégâts", amount: "180" },
   {
-    key: "part",
-    rank: "🎯 Tout contributeur (≥ 50 dégâts)",
-    amount: "120",
-    extra: "+ badge « Boss Slayer », si le boss tombe",
+    key: "all",
+    rank: "🎯 Tous (≥ 50 dégâts, si le boss tombe)",
+    amount: "Premium 3j",
+    extra: "badge « Boss Slayer » + 100 XP + 1 tour de roue + accès !pcall pendant 3 jours",
+    gold: true,
   },
+  { key: "gold", rank: "🥇 #1 dégâts", amount: "300", extra: "+ cadre « flammes » + titre « Bourreau »" },
+  { key: "s2", rank: "🥈 #2 dégâts", amount: "200", extra: "+ cadre « flammes »" },
+  { key: "s3", rank: "🥉 #3 dégâts", amount: "120", extra: "+ cadre « flammes »" },
+  { key: "b4", rank: "🔥 Rang 4 à 10", amount: "60" },
+  { key: "b5", rank: "🔥 Rang 11 à 50", amount: "30" },
+  { key: "b6", rank: "🔥 Rang 51 à 100", amount: "15" },
 ];
 
 function RewardsShowcase({ tiers }: { tiers: RewardTierDisplay[] }) {
@@ -1411,7 +1415,7 @@ function ClipRacePanel({
   );
 }
 
-// ── burn_boss : jauge de vie + top dégâts + burn ──────────────────────
+// ── burn_boss : jauge de vie DÉCROISSANTE + compte à rebours + top dégâts ──
 function BossPanel({
   resp,
   token,
@@ -1425,7 +1429,28 @@ function BossPanel({
   onLoginClick: () => void;
   onRefresh: () => void;
 }) {
-  const pct = resp.hp > 0 ? Math.min(100, Math.round((resp.totalDamage / resp.hp) * 100)) : 0;
+  const [tab, setTab] = React.useState<"boss" | "degats" | "recompenses">("boss");
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Jauge de VIE : décroît à mesure des dégâts (identité "raid boss", ≠ coffre).
+  const remaining = Math.max(0, resp.hp - resp.totalDamage);
+  const remainingPct = resp.hp > 0 ? Math.max(0, Math.min(100, (remaining / resp.hp) * 100)) : 0;
+  const timeLeftMs = Math.max(0, new Date(resp.event.end_at).getTime() - now);
+  const expired = timeLeftMs <= 0;
+  const fmtTime = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return d > 0 ? `${d}j ${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(h)}:${pad(m)}:${pad(sec)}`;
+  };
+
   const damagers: EvTopRow[] = resp.topDamagers.map((d) => ({
     rank: d.rank,
     userId: d.userId,
@@ -1434,62 +1459,81 @@ function BossPanel({
   }));
 
   return (
-    <>
-      <Reveal>
-        <div>
-          <div className="evSectionTitle">🔥 Boss à abattre</div>
-          <div className="evCard">
-            <div className="evBarHead">
-              <span><CountUp value={resp.totalDamage} /> / {resp.hp} dégâts</span>
-              {resp.killed ? <span className="evStateBadge live">💀 Boss vaincu !</span> : null}
-            </div>
-            <div className="evBar">
-              <div className="evBarFill boss" style={{ width: `${pct}%` }} />
-            </div>
-          </div>
+    <div className="evWheel2">
+      <div className="evWheel2Status">
+        <div className="evW2Stats">
+          <div className="evW2Stat"><span className="evW2Label">PV du boss</span><span className="evW2Val">❤️ {remaining} / {resp.hp}</span></div>
+          <div className="evW2Stat"><span className="evW2Label">Tes dégâts</span><span className="evW2Val">🔥 {resp.myDamage ?? 0}{resp.myRank ? ` · #${resp.myRank}` : ""}</span></div>
         </div>
-      </Reveal>
+      </div>
 
-      {damagers.length > 0 ? (
-        <Reveal delay={0.05}>
-          <div>
-            <div className="evSectionTitle">📊 Top dégâts</div>
-            <LeaderboardList rows={damagers} meUserId={meUserId} unit="dégâts" />
-          </div>
-        </Reveal>
-      ) : null}
+      <div className="evTabs" role="tablist">
+        {([
+          ["boss", "🔥", "Boss"],
+          ["degats", "📊", "Top dégâts"],
+          ["recompenses", "🎁", "Récompenses"],
+        ] as const).map(([k, icon, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
+            <span className="evTabIcon">{icon}</span>
+            <span className="evTabLabel">{label}</span>
+          </button>
+        ))}
+      </div>
 
-      <Reveal delay={0.08}>
-        <div>
-          <div className="evSectionTitle">🎁 Vitrine des lots</div>
-          <RewardsShowcase tiers={BOSS_REWARD_TIERS} />
-        </div>
-      </Reveal>
+      <div className="evTabPanel">
+        {tab === "boss" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div className={`evBossBanner${resp.killed ? " killed" : expired ? " survived" : ""}`}>
+              {resp.killed ? (
+                "💀 Boss vaincu — récompenses distribuées à la clôture !"
+              ) : expired ? (
+                "☠️ Le boss a survécu… pas de récompense cette fois."
+              ) : (
+                <>⏳ Le boss s'échappe dans <strong>{fmtTime(timeLeftMs)}</strong> — achevez-le à temps !</>
+              )}
+            </div>
 
-      <Reveal delay={0.12}>
-        <div>
-          <div className="evSectionTitle">🎯 Ton statut</div>
-          {!token ? (
-            <LoginGate onLogin={onLoginClick} text="Connecte-toi pour infliger des dégâts au boss." />
-          ) : (
-            <MyStatusCard
-              icon="🔥"
-              title="Tes dégâts"
-              meta={<><CountUp value={resp.myDamage ?? 0} /> dégâts infligés</>}
-            >
-              <RubisAmountForm
+            <div className="evCard">
+              <div className="evBarHead">
+                <span>PV restants : <CountUp value={remaining} /> / {resp.hp}</span>
+                {resp.killed ? <span className="evStateBadge live">vaincu</span> : null}
+              </div>
+              <div className="evBar evBarHp">
+                <div className="evBarFill boss" style={{ width: `${remainingPct}%` }} />
+              </div>
+            </div>
+
+            {!token ? (
+              <LoginGate onLogin={onLoginClick} text="Connecte-toi pour infliger des dégâts au boss." />
+            ) : (
+              <MyStatusCard
                 icon="🔥"
-                buttonLabel="Brûler des rubis"
-                onSubmit={async (n) => {
-                  await postBossBurn(token, n);
-                  onRefresh();
-                }}
-              />
-            </MyStatusCard>
-          )}
-        </div>
-      </Reveal>
-    </>
+                title="Frappe le boss"
+                meta={<><CountUp value={resp.myDamage ?? 0} /> dégâts{resp.myRank ? ` · rang #${resp.myRank}` : ""}</>}
+              >
+                <div className="evBossHint">Regarder les lives, chatter et tourner la roue infligent déjà des dégâts gratuitement. Brûle des rubis pour frapper beaucoup plus fort.</div>
+                <RubisAmountForm
+                  icon="🔥"
+                  buttonLabel="Brûler des rubis"
+                  onSubmit={async (n) => {
+                    await postBossBurn(token, n);
+                    onRefresh();
+                  }}
+                />
+              </MyStatusCard>
+            )}
+          </div>
+        ) : tab === "degats" ? (
+          damagers.length === 0 ? (
+            <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0" }}>Pas encore de dégâts — sois le premier à frapper le boss.</div>
+          ) : (
+            <LeaderboardList rows={damagers} meUserId={meUserId} unit="dégâts" />
+          )
+        ) : (
+          <RewardsShowcase tiers={BOSS_REWARD_TIERS} />
+        )}
+      </div>
+    </div>
   );
 }
 

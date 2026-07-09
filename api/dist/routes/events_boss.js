@@ -100,12 +100,17 @@ eventsBossRouter.get("/events/current/boss", a(async (req, res) => {
       LIMIT 10
       `, [event.id]);
     let myDamage;
+    let myRank;
     if (userId) {
-        const me = await pool.query(`SELECT points FROM event_scores WHERE event_id=$1 AND user_id=$2`, [
-            event.id,
-            userId,
-        ]);
+        const me = await pool.query(`
+        SELECT points, rank FROM (
+          SELECT user_id, points,
+                 ROW_NUMBER() OVER (ORDER BY points DESC, updated_at ASC) AS rank
+          FROM event_scores WHERE event_id=$1
+        ) t WHERE user_id=$2
+        `, [event.id, userId]);
         myDamage = Number(me.rows?.[0]?.points ?? 0);
+        myRank = me.rows?.[0]?.rank != null ? Number(me.rows[0].rank) : undefined;
     }
     res.json({
         ok: true,
@@ -114,6 +119,7 @@ eventsBossRouter.get("/events/current/boss", a(async (req, res) => {
         totalDamage,
         killed: totalDamage >= hp,
         myDamage,
+        myRank,
         topDamagers: (topRes.rows || []).map((r) => ({
             userId: Number(r.user_id),
             username: String(r.username ?? ""),

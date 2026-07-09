@@ -39,11 +39,14 @@ Décision Lucas : on ajoute un **classement des contributeurs** → le top-3 est
 - (Note : l'ancien badge `chest_YYYYMM` « à tous » a été retiré — remplacé par les paliers.)
 - (Rappel « 6 semaines » : les skins n'ont PAS d'expiration en base — permanent, comme la roue. Le « 6 semaines » ressenti = le cycle entre deux passages de l'event. Une vraie expiration nécessiterait une colonne `expires_at` sur `user_entitlements` + un nettoyage — chantier séparé si voulu.)
 
-## 🔥 Boss à abattre (burn_boss) — à créer
-- **Badge slayer** — `boss_slayer_YYYYMM` (déjà en code) · à tous les contributeurs si boss tué.
-- **Cosmétique permanent** — pour le top-dégâts.
-- **Cadre animé exclusif (top-3 dégâts)** — `frame_boss_*` · idée : bordure "flammes" animée.
-- **Titre "Coup de grâce"** — au joueur qui porte le dernier coup (mécanique à ajouter).
+## 🔥 Boss à abattre (burn_boss) — SPÉCIFIÉ
+Si le boss tombe : à TOUT contributeur (≥ 50 dégâts) badge + XP + tour de roue + 3j de
+premium promo (perks dont !pcall, SANS ticket sub) + rubis par tranche de rang. Top-3 =
+cadre exclusif + #1 titre. Boss survit = rien (HP calibrée bas pour que ce soit rare).
+- **Badge slayer** — `boss_slayer_YYYYMM` (kind `title`, déjà en code) · à tous les contributeurs si boss tué.
+- **Cadre de message EXCLUSIF (top-3 dégâts)** — code `frame_boss_flames` · kind `skin` · bordure « flammes » animée (idée : braises + halo rouge/violet, cohérent avec la jauge boss). **Permanent** (comme `frame_wheel_roulette` / `frame_chest_vault`). Référencé dans `EVENT_REWARD_CONFIGS.burn_boss.boss.topSkinCode`.
+- **Titre (#1 dégâts)** — code `title_boss_bourreau` · « Bourreau » · unique, **remis en jeu** à chaque retour de l'event (cf `revokePreviousTitle`). Référencé dans `topTitleCode`.
+- (Idée future : titre « Coup de grâce » au joueur qui porte le dernier coup — nécessite de tracer le dernier hit, mécanique à ajouter.)
 
 ## 🤝 Semaine en duo (duo_week) — à créer
 - **Badge commun** — `cos_duo_*` · aux 2 commus du duo gagnant.

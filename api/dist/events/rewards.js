@@ -2,6 +2,7 @@ import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { addToken, grantEntitlement } from "../services/dailyBonus.js";
 import { CHEST_PALIERS } from "./global_chest.js";
+import { awardXpTx } from "../economy/xp.js";
 import { rankViewerWeekStreamers } from "./viewer_week.js";
 import { eventRewardEligibilitySql } from "./eligibility.js";
 import { getRankedClips, getRankedStreamers, resolveClipCreatorUserId } from "./clip_race.js";
@@ -80,25 +81,32 @@ export const EVENT_REWARD_CONFIGS = {
     burn_boss: {
         mode: "boss",
         boss: {
-            // HP choisi pour rester ATTEIGNABLE par la petite commu actuelle (cf
-            // memory reference_rumble_*) : le barème events/burn_boss.ts (identique
-            // à global_chest, cap 60 pts/j watch + claims/calls/chat/spins) fait
-            // déjà 150-300 pts/semaine par contributeur régulier SANS rien
-            // dépenser ; une quinzaine de réguliers couvrent une bonne part de
-            // 4000, le burn rubis (ratio 1:1, sink pur) n'étant qu'un accélérateur
-            // optionnel pour finir plus vite. Même logique de calibrage que
-            // global_chest.collective.goal=3000 — à remonter une fois le volume
-            // réel mesuré sur un premier run.
-            hp: 4000,
+            // HP recalibrée BAS (petite commu) pour que le boss soit réellement
+            // battable dès les premiers runs — sinon "rien si le boss survit" mord
+            // trop (crainte Lucas). Repère mesuré : le coffre de test a fait ~1189
+            // dégâts en 4 jours avec 12 contributeurs SANS aucun burn ; sur une
+            // semaine c'est ~2000+ de dégâts gratuits, donc 2500 tombe avec
+            // l'activité seule + quelques burns. La tension binaire reste sans que
+            // la défaite soit réaliste au début. À remonter quand la commu grossira.
+            hp: 2500,
             ratio: 1, // 1 rubis brûlé = 1 dégât
-            minDamage: 50, // même seuil que global_chest.minContribution
-            baseRubis: 120,
+            minDamage: 50, // seuil pour toucher la moindre récompense + le badge
             entitlement: { kind: "title", codeTemplate: "boss_slayer_YYYYMM" },
-            topTiers: [
-                { rank: 3, rubis: 180 },
-                { rank: 2, rubis: 300 },
-                { rank: 1, rubis: 500 },
+            // Rubis dégressif par tranche de rang dégâts (tranches exclusives, 1er
+            // match gagnant). Le top-3 touche le gros, la longue traîne un petit lot.
+            rubisBrackets: [
+                { maxRank: 1, rubis: 300 },
+                { maxRank: 2, rubis: 200 },
+                { maxRank: 3, rubis: 120 },
+                { maxRank: 10, rubis: 60 },
+                { maxRank: 50, rubis: 30 },
+                { maxRank: 100, rubis: 15 },
             ],
+            allXp: 100,
+            allWheelTickets: 1,
+            allPremiumDays: 3, // premium viewer promo — perks (dont !pcall) SANS ticket sub ni rubis de cycle
+            topSkinCode: "frame_boss_flames",
+            topTitleCode: "title_boss_bourreau",
             rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
         },
     },
@@ -448,53 +456,68 @@ async function distributeBoss(client, eventId, event, cfg) {
         eventId,
         JSON.stringify({ totalDamage, hp: cfg.hp, killed: true, topDamagers }),
     ]);
-    const grants = new Map();
-    for (const row of ranked) {
-        if (row.points < cfg.minDamage)
-            continue;
-        grants.set(row.userId, { tier: "participation", rank: null, rubis: cfg.baseRubis, badge: true });
-    }
-    for (const tierCfg of cfg.topTiers) {
-        const row = ranked.find((r) => r.rank === tierCfg.rank);
-        if (!row)
-            continue;
-        const cur = grants.get(row.userId);
-        if (cur) {
-            cur.tier = "win";
-            cur.rank = tierCfg.rank;
-            cur.rubis += tierCfg.rubis;
-        }
-        else {
-            grants.set(row.userId, { tier: "win", rank: tierCfg.rank, rubis: tierCfg.rubis, badge: false });
-        }
-    }
+    const badgeCode = cfg.entitlement.codeTemplate.replace("YYYYMM", ym);
+    const rubisForRank = (rank) => {
+        for (const b of cfg.rubisBrackets)
+            if (rank <= b.maxRank)
+                return b.rubis;
+        return 0;
+    };
     let winners = 0;
     let participants = 0;
     let rubisTotal = 0;
-    for (const [userId, acc] of grants) {
-        await earnRubisTx(client, userId, cfg.rubisOrigin, acc.rubis, {
-            purpose: "event_reward",
-            eventId,
-            eventType: event.type,
-            tier: acc.tier,
-            rank: acc.rank,
-        });
-        const extras = {};
-        if (acc.badge) {
-            const code = cfg.entitlement.codeTemplate.replace("YYYYMM", ym);
-            await grantEntitlement(client, userId, cfg.entitlement.kind, code);
-            extras.entitlement = { kind: cfg.entitlement.kind, code };
+    // Un SEUL lot par contributeur ≥ minDamage (chaque user apparaît une fois) :
+    // rubis (tranche de rang) + XP + ticket de roue + 3j de premium promo (perks
+    // dont !pcall, sans ticket sub car grantCycleBenefits n'est déclenché que par
+    // Stripe) + badge. Le top-3 gagne en plus le cadre "flammes", le #1 le titre.
+    for (const row of ranked) {
+        if (row.points < cfg.minDamage)
+            continue;
+        const isTop3 = row.rank <= 3;
+        const rubis = rubisForRank(row.rank);
+        if (rubis > 0) {
+            await earnRubisTx(client, row.userId, cfg.rubisOrigin, rubis, {
+                purpose: "event_reward",
+                eventId,
+                eventType: event.type,
+                tier: isTop3 ? "win" : "participation",
+                rank: row.rank,
+            });
+        }
+        if (cfg.allXp > 0) {
+            await awardXpTx(client, row.userId, cfg.allXp, "event_boss", "boss_kill", { eventId });
+        }
+        if (cfg.allWheelTickets > 0) {
+            await client.query(`INSERT INTO user_event_tickets (user_id, amount) VALUES ($1, LEAST($2,50))
+         ON CONFLICT (user_id) DO UPDATE SET amount = LEAST(user_event_tickets.amount + $2, 50)`, [row.userId, cfg.allWheelTickets]);
+        }
+        if (cfg.allPremiumDays > 0) {
+            await grantPromoSubscriptionTx(client, row.userId, "viewer", cfg.allPremiumDays);
+        }
+        const extras = { rubis };
+        await grantEntitlement(client, row.userId, cfg.entitlement.kind, badgeCode);
+        extras.entitlement = { kind: cfg.entitlement.kind, code: badgeCode };
+        if (cfg.allPremiumDays > 0)
+            extras.premiumDays = cfg.allPremiumDays;
+        if (isTop3) {
+            await grantEntitlement(client, row.userId, "skin", cfg.topSkinCode);
+            extras.skin = cfg.topSkinCode;
+        }
+        if (row.rank === 1) {
+            await revokePreviousTitle(client, cfg.topTitleCode);
+            await grantEntitlement(client, row.userId, "title", cfg.topTitleCode);
+            extras.title = cfg.topTitleCode;
         }
         await client.query(`
       INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
       VALUES ($1,$2,$3,$4,$5,$6::jsonb)
       ON CONFLICT (event_id, user_id) DO NOTHING
-      `, [eventId, userId, acc.tier, acc.rank, acc.rubis, JSON.stringify(extras)]);
-        if (acc.tier === "win")
+      `, [eventId, row.userId, isTop3 ? "win" : "participation", isTop3 ? row.rank : null, rubis, JSON.stringify(extras)]);
+        if (isTop3)
             winners += 1;
         else
             participants += 1;
-        rubisTotal += acc.rubis;
+        rubisTotal += rubis;
     }
     await client.query("COMMIT");
     return { ok: true, alreadyDistributed: false, winners, participants, rubisTotal };
