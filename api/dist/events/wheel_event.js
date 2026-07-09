@@ -277,9 +277,10 @@ async function performSpin(client, eventId, userId, source) {
     await awardXpTx(client, userId, xp, XP_SOURCE_WHEEL_EVENT, source, { eventId, segmentIndex: seg.index });
     await applySegmentLot(client, eventId, userId, seg.lot, multBp);
     await client.query(`INSERT INTO event_wheel_spins (event_id, user_id, segment_index, points) VALUES ($1,$2,$3,$4)`, [eventId, userId, seg.index, seg.points]);
-    const newlyClaimed = await claimPaliersTx(client, eventId, userId);
-    const palierUnlocked = newlyClaimed[newlyClaimed.length - 1];
-    return { segment: seg, xp, palierUnlocked };
+    // Paliers NON auto-réclamés : le joueur les récupère manuellement (bouton
+    // "Récupérer" sur l'onglet Roue → POST /events/wheel/palier/claim), pour un
+    // moment de récompense explicite plutôt qu'un crédit invisible au spin.
+    return { segment: seg, xp };
 }
 export async function spinWheel(userId) {
     const event = await getLiveWheelEvent(pool);
@@ -301,7 +302,7 @@ export async function spinWheel(userId) {
                 return { ok: false, error: "no_ticket" };
             }
         }
-        const { segment, xp, palierUnlocked } = await performSpin(client, Number(event.id), userId, "spin");
+        const { segment, xp } = await performSpin(client, Number(event.id), userId, "spin");
         const tickets = await getTicketAmount(client, userId);
         const points = await getPointsAmount(client, Number(event.id), userId);
         await client.query("COMMIT");
@@ -310,7 +311,6 @@ export async function spinWheel(userId) {
             segment: { index: segment.index, points: segment.points, xp, lot: segment.lot, lotLabel: segment.lotLabel },
             tickets,
             points,
-            palierUnlocked: palierUnlocked ? { index: palierUnlocked.index, rewardLabel: palierUnlocked.rewardLabel } : undefined,
         };
     }
     catch (e) {
