@@ -688,15 +688,16 @@ function WheelWeekPanel({
   token,
   meUserId,
   onLoginClick,
-  onRefresh,
 }: {
   resp: Extract<ApiWheelPageResp, { event: ApiEventRow }>;
   token: string | null;
   meUserId: number | null;
   onLoginClick: () => void;
-  onRefresh: () => void;
 }) {
-  const me = resp.me;
+  const [me, setMe] = React.useState(resp.me);
+  const [shop, setShop] = React.useState(resp.shop);
+  const [quests, setQuests] = React.useState(resp.quests);
+  React.useEffect(() => { setMe(resp.me); setShop(resp.shop); setQuests(resp.quests); }, [resp.me, resp.shop, resp.quests]);
   const top3 = resp.leaderboard.slice(0, 3);
   const rest = resp.leaderboard.slice(3);
   const segMeta = React.useMemo(() => computeWheelSegments(resp.wheel), [resp.wheel]);
@@ -706,6 +707,7 @@ function WheelWeekPanel({
 
   const [rotation, setRotation] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
+  const [hasSpun, setHasSpun] = React.useState(false);
   const [spinResult, setSpinResult] = React.useState<{
     points: number;
     xp: number;
@@ -732,8 +734,9 @@ function WheelWeekPanel({
       animateToSegment(r.segment.index);
       window.setTimeout(() => {
         setSpinResult({ points: r.segment.points, xp: r.segment.xp, lotLabel: r.segment.lotLabel });
+        setMe((cur) => cur ? { ...cur, tickets: r.tickets, points: r.points, freeSpinAvailable: false } : cur);
+        setHasSpun(true);
         setSpinning(false);
-        onRefresh();
       }, 2650);
     } catch (e: any) {
       setSpinErr(e?.message || "Le tour a échoué, réessaie.");
@@ -745,7 +748,7 @@ function WheelWeekPanel({
   // qu'un spin normal, le segment tiré revient dans granted.segment.
   async function handleReroll() {
     if (!token) { onLoginClick(); return; }
-    const item = resp.shop.find((s) => s.code === "reroll");
+    const item = shop.find((s) => s.code === "reroll");
     if (!me || !item || item.soldOut || spinning) return;
     setSpinErr(null);
     setSpinResult(null);
@@ -756,8 +759,8 @@ function WheelWeekPanel({
       animateToSegment(seg ? Number(seg.index) : -1);
       window.setTimeout(() => {
         if (seg) setSpinResult({ points: Number(seg.points), xp: Number(seg.xp), lotLabel: seg.lotLabel });
+        if (seg) setMe((cur) => cur ? { ...cur, points: cur.points + Number(seg.points || 0) } : cur);
         setSpinning(false);
-        onRefresh();
       }, 2650);
     } catch (e: any) {
       setSpinErr(e?.message || "Relance impossible (rubis insuffisants ou limite atteinte).");
@@ -773,8 +776,14 @@ function WheelWeekPanel({
     setBuyErr(null);
     setBuyingCode(code);
     try {
-      await postWheelShopBuy(token, code);
-      onRefresh();
+      const r = await postWheelShopBuy(token, code);
+      setShop((cur) => cur.map((item) => item.code === code ? {
+        ...item,
+        boughtToday: r.boughtToday,
+        nextPrice: r.nextPrice,
+        soldOut: r.nextPrice == null,
+      } : item));
+      if (code === "ticket") setMe((cur) => cur ? { ...cur, tickets: cur.tickets + Number(r.granted?.tickets ?? 1) } : cur);
     } catch (e: any) {
       setBuyErr(e?.message || "Achat impossible, réessaie.");
     } finally {
@@ -793,8 +802,12 @@ function WheelWeekPanel({
     try {
       const r = await postWheelQuestClaim(token, key);
       setLastClaim({ key, ticketsAwarded: r.ticketsAwarded });
+      setMe((cur) => cur ? { ...cur, tickets: r.tickets } : cur);
+      setQuests((cur) => ({
+        daily: cur.daily.map((q) => q.key === key ? { ...q, claimed: true } : q),
+        weekly: cur.weekly.map((q) => q.key === key ? { ...q, claimed: true } : q),
+      }));
       window.setTimeout(() => setLastClaim((cur) => (cur?.key === key ? null : cur)), 3500);
-      onRefresh();
     } catch (e: any) {
       setClaimErr(e?.message || "Réclamation impossible, réessaie.");
     } finally {
@@ -810,10 +823,10 @@ function WheelWeekPanel({
     try {
       const r = await postWheelPalierClaim(token);
       if (r.count > 0) {
+        setMe((cur) => cur ? { ...cur, paliersClaimed: [...new Set([...cur.paliersClaimed, ...r.claimed.map((c) => c.index)])] } : cur);
         setPalierFlash(r.claimed.map((c) => c.rewardLabel));
         window.setTimeout(() => setPalierFlash(null), 4500);
       }
-      onRefresh();
     } catch (e: any) {
       setSpinErr(e?.message || "Récupération impossible, réessaie.");
     } finally {
@@ -827,7 +840,7 @@ function WheelWeekPanel({
   const claimedSet = new Set(me?.paliersClaimed ?? []);
   const reachedUnclaimed = resp.paliers.filter((p) => points >= p.threshold && !claimedSet.has(p.index));
   const nextPalierReward = me?.nextPalier ? resp.paliers.find((p) => p.index === me.nextPalier!.index) : null;
-  const reroll = resp.shop.find((s) => s.code === "reroll");
+  const reroll = shop.find((s) => s.code === "reroll");
   const canSpin = !!me && (me.tickets >= 1 || me.freeSpinAvailable);
   const rules = EVENT_RULES["wheel_week"];
 
@@ -875,43 +888,62 @@ function WheelWeekPanel({
       <div className="evTabPanel">
         {tab === "roue" ? (
           <div className="evRoueTab">
-            <div className="evWheelStage">
-              <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
-              {spinResult ? (
-                <div className="evSpinFlash">
-                  <div className="evSpinFlashPts">+{spinResult.points} pts · +{spinResult.xp} XP</div>
-                  {spinResult.lotLabel && spinResult.lotLabel !== "—" ? (
-                    <div className="evSpinFlashLot">🎉 {spinResult.lotLabel}</div>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-
-            {!token ? (
-              <button type="button" className="evBtn evSpinBtn" onClick={onLoginClick}>Se connecter pour tourner</button>
-            ) : (
-              <div className="evSpinBtns">
-                <button type="button" className="evBtn evSpinBtn" onClick={handleSpin} disabled={spinning || !canSpin}>
-                  {spinning
-                    ? "Ça tourne…"
-                    : me?.freeSpinAvailable
-                    ? "🎁 Tour gratuit du jour"
-                    : me && me.tickets >= 1
-                    ? "🎡 Tourner · 1 🎟"
-                    : "Plus de tickets"}
-                </button>
-                <button
-                  type="button"
-                  className="evBtn evRerollBtn"
-                  onClick={handleReroll}
-                  disabled={spinning || !reroll || reroll.soldOut}
-                  title="Relancer tout de suite en payant des rubis"
-                >
-                  {reroll && !reroll.soldOut ? `🔁 Relancer · 💎 ${reroll.nextPrice}` : "🔁 Relances épuisées"}
-                </button>
+            <div className="evWheelArena">
+              <div className="evWheelMachine">
+                <div className="evWheelEyebrow">LUNALIVE JACKPOT</div>
+                <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
+                {spinResult ? (
+                  <div className="evSpinFlash">
+                    <div className="evSpinFlashPts">+{spinResult.points} pts · +{spinResult.xp} XP</div>
+                    {spinResult.lotLabel && spinResult.lotLabel !== "—" ? (
+                      <div className="evSpinFlashLot">🎉 {spinResult.lotLabel}</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
-            )}
-            {spinErr ? <div className="evErrLine">{spinErr}</div> : null}
+
+              <div className="evWheelConsole">
+                <div>
+                  <span className="evConsoleKicker">{me?.freeSpinAvailable ? "CADEAU QUOTIDIEN DISPONIBLE" : "TENTE TA CHANCE"}</span>
+                  <h2 className="evConsoleTitle">{me?.freeSpinAvailable ? "Ton tour gratuit t’attend." : "Un tour. Un lot. Zéro temps mort."}</h2>
+                  <p className="evConsoleCopy">Chaque lancer rapporte des points et de l’XP. Le lot indiqué par le pointeur est immédiatement ajouté à ton compte.</p>
+                </div>
+
+                <div className="evConsoleBalance">
+                  <div><span>Solde</span><strong>🎟 {me?.tickets ?? 0}</strong></div>
+                  <div><span>Score semaine</span><strong>{points} pts</strong></div>
+                </div>
+
+                {!token ? (
+                  <button type="button" className="evBtn evSpinBtn" onClick={onLoginClick}>Se connecter pour tourner</button>
+                ) : (
+                  <div className="evSpinBtns">
+                    <button type="button" className="evBtn evSpinBtn" onClick={handleSpin} disabled={spinning || !canSpin}>
+                      {spinning
+                        ? "LA ROUE TOURNE…"
+                        : me?.freeSpinAvailable
+                        ? "LANCER MON TOUR GRATUIT"
+                        : me && me.tickets >= 1
+                        ? `TOURNER · 1 (${me.tickets})`
+                        : "PLUS DE TICKETS"}
+                    </button>
+                    {hasSpun ? (
+                      <button
+                        type="button"
+                        className="evBtn evRerollBtn"
+                        onClick={handleReroll}
+                        disabled={spinning || !reroll || reroll.soldOut}
+                        title="Relancer tout de suite en payant des rubis"
+                      >
+                        {reroll && !reroll.soldOut ? `↻ Relancer · 💎 ${reroll.nextPrice}` : "Relances épuisées"}
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+                {spinErr ? <div className="evErrLine">{spinErr}</div> : null}
+                <button type="button" className="evOddsLink" onClick={() => setModal("proba")}>Voir les chances de gain →</button>
+              </div>
+            </div>
 
             {resp.paliers.length > 0 ? (
               <div className="evPalierBlock">
@@ -976,7 +1008,7 @@ function WheelWeekPanel({
         ) : tab === "boutique" ? (
           <div className="evShopTab">
             <div className="evShopGrid">
-              {resp.shop.map((item) => (
+              {shop.map((item) => (
                 <div className="evShopItem" key={item.code}>
                   <div className="evShopLabel">{item.label}</div>
                   <div className="evShopPrice">{item.nextPrice != null ? `💎 ${item.nextPrice}` : "Épuisé"}</div>
@@ -997,19 +1029,19 @@ function WheelWeekPanel({
           </div>
         ) : tab === "quetes" ? (
           <div className="evQuestTab">
-            {resp.quests.daily.length > 0 ? (
+            {quests.daily.length > 0 ? (
               <div className="evQuestGroup">
                 <div className="evQuestGroupTitle">Quotidiennes</div>
-                <QuestGroup quests={resp.quests.daily} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
+                <QuestGroup quests={quests.daily} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
               </div>
             ) : null}
-            {resp.quests.weekly.length > 0 ? (
+            {quests.weekly.length > 0 ? (
               <div className="evQuestGroup">
                 <div className="evQuestGroupTitle">Hebdomadaires</div>
-                <QuestGroup quests={resp.quests.weekly} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
+                <QuestGroup quests={quests.weekly} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
               </div>
             ) : null}
-            {resp.quests.daily.length === 0 && resp.quests.weekly.length === 0 ? (
+            {quests.daily.length === 0 && quests.weekly.length === 0 ? (
               <div className="evLockedSub" style={{ textAlign: "center" }}>Aucune quête disponible pour l'instant.</div>
             ) : null}
             {claimErr ? <div className="evErrLine">{claimErr}</div> : null}
@@ -1409,6 +1441,31 @@ export default function EventPage() {
     setErr(null);
     setLoading(true);
     try {
+      // Aperçu local des events sans modifier le cycle de production.
+      const previewType = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("preview") : null;
+      if (previewType === "viewer_week") {
+        const start = new Date();
+        const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+        const previewEvent: ApiEventRow = {
+          id: -1, type: "viewer_week", cycle_index: 0, state: "live",
+          start_at: start.toISOString(), end_at: end.toISOString(),
+          created_at: start.toISOString(), updated_at: start.toISOString(),
+        };
+        setEvent(previewEvent);
+        setViewerWeek({
+          ok: true,
+          event: previewEvent,
+          rules: { pointsPerMinute: 1, topN: 100 },
+          top: [],
+          me: null,
+        });
+        setWheelWeek(null);
+        setChest(null);
+        setClipRace(null);
+        setBoss(null);
+        setLoading(false);
+        return;
+      }
       const cur = await getCurrentEvent();
       setEvent(cur?.event ?? null);
 
@@ -1501,7 +1558,7 @@ export default function EventPage() {
 
   return (
     <main className="container evRoot" style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))", display: "grid", gap: 14 }}>
-      <section className="evHero" ref={heroRef} onMouseMove={onHeroMove}>
+      <section className={`evHero${event?.type === "wheel_week" || event?.type === "viewer_week" ? " evHeroWheel" : ""}`} ref={heroRef} onMouseMove={onHeroMove}>
         <div className="evMesh" />
         <motion.div
           className="evHeroSpotlight"
@@ -1544,7 +1601,7 @@ export default function EventPage() {
         <div className="alert" style={{ margin: 0 }}>{err}</div>
       ) : null}
 
-      {event && event.type !== "wheel_week" ? (
+      {event && event.type !== "wheel_week" && event.type !== "viewer_week" ? (
         <Reveal>
           <EventRulesBlock type={event.type} />
         </Reveal>
@@ -1565,33 +1622,48 @@ export default function EventPage() {
           </div>
         </div>
       ) : isViewerWeek ? (
-        <>
-          <Reveal>
+        <div className="evViewerWeek">
+          <div className="evViewerIntro">
             <div>
-              <div className="evSectionTitle">🏆 Podium</div>
-              <Podium top={top3} meUserId={meUserId} />
+              <span className="evConsoleKicker">LA COURSE EST LANCÉE</span>
+              <h2 className="evViewerHeadline">Regarde. Participe.<br />Prends la tête.</h2>
+              <p>Chaque minute de live et chaque interaction font grimper ton score. Une semaine pour laisser ton nom tout en haut.</p>
             </div>
-          </Reveal>
+            <div className="evViewerQuickStats">
+              <div><span>Participants classés</span><strong>{top3.length}</strong></div>
+              <div><span>Ton rang</span><strong>#{meRow?.rank ?? "—"}</strong></div>
+              <div><span>Ton score</span><strong>{meRow?.points ?? 0}</strong></div>
+            </div>
+          </div>
+
+          <div className="evViewerMainGrid">
+            <Reveal>
+              <div className="evViewerPanel evViewerPodiumPanel">
+                <div className="evPanelHead"><span>🏆 Podium actuel</span><small>Mise à jour en direct</small></div>
+                <Podium top={top3} meUserId={meUserId} />
+              </div>
+            </Reveal>
+
+            <Reveal delay={0.05}>
+              <div className="evViewerPanel">
+                <div className="evPanelHead"><span>🎁 Récompenses</span><small>Fin de semaine</small></div>
+                <RewardsShowcase tiers={VIEWER_WEEK_REWARD_TIERS} />
+              </div>
+            </Reveal>
+          </div>
 
           {rest.length > 0 ? (
-            <Reveal delay={0.05}>
-              <div>
-                <div className="evSectionTitle">📊 Classement complet</div>
+            <Reveal delay={0.08}>
+              <div className="evViewerPanel">
+                <div className="evPanelHead"><span>📊 Classement complet</span><small>{rest.length + 3} joueurs</small></div>
                 <LeaderboardList rows={rest} meUserId={meUserId} />
               </div>
             </Reveal>
           ) : null}
 
-          <Reveal delay={0.08}>
-            <div>
-              <div className="evSectionTitle">🎁 Vitrine des lots</div>
-              <RewardsShowcase tiers={VIEWER_WEEK_REWARD_TIERS} />
-            </div>
-          </Reveal>
-
           <Reveal delay={0.12}>
-            <div>
-              <div className="evSectionTitle">🎯 Ton statut</div>
+            <div className="evViewerPanel">
+              <div className="evPanelHead"><span>🎯 Ton espace</span><small>Progression personnelle</small></div>
 
               {!token ? (
                 <div className="evCard" style={{ textAlign: "center", display: "grid", gap: 10, justifyItems: "center" }}>
@@ -1640,14 +1712,13 @@ export default function EventPage() {
               )}
             </div>
           </Reveal>
-        </>
+        </div>
       ) : event.type === "wheel_week" && wheelWeek && wheelWeek.event ? (
         <WheelWeekPanel
           resp={wheelWeek}
           token={token}
           meUserId={auth?.user?.id ?? null}
           onLoginClick={() => setLoginOpen(true)}
-          onRefresh={() => load().catch(() => {})}
         />
       ) : event.type === "global_chest" && chest && chest.event ? (
         <ChestPanel
