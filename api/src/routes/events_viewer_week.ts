@@ -4,8 +4,9 @@ import jwt from "jsonwebtoken";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
 import type { AuthUser } from "../auth.js";
-import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer } from "../events/viewer_week.js";
+import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer, VIEWER_WEEK_PALIERS, getViewerPaliersState, claimViewerPaliers } from "../events/viewer_week.js";
 import { eventRewardEligibilitySql } from "../events/eligibility.js";
+import { requireAuth } from "../auth.js";
 
 export const eventsViewerWeekRouter = Router();
 
@@ -112,6 +113,7 @@ eventsViewerWeekRouter.get(
     // Classement STREAMERS (team) + streamer que le user connecté booste.
     const topStreamers = await rankViewerWeekStreamers(Number(event.id), 10);
     const myStreamer = userId ? await getViewerBoostedStreamer(Number(event.id), userId) : null;
+    const myPaliers = userId ? await getViewerPaliersState(pool, Number(event.id), userId) : null;
 
     res.json({
       ok: true,
@@ -126,6 +128,24 @@ eventsViewerWeekRouter.get(
       me: meRow ? mapRow(meRow) : null,
       topStreamers,
       myStreamer,
+      paliers: VIEWER_WEEK_PALIERS.map((p) => ({ index: p.index, threshold: p.threshold, label: p.label })),
+      myPaliers,
     });
+  })
+);
+
+// POST /api/events/viewer-week/palier/claim — récupère les paliers atteints.
+eventsViewerWeekRouter.post(
+  "/events/viewer-week/palier/claim",
+  requireAuth,
+  a(async (req: any, res) => {
+    const uid = Number(req.user?.id || 0);
+    const ev = await pool.query(
+      `SELECT id FROM events WHERE type='viewer_week' AND state='live' AND start_at<=NOW() AND NOW()<end_at ORDER BY start_at DESC LIMIT 1`
+    );
+    const eventId = ev.rows?.[0]?.id;
+    if (!eventId) return res.status(400).json({ ok: false, error: "no_event" });
+    const claimed = await claimViewerPaliers(Number(eventId), uid);
+    res.json({ ok: true, claimed, count: claimed.length });
   })
 );

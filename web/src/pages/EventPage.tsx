@@ -20,6 +20,7 @@ import {
   postBossBurn,
   postChestDeposit,
   postClipRaceVote,
+  postViewerWeekPalierClaim,
   postWheelPalierClaim,
   postWheelQuestClaim,
   postWheelShopBuy,
@@ -1483,6 +1484,8 @@ export default function EventPage() {
           me: null,
           topStreamers: [],
           myStreamer: null,
+          paliers: [],
+          myPaliers: null,
         });
         setWheelWeek(null);
         setChest(null);
@@ -1582,6 +1585,31 @@ export default function EventPage() {
   const rest = top3.slice(3);
   const topStreamers = viewerWeek?.topStreamers ?? [];
   const myStreamer = viewerWeek?.myStreamer ?? null;
+  const viewerPaliers = viewerWeek?.paliers ?? [];
+  const myViewerPaliers = viewerWeek?.myPaliers ?? null;
+  const viewerMaxThreshold = viewerPaliers.length ? viewerPaliers[viewerPaliers.length - 1].threshold : 0;
+  const viewerPoints = myViewerPaliers?.points ?? 0;
+  const viewerClaimedSet = new Set(myViewerPaliers?.claimed ?? []);
+  const viewerReachedUnclaimed = viewerPaliers.filter((p) => viewerPoints >= p.threshold && !viewerClaimedSet.has(p.index));
+
+  const [claimingViewerPalier, setClaimingViewerPalier] = React.useState(false);
+  const [viewerPalierFlash, setViewerPalierFlash] = React.useState<string[] | null>(null);
+  async function handleViewerPalierClaim() {
+    if (!token) { setLoginOpen(true); return; }
+    setClaimingViewerPalier(true);
+    try {
+      const r = await postViewerWeekPalierClaim(token);
+      if (r.count > 0) {
+        setViewerPalierFlash(r.claimed.map((c) => c.label));
+        window.setTimeout(() => setViewerPalierFlash(null), 4500);
+      }
+      try { const v = await getCurrentViewerWeek(token); setViewerWeek(v); } catch {}
+    } catch {
+      /* silencieux : l'UI reflète l'état au prochain refresh */
+    } finally {
+      setClaimingViewerPalier(false);
+    }
+  }
 
   const eligible = accessStatus?.eligible ?? null;
   const steps = accessStatus?.steps ?? [];
@@ -1694,6 +1722,47 @@ export default function EventPage() {
               </div>
             </Reveal>
           </div>
+
+          {token && viewerPaliers.length > 0 ? (
+            <Reveal delay={0.05}>
+              <div className="evViewerPanel">
+                <div className="evPanelHead"><span>🏁 Paliers de points</span><small>{viewerPoints} / {viewerMaxThreshold}</small></div>
+                <div className="evPalierTrack">
+                  <div className="evPalierFill" style={{ width: `${viewerMaxThreshold > 0 ? Math.min(100, (Math.min(viewerPoints, viewerMaxThreshold) / viewerMaxThreshold) * 100) : 0}%` }} />
+                  {viewerPaliers.map((p) => {
+                    const left = viewerMaxThreshold > 0 ? Math.min(100, (p.threshold / viewerMaxThreshold) * 100) : 0;
+                    const done = viewerClaimedSet.has(p.index);
+                    const reached = viewerPoints >= p.threshold;
+                    return <div key={p.index} className={`evPalierMark${done ? " done" : reached ? " reached" : ""}`} style={{ left: `${left}%` }} title={`${p.threshold} pts — ${p.label}`}>{done ? "✓" : p.threshold}</div>;
+                  })}
+                </div>
+                {viewerReachedUnclaimed.length > 0 ? (
+                  <div className="evPalierClaim" style={{ marginTop: 14 }}>
+                    <div className="evPalierClaimList">
+                      {viewerReachedUnclaimed.map((p) => <span className="evPalierClaimChip" key={p.index}>🎁 {p.label}</span>)}
+                    </div>
+                    <button type="button" className="evBtn evPalierClaimBtn" onClick={handleViewerPalierClaim} disabled={claimingViewerPalier}>
+                      {claimingViewerPalier ? "…" : `Récupérer ${viewerReachedUnclaimed.length} palier${viewerReachedUnclaimed.length > 1 ? "s" : ""}`}
+                    </button>
+                  </div>
+                ) : null}
+                {viewerPalierFlash ? <div className="evPalierFlash" style={{ marginTop: 10 }}>✅ Récupéré : {viewerPalierFlash.join(" · ")}</div> : null}
+                <div className="evPalierList" style={{ marginTop: 12 }}>
+                  {viewerPaliers.map((p) => {
+                    const done = viewerClaimedSet.has(p.index);
+                    const reached = viewerPoints >= p.threshold;
+                    return (
+                      <div className={`evPalierRow${done ? " done" : reached ? " reached" : ""}`} key={p.index}>
+                        <span className="evPalierRowThresh">{p.threshold}</span>
+                        <span className="evPalierRowLabel">{p.label}</span>
+                        <span className="evPalierRowState">{done ? "✓ obtenu" : reached ? "à récupérer" : ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Reveal>
+          ) : null}
 
           {topStreamers.length > 0 ? (
             <Reveal delay={0.06}>
