@@ -1,4 +1,5 @@
 import { pool } from "../db.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 const TZ = "Europe/Paris";
 // Fenêtre d'audience utilisée pour L'APPARIEMENT (proposeDuos) : indépendante
 // de la fenêtre de l'event lui-même — le duo doit se calculer sur
@@ -20,6 +21,7 @@ export async function computeSharedAudience(windowDays = SHARED_AUDIENCE_WINDOW_
       FROM stream_viewer_minutes
       WHERE user_id IS NOT NULL AND user_id > 0
         AND bucket_ts >= NOW() - ($1::int * INTERVAL '1 day')
+        AND ${notEventExcludedStreamerSql("streamer_id")}
     )
     SELECT a.streamer_id AS streamer_a_id, b.streamer_id AS streamer_b_id, COUNT(*)::int AS shared_viewers
     FROM audience a
@@ -68,6 +70,7 @@ export async function proposeDuos(eventId) {
     FROM stream_viewer_minutes
     WHERE user_id IS NOT NULL AND user_id > 0
       AND bucket_ts >= NOW() - ($1::int * INTERVAL '1 day')
+      AND ${notEventExcludedStreamerSql("streamer_id")}
     `, [SHARED_AUDIENCE_WINDOW_DAYS]);
     const active = (activeRes.rows || []).map((row) => Number(row.streamer_id));
     const unmatched = active.filter((id) => !assigned.has(id));

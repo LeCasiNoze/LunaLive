@@ -1,5 +1,6 @@
 import { pool } from "../db.js";
 import { buildPublicUrl } from "../clips/r2.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 // "Coups de cœur" : 1 PAR JOUR (Paris) par compte (validé Lucas). Rare exprès
 // pour tuer les likes de solidarité. Un coup de cœur vaut aussi un LIKE du clip
 // (cf events_clip_race.ts) → un seul bouton, et le clip remonte dans les clips
@@ -75,6 +76,7 @@ export async function getRankedStreamers(db, eventId, limit = 10) {
     FROM event_clip_scores ecs
     JOIN streamers s ON s.id = ecs.streamer_id
     WHERE ecs.event_id = $1
+      AND ${notEventExcludedStreamerSql("ecs.streamer_id")}
     GROUP BY ecs.streamer_id, s.slug, s.display_name, s.user_id
     ORDER BY votes DESC, first_scored_at ASC, ecs.streamer_id ASC
     LIMIT $2

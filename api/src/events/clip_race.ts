@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../db.js";
 import { buildPublicUrl } from "../clips/r2.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 
 type Db = Pool | PoolClient;
 
@@ -108,6 +109,7 @@ export async function getRankedStreamers(db: Db, eventId: number, limit = 10): P
     FROM event_clip_scores ecs
     JOIN streamers s ON s.id = ecs.streamer_id
     WHERE ecs.event_id = $1
+      AND ${notEventExcludedStreamerSql("ecs.streamer_id")}
     GROUP BY ecs.streamer_id, s.slug, s.display_name, s.user_id
     ORDER BY votes DESC, first_scored_at ASC, ecs.streamer_id ASC
     LIMIT $2

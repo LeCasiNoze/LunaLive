@@ -1,3 +1,18 @@
+// Chaînes EXCLUES de tous les events (ex. la radio "LunaLive" : ce n'est pas un
+// vrai streamer compétiteur, elle ne doit jamais être appariée en duo ni
+// apparaître dans un classement de streamers). Par slug (pas de flag dédié en
+// base). Étendre le tableau pour bannir d'autres chaînes.
+export const EVENT_EXCLUDED_STREAMER_SLUGS = ["lunalive"];
+/**
+ * Prédicat SQL : vrai si `streamerIdExpr` n'est PAS une chaîne exclue des
+ * events. `streamerIdExpr` doit être une colonne qualifiée renvoyant un
+ * streamers.id (ex. "svm.streamer_id", "ecs.streamer_id"). Le sous-select sur
+ * streamers.slug est trivial (set minuscule constant) — Postgres le hoist.
+ */
+export function notEventExcludedStreamerSql(streamerIdExpr) {
+    const list = EVENT_EXCLUDED_STREAMER_SLUGS.map((s) => `'${s.replace(/'/g, "''")}'`).join(",");
+    return `${streamerIdExpr} NOT IN (SELECT id FROM streamers WHERE lower(slug) IN (${list}))`;
+}
 /**
  * Gate d'éligibilité "assoupli" pour les events (v1b, onboarding complet).
  * IMPORTANT : ce gate ne filtre JAMAIS le calcul des points (les points

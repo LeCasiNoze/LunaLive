@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { pool } from "../db.js";
 import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
+import { notEventExcludedStreamerSql } from "./eligibility.js";
 
 type Db = Pool | PoolClient;
 const TZ = "Europe/Paris";
@@ -693,6 +694,7 @@ export async function rankViewerWeekStreamers(eventId: number, limit = 10, db: D
       WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
         AND svm.bucket_ts >= $2::timestamptz AND svm.bucket_ts < $3::timestamptz
         AND (st.user_id IS NULL OR st.user_id <> svm.user_id)
+        AND ${notEventExcludedStreamerSql("svm.streamer_id")}
       GROUP BY svm.user_id, svm.streamer_id
     ),
     top_per_viewer AS (
