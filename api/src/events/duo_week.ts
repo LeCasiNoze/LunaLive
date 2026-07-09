@@ -65,15 +65,47 @@ export async function proposeDuos(eventId: number) {
   const existing = await pool.query(`SELECT 1 FROM event_duos WHERE event_id=$1 LIMIT 1`, [eventId]);
   if ((existing.rowCount ?? 0) > 0) return { ok: true as const, skipped: "already_proposed" as const };
 
-  const pairs = await computeSharedAudience();
+  // Streamers actifs (30j) + leur "taille" (viewers distincts), hors chaînes
+  // exclues — sert au tie-break quand il n'y a pas d'audience commune exploitable.
+  const sizeRes = await pool.query(
+    `
+    SELECT svm.streamer_id AS id, COUNT(DISTINCT svm.user_id)::int AS size
+    FROM stream_viewer_minutes svm
+    WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
+      AND svm.bucket_ts >= NOW() - ($1::int * INTERVAL '1 day')
+      AND ${notEventExcludedStreamerSql("svm.streamer_id")}
+    GROUP BY svm.streamer_id
+    `,
+    [SHARED_AUDIENCE_WINDOW_DAYS]
+  );
+  const streamers = (sizeRes.rows || []).map((r: any) => ({ id: Number(r.id), size: Number(r.size || 0) }));
+
+  const sharedPairs = await computeSharedAudience();
+  const sharedMap = new Map<string, number>();
+  for (const p of sharedPairs) sharedMap.set(`${Math.min(p.streamerAId, p.streamerBId)}-${Math.max(p.streamerAId, p.streamerBId)}`, p.sharedViewers);
+  const sharedOf = (a: number, b: number) => sharedMap.get(`${Math.min(a, b)}-${Math.max(a, b)}`) ?? 0;
+
+  // Toutes les paires possibles, annotées. Priorité : plus d'audience commune,
+  // puis (fallback quand l'overlap est nul ou à égalité, cas petite commu) la
+  // TAILLE la plus proche → des duos équilibrés plutôt qu'un gros collé à un
+  // tout petit. À volume réel, l'audience commune primera d'elle-même.
+  const candidates: { a: number; b: number; shared: number; sizeDiff: number }[] = [];
+  for (let i = 0; i < streamers.length; i++) {
+    for (let k = i + 1; k < streamers.length; k++) {
+      const a = streamers[i];
+      const b = streamers[k];
+      candidates.push({ a: a.id, b: b.id, shared: sharedOf(a.id, b.id), sizeDiff: Math.abs(a.size - b.size) });
+    }
+  }
+  candidates.sort((x, y) => y.shared - x.shared || x.sizeDiff - y.sizeDiff || x.a - y.a || x.b - y.b);
+
   const assigned = new Set<number>();
   const duos: { a: number; b: number; shared: number }[] = [];
-
-  for (const p of pairs) {
-    if (assigned.has(p.streamerAId) || assigned.has(p.streamerBId)) continue;
-    duos.push({ a: p.streamerAId, b: p.streamerBId, shared: p.sharedViewers });
-    assigned.add(p.streamerAId);
-    assigned.add(p.streamerBId);
+  for (const c of candidates) {
+    if (assigned.has(c.a) || assigned.has(c.b)) continue;
+    duos.push({ a: c.a, b: c.b, shared: c.shared });
+    assigned.add(c.a);
+    assigned.add(c.b);
   }
 
   for (const d of duos) {
@@ -87,20 +119,9 @@ export async function proposeDuos(eventId: number) {
     );
   }
 
-  const activeRes = await pool.query(
-    `
-    SELECT DISTINCT streamer_id
-    FROM stream_viewer_minutes
-    WHERE user_id IS NOT NULL AND user_id > 0
-      AND bucket_ts >= NOW() - ($1::int * INTERVAL '1 day')
-      AND ${notEventExcludedStreamerSql("streamer_id")}
-    `,
-    [SHARED_AUDIENCE_WINDOW_DAYS]
-  );
-  const active = (activeRes.rows || []).map((row: any) => Number(row.streamer_id));
-  const unmatched = active.filter((id) => !assigned.has(id));
+  const unmatched = streamers.map((s) => s.id).filter((id) => !assigned.has(id));
   if (unmatched.length) {
-    console.warn("[duo_week] streamers non appariés (impairs ou sans audience commune) :", unmatched);
+    console.warn("[duo_week] streamers non appariés (nombre impair de streamers actifs) :", unmatched);
   }
 
   return { ok: true as const, duos: duos.length, unmatched: unmatched.length };
