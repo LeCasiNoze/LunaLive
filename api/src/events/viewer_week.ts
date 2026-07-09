@@ -1,5 +1,7 @@
+import type { Pool, PoolClient } from "pg";
 import { pool } from "../db.js";
 
+type Db = Pool | PoolClient;
 const TZ = "Europe/Paris";
 
 // Barème + caps (facile à modifier). Les CAP_PER_DAY sont TOUJOURS des caps
@@ -413,12 +415,12 @@ export type RankedViewerStreamer = {
   rank: number;
 };
 
-export async function rankViewerWeekStreamers(eventId: number, limit = 10): Promise<RankedViewerStreamer[]> {
-  const ev = await pool.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
+export async function rankViewerWeekStreamers(eventId: number, limit = 10, db: Db = pool): Promise<RankedViewerStreamer[]> {
+  const ev = await db.query(`SELECT start_at, end_at FROM events WHERE id=$1`, [eventId]);
   const e = ev.rows?.[0];
   if (!e) return [];
 
-  const r = await pool.query(
+  const r = await db.query(
     `
     WITH vsm AS (
       -- minutes distinctes par (viewer, streamer), hors auto-watch

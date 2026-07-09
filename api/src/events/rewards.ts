@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { addToken, grantEntitlement } from "../services/dailyBonus.js";
+import { rankViewerWeekStreamers } from "./viewer_week.js";
 import { eventRewardEligibilitySql } from "./eligibility.js";
 import { getRankedClips, getRankedStreamers, resolveClipCreatorUserId } from "./clip_race.js";
 import { getRankedDuos } from "./duo_week.js";
@@ -47,6 +48,15 @@ type RankingEventRewardConfig = {
   tiers: RewardTier[];
   participation: ParticipationConfig;
   rubisOrigin: string;
+  // Classement STREAMERS (team) — distribué EN PLUS du classement viewer, à la
+  // clôture (cf distributeViewerStreamers). subs = coupons 'sub_ticket' au
+  // compte du streamer ; rubisToChest = dépôt dans le coffre de sa commu ;
+  // featured (rang 1) = mise en avant /lives. Optionnel (viewer_week seul).
+  streamerTiers?: {
+    chestLotWeightBp: number;
+    featuredDays: number;
+    tiers: Array<{ rank: number; subs: number; rubisToChest: number }>;
+  };
 };
 
 type CollectiveEventRewardConfig = {
@@ -149,6 +159,17 @@ export const EVENT_REWARD_CONFIGS: Record<string, EventRewardConfig> = {
     ],
     participation: { minScore: 200, rubis: 40, wheelTickets: 1, maxRecipients: 40 },
     rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+    streamerTiers: {
+      chestLotWeightBp: 2000, // pleinement tirable (cf chest_auto)
+      featuredDays: 7,
+      tiers: [
+        { rank: 1, subs: 10, rubisToChest: 1000 },
+        { rank: 2, subs: 5, rubisToChest: 500 },
+        { rank: 3, subs: 3, rubisToChest: 300 },
+        { rank: 4, subs: 0, rubisToChest: 100 },
+        { rank: 5, subs: 0, rubisToChest: 50 },
+      ],
+    },
   },
   wheel_week: {
     mode: "wheel",
@@ -464,6 +485,12 @@ export async function closeAndDistribute(eventId: number): Promise<CloseAndDistr
       rubisTotal += config.participation.rubis;
     }
 
+    // Classement STREAMERS (team, viewer_week) : subs + dépôt coffre + mise en
+    // avant au top-5, dans la même transaction que la distribution viewer.
+    if (config.streamerTiers) {
+      await distributeViewerStreamers(client, eventId, config.streamerTiers);
+    }
+
     await client.query("COMMIT");
     return { ok: true, alreadyDistributed: false, winners, participants, rubisTotal };
   } catch (e) {
@@ -473,6 +500,68 @@ export async function closeAndDistribute(eventId: number): Promise<CloseAndDistr
     throw e;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Distribution du classement STREAMERS (viewer_week — mécanique team) : top-5.
+ * Récompenses = subs à distribuer (coupons 'sub_ticket' au compte du streamer),
+ * dépôt de rubis dans le coffre de sa commu (streamer_chest_lots, pas son wallet
+ * perso), et mise en avant /lives (streamers.featured) pour le rang 1. Exécutée
+ * dans la transaction de closeAndDistribute (pas de COMMIT ici).
+ */
+async function distributeViewerStreamers(
+  client: PoolClient,
+  eventId: number,
+  cfg: NonNullable<RankingEventRewardConfig["streamerTiers"]>
+) {
+  const ranked = await rankViewerWeekStreamers(eventId, 5, client);
+
+  for (const tier of cfg.tiers) {
+    const st = ranked.find((r) => r.rank === tier.rank);
+    if (!st) continue;
+
+    if (tier.rubisToChest > 0) {
+      await client.query(
+        `INSERT INTO streamer_chests (streamer_id) VALUES ($1) ON CONFLICT (streamer_id) DO NOTHING`,
+        [st.streamerId]
+      );
+      await client.query(
+        `INSERT INTO streamer_chest_lots (streamer_id, origin, weight_bp, amount_remaining, meta)
+         VALUES ($1, 'event_viewer_week', $2, $3, $4::jsonb)`,
+        [st.streamerId, cfg.chestLotWeightBp, tier.rubisToChest, JSON.stringify({ eventId, eventType: "viewer_week", rank: tier.rank })]
+      );
+    }
+
+    if (tier.rank === 1 && cfg.featuredDays > 0) {
+      await client.query(
+        `UPDATE streamers SET featured=true, featured_until=NOW() + ($2::int * INTERVAL '1 day'), updated_at=NOW() WHERE id=$1`,
+        [st.streamerId, cfg.featuredDays]
+      );
+    }
+
+    if (tier.subs > 0 && st.userId) {
+      await client.query(
+        `INSERT INTO user_coupons (user_id, code, qty, updated_at)
+         VALUES ($1, 'sub_ticket', $2, NOW())
+         ON CONFLICT (user_id, code) DO UPDATE SET qty = user_coupons.qty + $2, updated_at = NOW()`,
+        [st.userId, tier.subs]
+      );
+    }
+
+    if (st.userId) {
+      await client.query(
+        `INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
+         VALUES ($1,$2,'win',$3,0,$4::jsonb)
+         ON CONFLICT (event_id, user_id) DO NOTHING`,
+        [
+          eventId,
+          st.userId,
+          tier.rank,
+          JSON.stringify({ kind: "streamer_win", streamerId: st.streamerId, slug: st.slug, subs: tier.subs, rubisToChest: tier.rubisToChest, featured: tier.rank === 1 }),
+        ]
+      );
+    }
   }
 }
 
