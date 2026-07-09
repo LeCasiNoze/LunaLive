@@ -277,6 +277,8 @@ export async function postWheelQuestClaim(token: string, key: string) {
 
 // ── global_chest ────────────────────────────────────────────────────
 export type ApiChestContributor = { userId: number; username: string; points: number };
+export type ApiChestPalier = { index: number; threshold: number; rubis: number; wheelTickets: number; label: string };
+export type ApiChestMyPaliers = { communityTotal: number; myContribution: number; claimed: number[] };
 
 export type ApiChestResp =
   | { ok: true; event: null }
@@ -287,10 +289,14 @@ export type ApiChestResp =
       communityTotal: number;
       reached: boolean;
       myContribution?: number;
+      minContribution: number;
+      paliers: ApiChestPalier[];
+      myPaliers: ApiChestMyPaliers | null;
       topContributors: ApiChestContributor[];
     };
 
 export type ApiChestDepositResp = { ok: true; deposited: number; communityTotal: number };
+export type ApiChestPalierClaimResp = { ok: true; claimed: Array<{ index: number; label: string }>; count: number };
 
 // Auth optionnelle : la barre et le top sont publics, "myContribution" n'apparaît que si connecté.
 export async function getCurrentChest(token?: string | null) {
@@ -304,6 +310,13 @@ export async function postChestDeposit(token: string, amount: number) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ amount }),
+  });
+}
+
+export async function postChestPalierClaim(token: string) {
+  return j<ApiChestPalierClaimResp>("/api/events/chest/palier/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 

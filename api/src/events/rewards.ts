@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { pool } from "../db.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { addToken, grantEntitlement } from "../services/dailyBonus.js";
+import { CHEST_PALIERS } from "./global_chest.js";
 import { rankViewerWeekStreamers } from "./viewer_week.js";
 import { eventRewardEligibilitySql } from "./eligibility.js";
 import { getRankedClips, getRankedStreamers, resolveClipCreatorUserId } from "./clip_race.js";
@@ -33,12 +34,16 @@ type ParticipationConfig = {
 // Récompense "collective" (mode:'collective') : pas de classement, un seul
 // palier commun (SUM event_scores.points >= goal) qui, s'il est atteint,
 // donne la MÊME récompense à tout contributeur au-dessus de minContribution.
+// Récompense "coffre" (mode:'collective'). Les paliers escaladants (rubis +
+// tickets) sont réclamés EN DIRECT pendant l'event (cf events/global_chest.ts
+// CHEST_PALIERS / claimChestPalier). À la clôture, si la commu a franchi au
+// moins le 1er palier : skin exclusif au top-3 contributeurs (permanent, comme
+// la roue) + titre "remis en jeu" au #1. Pas de récompense cosmétique à TOUS
+// (réservée aux tops, cf feedback Lucas) — le lot "tout le monde" est les paliers.
 type CollectiveRewardConfig = {
-  goal: number; // barre communautaire à atteindre pour déclencher la distribution
   minContribution: number;
-  rubis: number;
-  entitlement?: { kind: "skin" | "title"; codeTemplate: string };
-  rubisOrigin: string;
+  topSkinCode: string; // top-3 : cadre exclusif (permanent, jamais révoqué — cf distributeWheel)
+  topTitleCode: string; // #1 : titre remis en jeu (cf revokePreviousTitle)
 };
 
 // Union discriminée par `mode` : absent = ranking classique (tiers +
@@ -187,18 +192,16 @@ export const EVENT_REWARD_CONFIGS: Record<string, EventRewardConfig> = {
   global_chest: {
     mode: "collective",
     collective: {
-      // Petite commu actuelle (cf memory reference_rumble_*) : avec le barème
-      // events/global_chest.ts (60 pts/j watch cap + claims/calls/chat/spins),
-      // une quinzaine de contributeurs réguliers sur la semaine atteignent déjà
-      // 100-250 pts chacun sans rien dépenser ; quelques dépôts rubis (sink)
-      // suffisent à franchir 3000. Objectif volontairement modeste pour que le
-      // premier tirage du cycle soit un succès visible — à remonter une fois le
-      // volume réel de la commu mesuré sur un premier run.
-      goal: 3000,
+      // Seuil de contribution perso pour toucher le badge de clôture + réclamer
+      // les paliers (cf events/global_chest.ts CHEST_MIN_CONTRIBUTION). Les
+      // paliers escaladants (rubis/tickets) sont réclamés en direct ; la clôture
+      // ne distribue que le prestige : badge à tous + skin top-3 + titre #1.
       minContribution: 50,
-      rubis: 150,
-      entitlement: { kind: "title", codeTemplate: "chest_YYYYMM" },
-      rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+      // Codes cosmétiques cf docs/events-cosmetics-todo.md — fixes (pas de
+      // YYYYMM) : le skin top-3 s'accumule (permanent), le titre #1 est unique
+      // et remis en jeu à chaque retour de l'event.
+      topSkinCode: "frame_chest_vault",
+      topTitleCode: "title_chest_baron",
     },
   },
   clip_race: {
@@ -567,12 +570,14 @@ async function distributeViewerStreamers(
 }
 
 /**
- * Distribution "collective" (ex. Coffre communautaire) : pas de classement,
- * un seul total (SUM event_scores.points) comparé à un goal. Si atteint,
- * TOUS les contributeurs éligibles au-dessus de minContribution reçoivent la
- * MÊME récompense — écrits en tier='participation' (pas de notion de rang en
- * mode collectif, rank=NULL). Appelée depuis closeAndDistribute, dans la
- * même transaction (elle fait le COMMIT/ROLLBACK final).
+ * Distribution "collective" (Coffre communautaire). Les paliers escaladants
+ * (rubis + tickets) sont réclamés EN DIRECT pendant l'event (cf
+ * events/global_chest.ts claimChestPalier) : la clôture ne distribue donc que
+ * le PRESTIGE, et seulement si la commu a franchi au moins le 1er palier (le
+ * coffre a "réussi"). Miroir de distributeWheel : top-3 contributeurs = skin
+ * exclusif (permanent) ; #1 = titre remis en jeu. Rien pour tout le monde ici
+ * (cosmétique réservé aux tops, cf feedback Lucas). Appelée depuis
+ * closeAndDistribute, dans la même transaction (COMMIT/ROLLBACK final).
  */
 async function distributeCollective(
   client: PoolClient,
@@ -585,74 +590,75 @@ async function distributeCollective(
     [eventId]
   );
   const communityTotal = Number(totalRes.rows?.[0]?.total ?? 0);
-  const reached = communityTotal >= cfg.goal;
+  const firstThreshold = CHEST_PALIERS.length ? CHEST_PALIERS[0].threshold : 1;
+  const finalGoal = CHEST_PALIERS.length ? CHEST_PALIERS[CHEST_PALIERS.length - 1].threshold : 0;
+  const reached = communityTotal >= firstThreshold;
 
-  if (!reached) {
-    await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
-      eventId,
-      JSON.stringify({ reached: false }),
-    ]);
-    await client.query("COMMIT");
-    return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
-  }
-
-  const contributors = await client.query(
+  const rankedRes = await client.query(
     `
-    SELECT s.user_id
+    SELECT s.user_id, u.username, s.points,
+           ROW_NUMBER() OVER (ORDER BY s.points DESC, s.updated_at ASC) AS rank
     FROM event_scores s
+    JOIN users u ON u.id = s.user_id
     WHERE s.event_id = $1
       AND s.points >= $2
       AND ${eventRewardEligibilitySql("s.user_id")}
     `,
     [eventId, cfg.minContribution]
   );
+  const ranked = (rankedRes.rows || []).map((r: any) => ({
+    userId: Number(r.user_id),
+    username: String(r.username),
+    points: Number(r.points),
+    rank: Number(r.rank),
+  }));
 
-  const ymRes = await client.query(
-    `SELECT to_char($1::timestamptz AT TIME ZONE 'Europe/Paris', 'YYYYMM') AS ym`,
-    [event.start_at]
-  );
-  const ym = String(ymRes.rows?.[0]?.ym ?? "");
+  const topSnapshot = ranked.slice(0, REWARD_TOP_SNAPSHOT_N).map((r) => ({
+    userId: r.userId,
+    username: r.username,
+    points: r.points,
+    rank: r.rank,
+  }));
 
   await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
     eventId,
-    JSON.stringify({ communityTotal, goal: cfg.goal, reached: true, winners: contributors.rowCount ?? 0 }),
+    JSON.stringify({ communityTotal, goal: finalGoal, reached, topContributors: topSnapshot }),
   ]);
 
-  let participants = 0;
-  let rubisTotal = 0;
+  if (!reached || !ranked.length) {
+    await client.query("COMMIT");
+    return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
+  }
 
-  for (const row of contributors.rows) {
-    const userId = Number(row.user_id);
+  const top3 = ranked.filter((r) => r.rank <= 3);
+  let winners = 0;
 
-    await earnRubisTx(client, userId, cfg.rubisOrigin, cfg.rubis, {
-      purpose: "event_reward",
-      eventId,
-      eventType: event.type,
-      tier: "participation",
-    });
-
+  for (const row of top3) {
     const extras: Record<string, any> = {};
-    if (cfg.entitlement) {
-      const code = cfg.entitlement.codeTemplate.replace("YYYYMM", ym);
-      await grantEntitlement(client, userId, cfg.entitlement.kind, code);
-      extras.entitlement = { kind: cfg.entitlement.kind, code };
+
+    await grantEntitlement(client, row.userId, "skin", cfg.topSkinCode);
+    extras.entitlement = { kind: "skin", code: cfg.topSkinCode };
+
+    if (row.rank === 1) {
+      await revokePreviousTitle(client, cfg.topTitleCode);
+      await grantEntitlement(client, row.userId, "title", cfg.topTitleCode);
+      extras.title = cfg.topTitleCode;
     }
 
     await client.query(
       `
       INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
-      VALUES ($1,$2,'participation',NULL,$3,$4::jsonb)
+      VALUES ($1,$2,'win',$3,0,$4::jsonb)
       ON CONFLICT (event_id, user_id) DO NOTHING
       `,
-      [eventId, userId, cfg.rubis, JSON.stringify(extras)]
+      [eventId, row.userId, row.rank, JSON.stringify(extras)]
     );
 
-    participants += 1;
-    rubisTotal += cfg.rubis;
+    winners += 1;
   }
 
   await client.query("COMMIT");
-  return { ok: true, alreadyDistributed: false, winners: 0, participants, rubisTotal };
+  return { ok: true, alreadyDistributed: false, winners, participants: 0, rubisTotal: 0 };
 }
 
 /**

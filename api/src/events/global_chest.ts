@@ -1,4 +1,5 @@
 import { pool } from "../db.js";
+import { earnRubisTx } from "../wallet_engine.js";
 
 const TZ = "Europe/Paris";
 
@@ -137,4 +138,93 @@ export async function recomputeGlobalChest(eventId: number) {
   );
 
   return { ok: true as const };
+}
+
+// Contribution minimale (activité + dépôts) pour pouvoir réclamer un palier ou
+// toucher le badge de clôture — anti free-rider. Même seuil que
+// EVENT_REWARD_CONFIGS.global_chest.collective.minContribution.
+export const CHEST_MIN_CONTRIBUTION = 50;
+
+// Paliers COLLECTIFS escaladants (seuil = total communautaire, PAS les points
+// perso — c'est toute la différence avec viewer_week). Chaque contributeur
+// (≥ CHEST_MIN_CONTRIBUTION) peut réclamer une fois chaque palier franchi par
+// la commu. Réclamé EN DIRECT (comme la roue/viewer), pas à la clôture.
+// Réutilise la table générique event_palier_claims. Calibré modeste (petite
+// commu) : rubis volontairement bas + tickets de roue (engagement) — le vrai
+// enjeu prestige (skin top-3) est distribué à la clôture, cf distributeCollective.
+export const CHEST_PALIERS: Array<{ index: number; threshold: number; rubis: number; wheelTickets: number; label: string }> = [
+  { index: 0, threshold: 1000, rubis: 30, wheelTickets: 0, label: "30 rubis" },
+  { index: 1, threshold: 2500, rubis: 50, wheelTickets: 1, label: "50 rubis + 1 ticket de roue" },
+  { index: 2, threshold: 5000, rubis: 70, wheelTickets: 2, label: "70 rubis + 2 tickets de roue" },
+  { index: 3, threshold: 8000, rubis: 100, wheelTickets: 2, label: "100 rubis + 2 tickets de roue" },
+];
+
+export async function getChestPaliersState(eventId: number, userId: number) {
+  const totalRes = await pool.query(
+    `SELECT COALESCE(SUM(points),0)::int AS total FROM event_scores WHERE event_id=$1`,
+    [eventId]
+  );
+  const communityTotal = Number(totalRes.rows?.[0]?.total ?? 0);
+  let myContribution = 0;
+  let claimed: number[] = [];
+  if (userId) {
+    const me = await pool.query(
+      `SELECT COALESCE(points,0)::int AS pts FROM event_scores WHERE event_id=$1 AND user_id=$2`,
+      [eventId, userId]
+    );
+    myContribution = Number(me.rows?.[0]?.pts ?? 0);
+    const claimsRes = await pool.query(
+      `SELECT palier_index FROM event_palier_claims WHERE event_id=$1 AND user_id=$2`,
+      [eventId, userId]
+    );
+    claimed = (claimsRes.rows || []).map((r: any) => Number(r.palier_index));
+  }
+  return { communityTotal, myContribution, claimed };
+}
+
+// Réclame tous les paliers collectifs franchis (communityTotal ≥ threshold) que
+// ce contributeur n'a pas encore récupérés. Miroir de claimViewerPaliers, mais
+// le seuil est COMMUNAUTAIRE et gaté par une contribution perso minimale.
+export async function claimChestPalier(eventId: number, userId: number): Promise<Array<{ index: number; label: string }>> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const totalRes = await client.query(`SELECT COALESCE(SUM(points),0)::int AS total FROM event_scores WHERE event_id=$1`, [eventId]);
+    const communityTotal = Number(totalRes.rows?.[0]?.total ?? 0);
+    const mineRes = await client.query(`SELECT COALESCE(points,0)::int AS pts FROM event_scores WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+    const myContribution = Number(mineRes.rows?.[0]?.pts ?? 0);
+
+    const newly: Array<{ index: number; label: string }> = [];
+    // Anti free-rider : il faut avoir soi-même contribué au coffre commun.
+    if (myContribution >= CHEST_MIN_CONTRIBUTION) {
+      const already = await client.query(`SELECT palier_index FROM event_palier_claims WHERE event_id=$1 AND user_id=$2`, [eventId, userId]);
+      const claimed = new Set((already.rows || []).map((r: any) => Number(r.palier_index)));
+      for (const p of CHEST_PALIERS) {
+        if (communityTotal < p.threshold || claimed.has(p.index)) continue;
+        const ins = await client.query(
+          `INSERT INTO event_palier_claims (event_id, user_id, palier_index) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING 1`,
+          [eventId, userId, p.index]
+        );
+        if ((ins.rowCount ?? 0) === 0) continue; // course concurrente
+        if (p.rubis > 0) {
+          await earnRubisTx(client, userId, "event_platform", p.rubis, { purpose: "event_palier", eventId, eventType: "global_chest", palier: p.index });
+        }
+        if (p.wheelTickets > 0) {
+          await client.query(
+            `INSERT INTO user_event_tickets (user_id, amount) VALUES ($1, LEAST($2,50))
+             ON CONFLICT (user_id) DO UPDATE SET amount = LEAST(user_event_tickets.amount + $2, 50)`,
+            [userId, p.wheelTickets]
+          );
+        }
+        newly.push({ index: p.index, label: p.label });
+      }
+    }
+    await client.query("COMMIT");
+    return newly;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
 }

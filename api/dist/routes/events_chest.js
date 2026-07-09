@@ -3,8 +3,7 @@ import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
 import { spendRubisTx } from "../wallet_engine.js";
-import { recomputeGlobalChest } from "../events/global_chest.js";
-import { EVENT_REWARD_CONFIGS } from "../events/rewards.js";
+import { recomputeGlobalChest, CHEST_PALIERS, CHEST_MIN_CONTRIBUTION, getChestPaliersState, claimChestPalier, } from "../events/global_chest.js";
 export const eventsChestRouter = Router();
 function int(x, def = 0) {
     const n = Number.parseInt(String(x ?? ""), 10);
@@ -83,8 +82,10 @@ eventsChestRouter.get("/events/current/chest", a(async (req, res) => {
     const event = await getLiveChestEvent();
     if (!event)
         return res.json({ ok: true, event: null });
-    const config = EVENT_REWARD_CONFIGS.global_chest;
-    const goal = config.mode === "collective" ? config.collective.goal : 0;
+    // La barre principale vise le DERNIER palier (objectif final) ; les paliers
+    // intermédiaires sont des jalons collectifs réclamables en direct.
+    const goal = CHEST_PALIERS.length ? CHEST_PALIERS[CHEST_PALIERS.length - 1].threshold : 0;
+    const firstThreshold = CHEST_PALIERS.length ? CHEST_PALIERS[0].threshold : goal;
     const communityTotal = await communityTotalFor(Number(event.id));
     const topRes = await pool.query(`
       SELECT s.user_id, u.username, s.points
@@ -95,24 +96,34 @@ eventsChestRouter.get("/events/current/chest", a(async (req, res) => {
       LIMIT 10
       `, [event.id]);
     let myContribution;
+    let myPaliers = null;
     if (userId) {
-        const me = await pool.query(`SELECT points FROM event_scores WHERE event_id=$1 AND user_id=$2`, [
-            event.id,
-            userId,
-        ]);
-        myContribution = Number(me.rows?.[0]?.points ?? 0);
+        myPaliers = await getChestPaliersState(Number(event.id), userId);
+        myContribution = myPaliers.myContribution;
     }
     res.json({
         ok: true,
         event,
         goal,
         communityTotal,
-        reached: communityTotal >= goal,
+        reached: communityTotal >= firstThreshold,
         myContribution,
+        minContribution: CHEST_MIN_CONTRIBUTION,
+        paliers: CHEST_PALIERS,
+        myPaliers,
         topContributors: (topRes.rows || []).map((r) => ({
             userId: Number(r.user_id),
             username: String(r.username ?? ""),
             points: Number(r.points ?? 0),
         })),
     });
+}));
+// POST /api/events/chest/palier/claim — réclame les paliers collectifs franchis.
+eventsChestRouter.post("/events/chest/palier/claim", requireAuth, a(async (req, res) => {
+    const userId = Number(req.user?.id || 0);
+    const event = await getLiveChestEvent();
+    if (!event)
+        return res.status(400).json({ ok: false, error: "no_active_chest_event" });
+    const claimed = await claimChestPalier(Number(event.id), userId);
+    res.json({ ok: true, claimed, count: claimed.length });
 }));
