@@ -37,44 +37,33 @@ earningsRouter.get("/streamer/me/earnings", requireAuth, async (req, res, next) 
     const streamerId = Number(streamer.id);
     const modsPercentBp = Number(streamer.mods_percent_bp ?? 0);
 
-    // ✅ Solde visible
-    const u = await pool.query(`SELECT rubis FROM users WHERE id=$1 LIMIT 1`, [req.user!.id]);
-    const availableRubis = Number(u.rows?.[0]?.rubis ?? 0);
-
-    // ✅ Lots restants => breakdown + valeur €
-    const lots = await pool.query(
-      `SELECT weight_bp::int AS weight_bp, COALESCE(SUM(amount_remaining),0)::bigint AS n
-       FROM rubis_lots
-       WHERE user_id=$1 AND amount_remaining>0
-       GROUP BY weight_bp
-       ORDER BY weight_bp DESC`,
-      [req.user!.id]
+    // ✅ Solde cashable = wallet d'earnings (ledger vivant), PAS users.rubis.
+    // Crédité par spendRubisTx(support) = part streamer déjà pondérée.
+    const w = await pool.query(
+      `SELECT available_rubis, lifetime_rubis
+       FROM streamer_wallets
+       WHERE streamer_id=$1
+       LIMIT 1`,
+      [streamerId]
     );
+    const availableRubis = Number(w.rows?.[0]?.available_rubis ?? 0);
+    const lifetimeRubis = Number(w.rows?.[0]?.lifetime_rubis ?? 0);
 
-    const breakdownByWeight: Record<string, number> = {};
-    let valueCents = 0;
+    // available_rubis est déjà net/pondéré : 1 rubis cashable = 1 centime.
+    const valueCents = availableRubis;
+    const breakdownByWeight: Record<string, number> = availableRubis > 0 ? { "10000": availableRubis } : {};
 
-    for (const r of lots.rows || []) {
-      const w = Number(r.weight_bp ?? 0);
-      const n = Number(r.n ?? 0);
-      breakdownByWeight[String(w)] = n;
-      // 1 rubis @ weight 1.00 => 1 cent => valueCents += n * w / 10000
-      valueCents += Math.floor((n * w) / 10000);
-    }
-
-    // ✅ Historique support (pour "répartition revenus" si tu veux)
+    // ✅ Historique des gains support (ledger vivant)
     const last = await pool.query(
       `SELECT
-         purpose         AS spend_type,
-         amount          AS spent_rubis,
-         support_value   AS support_rubis,
-         streamer_amount AS streamer_earn_rubis,
-         platform_amount AS platform_cut_rubis,
+         spend_type,
+         spent_rubis,
+         support_rubis,
+         streamer_earn_rubis,
+         platform_cut_rubis,
          created_at
-       FROM rubis_tx
-       WHERE kind='support'
-         AND status='succeeded'
-         AND streamer_id=$1
+       FROM streamer_earnings_ledger
+       WHERE streamer_id=$1
        ORDER BY created_at DESC
        LIMIT 50`,
       [streamerId]
@@ -89,8 +78,8 @@ earningsRouter.get("/streamer/me/earnings", requireAuth, async (req, res, next) 
         modsPercent: modsPercentBp / 100,
       },
       wallet: {
-        availableRubis,         // ✅ 957
-        lifetimeRubis: availableRubis, // placeholder UI (on affinera plus tard si besoin)
+        availableRubis,         // cashable dispo (streamer_wallets)
+        lifetimeRubis,          // cumul historique gagné
         reservedRubis: 0,
         breakdownByWeight,
         valueCents,

@@ -80,7 +80,7 @@ async function getMetrics(userId) {
     const hasChestParticipants = await tableExists("streamer_chest_participants");
     const hasChestPayouts = await tableExists("streamer_chest_payouts");
     const hasSubs = await tableExists("streamer_subscriptions");
-    const hasRubisTx = await tableExists("rubis_tx");
+    const hasWalletTx = await tableExists("wallet_tx");
     const hasUserAvatars = await tableExists("user_avatars");
     const hasUserEquippedCosmetics = await tableExists("user_equipped_cosmetics");
     const hasUserEntitlements = await tableExists("user_entitlements");
@@ -163,24 +163,24 @@ async function getMetrics(userId) {
     const supportedFromSubs = hasSubs
         ? await safeCount(`SELECT COUNT(DISTINCT streamer_id)::int AS n FROM streamer_subscriptions WHERE user_id=$1`, [userId])
         : 0;
-    const supportedFromSupportTx = hasRubisTx
+    const supportedFromSupportTx = hasWalletTx
         ? await safeCount(`
         SELECT COUNT(DISTINCT streamer_id)::int AS n
-        FROM rubis_tx
-        WHERE from_user_id=$1
-          AND kind='support'
-          AND status='succeeded'
+        FROM wallet_tx
+        WHERE user_id=$1
+          AND kind='spend'
+          AND spend_kind='support'
           AND streamer_id IS NOT NULL
         `, [userId])
         : 0;
     const supportedStreamersDistinct = Math.max(supportedFromSubs, supportedFromSupportTx);
-    const supportSpentRubis = hasRubisTx
+    const supportSpentRubis = hasWalletTx
         ? await safeSum(`
         SELECT COALESCE(SUM(amount),0)::int AS s
-        FROM rubis_tx
-        WHERE from_user_id=$1
-          AND kind='support'
-          AND status='succeeded'
+        FROM wallet_tx
+        WHERE user_id=$1
+          AND kind='spend'
+          AND spend_kind='support'
         `, [userId])
         : 0;
     // Noctambule / Early Bird : 30 minutes watch + 1 msg dans la fenêtre
@@ -420,17 +420,17 @@ async function getMetrics(userId) {
     const discordLinked = hasDiscordLinks
         ? (await safeCount(`SELECT COUNT(*)::int AS n FROM discord_links WHERE user_id=$1`, [userId])) > 0
         : false;
-    // Lifetime rubis gagnés = SUM des mints (to_user_id=user, kind='mint', status='succeeded')
-    const lifetimeRubisEarned = hasRubisTx
+    // Lifetime rubis gagnés = SUM de tous les crédits (ledger vivant wallet_tx)
+    const lifetimeRubisEarned = hasWalletTx
         ? await safeSum(`SELECT COALESCE(SUM(amount),0)::int AS s
-         FROM rubis_tx
-         WHERE to_user_id=$1 AND kind='mint' AND status='succeeded'`, [userId])
+         FROM wallet_tx
+         WHERE user_id=$1 AND kind='earn'`, [userId])
         : 0;
-    // Rubis dépensés au shop = SUM des sink kind='sink', purpose='shop_purchase'
-    const shopSpentRubis = hasRubisTx
+    // Rubis dépensés au shop = achats cosmétiques + talents (spend_type)
+    const shopSpentRubis = hasWalletTx
         ? await safeSum(`SELECT COALESCE(SUM(amount),0)::int AS s
-         FROM rubis_tx
-         WHERE from_user_id=$1 AND kind='sink' AND purpose='shop_purchase' AND status='succeeded'`, [userId])
+         FROM wallet_tx
+         WHERE user_id=$1 AND kind='spend' AND spend_type IN ('cosmetic','talent')`, [userId])
         : 0;
     // Proxy "a déjà eu de l'argent" : lifetimeRubisEarned > 0
     const hasPreviouslyHadRubis = lifetimeRubisEarned > 0;

@@ -121,20 +121,36 @@ shopRouter.post("/shop/cosmetics/buy", requireAuth, a(async (req, res) => {
     const pricePrestige = typeof it.pricePrestige === "number"
         ? it.pricePrestige
         : null;
+    // ✅ anti double-débit : ne jamais dépenser sur un item déjà possédé
+    const already = await pool.query(`SELECT 1 FROM user_entitlements WHERE user_id=$1 AND kind=$2 AND code=$3 LIMIT 1`, [userId, kind, code]);
+    if (already.rows?.[0]) {
+        return res.status(400).json({ ok: false, error: "already_owned" });
+    }
     try {
         if (pricePrestige && pricePrestige > 0) {
             await spendToken(userId, PRESTIGE_TOKEN, pricePrestige);
+            await pool.query(`INSERT INTO user_entitlements (user_id, kind, code)
+           VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [userId, kind, code]);
         }
         else if (priceRubis && priceRubis > 0) {
+            // dépense + octroi dans la MÊME transaction (atomique)
             const client = await pool.connect();
             try {
                 await client.query("BEGIN");
+                // re-check sous transaction (anti-race) avant de débiter
+                const owned = await client.query(`SELECT 1 FROM user_entitlements WHERE user_id=$1 AND kind=$2 AND code=$3 LIMIT 1`, [userId, kind, code]);
+                if (owned.rows?.[0]) {
+                    await client.query("ROLLBACK");
+                    return res.status(400).json({ ok: false, error: "already_owned" });
+                }
                 await spendRubisTx(client, {
                     userId,
                     amount: priceRubis,
                     spendKind: "sink",
                     spendType: "cosmetic",
                 });
+                await client.query(`INSERT INTO user_entitlements (user_id, kind, code)
+             VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [userId, kind, code]);
                 await client.query("COMMIT");
             }
             catch (e) {
@@ -155,11 +171,6 @@ shopRouter.post("/shop/cosmetics/buy", requireAuth, a(async (req, res) => {
         }
         throw e;
     }
-    await pool.query(`
-      INSERT INTO user_entitlements (user_id, kind, code)
-      VALUES ($1,$2,$3)
-      ON CONFLICT DO NOTHING
-      `, [userId, kind, code]);
     const u = await pool.query(`SELECT rubis FROM users WHERE id=$1 LIMIT 1`, [userId]);
     res.json({
         ok: true,

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
+import { sqlWeightBpExpr } from "../economy.js";
 export const adminWalletRouter = Router();
 /* =========================
    ADMIN AUTH (IDENTIQUE AUX AUTRES)
@@ -75,12 +76,12 @@ adminWalletRouter.get("/admin/wallet/:userId", async (req, res) => {
     SELECT
       id,
       origin,
-      weight_bp,
-      amount_total,
+      ${sqlWeightBpExpr("wallet_lots")} AS weight_bp,
+      amount_remaining AS amount_total,
       amount_remaining,
       created_at
-    FROM rubis_lots
-    WHERE user_id=$1
+    FROM wallet_lots
+    WHERE user_id=$1 AND amount_remaining > 0
     ORDER BY created_at ASC
   `, [userId]);
     res.json({

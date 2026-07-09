@@ -2,8 +2,8 @@
 import express from "express";
 import { requireAuth } from "../auth.js";
 import { pool } from "../db.js";
-import { spendSupport } from "../economy/engine.js";
-import { SUB_PRICE_RUBIS } from "../economy/config.js";
+import { spendRubis } from "../wallet_engine.js";
+import { SUB_PRICE_RUBIS } from "../economy.js";
 import { chatStore } from "../chat_store.js";
 export const subscriptionsRouter = express.Router();
 import { emitSystemChat, formatSubSystemMessage } from "../chat_events.js";
@@ -176,14 +176,15 @@ subscriptionsRouter.post("/streamers/:slug/subscribe", requireAuth, async (req, 
             usedTicket = true;
         }
         await client.query("COMMIT");
-        // ⚠️ spendSupport en dehors de la tx coupon (engine gère son propre flow)
+        // ✅ dépense sur le ledger vivant (wallet_engine) : sub = support à la chaîne.
+        // Crédite streamer_wallets (part cashable = 90% de la valeur pondérée dépensée).
         if (!usedTicket) {
-            await spendSupport({
+            await spendRubis({
                 userId: viewerUserId,
-                streamerId: streamer.id,
-                streamerOwnerUserId: streamer.ownerUserId ?? 0,
                 amount: SUB_PRICE_RUBIS,
-                purpose: "sub",
+                spendKind: "support",
+                spendType: "sub",
+                streamerId: streamer.id,
                 meta: { slug: streamer.slug, kind: "self_sub", paid: "rubis" },
             });
         }
@@ -253,12 +254,12 @@ subscriptionsRouter.post("/streamers/:slug/gift-sub", requireAuth, async (req, r
         return res.status(400).json({ ok: false, error: "recipient_already_sub" });
     }
     try {
-        await spendSupport({
+        await spendRubis({
             userId: gifterUserId,
-            streamerId: streamer.id,
-            streamerOwnerUserId: streamer.ownerUserId ?? 0,
             amount: SUB_PRICE_RUBIS,
-            purpose: "sub",
+            spendKind: "support",
+            spendType: "sub",
+            streamerId: streamer.id,
             meta: {
                 slug: streamer.slug,
                 kind: "gift_sub",
@@ -344,14 +345,14 @@ subscriptionsRouter.post("/streamers/:slug/gift-subs", requireAuth, async (req, 
             JSON.stringify({ slug: streamer.slug, paidRubis: amountRubis, usedTickets }),
         ]);
         await client.query("COMMIT");
-        // ✅ ledger SUPPORT seulement sur la partie rubis
+        // ✅ ledger SUPPORT (vivant) seulement sur la partie rubis
         if (amountRubis > 0) {
-            await spendSupport({
+            await spendRubis({
                 userId: gifterUserId,
-                streamerId: streamer.id,
-                streamerOwnerUserId: streamer.ownerUserId ?? 0,
                 amount: amountRubis,
-                purpose: "sub",
+                spendKind: "support",
+                spendType: "sub",
+                streamerId: streamer.id,
                 meta: { slug: streamer.slug, kind: "gift_pool_create", count, usedTickets, paid: "mix" },
             });
         }

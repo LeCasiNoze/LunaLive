@@ -453,13 +453,10 @@ adminRouter.get(
 
     const spent = await pool.query(
       `
-      SELECT COALESCE(SUM(-e.delta), 0)::int AS spent
-      FROM rubis_tx_entries e
-      JOIN rubis_tx t ON t.id = e.tx_id
-      WHERE e.entity = 'user'
-        AND e.user_id = $1
-        AND e.delta < 0
-        AND t.status = 'succeeded'
+      SELECT COALESCE(SUM(amount), 0)::int AS spent
+      FROM wallet_tx
+      WHERE user_id = $1
+        AND kind = 'spend'
       `,
       [id]
     );

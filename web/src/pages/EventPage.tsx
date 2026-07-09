@@ -626,6 +626,14 @@ function humanRubisError(code: string) {
 
 // Formulaire montant rubis réutilisé par le dépôt coffre et le burn boss —
 // mêmes chips de montants rapides que ChestModal.tsx (streamer).
+function QuestStatePill({ done, claimed }: { done: boolean; claimed: boolean }) {
+  return (
+    <span className={`evQuestState${claimed ? " claimed" : done ? " done" : ""}`}>
+      {claimed ? "✓ Obtenue" : done ? "Prête" : "En cours"}
+    </span>
+  );
+}
+
 function RubisAmountForm({
   icon,
   buttonLabel,
@@ -703,8 +711,14 @@ function QuestGroup({
         const cls = `evQuest${q.claimed ? " claimed" : q.done ? " claimable" : ""}`;
         return (
           <div className={cls} key={q.key}>
+            <div className="evQuestIcon">{q.claimed ? "✓" : q.done ? "🎁" : "🎯"}</div>
+            <div className="evQuestBody">
             <div className="evQuestHead">
-              <div className="evQuestLabel">{q.label}</div>
+              <div>
+                <div className="evQuestLabel">{q.label}</div>
+                <div className="evQuestMini">Progression {Math.min(q.progress, q.goal)}/{q.goal}</div>
+              </div>
+              <QuestStatePill done={q.done} claimed={q.claimed} />
               {justClaimed ? (
                 <span className="evQuestReward">🎉 +{lastClaim!.ticketsAwarded} 🎟</span>
               ) : !token ? (
@@ -719,8 +733,9 @@ function QuestGroup({
             </div>
             <div className="evQuestBar"><div className="evQuestBarFill" style={{ width: `${pct}%` }} /></div>
             <div className="evQuestFoot">
-              <span>{Math.min(q.progress, q.goal)}/{q.goal}</span>
+              <span>{pct}% complété</span>
               <span>{q.claimed ? "Récupéré" : q.done ? "Prêt !" : `${pct}%`}</span>
+            </div>
             </div>
           </div>
         );
@@ -1061,6 +1076,17 @@ function WheelWeekPanel({
           </div>
         ) : tab === "boutique" ? (
           <div className="evShopTab">
+            <div className="evMarketHero">
+              <div>
+                <span className="evConsoleKicker">BOUTIQUE D'ÉDITION</span>
+                <h3>Choisis ton boost, pas ton hasard.</h3>
+                <p>Des bonus courts, limités par jour, pensés pour relancer la session sans casser l'équilibre de l'event.</p>
+              </div>
+              <div className="evMarketBalance">
+                <span>Tickets</span>
+                <strong>{me?.tickets ?? 0}</strong>
+              </div>
+            </div>
             <div className="evShopGrid">
               {shop.map((item) => (
                 <div className="evShopItem" key={item.code}>
