@@ -48,10 +48,13 @@ cadre exclusif + #1 titre. Boss survit = rien (HP calibrée bas pour que ce soit
 - **Titre (#1 dégâts)** — code `title_boss_bourreau` · « Bourreau » · unique, **remis en jeu** à chaque retour de l'event (cf `revokePreviousTitle`). Référencé dans `topTitleCode`.
 - (Idée future : titre « Coup de grâce » au joueur qui porte le dernier coup — nécessite de tracer le dernier hit, mécanique à ajouter.)
 
-## 🤝 Semaine en duo (duo_week) — à créer
-- **Badge commun** — `cos_duo_*` · aux 2 commus du duo gagnant.
-- **Cadre animé exclusif** — `frame_duo_*` · idée : cadre à 2 couleurs (les 2 streamers).
-- **Titre duo champion** — `duo_champ_YYYYMM` (déjà en code) · aux 2 streamers.
+## 🤝 Semaine en duo (duo_week) — CONCEPT CONFIRMÉ : duos de STREAMERS
+Deux streamers à audience commune sont appariés (greedy) ; leurs 2 communautés cumulent
+leur activité. Le viewer contribue en regardant son streamer. Récompenses actuellement
+câblées : titre `duo_champ_YYYYMM` aux 2 streamers du duo #1 + 40 rubis aux membres actifs
+des 2 commus (max 200). Pas de cadre/premium pour l'instant (rewards volontairement lean).
+- **Titre duo champion** — `duo_champ_YYYYMM` (déjà en code) · aux 2 streamers du duo #1.
+- (Idées futures, non câblées) **Cadre animé exclusif** `frame_duo_*` (cadre bicolore, les 2 streamers) · **Badge commun** `cos_duo_*` aux 2 commus.
 
 ---
 
