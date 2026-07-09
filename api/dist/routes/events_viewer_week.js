@@ -2,7 +2,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
-import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer, VIEWER_WEEK_PALIERS, getViewerPaliersState, claimViewerPaliers, getViewerBoostState, buyViewerBoost } from "../events/viewer_week.js";
+import { VIEWER_WEEK_SCORING, rankViewerWeekStreamers, getViewerBoostedStreamer, VIEWER_WEEK_PALIERS, getViewerPaliersState, claimViewerPaliers, getViewerBoostState, buyViewerBoost, getViewerQuestsState, claimViewerQuest } from "../events/viewer_week.js";
 import { eventRewardEligibilitySql } from "../events/eligibility.js";
 import { requireAuth } from "../auth.js";
 export const eventsViewerWeekRouter = Router();
@@ -97,6 +97,7 @@ eventsViewerWeekRouter.get("/events/current/viewer-week", a(async (req, res) => 
     const myStreamer = userId ? await getViewerBoostedStreamer(Number(event.id), userId) : null;
     const myPaliers = userId ? await getViewerPaliersState(pool, Number(event.id), userId) : null;
     const myBoost = userId ? await getViewerBoostState(pool, Number(event.id), userId) : null;
+    const quests = userId ? await getViewerQuestsState(pool, Number(event.id), userId) : null;
     res.json({
         ok: true,
         event,
@@ -113,7 +114,21 @@ eventsViewerWeekRouter.get("/events/current/viewer-week", a(async (req, res) => 
         paliers: VIEWER_WEEK_PALIERS.map((p) => ({ index: p.index, threshold: p.threshold, label: p.label })),
         myPaliers,
         myBoost,
+        quests,
     });
+}));
+// POST /api/events/viewer-week/quest/claim  { key }
+eventsViewerWeekRouter.post("/events/viewer-week/quest/claim", requireAuth, a(async (req, res) => {
+    const uid = Number(req.user?.id || 0);
+    const key = String(req.body?.key || "").trim();
+    const ev = await pool.query(`SELECT id FROM events WHERE type='viewer_week' AND state='live' AND start_at<=NOW() AND NOW()<end_at ORDER BY start_at DESC LIMIT 1`);
+    const eventId = ev.rows?.[0]?.id;
+    if (!eventId)
+        return res.status(400).json({ ok: false, error: "no_event" });
+    const r = await claimViewerQuest(Number(eventId), uid, key);
+    if (!r.ok)
+        return res.status(400).json({ ok: false, error: r.error });
+    res.json({ ...r, ok: true });
 }));
 // POST /api/events/viewer-week/boost/buy — achète un booster de points (×1.2 24h).
 eventsViewerWeekRouter.post("/events/viewer-week/boost/buy", requireAuth, a(async (req, res) => {

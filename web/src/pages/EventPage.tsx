@@ -22,6 +22,7 @@ import {
   postClipRaceVote,
   postViewerWeekBoostBuy,
   postViewerWeekPalierClaim,
+  postViewerWeekQuestClaim,
   postWheelPalierClaim,
   postWheelQuestClaim,
   postWheelShopBuy,
@@ -1488,6 +1489,7 @@ export default function EventPage() {
           paliers: [],
           myPaliers: null,
           myBoost: null,
+          quests: null,
         });
         setWheelWeek(null);
         setChest(null);
@@ -1608,6 +1610,21 @@ export default function EventPage() {
       setBoostErr(e?.message === "not_enough_rubis" ? "Rubis insuffisants." : e?.message === "cap_reached" ? "Limite de boosts atteinte pour cet event." : "Achat impossible.");
     } finally {
       setBuyingBoost(false);
+    }
+  }
+
+  const viewerQuests = viewerWeek?.quests ?? null;
+  const [claimingViewerQuest, setClaimingViewerQuest] = React.useState<string | null>(null);
+  async function handleViewerQuestClaim(key: string) {
+    if (!token) { setLoginOpen(true); return; }
+    setClaimingViewerQuest(key);
+    try {
+      await postViewerWeekQuestClaim(token, key);
+      try { const v = await getCurrentViewerWeek(token); setViewerWeek(v); } catch {}
+    } catch {
+      /* silencieux */
+    } finally {
+      setClaimingViewerQuest(null);
     }
   }
 
@@ -1786,6 +1803,37 @@ export default function EventPage() {
                         <span className="evPalierRowThresh">{p.threshold}</span>
                         <span className="evPalierRowLabel">{p.label}</span>
                         <span className="evPalierRowState">{done ? "✓ obtenu" : reached ? "à récupérer" : ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Reveal>
+          ) : null}
+
+          {viewerQuests && (viewerQuests.daily.length > 0 || viewerQuests.weekly.length > 0) ? (
+            <Reveal delay={0.055}>
+              <div className="evViewerPanel">
+                <div className="evPanelHead"><span>🎯 Quêtes</span><small>Aide-toi à scorer</small></div>
+                <div className="evVQGroups">
+                  {(["daily", "weekly"] as const).map((period) => {
+                    const list = viewerQuests[period];
+                    if (!list.length) return null;
+                    return (
+                      <div key={period} className="evVQGroup">
+                        <div className="evVQGroupTitle">{period === "daily" ? "Quotidiennes" : "Hebdomadaires"}</div>
+                        {list.map((q) => (
+                          <div className={`evVQRow${q.claimed ? " claimed" : q.done ? " done" : ""}`} key={q.key}>
+                            <div className="evVQInfo">
+                              <div className="evVQLabel">{q.label}</div>
+                              <div className="evVQBar"><div className="evVQBarFill" style={{ width: `${Math.min(100, Math.round((q.progress / Math.max(1, q.goal)) * 100))}%` }} /></div>
+                              <div className="evVQMeta">{q.progress}/{q.goal} · 🎁 {q.reward}</div>
+                            </div>
+                            <button type="button" className="evBtnGhost evVQBtn" onClick={() => handleViewerQuestClaim(q.key)} disabled={q.claimed || !q.done || claimingViewerQuest === q.key}>
+                              {q.claimed ? "✓" : claimingViewerQuest === q.key ? "…" : q.done ? "Récupérer" : "En cours"}
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     );
                   })}
