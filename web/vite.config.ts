@@ -65,6 +65,12 @@ export default defineConfig({
           if (assetInfo.name === 'index.html') {
             return 'index.html';
           }
+          // CSS : nom hashé par contenu (sinon api_events.css/index.css gardent
+          // le même nom à chaque build → navigateur/CDN servent l'ancienne
+          // version cachée et les nouvelles règles ne s'appliquent jamais).
+          if (assetInfo.name && assetInfo.name.endsWith('.css')) {
+            return 'assets/[name]-[hash][extname]';
+          }
           return assetInfo.name || 'asset/[name].[ext]';
         }
       }
