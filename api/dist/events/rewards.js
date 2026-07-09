@@ -3,6 +3,7 @@ import { earnRubisTx } from "../wallet_engine.js";
 import { addToken, grantEntitlement } from "../services/dailyBonus.js";
 import { eventRewardEligibilitySql } from "./eligibility.js";
 import { getRankedClips, getRankedStreamers, resolveClipCreatorUserId } from "./clip_race.js";
+import { getRankedDuos } from "./duo_week.js";
 // Nombre de lignes figées dans events.result.top à la clôture. Générique
 // (pas de dépendance à un event précis) : tous les types partagent la même
 // taille de snapshot top.
@@ -93,6 +94,23 @@ export const EVENT_REWARD_CONFIGS = {
             rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
         },
     },
+    duo_week: {
+        mode: "duo",
+        duo: {
+            // Titre exclusif "duo_champ_YYYYMM" aux 2 streamers du duo #1 (comme
+            // vw_champion/wheel_king) — badge, coût nul.
+            champTitleTemplate: "duo_champ_YYYYMM",
+            // Même ordre de grandeur que le lot de participation des autres events
+            // (viewer_week/wheel_week: 40 rubis), versé ici aux membres des DEUX
+            // commus du duo gagnant — une base large de joueurs en profite d'un coup.
+            memberRubis: 40,
+            // Cap de sécurité : une commu de duo cumule potentiellement deux
+            // streamers, donc plus large qu'un top-40 classique. À remonter une
+            // fois le volume réel mesuré (même logique que global_chest.collective.goal).
+            maxRecipients: 200,
+            rubisOrigin: "event_platform", // poids 0 — non-cashable (cf economy.ts)
+        },
+    },
 };
 async function rankViewerWeek(client, eventId) {
     const r = await client.query(`
@@ -168,6 +186,9 @@ export async function closeAndDistribute(eventId) {
         }
         if (config.mode === "boss") {
             return await distributeBoss(client, eventId, event, config.boss);
+        }
+        if (config.mode === "duo") {
+            return await distributeDuo(client, eventId, event, config.duo);
         }
         const rankingProvider = RANKING_PROVIDERS[event.type];
         if (!rankingProvider) {
@@ -586,6 +607,103 @@ async function distributeClipRace(client, eventId, event, cfg) {
       VALUES ($1,$2,$3,$4,$5,$6::jsonb)
       ON CONFLICT (event_id, user_id) DO NOTHING
       `, [eventId, userId, acc.tier, acc.rank, acc.rubis, JSON.stringify({ reasons: acc.reasons })]);
+        if (acc.tier === "win")
+            winners += 1;
+        else
+            participants += 1;
+        rubisTotal += acc.rubis;
+    }
+    await client.query("COMMIT");
+    return { ok: true, alreadyDistributed: false, winners, participants, rubisTotal };
+}
+/**
+ * Distribution "duo" (Semaine en duo, cf docs/events-design.md #6). Duo #1
+ * du classement (getRankedDuos, event_duo_scores.points desc) = duo gagnant.
+ * DEUX récompenses cumulables comme distributeBoss/distributeClipRace
+ * (pattern Map `grants`, un seul INSERT event_reward_grants par compte) :
+ *  - badge titre "duo_champ_YYYYMM" aux 2 streamers du duo (via
+ *    streamers.user_id — un streamer sans compte lié ne reçoit rien)
+ *  - rubis participation à tout membre ÉLIGIBLE (cf eligibility.ts) des deux
+ *    commus du duo gagnant ("commu" = même définition que recomputeDuoWeek :
+ *    viewers dont le streamer le plus regardé sur la fenêtre de l'event est A
+ *    ou B). Un streamer qui fait aussi partie de sa propre commu ne cumule
+ *    pas deux fois : grants est indexé par user_id.
+ * S'il n'y a aucun duo (aucun appariement possible cette semaine),
+ * events.result {reached:false}, aucun grant. Appelée depuis
+ * closeAndDistribute, dans la même transaction (COMMIT/ROLLBACK final).
+ */
+async function distributeDuo(client, eventId, event, cfg) {
+    const ranked = await getRankedDuos(client, eventId, REWARD_TOP_SNAPSHOT_N);
+    await client.query(`UPDATE events SET result = $2::jsonb, updated_at = NOW() WHERE id=$1`, [
+        eventId,
+        JSON.stringify({ rankedAt: new Date().toISOString(), topDuos: ranked, reached: ranked.length > 0 }),
+    ]);
+    if (!ranked.length) {
+        await client.query("COMMIT");
+        return { ok: true, alreadyDistributed: false, winners: 0, participants: 0, rubisTotal: 0 };
+    }
+    const winnerDuo = ranked[0];
+    const ymRes = await client.query(`SELECT to_char($1::timestamptz AT TIME ZONE 'Europe/Paris', 'YYYYMM') AS ym`, [event.start_at]);
+    const ym = String(ymRes.rows?.[0]?.ym ?? "");
+    const code = cfg.champTitleTemplate.replace("YYYYMM", ym);
+    const grants = new Map();
+    for (const userId of [winnerDuo.streamerAUserId, winnerDuo.streamerBUserId]) {
+        if (!userId)
+            continue;
+        grants.set(userId, { tier: "win", rank: 1, rubis: 0, badge: true });
+    }
+    const membersRes = await client.query(`
+    WITH minutes_per_user_streamer AS (
+      SELECT svm.user_id, svm.streamer_id, COUNT(DISTINCT svm.bucket_ts)::int AS minutes
+      FROM stream_viewer_minutes svm
+      WHERE svm.user_id IS NOT NULL AND svm.user_id > 0
+        AND svm.bucket_ts >= $1::timestamptz AND svm.bucket_ts < $2::timestamptz
+      GROUP BY svm.user_id, svm.streamer_id
+    ),
+    home_streamer AS (
+      SELECT DISTINCT ON (user_id) user_id, streamer_id
+      FROM minutes_per_user_streamer
+      ORDER BY user_id, minutes DESC, streamer_id ASC
+    )
+    SELECT hs.user_id
+    FROM home_streamer hs
+    WHERE hs.streamer_id IN ($3, $4)
+      AND ${eventRewardEligibilitySql("hs.user_id")}
+    LIMIT $5
+    `, [event.start_at, event.end_at, winnerDuo.streamerAId, winnerDuo.streamerBId, cfg.maxRecipients]);
+    for (const row of membersRes.rows || []) {
+        const userId = Number(row.user_id);
+        const cur = grants.get(userId);
+        if (cur) {
+            cur.rubis += cfg.memberRubis;
+        }
+        else {
+            grants.set(userId, { tier: "participation", rank: null, rubis: cfg.memberRubis, badge: false });
+        }
+    }
+    let winners = 0;
+    let participants = 0;
+    let rubisTotal = 0;
+    for (const [userId, acc] of grants) {
+        if (acc.rubis > 0) {
+            await earnRubisTx(client, userId, cfg.rubisOrigin, acc.rubis, {
+                purpose: "event_reward",
+                eventId,
+                eventType: "duo_week",
+                tier: acc.tier,
+                rank: acc.rank,
+            });
+        }
+        const extras = { duoId: winnerDuo.duoId };
+        if (acc.badge) {
+            await grantEntitlement(client, userId, "title", code);
+            extras.entitlement = { kind: "title", code };
+        }
+        await client.query(`
+      INSERT INTO event_reward_grants (event_id, user_id, tier, rank, rubis, extras)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
+      ON CONFLICT (event_id, user_id) DO NOTHING
+      `, [eventId, userId, acc.tier, acc.rank, acc.rubis, JSON.stringify(extras)]);
         if (acc.tier === "win")
             winners += 1;
         else
