@@ -888,7 +888,10 @@ function WheelWeekPanel({
           >
             <span className="evTabIcon">{icon}</span>
             <span className="evTabLabel">{label}</span>
-            {k === "roue" && reachedUnclaimed.length > 0 ? <span className="evTabBadge">{reachedUnclaimed.length}</span> : null}
+            {(() => {
+              const n = k === "roue" ? reachedUnclaimed.length : k === "quetes" ? [...quests.daily, ...quests.weekly].filter((q) => q.done && !q.claimed).length : 0;
+              return n > 0 ? <span className="evTabBadge">{n}</span> : null;
+            })()}
           </button>
         ))}
       </div>
@@ -1615,6 +1618,7 @@ export default function EventPage() {
   }
 
   const viewerQuests = viewerWeek?.quests ?? null;
+  const viewerClaimableQuests = viewerQuests ? [...viewerQuests.daily, ...viewerQuests.weekly].filter((q) => q.done && !q.claimed).length : 0;
   const [claimingViewerQuest, setClaimingViewerQuest] = React.useState<string | null>(null);
   async function handleViewerQuestClaim(key: string) {
     if (!token) { setLoginOpen(true); return; }
@@ -1754,7 +1758,10 @@ export default function EventPage() {
               <button key={k} type="button" role="tab" aria-selected={viewerTab === k} className={`evTab${viewerTab === k ? " active" : ""}`} onClick={() => setViewerTab(k)}>
                 <span className="evTabIcon">{icon}</span>
                 <span className="evTabLabel">{label}</span>
-                {k === "progression" && viewerReachedUnclaimed.length > 0 ? <span className="evTabBadge">{viewerReachedUnclaimed.length}</span> : null}
+                {(() => {
+                  const n = k === "progression" ? viewerReachedUnclaimed.length : k === "quetes" ? viewerClaimableQuests : 0;
+                  return n > 0 ? <span className="evTabBadge">{n}</span> : null;
+                })()}
               </button>
             ))}
           </div>
