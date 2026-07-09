@@ -19,6 +19,7 @@ import {
   postBossBurn,
   postChestDeposit,
   postClipRaceVote,
+  postWheelPalierClaim,
   postWheelQuestClaim,
   postWheelShopBuy,
   postWheelSpin,
@@ -113,7 +114,7 @@ const EVENT_RULES: Record<string, EventRules> = {
       {
         icon: "⭐",
         title: "Comment gagner des points ?",
-        text: "Le temps passé à regarder un live, les jours où tu reviens, tes bonus quotidiens réclamés, tes messages dans le chat, tes appels et tes tours de roue rapportent tous des points.",
+        text: "Le temps passé à regarder un live, les jours où tu reviens, tes bonus quotidiens réclamés, tes messages dans le chat, tes calls (demander une slot précise au streamer) et tes tours de roue rapportent tous des points.",
       },
       {
         icon: "🤝",
@@ -206,7 +207,7 @@ const EVENT_RULES: Record<string, EventRules> = {
       {
         icon: "🤲",
         title: "Comment participer ?",
-        text: "Connecte-toi et reste actif : tes bonus quotidiens, tes tours de roue, tes appels et tes messages remplissent automatiquement le coffre commun. Tu peux aussi y déposer des rubis directement.",
+        text: "Connecte-toi et reste actif : tes bonus quotidiens, tes tours de roue, tes calls et tes messages remplissent automatiquement le coffre commun. Tu peux aussi y déposer des rubis directement.",
       },
       {
         icon: "📈",
@@ -232,12 +233,12 @@ const EVENT_RULES: Record<string, EventRules> = {
       {
         icon: "👊",
         title: "Comment participer ?",
-        text: "Regarde les lives, discute, participe aux appels : chaque action de la communauté inflige des dégâts au boss. Tu peux aussi brûler des rubis pour taper plus fort.",
+        text: "Regarde les lives, discute, participe aux calls : chaque action de la communauté inflige des dégâts au boss. Tu peux aussi brûler des rubis pour taper plus fort.",
       },
       {
         icon: "🔥",
         title: "Comment infliger des dégâts ?",
-        text: "Le temps de watch, les messages, les appels et tes rubis brûlés comptent tous comme des dégâts. Pas besoin de dépenser pour participer : rester actif suffit.",
+        text: "Le temps de watch, les messages, les calls et tes rubis brûlés comptent tous comme des dégâts. Pas besoin de dépenser pour participer : rester actif suffit.",
       },
       {
         icon: "🎁",
@@ -700,15 +701,25 @@ function WheelWeekPanel({
   const rest = resp.leaderboard.slice(3);
   const segMeta = React.useMemo(() => computeWheelSegments(resp.wheel), [resp.wheel]);
 
+  const [tab, setTab] = React.useState<"roue" | "boutique" | "quetes" | "classement">("roue");
+  const [modal, setModal] = React.useState<null | "rules" | "proba">(null);
+
   const [rotation, setRotation] = React.useState(0);
   const [spinning, setSpinning] = React.useState(false);
   const [spinResult, setSpinResult] = React.useState<{
     points: number;
     xp: number;
     lotLabel?: string | null;
-    palierUnlocked?: { index: number; rewardLabel: string } | null;
   } | null>(null);
   const [spinErr, setSpinErr] = React.useState<string | null>(null);
+
+  // Fait tourner la roue jusqu'à ce que le segment `index` s'aligne sous le
+  // repère (12h), avec 4 tours pleins de spectacle. Ne recule jamais (normMod).
+  function animateToSegment(index: number) {
+    const mid = index >= 0 && segMeta[index] ? segMeta[index].midDeg : Math.random() * 360;
+    const targetMod = normMod(360 - mid, 360);
+    setRotation((prev) => prev + normMod(targetMod - normMod(prev, 360), 360) + 360 * 4);
+  }
 
   async function handleSpin() {
     if (!token) { onLoginClick(); return; }
@@ -718,24 +729,38 @@ function WheelWeekPanel({
     setSpinning(true);
     try {
       const r = await postWheelSpin(token);
-      const idx = resp.wheel.findIndex(
-        (w) => w.points === r.segment.points && (w.lotLabel ?? null) === (r.segment.lotLabel ?? null)
-      );
-      const mid = idx >= 0 ? segMeta[idx].midDeg : Math.random() * 360;
-      const targetMod = normMod(360 - mid, 360);
-      setRotation((prev) => prev + normMod(targetMod - normMod(prev, 360), 360) + 360 * 4);
+      animateToSegment(r.segment.index);
       window.setTimeout(() => {
-        setSpinResult({
-          points: r.segment.points,
-          xp: r.segment.xp,
-          lotLabel: r.segment.lotLabel,
-          palierUnlocked: r.palierUnlocked ?? null,
-        });
+        setSpinResult({ points: r.segment.points, xp: r.segment.xp, lotLabel: r.segment.lotLabel });
         setSpinning(false);
         onRefresh();
       }, 2650);
     } catch (e: any) {
       setSpinErr(e?.message || "Le tour a échoué, réessaie.");
+      setSpinning(false);
+    }
+  }
+
+  // Relance immédiate (item boutique 'reroll', payée en rubis) : même spectacle
+  // qu'un spin normal, le segment tiré revient dans granted.segment.
+  async function handleReroll() {
+    if (!token) { onLoginClick(); return; }
+    const item = resp.shop.find((s) => s.code === "reroll");
+    if (!me || !item || item.soldOut || spinning) return;
+    setSpinErr(null);
+    setSpinResult(null);
+    setSpinning(true);
+    try {
+      const r = await postWheelShopBuy(token, "reroll");
+      const seg = r.granted?.segment;
+      animateToSegment(seg ? Number(seg.index) : -1);
+      window.setTimeout(() => {
+        if (seg) setSpinResult({ points: Number(seg.points), xp: Number(seg.xp), lotLabel: seg.lotLabel });
+        setSpinning(false);
+        onRefresh();
+      }, 2650);
+    } catch (e: any) {
+      setSpinErr(e?.message || "Relance impossible (rubis insuffisants ou limite atteinte).");
       setSpinning(false);
     }
   }
@@ -777,99 +802,133 @@ function WheelWeekPanel({
     }
   }
 
+  const [claimingPalier, setClaimingPalier] = React.useState(false);
+  const [palierFlash, setPalierFlash] = React.useState<string[] | null>(null);
+  async function handlePalierClaim() {
+    if (!token) { onLoginClick(); return; }
+    setClaimingPalier(true);
+    try {
+      const r = await postWheelPalierClaim(token);
+      if (r.count > 0) {
+        setPalierFlash(r.claimed.map((c) => c.rewardLabel));
+        window.setTimeout(() => setPalierFlash(null), 4500);
+      }
+      onRefresh();
+    } catch (e: any) {
+      setSpinErr(e?.message || "Récupération impossible, réessaie.");
+    } finally {
+      setClaimingPalier(false);
+    }
+  }
+
+  const points = me?.points ?? 0;
   const maxThreshold = resp.paliers.length ? resp.paliers[resp.paliers.length - 1].threshold : 0;
-  const palierPct = maxThreshold > 0 ? Math.min(100, Math.round((Math.min(me?.points ?? 0, maxThreshold) / maxThreshold) * 100)) : 0;
+  const palierPct = maxThreshold > 0 ? Math.min(100, (Math.min(points, maxThreshold) / maxThreshold) * 100) : 0;
   const claimedSet = new Set(me?.paliersClaimed ?? []);
+  const reachedUnclaimed = resp.paliers.filter((p) => points >= p.threshold && !claimedSet.has(p.index));
   const nextPalierReward = me?.nextPalier ? resp.paliers.find((p) => p.index === me.nextPalier!.index) : null;
+  const reroll = resp.shop.find((s) => s.code === "reroll");
+  const canSpin = !!me && (me.tickets >= 1 || me.freeSpinAvailable);
+  const rules = EVENT_RULES["wheel_week"];
 
   return (
-    <>
-      <Reveal>
-        <div>
-          <div className="evSectionTitle">🎡 La roue</div>
-          <div className="evCard">
-            <div className="evWheelRow">
-              <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
-
-              <div>
-                {resp.wheel.length > 0 ? (
-                  <div className="evWheelLegend">
-                    {resp.wheel.map((seg, i) => (
-                      <div className="evWheelLegendItem" key={`${seg.points}-${seg.lotLabel ?? i}`}>
-                        <span className="evWheelSwatch" style={{ background: segMeta[i]?.color }} />
-                        <span>{seg.lotLabel ? seg.lotLabel : `${seg.points} pts`}</span>
-                        <span className="evWheelLegendProba">{seg.proba}%</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {!token ? (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="evLockedSub">Connecte-toi pour tourner la roue et cumuler des points.</div>
-                    <button type="button" className="evBtn evSpinBtn" onClick={onLoginClick}>Se connecter</button>
-                  </div>
-                ) : me ? (
-                  <div style={{ marginTop: 14 }}>
-                    <div className="evHeroMeta" style={{ justifyContent: "flex-start", marginBottom: 10 }}>
-                      Rang actuel : #{me.rank ?? "?"} · <CountUp value={Number(me.points || 0)} /> pts
-                    </div>
-                    <div className="evTicketsPill">
-                      🎟 {me.tickets} ticket{me.tickets > 1 ? "s" : ""}
-                      {me.freeSpinAvailable ? <span className="evFreeSpinPill">🎁 Spin gratuit dispo</span> : null}
-                    </div>
-                    <button
-                      type="button"
-                      className="evBtn evSpinBtn"
-                      onClick={handleSpin}
-                      disabled={spinning || (me.tickets < 1 && !me.freeSpinAvailable)}
-                    >
-                      {spinning
-                        ? "Ça tourne…"
-                        : me.freeSpinAvailable
-                        ? "🎁 Spin gratuit du jour"
-                        : me.tickets < 1
-                        ? "Plus de tickets"
-                        : "🎡 Tourner (1 ticket)"}
-                    </button>
-                    {spinErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{spinErr}</div> : null}
-                    {spinResult ? (
-                      <div className="evWheelResult">
-                        <div className="evWheelResultAmount">+{spinResult.points} pts · +{spinResult.xp} XP</div>
-                        {spinResult.lotLabel ? <div className="evWheelResultLot">🎉 {spinResult.lotLabel}</div> : null}
-                        {spinResult.palierUnlocked ? (
-                          <div className="evWheelResultLot">🏆 Palier débloqué : {spinResult.palierUnlocked.rewardLabel}</div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="evLockedSub" style={{ marginTop: 14 }}>
-                    Éligible ! Tourne la roue gratuite pour commencer à marquer des points.
-                  </div>
-                )}
-              </div>
-            </div>
+    <div className="evWheel2">
+      {/* Barre de statut : rang / points / tickets + accès popups (règles, chances) */}
+      <div className="evWheel2Status">
+        <div className="evW2Stats">
+          <div className="evW2Stat"><span className="evW2Label">Rang</span><span className="evW2Val">#{me?.rank ?? "—"}</span></div>
+          <div className="evW2Stat"><span className="evW2Label">Points</span><span className="evW2Val"><CountUp value={points} /></span></div>
+          <div className="evW2Stat">
+            <span className="evW2Label">Tickets</span>
+            <span className="evW2Val">🎟 {me?.tickets ?? 0}{me?.freeSpinAvailable ? " · 🎁" : ""}</span>
           </div>
         </div>
-      </Reveal>
+        <div className="evW2Actions">
+          <button type="button" className="evChipBtn" onClick={() => setModal("rules")}>📖 Règles</button>
+          <button type="button" className="evChipBtn" onClick={() => setModal("proba")}>🎲 Chances</button>
+        </div>
+      </div>
 
-      {resp.paliers.length > 0 ? (
-        <Reveal delay={0.04}>
-          <div>
-            <div className="evSectionTitle">🏁 Paliers de points</div>
-            <div className="evCard">
-              <div className="evPalierBar">
+      {/* Onglets (mobile-first, sticky) */}
+      <div className="evTabs" role="tablist">
+        {([
+          ["roue", "🎡", "Roue"],
+          ["boutique", "🛍️", "Boutique"],
+          ["quetes", "🎯", "Quêtes"],
+          ["classement", "🏆", "Classement"],
+        ] as const).map(([k, icon, label]) => (
+          <button
+            key={k}
+            type="button"
+            role="tab"
+            aria-selected={tab === k}
+            className={`evTab${tab === k ? " active" : ""}`}
+            onClick={() => setTab(k)}
+          >
+            <span className="evTabIcon">{icon}</span>
+            <span className="evTabLabel">{label}</span>
+            {k === "roue" && reachedUnclaimed.length > 0 ? <span className="evTabBadge">{reachedUnclaimed.length}</span> : null}
+          </button>
+        ))}
+      </div>
+
+      <div className="evTabPanel">
+        {tab === "roue" ? (
+          <div className="evRoueTab">
+            <div className="evWheelStage">
+              <EventWheelDial wheel={resp.wheel} rotationDeg={rotation} spinning={spinning} />
+              {spinResult ? (
+                <div className="evSpinFlash">
+                  <div className="evSpinFlashPts">+{spinResult.points} pts · +{spinResult.xp} XP</div>
+                  {spinResult.lotLabel && spinResult.lotLabel !== "—" ? (
+                    <div className="evSpinFlashLot">🎉 {spinResult.lotLabel}</div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {!token ? (
+              <button type="button" className="evBtn evSpinBtn" onClick={onLoginClick}>Se connecter pour tourner</button>
+            ) : (
+              <div className="evSpinBtns">
+                <button type="button" className="evBtn evSpinBtn" onClick={handleSpin} disabled={spinning || !canSpin}>
+                  {spinning
+                    ? "Ça tourne…"
+                    : me?.freeSpinAvailable
+                    ? "🎁 Tour gratuit du jour"
+                    : me && me.tickets >= 1
+                    ? "🎡 Tourner · 1 🎟"
+                    : "Plus de tickets"}
+                </button>
+                <button
+                  type="button"
+                  className="evBtn evRerollBtn"
+                  onClick={handleReroll}
+                  disabled={spinning || !reroll || reroll.soldOut}
+                  title="Relancer tout de suite en payant des rubis"
+                >
+                  {reroll && !reroll.soldOut ? `🔁 Relancer · 💎 ${reroll.nextPrice}` : "🔁 Relances épuisées"}
+                </button>
+              </div>
+            )}
+            {spinErr ? <div className="evErrLine">{spinErr}</div> : null}
+
+            {resp.paliers.length > 0 ? (
+              <div className="evPalierBlock">
+                <div className="evPalierHead">
+                  <span className="evPalierHeadTitle">🏁 Paliers de points</span>
+                  <span className="evPalierHeadPts">{points} / {maxThreshold}</span>
+                </div>
                 <div className="evPalierTrack">
                   <div className="evPalierFill" style={{ width: `${palierPct}%` }} />
                   {resp.paliers.map((p) => {
                     const left = maxThreshold > 0 ? Math.min(100, (p.threshold / maxThreshold) * 100) : 0;
                     const done = claimedSet.has(p.index);
-                    const isNext = me?.nextPalier?.index === p.index;
+                    const reached = points >= p.threshold;
                     return (
                       <div
                         key={p.index}
-                        className={`evPalierMark${done ? " done" : ""}${isNext ? " next" : ""}`}
+                        className={`evPalierMark${done ? " done" : reached ? " reached" : ""}`}
                         style={{ left: `${left}%` }}
                         title={`${p.threshold} pts — ${p.rewardLabel}`}
                       >
@@ -878,122 +937,136 @@ function WheelWeekPanel({
                     );
                   })}
                 </div>
-                <div className="evPalierLabels">
+                {me && nextPalierReward ? (
+                  <div className="evPalierNext">🎯 {me.nextPalier!.remaining} pts avant « {nextPalierReward.rewardLabel} »</div>
+                ) : me ? (
+                  <div className="evPalierNext">🏆 Tous les paliers atteints !</div>
+                ) : null}
+
+                {reachedUnclaimed.length > 0 ? (
+                  <div className="evPalierClaim">
+                    <div className="evPalierClaimList">
+                      {reachedUnclaimed.map((p) => (
+                        <span className="evPalierClaimChip" key={p.index}>🎁 {p.rewardLabel}</span>
+                      ))}
+                    </div>
+                    <button type="button" className="evBtn evPalierClaimBtn" onClick={handlePalierClaim} disabled={claimingPalier}>
+                      {claimingPalier ? "…" : `Récupérer ${reachedUnclaimed.length} palier${reachedUnclaimed.length > 1 ? "s" : ""}`}
+                    </button>
+                  </div>
+                ) : null}
+                {palierFlash ? <div className="evPalierFlash">✅ Récupéré : {palierFlash.join(" · ")}</div> : null}
+
+                <div className="evPalierList">
                   {resp.paliers.map((p) => {
-                    const left = maxThreshold > 0 ? Math.min(100, (p.threshold / maxThreshold) * 100) : 0;
+                    const done = claimedSet.has(p.index);
+                    const reached = points >= p.threshold;
                     return (
-                      <div className="evPalierLotLabel" key={p.index} style={{ left: `${left}%` }}>
-                        {p.rewardLabel}
+                      <div className={`evPalierRow${done ? " done" : reached ? " reached" : ""}`} key={p.index}>
+                        <span className="evPalierRowThresh">{p.threshold}</span>
+                        <span className="evPalierRowLabel">{p.rewardLabel}</span>
+                        <span className="evPalierRowState">{done ? "✓ obtenu" : reached ? "à récupérer" : ""}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
-              {me && nextPalierReward ? (
-                <div className="evPalierNext">
-                  🎯 {me.nextPalier!.remaining} pts avant « {nextPalierReward.rewardLabel} »
-                </div>
-              ) : me ? (
-                <div className="evPalierNext">🏆 Tous les paliers sont débloqués !</div>
-              ) : null}
-            </div>
+            ) : null}
           </div>
-        </Reveal>
-      ) : null}
-
-      {resp.shop.length > 0 ? (
-        <Reveal delay={0.06}>
-          <div>
-            <div className="evSectionTitle">🛍 Boutique d'event</div>
-            <div className="evCard">
-              <div className="evShopGrid">
-                {resp.shop.map((item) => (
-                  <div className="evShopItem" key={item.code}>
-                    <div className="evShopLabel">{item.label}</div>
-                    <div className="evShopPrice">{item.nextPrice != null ? `💎 ${item.nextPrice}` : "Épuisé"}</div>
-                    <div className="evShopCap">{item.boughtToday}/{item.capPerDay} aujourd'hui</div>
-                    <button
-                      type="button"
-                      className="evBtnGhost evShopBuyBtn"
-                      onClick={() => (token ? handleBuy(item.code) : onLoginClick())}
-                      disabled={(token != null && item.soldOut) || buyingCode !== null}
-                    >
-                      {buyingCode === item.code ? "…" : item.soldOut ? "Épuisé" : "Acheter"}
-                    </button>
-                  </div>
-                ))}
+        ) : tab === "boutique" ? (
+          <div className="evShopTab">
+            <div className="evShopGrid">
+              {resp.shop.map((item) => (
+                <div className="evShopItem" key={item.code}>
+                  <div className="evShopLabel">{item.label}</div>
+                  <div className="evShopPrice">{item.nextPrice != null ? `💎 ${item.nextPrice}` : "Épuisé"}</div>
+                  <div className="evShopCap">{item.boughtToday}/{item.capPerDay} aujourd'hui</div>
+                  <button
+                    type="button"
+                    className="evBtn evShopBuyBtn"
+                    onClick={() => (token ? handleBuy(item.code) : onLoginClick())}
+                    disabled={(token != null && item.soldOut) || buyingCode !== null}
+                  >
+                    {buyingCode === item.code ? "…" : item.soldOut ? "Épuisé" : "Acheter"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {buyErr ? <div className="evErrLine">{buyErr}</div> : null}
+            {!token ? <div className="evLockedSub" style={{ marginTop: 12 }}>Connecte-toi pour acheter dans la boutique.</div> : null}
+          </div>
+        ) : tab === "quetes" ? (
+          <div className="evQuestTab">
+            {resp.quests.daily.length > 0 ? (
+              <div className="evQuestGroup">
+                <div className="evQuestGroupTitle">Quotidiennes</div>
+                <QuestGroup quests={resp.quests.daily} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
               </div>
-              {buyErr ? <div style={{ marginTop: 10, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{buyErr}</div> : null}
-              {!token ? <div className="evLockedSub" style={{ marginTop: 10 }}>Connecte-toi pour acheter dans la boutique.</div> : null}
+            ) : null}
+            {resp.quests.weekly.length > 0 ? (
+              <div className="evQuestGroup">
+                <div className="evQuestGroupTitle">Hebdomadaires</div>
+                <QuestGroup quests={resp.quests.weekly} token={token} claimingKey={claimingKey} lastClaim={lastClaim} onClaim={handleClaimQuest} onLoginClick={onLoginClick} />
+              </div>
+            ) : null}
+            {resp.quests.daily.length === 0 && resp.quests.weekly.length === 0 ? (
+              <div className="evLockedSub" style={{ textAlign: "center" }}>Aucune quête disponible pour l'instant.</div>
+            ) : null}
+            {claimErr ? <div className="evErrLine">{claimErr}</div> : null}
+          </div>
+        ) : (
+          <div className="evRankTab">
+            {top3.length > 0 ? <Podium top={top3} meUserId={meUserId} /> : (
+              <div className="evLockedSub" style={{ textAlign: "center", padding: "8px 0 4px" }}>
+                Personne au classement pour l'instant — tourne la roue pour y entrer !
+              </div>
+            )}
+            {rest.length > 0 ? <div style={{ marginTop: 14 }}><LeaderboardList rows={rest} meUserId={meUserId} /></div> : null}
+            <div style={{ marginTop: 18 }}>
+              <div className="evSectionTitle">🎁 Récompenses de fin de semaine</div>
+              <RewardsShowcase tiers={WHEEL_WEEK_REWARD_TIERS} />
             </div>
           </div>
-        </Reveal>
-      ) : null}
+        )}
+      </div>
 
-      {resp.quests.daily.length > 0 || resp.quests.weekly.length > 0 ? (
-        <Reveal delay={0.08}>
-          <div>
-            <div className="evSectionTitle">🎯 Quêtes</div>
-            <div style={{ display: "grid", gap: 14 }}>
-              {resp.quests.daily.length > 0 ? (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.65, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    Quotidiennes
-                  </div>
-                  <QuestGroup
-                    quests={resp.quests.daily}
-                    token={token}
-                    claimingKey={claimingKey}
-                    lastClaim={lastClaim}
-                    onClaim={handleClaimQuest}
-                    onLoginClick={onLoginClick}
-                  />
-                </div>
-              ) : null}
-              {resp.quests.weekly.length > 0 ? (
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.65, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    Hebdomadaires
-                  </div>
-                  <QuestGroup
-                    quests={resp.quests.weekly}
-                    token={token}
-                    claimingKey={claimingKey}
-                    lastClaim={lastClaim}
-                    onClaim={handleClaimQuest}
-                    onLoginClick={onLoginClick}
-                  />
-                </div>
-              ) : null}
+      {modal ? (
+        <div className="evModalBackdrop" role="dialog" aria-modal="true" onClick={() => setModal(null)}>
+          <div className="evModalCard" onClick={(e) => e.stopPropagation()}>
+            <div className="evModalHead">
+              <span className="evModalTitle">{modal === "rules" ? "📖 Comment ça marche ?" : "🎲 Chances de la roue"}</span>
+              <button type="button" className="evModalClose" onClick={() => setModal(null)} aria-label="Fermer">✕</button>
             </div>
-            {claimErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#fca5a5", fontWeight: 800 }}>{claimErr}</div> : null}
+            <div className="evModalBody">
+              {modal === "rules" ? (
+                <>
+                  {rules ? <div className="evRulesSummary" style={{ marginBottom: 12 }}>{rules.summary}</div> : null}
+                  {rules?.items.map((it) => (
+                    <div className="evRuleItem" key={it.title}>
+                      <span className="evRuleIcon">{it.icon}</span>
+                      <div>
+                        <div className="evRuleItemTitle">{it.title}</div>
+                        <div className="evRuleItemText">{it.text}</div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="evProbaList">
+                  {resp.wheel.map((seg, i) => (
+                    <div className="evProbaRow" key={i}>
+                      <span className="evWheelSwatch" style={{ background: segMeta[i]?.color }} />
+                      <span className="evProbaLabel">{seg.lotLabel && seg.lotLabel !== "—" ? seg.lotLabel : `${seg.points} pts`}</span>
+                      <span className="evProbaPct">{seg.proba}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </Reveal>
-      ) : null}
-
-      <Reveal delay={0.1}>
-        <div>
-          <div className="evSectionTitle">🏆 Classement</div>
-          <Podium top={top3} meUserId={meUserId} />
         </div>
-      </Reveal>
-
-      {rest.length > 0 ? (
-        <Reveal delay={0.12}>
-          <div>
-            <div className="evSectionTitle">📊 Classement complet</div>
-            <LeaderboardList rows={rest} meUserId={meUserId} />
-          </div>
-        </Reveal>
       ) : null}
-
-      <Reveal delay={0.14}>
-        <div>
-          <div className="evSectionTitle">🎁 Vitrine des lots</div>
-          <RewardsShowcase tiers={WHEEL_WEEK_REWARD_TIERS} />
-        </div>
-      </Reveal>
-    </>
+    </div>
   );
 }
 
@@ -1471,7 +1544,7 @@ export default function EventPage() {
         <div className="alert" style={{ margin: 0 }}>{err}</div>
       ) : null}
 
-      {event ? (
+      {event && event.type !== "wheel_week" ? (
         <Reveal>
           <EventRulesBlock type={event.type} />
         </Reveal>

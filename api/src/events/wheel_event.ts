@@ -387,7 +387,6 @@ export async function claimPaliers(eventId: number, userId: number): Promise<Pal
 type PerformSpinResult = {
   segment: WheelSegment;
   xp: number;
-  palierUnlocked?: Palier;
 };
 
 // Coeur du spin, partagé entre spinWheel (ticket) et le "re-roll" boutique
@@ -428,10 +427,10 @@ async function performSpin(
     [eventId, userId, seg.index, seg.points]
   );
 
-  const newlyClaimed = await claimPaliersTx(client, eventId, userId);
-  const palierUnlocked = newlyClaimed[newlyClaimed.length - 1];
-
-  return { segment: seg, xp, palierUnlocked };
+  // Paliers NON auto-réclamés : le joueur les récupère manuellement (bouton
+  // "Récupérer" sur l'onglet Roue → POST /events/wheel/palier/claim), pour un
+  // moment de récompense explicite plutôt qu'un crédit invisible au spin.
+  return { segment: seg, xp };
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -445,7 +444,6 @@ export type SpinResult =
       segment: { index: number; points: number; xp: number; lot: WheelLot; lotLabel: string };
       tickets: number;
       points: number;
-      palierUnlocked?: { index: number; rewardLabel: string };
     };
 
 export async function spinWheel(userId: number): Promise<SpinResult> {
@@ -477,7 +475,7 @@ export async function spinWheel(userId: number): Promise<SpinResult> {
       }
     }
 
-    const { segment, xp, palierUnlocked } = await performSpin(client, Number(event.id), userId, "spin");
+    const { segment, xp } = await performSpin(client, Number(event.id), userId, "spin");
 
     const tickets = await getTicketAmount(client, userId);
     const points = await getPointsAmount(client, Number(event.id), userId);
@@ -489,7 +487,6 @@ export async function spinWheel(userId: number): Promise<SpinResult> {
       segment: { index: segment.index, points: segment.points, xp, lot: segment.lot, lotLabel: segment.lotLabel },
       tickets,
       points,
-      palierUnlocked: palierUnlocked ? { index: palierUnlocked.index, rewardLabel: palierUnlocked.rewardLabel } : undefined,
     };
   } catch (e) {
     try {

@@ -180,11 +180,9 @@ export async function getCurrentWheel(token?: string | null) {
 
 export type ApiWheelSpinResp = {
   ok: true;
-  segment: { points: number; xp: number; lotLabel?: string | null };
+  segment: { index: number; points: number; xp: number; lotLabel?: string | null };
   tickets: number;
   points: number;
-  // le backend ne renvoie qu'{index, rewardLabel} sur un palier fraîchement franchi
-  palierUnlocked?: { index: number; rewardLabel: string } | null;
 };
 
 export async function postWheelSpin(token: string) {
@@ -198,7 +196,8 @@ export type ApiWheelShopBuyResp = {
   ok: true;
   spentRubis: number;
   rubis: number;
-  granted: string;
+  // objet d'effet : pour 'reroll' => { segment: { index, points, xp, lotLabel } }
+  granted: Record<string, any>;
   boughtToday: number;
   nextPrice: number | null;
 };
@@ -208,6 +207,19 @@ export async function postWheelShopBuy(token: string, code: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
+  });
+}
+
+export type ApiWheelPalierClaimResp = {
+  ok: true;
+  claimed: { index: number; threshold: number; rewardLabel: string }[];
+  count: number;
+};
+
+export async function postWheelPalierClaim(token: string) {
+  return j<ApiWheelPalierClaimResp>("/api/events/wheel/palier/claim", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 

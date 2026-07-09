@@ -7,7 +7,7 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
-import { buyShopItem, claimQuest, getLiveWheelEvent, getWheelState, spinWheel } from "../events/wheel_event.js";
+import { buyShopItem, claimPaliers, claimQuest, getLiveWheelEvent, getWheelState, spinWheel } from "../events/wheel_event.js";
 export const eventsWheelRouter = Router();
 // GET /api/events/current/wheel
 eventsWheelRouter.get("/events/current/wheel", a(async (req, res) => {
@@ -26,6 +26,20 @@ eventsWheelRouter.post("/events/wheel/spin", requireAuth, a(async (req, res) => 
     if (!result.ok)
         return res.status(400).json({ ok: false, error: result.error });
     res.json({ ...result, ok: true });
+}));
+// POST /api/events/wheel/palier/claim — récupère tous les paliers atteints non
+// encore réclamés (points cumulés >= seuil). Idempotent : rien à réclamer => [].
+eventsWheelRouter.post("/events/wheel/palier/claim", requireAuth, a(async (req, res) => {
+    const userId = Number(req.user?.id || 0);
+    const event = await getLiveWheelEvent(pool);
+    if (!event)
+        return res.status(400).json({ ok: false, error: "no_event" });
+    const claimed = await claimPaliers(Number(event.id), userId);
+    res.json({
+        ok: true,
+        claimed: claimed.map((p) => ({ index: p.index, threshold: p.threshold, rewardLabel: p.rewardLabel })),
+        count: claimed.length,
+    });
 }));
 // POST /api/events/wheel/shop/buy  { code }
 eventsWheelRouter.post("/events/wheel/shop/buy", requireAuth, a(async (req, res) => {
