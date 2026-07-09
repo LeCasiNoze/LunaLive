@@ -121,6 +121,7 @@ import { eventsViewerWeekRouter } from "./routes/events_viewer_week.js";
 import { eventsWheelWeekRouter } from "./routes/events_wheel_week.js";
 import { eventsChestRouter } from "./routes/events_chest.js";
 import { eventsClipRaceRouter } from "./routes/events_clip_race.js";
+import { eventsBossRouter } from "./routes/events_boss.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
 import { lunaclipRouter } from "./lunaclip/routes.js";
 
@@ -201,6 +202,7 @@ export function createApp() {
   app.use("/api", eventsWheelWeekRouter);
   app.use("/api", eventsChestRouter);
   app.use("/api", eventsClipRaceRouter);
+  app.use("/api", eventsBossRouter);
   app.use("/api", igCommentsRouter);
   app.use("/api", offresStreamersRouter);
   app.use("/api", igConfigRouter);

@@ -4,6 +4,7 @@ import { recomputeViewerWeek } from "./viewer_week.js";
 import { recomputeWheelWeek } from "./wheel_week.js";
 import { recomputeGlobalChest } from "./global_chest.js";
 import { recomputeClipRace } from "./clip_race.js";
+import { recomputeBurnBoss } from "./burn_boss.js";
 import { closeAndDistribute, EVENT_REWARD_CONFIGS } from "./rewards.js";
 const TZ = "Europe/Paris";
 const WEEK_MS = 7 * 24 * 3600_000;
@@ -165,6 +166,9 @@ export function startEventsEnginePoller(everyMs = 60_000) {
             }
             if (cur && cur.type === "clip_race" && cur.state === "live") {
                 await recomputeClipRace(cur.id);
+            }
+            if (cur && cur.type === "burn_boss" && cur.state === "live") {
+                await recomputeBurnBoss(cur.id);
             }
         }
         catch (e) {
