@@ -5,6 +5,7 @@ import { recomputeWheelWeek } from "./wheel_week.js";
 import { recomputeGlobalChest } from "./global_chest.js";
 import { recomputeClipRace } from "./clip_race.js";
 import { recomputeBurnBoss } from "./burn_boss.js";
+import { proposeDuos, recomputeDuoWeek } from "./duo_week.js";
 import { closeAndDistribute, EVENT_REWARD_CONFIGS } from "./rewards.js";
 const TZ = "Europe/Paris";
 const WEEK_MS = 7 * 24 * 3600_000;
@@ -169,6 +170,13 @@ export function startEventsEnginePoller(everyMs = 60_000) {
             }
             if (cur && cur.type === "burn_boss" && cur.state === "live") {
                 await recomputeBurnBoss(cur.id);
+            }
+            if (cur && cur.type === "duo_week" && cur.state === "live") {
+                // proposeDuos est idempotent (skip si des duos existent déjà) : pas
+                // besoin de détecter explicitement "le 1er tick", on peut l'appeler
+                // à chaque tick tant que l'event est live.
+                await proposeDuos(cur.id);
+                await recomputeDuoWeek(cur.id);
             }
         }
         catch (e) {
