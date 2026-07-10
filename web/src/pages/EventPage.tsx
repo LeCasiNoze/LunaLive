@@ -1,13 +1,15 @@
 // web/src/pages/EventPage.tsx
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
 import { CountUp } from "../components/events/CountUp";
 import { EventAvatar } from "../components/events/EventAvatar";
 import { computeWheelSegments, EventWheelDial, WHEEL_SPIN_MS } from "../components/events/EventWheelDial";
 import { playSpinSound } from "../components/events/wheelSound";
+import BossStage from "../components/events/BossStage";
+import { BOSS_WEAPONS, type BossWeapon } from "../components/events/boss3d/weapons";
 import "../components/events/events-theme.css";
 import {
   getCurrentBoss,
@@ -55,13 +57,24 @@ function normMod(n: number, m: number) {
   return ((n % m) + m) % m;
 }
 
-function splitRemain(ms: number) {
-  ms = Math.max(0, Math.floor(ms));
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  const d = Math.floor(h / 24);
-  return { d, h: h % 24, m: m % 60, s: s % 60 };
+// Sélecteur rapide : un chip par event pour passer de page en page.
+const EVENT_SWITCH: { slug: string; type: string; label: string }[] = [
+  { slug: "roue", type: "wheel_week", label: "Roue" },
+  { slug: "viewer", type: "viewer_week", label: "Viewers" },
+  { slug: "clips", type: "clip_race", label: "Clips" },
+  { slug: "coffre", type: "global_chest", label: "Coffre" },
+  { slug: "boss", type: "burn_boss", label: "Boss" },
+  { slug: "duo", type: "duo_week", label: "Duo" },
+];
+
+function fmtShortRemain(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return d > 0 ? `${d}j ${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
 
 function fmtIsoLocal(iso: string) {
@@ -295,19 +308,19 @@ const EVENT_RULES: Record<string, EventRules> = {
   },
 };
 
-function EventRulesBlock({ type }: { type: string }) {
+function EventRulesModal({ type, open, onClose }: { type: string; open: boolean; onClose: () => void }) {
   const rules = EVENT_RULES[type];
-  const [open, setOpen] = React.useState(true);
-  if (!rules) return null;
+  if (!rules || !open) return null;
   return (
-    <div className="evCard evRules">
-      <button type="button" className="evRulesHead" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className="evRulesTitle">📖 Comment ça marche ?</span>
-        <span className={`evRulesChevron${open ? " open" : ""}`} aria-hidden="true">▾</span>
-      </button>
-      <div className="evRulesSummary">{rules.summary}</div>
-      {open ? (
-        <div className="evRulesBody">
+    <div className="evModalBackdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="evModalCard evRulesModal" onClick={(e) => e.stopPropagation()}>
+        <div className="evModalHead">
+          <span className="evModalTitle">📖 Comment ça marche ?</span>
+          <button type="button" className="evModalClose" onClick={onClose} aria-label="Fermer">×</button>
+        </div>
+        <div className="evModalBody">
+          <div className="evRulesSummary">{rules.summary}</div>
+          <div className="evRulesBody">
           {rules.items.map((it) => (
             <div className="evRuleItem" key={it.title}>
               <span className="evRuleIcon">{it.icon}</span>
@@ -317,8 +330,53 @@ function EventRulesBlock({ type }: { type: string }) {
               </div>
             </div>
           ))}
+          </div>
+          <button type="button" className="evBtn evRulesOk" onClick={onClose}>Compris</button>
         </div>
-      ) : null}
+      </div>
+    </div>
+  );
+}
+
+// Rangée utilitaire du hero fusionné (identité + actions de la page) —
+// fournie par EventPage, consommée par chaque bloc dashboard pour que tout
+// vive dans UN seul bloc (fusion des deux bannières demandée par Lucas).
+const EventUtilityCtx = React.createContext<React.ReactNode>(null);
+
+function EventDashboardIntro({
+  type,
+  kicker,
+  title,
+  text,
+  stats,
+  actions,
+}: {
+  type: string;
+  kicker: string;
+  title: React.ReactNode;
+  text: string;
+  stats: Array<{ label: string; value: React.ReactNode }>;
+  /** Boutons propres au panel (ex. Règles/Chances de la roue), rendus sous le texte. */
+  actions?: React.ReactNode;
+}) {
+  const utility = React.useContext(EventUtilityCtx);
+  return (
+    <div className={`evViewerIntro evEventDashboard evEventDashboard--${type}`}>
+      {utility ? <div className="evDashUtility">{utility}</div> : null}
+      <div>
+        <span className="evConsoleKicker">{kicker}</span>
+        <h2 className="evViewerHeadline">{title}</h2>
+        <p>{text}</p>
+        {actions ? <div className="evDashActions">{actions}</div> : null}
+      </div>
+      <div className="evViewerQuickStats">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <span>{s.label}</span>
+            <strong>{s.value}</strong>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -339,24 +397,6 @@ function Reveal({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
     >
       {children}
     </motion.div>
-  );
-}
-
-function Countdown({ targetMs, nowMs, label }: { targetMs: number; nowMs: number; label: string }) {
-  const { d, h, m, s } = splitRemain(targetMs - nowMs);
-  const boxes: [string, number][] = d > 0 ? [["jours", d], ["h", h], ["min", m], ["sec", s]] : [["h", h], ["min", m], ["sec", s]];
-  return (
-    <div className="evCountdownWrap">
-      <div className="evCountdownLabel">{label}</div>
-      <div className="evCountdown">
-        {boxes.map(([unit, val]) => (
-          <div className="evCdBox" key={unit}>
-            <div className="evCdNum">{String(val).padStart(2, "0")}</div>
-            <div className="evCdUnit">{unit}</div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -912,21 +952,25 @@ function WheelWeekPanel({
 
   return (
     <div className="evWheel2">
-      {/* Barre de statut : rang / points / tickets + accès popups (règles, chances) */}
-      <div className="evWheel2Status">
-        <div className="evW2Stats">
-          <div className="evW2Stat"><span className="evW2Label">Rang</span><span className="evW2Val">#{me?.rank ?? "—"}</span></div>
-          <div className="evW2Stat"><span className="evW2Label">Points</span><span className="evW2Val"><CountUp value={points} /></span></div>
-          <div className="evW2Stat">
-            <span className="evW2Label">Tickets</span>
-            <span className="evW2Val">🎟 {me?.tickets ?? 0}{me?.freeSpinAvailable ? " · 🎁" : ""}</span>
-          </div>
-        </div>
-        <div className="evW2Actions">
-          <button type="button" className="evChipBtn" onClick={() => setModal("rules")}>📖 Règles</button>
-          <button type="button" className="evChipBtn" onClick={() => setModal("proba")}>🎲 Chances</button>
-        </div>
-      </div>
+      {/* Bloc dashboard fusionné (même pattern que viewer/boss) — sans rang,
+          demande Lucas : le rang vit dans l'onglet Classement. */}
+      <EventDashboardIntro
+        type="wheel_week"
+        kicker="LA ROUE TOURNE"
+        title={<>Tourne. Gagne.<br />Encaisse.</>}
+        text="Gagne des tickets en étant actif sur les lives, tourne la roue et transforme tes points en récompenses. Chaque tour compte au classement."
+        stats={[
+          { label: "Tes points", value: <CountUp value={points} /> },
+          { label: "Tes tickets", value: <>🎟 {me?.tickets ?? 0}</> },
+          { label: "Tour gratuit", value: me?.freeSpinAvailable ? "🎁 Dispo" : "—" },
+        ]}
+        actions={
+          <>
+            <button type="button" className="evChipBtn" onClick={() => setModal("rules")}>📖 Règles</button>
+            <button type="button" className="evChipBtn" onClick={() => setModal("proba")}>🎲 Chances</button>
+          </>
+        }
+      />
 
       {/* Onglets (mobile-first, sticky) */}
       <div className="evTabs" role="tablist">
@@ -1238,13 +1282,17 @@ function ChestPanel({
 
   return (
     <div className="evWheel2">
-      <div className="evWheel2Status">
-        <div className="evW2Stats">
-          <div className="evW2Stat"><span className="evW2Label">Coffre commun</span><span className="evW2Val">🎁 {communityTotal} / {maxThreshold}</span></div>
-          <div className="evW2Stat"><span className="evW2Label">Ta contribution</span><span className="evW2Val">💎 {myContribution}</span></div>
-        </div>
-      </div>
-
+      <EventDashboardIntro
+        type="global_chest"
+        kicker="OBJECTIF COMMUN"
+        title={<>Remplis le coffre.<br />Débloque les paliers.</>}
+        text="Toute l’activité de la communauté pousse la même jauge. Contribue, récupère les paliers et grimpe dans le classement des plus gros soutiens."
+        stats={[
+          { label: "Coffre commun", value: <><CountUp value={communityTotal} />/{maxThreshold}</> },
+          { label: "Ta contribution", value: myContribution },
+          { label: "Ton rang", value: resp.myRank ? `#${resp.myRank}` : "—" },
+        ]}
+      />
       <div className="evTabs" role="tablist">
         {([
           ["coffre", "🎁", "Coffre"],
@@ -1262,6 +1310,26 @@ function ChestPanel({
       <div className="evTabPanel">
         {tab === "coffre" ? (
           <div style={{ display: "grid", gap: 14 }}>
+            {/* Dépôt AVANT les paliers (demande Lucas) : l'action d'abord. */}
+            {!token ? (
+              <LoginGate onLogin={onLoginClick} text="Connecte-toi pour déposer des rubis dans le coffre commun." />
+            ) : (
+              <MyStatusCard
+                icon="💎"
+                title="Déposer dans le coffre"
+                meta={<>Ta contribution : <strong><CountUp value={myContribution} /></strong>{resp.myRank ? ` · rang #${resp.myRank}` : ""} — chaque rubis fait monter la barre commune.</>}
+              >
+                <RubisAmountForm
+                  icon="💎"
+                  buttonLabel="Déposer des rubis"
+                  onSubmit={async (n) => {
+                    await postChestDeposit(token, n);
+                    onRefresh();
+                  }}
+                />
+              </MyStatusCard>
+            )}
+
             <div className="evPalierBlock">
               <div className="evPalierHead">
                 <span className="evPalierHeadTitle">🏁 Paliers du coffre</span>
@@ -1310,24 +1378,6 @@ function ChestPanel({
               </div>
             </div>
 
-            {!token ? (
-              <LoginGate onLogin={onLoginClick} text="Connecte-toi pour déposer des rubis dans le coffre commun." />
-            ) : (
-              <MyStatusCard
-                icon="💎"
-                title="Déposer dans le coffre"
-                meta={<>Chaque rubis déposé fait monter la barre commune — irréversible.</>}
-              >
-                <RubisAmountForm
-                  icon="💎"
-                  buttonLabel="Déposer des rubis"
-                  onSubmit={async (n) => {
-                    await postChestDeposit(token, n);
-                    onRefresh();
-                  }}
-                />
-              </MyStatusCard>
-            )}
           </div>
         ) : tab === "contributeurs" ? (
           contributors.length === 0 ? (
@@ -1355,11 +1405,13 @@ function ChestPanel({
 function ClipRacePanel({
   resp,
   token,
+  meUserId,
   onLoginClick,
   onRefresh,
 }: {
   resp: Extract<ApiClipRaceResp, { event: ApiEventRow }>;
   token: string | null;
+  meUserId: number | null;
   onLoginClick: () => void;
   onRefresh: () => void;
 }) {
@@ -1373,6 +1425,7 @@ function ClipRacePanel({
   const votesLeft = resp.myVotesLeft ?? 0;
   const votedSet = new Set(resp.myVotedClipIds ?? []);
   const canVote = !!token && votesLeft > 0;
+  const myStreamerRank = meUserId != null ? resp.topStreamers.find((s) => Number(s.userId) === Number(meUserId)) : null;
 
   async function vote(clipId: number) {
     if (!token) {
@@ -1393,6 +1446,17 @@ function ClipRacePanel({
 
   return (
     <div className="evWheel2">
+      <EventDashboardIntro
+        type="clip_race"
+        kicker="COURSE AUX MOMENTS"
+        title={<>Vote les clips.<br />Fais monter ton streamer.</>}
+        text="Les meilleurs moments prennent la lumière. Utilise tes coups de cœur, pousse les clips favoris et suis le classement des streamers."
+        stats={[
+          { label: "Clips en lice", value: resp.topClips.length },
+          { label: "Votes restants", value: votesLeft },
+          { label: "Streamers classés", value: resp.topStreamers.length },
+        ]}
+      />
       <div className="evWheel2Status">
         <div className="evW2Stats">
           <div className="evW2Stat"><span className="evW2Label">Coups de cœur aujourd'hui</span><span className="evW2Val">❤️ {votesLeft}</span></div>
@@ -1466,19 +1530,95 @@ function ClipRacePanel({
             {resp.topStreamers.length === 0 ? (
               <div className="evLockedSub" style={{ textAlign: "center" }}>Pas encore de streamer classé — les votes sur ses clips le feront grimper ici.</div>
             ) : (
-              resp.topStreamers.map((s) => (
-                <div className="evRow" key={s.streamerId}>
-                  <div className="evRowRank">#{s.rank}</div>
-                  <div className="evRowName">{s.displayName}</div>
-                  <div className="evRowPts">{s.votes} ❤️</div>
-                </div>
-              ))
+              <>
+                {myStreamerRank ? <MyRankCard rank={myStreamerRank.rank} score={myStreamerRank.votes} unit="votes" /> : null}
+                {resp.topStreamers.map((s) => (
+                  <div className={`evRow${myStreamerRank?.streamerId === s.streamerId ? " me" : ""}`} key={s.streamerId}>
+                    <div className="evRowRank">#{s.rank}</div>
+                    <EventAvatar userId={s.userId ?? 0} username={s.displayName} size={30} />
+                    <div className="evRowName">{s.displayName}{myStreamerRank?.streamerId === s.streamerId ? <span style={{ opacity: 0.7 }}> (toi)</span> : null}</div>
+                    <div className="evRowPts">{s.votes} ❤️</div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         ) : (
           <RewardsShowcase tiers={CLIP_RACE_REWARD_TIERS} />
         )}
       </div>
+    </div>
+  );
+}
+
+// Arsenal du boss : cartes d'armes achetées en rubis (= dégâts, ratio 1:1).
+// Chaque tir joue une animation 3D distincte ; les tirs ≥ 500 rubis demandent
+// une confirmation pour éviter les gros clics accidentels.
+function BossArsenal({
+  token,
+  demo,
+  onFire,
+}: {
+  token: string;
+  /** Boss vaincu/expiré : tirs d'entraînement gratuits, aucune dépense. */
+  demo?: boolean;
+  onFire: (w: BossWeapon) => Promise<void>;
+}) {
+  const [firing, setFiring] = React.useState<string | null>(null);
+  const [confirmId, setConfirmId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function fire(w: BossWeapon) {
+    if (!token) return;
+    if (!demo && w.price >= 500 && confirmId !== w.id) {
+      setConfirmId(w.id);
+      setError(null);
+      return;
+    }
+    setConfirmId(null);
+    setError(null);
+    setFiring(w.id);
+    try {
+      await onFire(w);
+    } catch (e: any) {
+      setError(humanRubisError(String(e?.message || "")));
+    } finally {
+      setFiring(null);
+    }
+  }
+
+  return (
+    <div className="evArsenal">
+      {demo ? (
+        <div className="evArsenalDemo">💀 Boss tombé — mode entraînement : les tirs sont gratuits et ne comptent pas.</div>
+      ) : null}
+      <div className="evArsenalGrid">
+        {BOSS_WEAPONS.map((w) => {
+          const isConfirm = confirmId === w.id;
+          return (
+            <button
+              key={w.id}
+              type="button"
+              className={`evWeapon evWeapon--${w.anim}${w.hot ? " hot" : ""}${isConfirm ? " confirm" : ""}`}
+              onClick={() => fire(w)}
+              disabled={firing !== null}
+            >
+              <span className="evWeaponShine" aria-hidden="true" />
+              {w.hot ? <span className="evWeaponBadge">{w.price >= 1000 ? "ULTIME" : "TOP"}</span> : null}
+              <span className="evWeaponEmoji">{w.emoji}</span>
+              <span className="evWeaponName">{w.name}</span>
+              <span className="evWeaponTag">{w.tagline}</span>
+              <span className="evWeaponFoot">
+                <span className="evWeaponPrice">
+                  {firing === w.id ? "…" : demo ? "DÉMO" : isConfirm ? "Confirmer ?" : `💎 ${w.price}`}
+                </span>
+                {demo ? null : <span className="evWeaponDmg">−{w.price} PV</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {error ? <div className="evArsenalError">{error}</div> : null}
     </div>
   );
 }
@@ -1499,6 +1639,12 @@ function BossPanel({
 }) {
   const [tab, setTab] = React.useState<"boss" | "degats" | "recompenses">("boss");
   const [now, setNow] = React.useState(() => Date.now());
+  // seq incrémenté à chaque tir → déclenche l'animation d'arme 3D + le flinch.
+  const [attack, setAttack] = React.useState<{ seq: number; anim: BossWeapon["anim"]; power: number }>({
+    seq: 0,
+    anim: "bullet",
+    power: 0,
+  });
   React.useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -1528,13 +1674,17 @@ function BossPanel({
 
   return (
     <div className="evWheel2">
-      <div className="evWheel2Status">
-        <div className="evW2Stats">
-          <div className="evW2Stat"><span className="evW2Label">PV du boss</span><span className="evW2Val">❤️ {remaining} / {resp.hp}</span></div>
-          <div className="evW2Stat"><span className="evW2Label">Tes dégâts</span><span className="evW2Val">🔥 {resp.myDamage ?? 0}{resp.myRank ? ` · #${resp.myRank}` : ""}</span></div>
-        </div>
-      </div>
-
+      <EventDashboardIntro
+        type="burn_boss"
+        kicker={resp.killed ? "BOSS VAINCU" : "RAID COMMUNAUTAIRE"}
+        title={resp.killed ? <>Le boss est tombé.<br />La gloire arrive.</> : <>Brûle, frappe.<br />Fais tomber le boss.</>}
+        text="Chaque action utile inflige des dégâts. La communauté tape ensemble, le classement récompense les plus gros bourreaux."
+        stats={[
+          { label: "PV restants", value: <><CountUp value={remaining} />/{resp.hp}</> },
+          { label: "Tes dégâts", value: resp.myDamage ?? 0 },
+          { label: "Ton rang", value: resp.myRank ? `#${resp.myRank}` : "—" },
+        ]}
+      />
       <div className="evTabs" role="tablist">
         {([
           ["boss", "🔥", "Boss"],
@@ -1551,9 +1701,23 @@ function BossPanel({
       <div className="evTabPanel">
         {tab === "boss" ? (
           <div style={{ display: "grid", gap: 14 }}>
+            <BossStage
+              hpPct={remainingPct / 100}
+              killed={resp.killed}
+              expired={expired}
+              attackSeq={attack.seq}
+              attackType={attack.anim}
+              attackPower={attack.power}
+              rewardCountdown={
+                resp.killed ? (expired ? "Distribution imminente ⏳" : `Récompenses dans ${fmtTime(timeLeftMs)}`) : undefined
+              }
+            />
             <div className={`evBossBanner${resp.killed ? " killed" : expired ? " survived" : ""}`}>
               {resp.killed ? (
-                "💀 Boss vaincu — récompenses distribuées à la clôture !"
+                <>
+                  💀 Boss achevé par <strong>{resp.killedBy || "la commu 💜"}</strong>
+                  {resp.killedAt ? <> le {fmtIsoLocal(resp.killedAt)}</> : null}
+                </>
               ) : expired ? (
                 "☠️ Le boss a survécu… pas de récompense cette fois."
               ) : (
@@ -1579,13 +1743,15 @@ function BossPanel({
                 title="Frappe le boss"
                 meta={<><CountUp value={resp.myDamage ?? 0} /> dégâts{resp.myRank ? ` · rang #${resp.myRank}` : ""}</>}
               >
-                <div className="evBossHint">Regarder les lives, chatter et tourner la roue infligent déjà des dégâts gratuitement. Brûle des rubis pour frapper beaucoup plus fort.</div>
-                <RubisAmountForm
-                  icon="🔥"
-                  buttonLabel="Brûler des rubis"
-                  onSubmit={async (n) => {
-                    await postBossBurn(token, n);
-                    onRefresh();
+                <div className="evBossHint">💎 1 rubis = 1 dégât. Regarde les lives et chatte pour frapper gratuitement, ou dégaine une arme :</div>
+                <BossArsenal
+                  token={token}
+                  demo={resp.killed || expired}
+                  onFire={async (w) => {
+                    const isDemo = resp.killed || expired;
+                    if (!isDemo) await postBossBurn(token, w.price);
+                    setAttack((s) => ({ seq: s.seq + 1, anim: w.anim, power: w.power }));
+                    if (!isDemo) onRefresh();
                   }}
                 />
               </MyStatusCard>
@@ -1674,22 +1840,28 @@ function DuoPanel({
   onLoginClick: () => void;
   onRefresh: () => void;
 }) {
-  const [tab, setTab] = React.useState<"classement" | "recompenses">("classement");
+  const [tab, setTab] = React.useState<"groupes" | "classement" | "recompenses">("groupes");
   const [acting, setActing] = React.useState<null | "accept" | "refresh">(null);
   const [actErr, setActErr] = React.useState<string | null>(null);
+  // Groupe dont le palier ACTUEL est déplié (toggle au clic sur la carte).
+  const [openDuoId, setOpenDuoId] = React.useState<number | null>(null);
   const duos = resp.duos;
   const myDuo = resp.myDuo;
 
-  // Duo dont le détail des paliers est affiché : celui du viewer s'il est
-  // streamer apparié, sinon le #1 du classement (hors scope v1 : pas de
-  // "duo de mon streamer préféré" pour un viewer normal, cf spec).
-  const focusDuo = myDuo ?? duos[0] ?? null;
-  const focusPaliers = (focusDuo && focusDuo.paliers.length > 0 ? focusDuo.paliers : resp.palierDefs ?? []).map(
-    normalizeDuoPalier
-  );
+  // Palier actuel d'un duo = premier palier non complété (le fonctionnement
+  // est palier par palier — on n'affiche jamais toute la liste).
+  const currentPalierOf = (d: (typeof duos)[number]) => {
+    const paliers = (d.paliers.length > 0 ? d.paliers : resp.palierDefs ?? []).map(normalizeDuoPalier);
+    return paliers.find((p) => !p.done) ?? paliers[paliers.length - 1] ?? null;
+  };
 
   const statusLabel = (s: string) => (s === "accepted" ? "✅ accepté" : s === "refreshed" ? "🔄 ré-apparié" : "⏳ proposé");
   const medal = (rank: number) => (rank === 1 ? "👑" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`);
+
+  // Rangées de 3 cartes : le détail déplié s'insère PLEINE LARGEUR sous la
+  // rangée de la carte cliquée (pas au milieu de la grille).
+  const duoRows: (typeof duos)[] = [];
+  for (let i = 0; i < duos.length; i += 3) duoRows.push(duos.slice(i, i + 3));
 
   async function doAccept() {
     if (!token) { onLoginClick(); return; }
@@ -1708,13 +1880,17 @@ function DuoPanel({
 
   return (
     <div className="evWheel2">
-      <div className="evWheel2Status">
-        <div className="evW2Stats">
-          <div className="evW2Stat"><span className="evW2Label">Duos en lice</span><span className="evW2Val">🤝 {duos.length}</span></div>
-          {myDuo ? <div className="evW2Stat"><span className="evW2Label">Ton duo</span><span className="evW2Val">#{myDuo.rank}</span></div> : null}
-        </div>
-      </div>
-
+      <EventDashboardIntro
+        type="duo_week"
+        kicker="DUOS EN LICE"
+        title={<>Deux communautés.<br />Un seul classement.</>}
+        text="Les duos avancent grâce à l’activité des deux communautés. Suis le duo en focus, ses paliers et sa position dans la course."
+        stats={[
+          { label: "Duos en lice", value: duos.length },
+          { label: "Ton duo", value: myDuo ? `#${myDuo.rank}` : "—" },
+          { label: "Duo #1", value: duos[0] ? `${duos[0].paliersDone}/5 paliers` : "—" },
+        ]}
+      />
       {/* Carte de gestion : visible seulement pour un streamer apparié (myDuo). */}
       {myDuo ? (
         <div className="evCard evDuoMine">
@@ -1743,7 +1919,8 @@ function DuoPanel({
 
       <div className="evTabs" role="tablist">
         {([
-          ["classement", "🏆", "Duos"],
+          ["groupes", "🤝", "Groupes"],
+          ["classement", "🏆", "Classement"],
           ["recompenses", "🎁", "Récompenses"],
         ] as const).map(([k, icon, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={`evTab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
@@ -1754,36 +1931,73 @@ function DuoPanel({
       </div>
 
       <div className="evTabPanel">
-        {tab === "classement" ? (
+        {tab === "groupes" ? (
           <div style={{ display: "grid", gap: 10 }}>
-            <div className="evLockedSub" style={{ textAlign: "center", marginBottom: 2 }}>
-              Regarde ton streamer préféré — chaque minute, host et coffre fait avancer son duo dans les paliers.
-            </div>
             {duos.length === 0 ? (
               <div className="evLockedSub" style={{ textAlign: "center", padding: "10px 0" }}>Aucun duo formé pour l'instant — l'appariement se fait dès qu'assez de streamers partagent une audience.</div>
             ) : (
-              duos.map((d) => {
-                const isFocus = focusDuo?.duoId === d.duoId;
+              duoRows.map((row, ri) => {
+                const openDuo = row.find((d) => d.duoId === openDuoId) ?? null;
+                const openPalier = openDuo ? currentPalierOf(openDuo) : null;
                 return (
-                  <React.Fragment key={d.duoId}>
-                    <div className={`evDuoCard${d.rank <= 3 ? " top" : ""}${isFocus ? " focus" : ""}`}>
-                      <div className="evDuoRank">{medal(d.rank)}</div>
-                      <div className="evDuoPair">
-                        <span>{d.streamerA.displayName}</span>
-                        <span className="evDuoAmp">&</span>
-                        <span>{d.streamerB?.displayName ?? "—"}</span>
-                      </div>
-                      <div className="evDuoScore"><CountUp value={d.paliersDone} />/5 paliers</div>
+                  <React.Fragment key={ri}>
+                    <div className="evDuoGrid">
+                      {row.map((d, ci) => {
+                        const isOpen = d.duoId === openDuoId;
+                        return (
+                          <button
+                            key={d.duoId}
+                            type="button"
+                            className={`evDuoGroup${isOpen ? " open" : ""}${d.rank <= 3 ? " top" : ""}`}
+                            onClick={() => setOpenDuoId(isOpen ? null : d.duoId)}
+                          >
+                            <span className="evDuoGroupName">Groupe {ri * 3 + ci + 1}</span>
+                            <span className="evDuoGroupAvatars">
+                              <EventAvatar userId={d.streamerA.userId ?? 0} username={d.streamerA.displayName} size={52} />
+                              <EventAvatar userId={d.streamerB?.userId ?? 0} username={d.streamerB?.displayName ?? "?"} size={52} />
+                            </span>
+                            <span className="evDuoGroupNames">
+                              {d.streamerA.displayName} <span className="evDuoAmp">&</span> {d.streamerB?.displayName ?? "—"}
+                            </span>
+                            <span className="evDuoGroupMeta">
+                              {medal(d.rank)} · <CountUp value={d.paliersDone} />/5 paliers
+                            </span>
+                            <span className="evDuoGroupChevron" aria-hidden="true">{isOpen ? "▲" : "▼"}</span>
+                          </button>
+                        );
+                      })}
                     </div>
-                    {isFocus ? <DuoPaliersDetail paliers={focusPaliers} /> : null}
+                    {openDuo && openPalier ? <DuoPaliersDetail paliers={[openPalier]} /> : null}
                   </React.Fragment>
                 );
               })
             )}
             <div className="evLockedSub" style={{ textAlign: "center", fontSize: 11, opacity: 0.65 }}>
-              🎯 = quête équitable (accessible aux petits duos)
+              Clique un groupe pour voir son palier en cours · 🎯 = quête équitable
             </div>
           </div>
+        ) : tab === "classement" ? (
+          duos.length === 0 ? (
+            <div className="evLockedSub" style={{ textAlign: "center", padding: "10px 0" }}>Pas encore de classement — les duos doivent d'abord se former.</div>
+          ) : (
+            <div className="evDuoBoard">
+              {duos.map((d) => (
+                <div key={d.duoId} className={`evDuoCard${d.rank <= 3 ? " top" : ""}${myDuo?.duoId === d.duoId ? " focus" : ""}`}>
+                  <div className="evDuoRank">{medal(d.rank)}</div>
+                  <span className="evDuoBoardAvatars">
+                    <EventAvatar userId={d.streamerA.userId ?? 0} username={d.streamerA.displayName} size={30} />
+                    <EventAvatar userId={d.streamerB?.userId ?? 0} username={d.streamerB?.displayName ?? "?"} size={30} />
+                  </span>
+                  <div className="evDuoPair">
+                    <span>{d.streamerA.displayName}</span>
+                    <span className="evDuoAmp">&</span>
+                    <span>{d.streamerB?.displayName ?? "—"}</span>
+                  </div>
+                  <div className="evDuoScore"><CountUp value={d.paliersDone} />/5 paliers</div>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <RewardsShowcase tiers={DUO_REWARD_TIERS} />
         )}
@@ -1827,6 +2041,7 @@ export default function EventPage() {
   const token = auth?.token ?? null;
 
   const [loginOpen, setLoginOpen] = React.useState(false);
+  const [rulesOpen, setRulesOpen] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
@@ -1846,20 +2061,6 @@ export default function EventPage() {
     const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  // Spotlight curseur sur le hero.
-  const heroRef = React.useRef<HTMLDivElement>(null);
-  const mx = useMotionValue(50);
-  const my = useMotionValue(22);
-  const smx = useSpring(mx, { stiffness: 70, damping: 20 });
-  const smy = useSpring(my, { stiffness: 70, damping: 20 });
-  const onHeroMove = (e: React.MouseEvent) => {
-    const el = heroRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    mx.set(((e.clientX - r.left) / r.width) * 100);
-    my.set(((e.clientY - r.top) / r.height) * 100);
-  };
 
   async function load() {
     setErr(null);
@@ -2072,55 +2273,62 @@ export default function EventPage() {
   const cdLabel = event?.state === "scheduled" ? "Commence dans" : "Se termine dans";
   const showCountdown = !!event && event.state !== "closed" && cdTarget > 0;
 
-  return (
-    <main className="container evRoot" style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))", display: "grid", gap: 14 }}>
-      <section className={`evHero${event?.type === "wheel_week" || event?.type === "viewer_week" ? " evHeroWheel" : ""}`} ref={heroRef} onMouseMove={onHeroMove}>
-        <div className="evMesh" />
-        <motion.div
-          className="evHeroSpotlight"
-          style={
-            {
-              ["--mx" as any]: useTransform(smx, (v) => `${v}%`),
-              ["--my" as any]: useTransform(smy, (v) => `${v}%`),
-            } as any
-          }
-        />
-        <div className="evGrain" />
-
-        <div className="evHeroTop">
-          {stateBadge ? <span className={`evStateBadge ${stateBadge.cls}`}>{stateBadge.text}</span> : <span />}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="evBtnGhost" onClick={() => load().catch(() => {})} disabled={loading}>
-              {loading ? "Chargement…" : "Rafraîchir ↻"}
-            </button>
-            <Link to="/" className="evBtnGhost" title="Retour aux lives">Lives</Link>
-          </div>
-        </div>
-
-        <div className="evHeroContent">
-          <h1 className="evTitle"><span className="evTitleEmoji">{titleEmoji}</span>{titleLabel}</h1>
+  // Identité + actions de la page — rendue DANS le bloc dashboard de chaque
+  // event (via EventUtilityCtx), ou dans la barre fallback quand le panel
+  // n'a pas de bloc dashboard (roue, chargement, teaser).
+  const utilityRow = (
+    <>
+      <div className="evTopBarLeft">
+        <span className="evTopBarEmoji">{titleEmoji}</span>
+        <div className="evTopBarId">
+          <h1 className="evTopBarTitle">{titleLabel}</h1>
           {event ? (
-            <div className="evHeroMeta">
-              <span title="Début">{fmtIsoLocal(event.start_at)}</span>
-              <span style={{ opacity: 0.6 }}>→</span>
-              <span title="Fin">{fmtIsoLocal(event.end_at)}</span>
-            </div>
+            <span className="evTopBarDates">{fmtIsoLocal(event.start_at)} → {fmtIsoLocal(event.end_at)}</span>
           ) : (
-            <div className="evHeroMeta">Aucun event actif.</div>
+            <span className="evTopBarDates">Aucun event actif.</span>
           )}
-
-          {showCountdown ? <Countdown targetMs={cdTarget} nowMs={nowMs} label={cdLabel} /> : null}
         </div>
-      </section>
+        {stateBadge ? <span className={`evStateBadge ${stateBadge.cls}`}>{stateBadge.text}</span> : null}
+      </div>
+      <div className="evTopBarRight">
+        {showCountdown ? (
+          <span className="evCdChip" title={cdLabel}>⏳ {fmtShortRemain(cdTarget - nowMs)}</span>
+        ) : null}
+        {event && EVENT_RULES[event.type] && event.type !== "wheel_week" ? (
+          <button type="button" className="evBtnGhost" onClick={() => setRulesOpen(true)}>Règles</button>
+        ) : null}
+        <button type="button" className="evBtnGhost" onClick={() => load().catch(() => {})} disabled={loading}>
+          {loading ? "…" : "Rafraîchir ↻"}
+        </button>
+        <Link to="/" className="evBtnGhost" title="Retour aux lives">Lives</Link>
+      </div>
+    </>
+  );
+  // Les panels avec bloc dashboard affichent la rangée eux-mêmes (context).
+  const hasDashboard =
+    !loading &&
+    !!event &&
+    ["burn_boss", "global_chest", "clip_race", "duo_week", "viewer_week", "wheel_week"].includes(event.type);
+
+  return (
+    <EventUtilityCtx.Provider value={utilityRow}>
+    <main className={`container evRoot${event ? ` evRoot--${event.type}` : ""}`} style={{ paddingBottom: "calc(26px + env(safe-area-inset-bottom))", display: "grid", gap: 14 }}>
+      {/* Fallback : la rangée utilitaire vit dans le bloc dashboard des events
+          qui en ont un ; barre autonome uniquement pour les autres (roue,
+          chargement, teaser). */}
+      {!hasDashboard ? <section className="evTopBar">{utilityRow}</section> : null}
+
+      <nav className="evSwitch" aria-label="Tous les events">
+        {EVENT_SWITCH.map((e) => (
+          <Link key={e.slug} to={`/event/${e.slug}`} className={`evSwitchChip${event?.type === e.type ? " active" : ""}`}>
+            <span className="evSwitchIcon">{eventEmoji(e.type)}</span>
+            {e.label}
+          </Link>
+        ))}
+      </nav>
 
       {err ? (
         <div className="alert" style={{ margin: 0 }}>{err}</div>
-      ) : null}
-
-      {event && event.type !== "wheel_week" && event.type !== "viewer_week" ? (
-        <Reveal>
-          <EventRulesBlock type={event.type} />
-        </Reveal>
       ) : null}
 
       {loading ? (
@@ -2140,6 +2348,7 @@ export default function EventPage() {
       ) : isViewerWeek ? (
         <div className="evViewerWeek">
           <div className="evViewerIntro">
+            <div className="evDashUtility">{utilityRow}</div>
             <div>
               <span className="evConsoleKicker">LA COURSE EST LANCÉE</span>
               <h2 className="evViewerHeadline">Regarde. Participe.<br />Prends la tête.</h2>
@@ -2293,6 +2502,7 @@ export default function EventPage() {
                   {topStreamers.map((st) => (
                     <div className={`evStreamerRow${myStreamer?.streamerId === st.streamerId ? " mine" : ""}`} key={st.streamerId}>
                       <span className="evStreamerRk">#{st.rank}</span>
+                      <EventAvatar userId={st.userId ?? 0} username={st.displayName} size={30} />
                       <span className="evStreamerName">{st.displayName}</span>
                       <span className="evStreamerMeta">{st.viewers} viewer{st.viewers > 1 ? "s" : ""}</span>
                       <span className="evStreamerPts">{st.points} pts</span>
@@ -2315,7 +2525,8 @@ export default function EventPage() {
             </Reveal>
           ) : null}
 
-          {viewerTab === "classement" ? (
+          {/* Détail de mes points : dans Progression (demande Lucas), pas Classement. */}
+          {viewerTab === "progression" ? (
           <Reveal delay={0.12}>
             <div className="evViewerPanel">
               <div className="evPanelHead"><span>🎯 Ton espace</span><small>Progression personnelle</small></div>
@@ -2391,6 +2602,7 @@ export default function EventPage() {
         <ClipRacePanel
           resp={clipRace}
           token={token}
+          meUserId={auth?.user?.id ?? null}
           onLoginClick={() => setLoginOpen(true)}
           onRefresh={async () => { try { setClipRace(await getCurrentClipRace(token)); } catch {} }}
         />
@@ -2416,6 +2628,8 @@ export default function EventPage() {
       )}
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+      {event ? <EventRulesModal type={event.type} open={rulesOpen} onClose={() => setRulesOpen(false)} /> : null}
     </main>
+    </EventUtilityCtx.Provider>
   );
 }

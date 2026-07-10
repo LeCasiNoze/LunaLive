@@ -382,6 +382,8 @@ export type ApiBossResp =
       hp: number;
       totalDamage: number;
       killed: boolean;
+      killedBy?: string | null;
+      killedAt?: string | null;
       myDamage?: number;
       myRank?: number;
       topDamagers: ApiBossDamager[];
@@ -405,7 +407,7 @@ export async function postBossBurn(token: string, amount: number) {
 }
 
 // ── duo_week (duos de STREAMERS appariés par audience commune) ────────
-export type ApiDuoStreamer = { id: number; slug: string; displayName: string };
+export type ApiDuoStreamer = { id: number; slug: string; displayName: string; userId?: number };
 export type ApiDuoQuest = {
   key: string;
   label: string;
