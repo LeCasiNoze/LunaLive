@@ -65,6 +65,26 @@ export function registerChatRoutes(app: Express) {
 
       const cosmeticsByUserId = userIds.length ? await getChatCosmeticsForUsers(userIds) : null;
 
+      // Rôle de chaque auteur pour l'icône de rôle (admin > streamer > mod > viewer)
+      let rolesByUserId: Map<number, string> | null = null;
+      if (userIds.length) {
+        const rr = await pool.query(
+          `SELECT u.id,
+                  CASE
+                    WHEN u.role = 'admin' THEN 'admin'
+                    WHEN s.user_id IS NOT NULL THEN 'streamer'
+                    WHEN sm.user_id IS NOT NULL THEN 'mod'
+                    ELSE 'viewer'
+                  END AS chat_role
+           FROM users u
+           LEFT JOIN streamers s ON s.user_id = u.id AND s.id = $1
+           LEFT JOIN streamer_mods sm ON sm.user_id = u.id AND sm.streamer_id = $1 AND sm.removed_at IS NULL
+           WHERE u.id = ANY($2::int[])`,
+          [streamerId, userIds]
+        );
+        rolesByUserId = new Map((rr.rows || []).map((x: any) => [Number(x.id), String(x.chat_role)]));
+      }
+
       const messages = rows.map((m: any) => {
         const uid = Number(m.userId);
         return {
@@ -74,6 +94,7 @@ export function registerChatRoutes(app: Express) {
           body: String(m.body || ""),
           createdAt: new Date(m.createdAt).toISOString(),
           cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
+          role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
           rumble: m.source === "rumble",
         };
       });

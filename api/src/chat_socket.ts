@@ -339,6 +339,7 @@ async function sendBotChat(io: Server, meta: { id: number; slug: string; appeara
     createdAt: new Date(row.createdAt).toISOString(),
     cosmetics,
     isBot: true,
+    role: "bot",
     style: {
       nameColor: appearance.chat.usernameColor,
       msgColor: appearance.chat.messageColor,
@@ -1012,6 +1013,8 @@ export function attachChat(io: Server) {
           body: text,
           createdAt: new Date(row.createdAt).toISOString(),
           cosmetics,
+          // icône de rôle côté front (viewer/mod/streamer/admin)
+          role: data.role === "guest" ? "viewer" : data.role,
           style,
         };
 

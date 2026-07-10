@@ -1,5 +1,6 @@
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
@@ -1029,13 +1030,16 @@ function UserMenu(props: {
   const targetIsTimedOut =
     !!props.menu.targetTimeoutUntil && new Date(props.menu.targetTimeoutUntil).getTime() > Date.now();
 
-  return (
+  // ⚠️ portal obligatoire : la sidebar chat (.panel) a un backdrop-filter qui
+  // fait d'elle le containing block des descendants position:fixed — le menu
+  // (coordonnées viewport) sortirait du panel et serait clippé par overflow:hidden.
+  return createPortal(
     <div
       style={{
         position: "fixed",
         left: props.menu.x,
         top: props.menu.y,
-        zIndex: 90,
+        zIndex: 99999,
         minWidth: 260,
         maxWidth: 320,
         borderRadius: 16,
@@ -1313,7 +1317,8 @@ function UserMenu(props: {
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
