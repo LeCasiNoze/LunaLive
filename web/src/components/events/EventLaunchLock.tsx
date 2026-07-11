@@ -3,7 +3,13 @@
 // les prérequis ont cliqué le cadenas. Cette scène remplace « Aucun event
 // actif » sur /event tant que le lancement n'a pas eu lieu.
 import * as React from "react";
-import { apiBase } from "../../lib/http";
+
+// ⚠ MÊME base que ChatPanel/CallTab/api_events (VITE_API_BASE, fallback
+// onrender). PAS lib/http apiBase() qui utilise VITE_API_URL avec fallback
+// localhost → cassait le cadenas en prod.
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
 
 type LockRequirement = { key: string; label: string; done: boolean };
 export type LaunchLockState = {
