@@ -47,12 +47,28 @@ async function tableExists(table: string) {
   return !!r.rows?.[0]?.reg;
 }
 
+// une roue tournée = spin dans N'IMPORTE quelle table de roue (daily,
+// ancienne mint, bot). Sans ça le prérequis restait décoché pour les
+// comptes ayant tourné la roue avant daily_wheel_spins (bug Lucas).
+async function hasAnyWheelSpin(userId: number): Promise<boolean> {
+  for (const t of ["daily_wheel_spins", "wheel_spins", "bot_wheel_entries", "event_wheel_spins"]) {
+    try {
+      if (!(await tableExists(t))) continue;
+      const r = await pool.query(`SELECT 1 FROM ${t} WHERE user_id=$1 LIMIT 1`, [userId]);
+      if (r.rows?.[0]) return true;
+    } catch {
+      /* table/colonne absente : on passe */
+    }
+  }
+  return false;
+}
+
 // Prérequis = découvrir les features de base (et filtre anti multi-comptes
 // léger) : 1 message chat + 1 tour de roue + 1 bonus quotidien.
 export async function userPrereqs(userId: number): Promise<Array<{ key: string; label: string; done: boolean }>> {
   const [msg, spin] = await Promise.all([
     pool.query(`SELECT 1 FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL LIMIT 1`, [userId]).then((r) => !!r.rows?.[0]).catch(() => false),
-    pool.query(`SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 LIMIT 1`, [userId]).then((r) => !!r.rows?.[0]).catch(() => false),
+    hasAnyWheelSpin(userId),
   ]);
 
   let bonus = false;
@@ -69,7 +85,7 @@ export async function userPrereqs(userId: number): Promise<Array<{ key: string; 
 
   return [
     { key: "chat", label: "Envoyer un message dans un chat", done: msg },
-    { key: "wheel", label: "Faire un tour de roue quotidienne", done: spin },
+    { key: "wheel", label: "Faire un tour de roue", done: spin },
     { key: "daily", label: "Récupérer un bonus quotidien", done: bonus },
   ];
 }

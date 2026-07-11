@@ -80,12 +80,10 @@ import ChatPopupPage from "./pages/ChatPopupPage";
 const ReferralLandingPage = React.lazy(() => import("./pages/ReferralLandingPage"));
 import { trackFeatureEvent } from "./lib/feature_events";
 
-// Suspense fallback component
-const LoadingFallback = () => (
-  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "200px" }}>
-    <div style={{ fontFamily: "system-ui", color: "#7c4dff" }}>Chargement...</div>
-  </div>
-);
+// Suspense fallback : écran de chargement propre (cf LoadingScreen.tsx —
+// l'élément à peaufiner, réutilisable). Remplace l'ancien texte de dev.
+import { LoadingScreen } from "./components/LoadingScreen";
+const LoadingFallback = () => <LoadingScreen />;
 import { BgEffect } from "./components/Bgeffects";
 import { captureUtmFromUrl } from "./lib/utm";
 import { LevelUpToast } from "./components/LevelUpToast";
@@ -204,7 +202,11 @@ function AppInner() {
 
   return (
     <div className="app">
-      {!isStandaloneReferral && !isOverlayRoute && (
+      {/* Fond animé (12 cartes 3D + drop-shadow, ~48 anims continues) coupé
+          sur MOBILE : il tournait derrière chaque page même masqué = charge
+          compositor permanente → saccades à la nav/scroll (enquête 11 juil).
+          Le fond sombre uni reste propre. Desktop : conservé. */}
+      {!isStandaloneReferral && !isOverlayRoute && !isMobile && (
         <div className="appBgLayer" aria-hidden="true">
           <BgEffect type="cards" />
         </div>

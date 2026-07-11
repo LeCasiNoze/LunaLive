@@ -10,6 +10,7 @@ import { computeWheelSegments, EventWheelDial, WHEEL_SPIN_MS } from "../componen
 import { playSpinSound } from "../components/events/wheelSound";
 import BossStage from "../components/events/BossStage";
 import { EventLaunchLock, fetchLaunchLock, type LaunchLockState } from "../components/events/EventLaunchLock";
+import { LoadingScreen } from "../components/LoadingScreen";
 import { BOSS_WEAPONS, type BossWeapon } from "../components/events/boss3d/weapons";
 import "../components/events/events-theme.css";
 import {
@@ -56,6 +57,18 @@ type EvTopRow = { rank: number | null; userId: number; username: string; points:
 // sans jamais la faire reculer visuellement (voir handleSpin de WheelWeekPanel).
 function normMod(n: number, m: number) {
   return ((n % m) + m) % m;
+}
+
+// Countdown isolé : son tick 1s ne re-rend QUE ce chip, pas toute la page
+// event (avant : setNowMs dans EventPage re-rendait roue/boss/etc chaque
+// seconde → micro-saccade régulière pendant que la roue tourne).
+function CountdownChip({ target, label }: { target: number; label: string }) {
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className="evCdChip" title={label}>⏳ {fmtShortRemain(target - nowMs)}</span>;
 }
 
 function fmtShortRemain(ms: number) {
@@ -2049,12 +2062,8 @@ export default function EventPage() {
   const [duo, setDuo] = React.useState<ApiDuoResp | null>(null);
   const [accessStatus, setAccessStatus] = React.useState<ApiEventAccessStatus | null>(null);
 
-  // mini timer pour countdown
-  const [nowMs, setNowMs] = React.useState(Date.now());
-  React.useEffect(() => {
-    const t = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  // (le countdown a son propre tick isolé dans <CountdownChip> — voir plus
+  // bas — pour ne PAS re-rendre toute la page event chaque seconde)
 
   async function load() {
     setErr(null);
@@ -2300,7 +2309,7 @@ export default function EventPage() {
       </div>
       <div className="evTopBarRight">
         {showCountdown ? (
-          <span className="evCdChip" title={cdLabel}>⏳ {fmtShortRemain(cdTarget - nowMs)}</span>
+          <CountdownChip target={cdTarget} label={cdLabel} />
         ) : null}
         {event && EVENT_RULES[event.type] && event.type !== "wheel_week" ? (
           <button type="button" className="evBtnGhost" onClick={() => setRulesOpen(true)}>Règles</button>
@@ -2339,12 +2348,7 @@ export default function EventPage() {
       ) : null}
 
       {loading ? (
-        <div className="evCard">
-          <div style={{ fontWeight: 1200 }}>Chargement…</div>
-          <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginTop: 6 }}>
-            Récupération de l'event courant et du classement.
-          </div>
-        </div>
+        <LoadingScreen label="Chargement de l'événement" />
       ) : launchLock && !launchLock.unlocked ? (
         <EventLaunchLock
           token={token}

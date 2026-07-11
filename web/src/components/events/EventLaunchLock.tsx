@@ -47,6 +47,23 @@ export function EventLaunchLock({
   const [shake, setShake] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
 
+  // re-fetch de l'état (jauge + prérequis) quand l'utilisateur REVIENT sur
+  // la page — sinon un prérequis rempli ailleurs (roue, bonus…) ne se
+  // cochait qu'au rechargement complet (retour Lucas).
+  React.useEffect(() => {
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      const s = await fetchLaunchLock(token);
+      if (s) onChanged(s);
+    };
+    window.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [token, onChanged]);
+
   const me = state.me ?? null;
   const clicked = !!me?.clicked;
   const eligible = !!me?.eligible;

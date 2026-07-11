@@ -21,9 +21,11 @@ const CSS = `
 .bt-bar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
   padding: 6px 6px calc(6px + var(--bt-safe));
-  background: rgba(8,7,18,.90);
+  /* fond OPAQUE au lieu de backdrop-filter blur : la barre est fixed et
+     toujours visible → le blur re-floutait tout le contenu qui scrolle
+     derrière À CHAQUE FRAME = cause n°1 du scroll saccadé sur mobile. */
+  background: rgba(9,7,17,.975);
   border-top: 1px solid rgba(124,92,252,.16);
-  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
   display: flex; gap: 4px; align-items: stretch;
 }
 .bt-bar::before {

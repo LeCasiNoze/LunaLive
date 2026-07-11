@@ -1,0 +1,32 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   99_perf_mobile.css — dégradations de performance CIBLÉES mobile
+   (enquête fluidité 11 juil : scroll/nav saccadés). Chargé en dernier.
+   Revert : supprimer ce fichier + sa ligne dans styles/index.css.
+─────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px), (pointer: coarse) {
+  /* backdrop-filter blur = re-flou de tout ce qui scrolle derrière, à
+     chaque frame. Coupé sur mobile : les fonds rgba des éléments concernés
+     (topbar, chat panel, barres, cartes) sont déjà assez opaques pour
+     rester lisibles sans le flou. Gain compositor majeur au scroll. */
+  * {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* barres/surfaces qui comptaient le plus sur le flou → fond renforcé
+     pour garder la lisibilité sans backdrop-filter */
+  .llTopbar, .llTopbar__inner,
+  .panel, .chatPanel, .mob-sheet {
+    background-color: rgba(10, 8, 20, 0.96) !important;
+  }
+
+  /* conic-gradients animés (@property angle) qui repeignent de GRANDES
+     surfaces à chaque frame : wrapper de la LivesPage + hero. Coupés sur
+     mobile (repaint plein cadre non compositable = saccades au scroll). */
+  .livesPage .livesWrap::after,
+  .lp-hero::after {
+    animation: none !important;
+    background: none !important;
+  }
+}
