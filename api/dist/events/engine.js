@@ -177,11 +177,13 @@ export function startEventsEnginePoller(everyMs = 60_000) {
             const ws = weekStartUtcMsParis(new Date());
             const launch = await getLaunchFlagRow();
             if (!launch.unlocked) {
-                // CADENAS FERMÉ : on ne crée/ouvre RIEN. Les éditions déjà
-                // planifiées (pré-créées avant le gate) sont purgées, celles en
-                // cours se terminent naturellement (closeIfNeeded + recompute).
-                await pool.query(`DELETE FROM events WHERE state='scheduled'`);
-                await closeIfNeeded();
+                // CADENAS FERMÉ : la plateforme est EN ATTENTE du lancement
+                // communautaire → aucun event ne doit tourner. On neutralise tout
+                // event de rotation (scheduled ET live) en 'archived' : réversible
+                // (les scores restent en base), SANS distribution de récompenses.
+                // L'event de lancement, lui, est créé sous le même verrou que le
+                // passage unlocked=true (cf launch_lock.clickLock) → jamais archivé.
+                await pool.query(`UPDATE events SET state='archived', updated_at=NOW() WHERE state IN ('scheduled','live')`);
             }
             else {
                 await ensureWeekEvent(ws, launch.anchorMs);
