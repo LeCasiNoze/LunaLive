@@ -552,6 +552,20 @@ const CSS = `
   .dba-day-card.claimable { animation:none; }
   .dba-day-card:hover,.dba-milestone:hover { transform:none !important; }
 }
+
+/* Creator-grade layout: compact, lisible et orienté action. */
+.dba-backdrop { padding:28px;background:rgba(3,2,9,.88); }
+.dba-dialog { width:min(1120px,96vw);height:min(720px,90vh);grid-template-columns:224px minmax(0,1fr);border-radius:28px;border-color:rgba(167,139,250,.25);background:#090711;box-shadow:0 45px 130px rgba(0,0,0,.82),0 0 0 1px rgba(255,255,255,.025) inset; }
+.dba-dialog::after { top:-120px;left:-90px;width:520px;height:360px;background:radial-gradient(circle,rgba(124,92,252,.19),transparent 70%); }
+.dba-sidebar { padding:18px 12px 14px;border-right:1px solid rgba(255,255,255,.065);background:linear-gradient(180deg,rgba(25,18,48,.68),rgba(9,7,17,.9) 42%); }
+.dba-sidebar-head { padding:2px 8px 18px; }.dba-sidebar-title { color:#f3efff;font-size:15px;letter-spacing:-.02em;background:none;-webkit-text-fill-color:initial; }.dba-close-btn { position:fixed;top:calc(5vh + 18px);right:calc(2vw + 18px);z-index:5;width:38px;height:38px;border-radius:12px; }
+.dba-sidebar-nav { gap:5px; }.dba-nav-item { min-height:43px;padding:0 12px;border:1px solid transparent;border-radius:12px;color:rgba(190,183,211,.62);background:transparent;font-size:11px; }.dba-nav-item:hover { color:#eee9fa;background:rgba(255,255,255,.035); }.dba-nav-item.active { color:#fff;border-color:rgba(139,92,246,.3);background:linear-gradient(90deg,rgba(124,92,252,.23),rgba(124,92,252,.07));box-shadow:none; }
+.dba-sidebar-meta { padding:14px 4px 2px; }.dba-meta-card { padding:13px;border-color:rgba(255,255,255,.07);border-radius:15px;background:rgba(0,0,0,.18); }.dba-meta-row { font-size:9px; }.dba-meta-value { color:#d9d3e6; }
+.dba-body { padding:30px 32px; }.dba-section-head { min-height:50px;margin-bottom:18px;padding-right:45px; }.dba-section-title { color:#faf8ff;font-size:22px;background:none;-webkit-text-fill-color:initial;letter-spacing:-.035em; }.dba-section-sub { color:#777083; }
+.dba-week-grid { grid-template-columns:repeat(7,minmax(0,1fr));gap:8px; }.dba-day-card { min-height:154px;padding:14px 12px;border-color:rgba(255,255,255,.075);border-radius:17px;background:linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.012)); }.dba-day-card.dimmed { opacity:.62; }.dba-day-card.claimable { border-color:rgba(139,92,246,.55);background:radial-gradient(circle at 20% 0%,rgba(139,92,246,.27),transparent 65%),rgba(139,92,246,.08);box-shadow:0 14px 35px rgba(76,29,149,.22); }.dba-day-label { color:#aaa3b8;font-size:9px;letter-spacing:.08em;text-transform:uppercase; }.dba-day-reward { margin-top:19px;color:#f0ecf8;font-size:18px; }.dba-day-date { color:#5f5969;font-size:8px; }.dba-status-pill { margin-top:auto;padding:6px 8px;font-size:8px; }
+.dba-section-card { margin-top:18px;padding:18px;border-color:rgba(255,255,255,.07);border-radius:18px;background:rgba(255,255,255,.018); }.dba-card-label { color:#837c91;font-size:9px;letter-spacing:.14em; }.dba-milestones { margin-top:13px;gap:8px; }.dba-milestone { min-width:104px;padding:10px 13px;border-radius:12px; }.dba-milestone-hint { color:#666073;font-size:9px; }
+.dba-quest { padding:14px;border-color:rgba(255,255,255,.075);background:rgba(255,255,255,.018); }
+@media(max-width:900px){.dba-dialog{grid-template-columns:190px 1fr}.dba-body{padding:24px 20px}.dba-week-grid{grid-template-columns:repeat(4,1fr)}.dba-day-card{min-height:135px}}
 `;
 
 /* ─── Composant wrapper mobile/desktop ───────────────────────────── */

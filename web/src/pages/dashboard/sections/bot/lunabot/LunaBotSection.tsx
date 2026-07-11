@@ -17,7 +17,6 @@ import { CommandsModule } from "./modules/CommandsModule";
 import { AutopostsModule } from "./modules/AutopostsModule";
 import { LogsModule } from "./modules/LogsModule";
 import { ObsWidgetModule } from "./modules/ObsWidgetModule";
-import { ClipsModule } from "./modules/ClipsModule";
 import { CallsModule } from "./modules/CallsHuntModule";
 import { BotWheelModule } from "./modules/BotWheelModule";
 import { BotRainModule } from "./modules/BotRainModule";
@@ -27,7 +26,7 @@ import { DiscordWelcomeModule } from "./modules/DiscordWelcomeModule";
 /* ─── Types ────────────────────────────────────────────────── */
 type ModuleCategory = "general" | "minigames" | "discord" | "moderation" | "admin";
 type ActiveModule =
-  | "obs" | "commands" | "autoposts" | "clips" | "logs"
+  | "obs" | "commands" | "autoposts" | "logs"
   | "calls" | "bot-wheel" | "bot-rain" | "predictions"
   | "discord-welcome" | null;
 
@@ -37,11 +36,11 @@ type ModuleDef = {
 };
 
 const CATEGORY_LABEL: Record<ModuleCategory, string> = {
-  general:    "🔧 Général",
-  minigames:  "🎰 Mini-jeux & Rubis",
-  discord:    "💬 Discord",
-  moderation: "🛡️ Modération",
-  admin:      "⚙️ Admin",
+  general:    "Essentiels",
+  minigames:  "Jeux & Rubis",
+  discord:    "Discord",
+  moderation: "Modération",
+  admin:      "Administration",
 };
 const CATEGORY_ORDER: ModuleCategory[] = ["general", "minigames", "discord", "moderation", "admin"];
 
@@ -220,6 +219,14 @@ const BOT_CSS = `
   padding:16px; text-align:center; font-size:13px; font-weight:700;
   color:rgba(167,139,250,.55);
 }
+.bot-overview-strip { display:grid;grid-template-columns:1.4fr repeat(3,1fr);gap:9px;margin-bottom:14px; }
+.bot-health { padding:15px;display:flex;align-items:center;gap:11px;border:1px solid rgba(167,139,250,.14);border-radius:16px;background:linear-gradient(135deg,rgba(124,92,252,.12),rgba(124,92,252,.025)); }
+.bot-health-dot { width:9px;height:9px;border-radius:50%;background:#34d399;box-shadow:0 0 15px #34d399; }
+.bot-health span,.bot-kpi span { display:block;color:rgba(167,139,250,.48);font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase; }.bot-health strong,.bot-kpi strong{display:block;margin-top:3px;color:#eeeafd;font:700 14px 'Syne';}
+.bot-kpi { padding:13px;border:1px solid rgba(167,139,250,.11);border-radius:16px;background:rgba(255,255,255,.018); }
+.bot-loading-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:12px; }.bot-skeleton { height:128px;border-radius:18px;background:linear-gradient(90deg,rgba(255,255,255,.025),rgba(167,139,250,.08),rgba(255,255,255,.025));background-size:220% 100%;animation:botShimmer 1.25s linear infinite; } @keyframes botShimmer{to{background-position:-220% 0}}
+.bot-modal-body .panel { border-color:rgba(167,139,250,.12)!important;border-radius:16px!important;background:rgba(255,255,255,.025)!important; }.bot-modal-body input,.bot-modal-body select,.bot-modal-body textarea { border-radius:11px!important;background:#090711!important; }.bot-modal-body button { transition:transform .15s ease,filter .15s ease,border-color .15s ease; }.bot-modal-body button:not(:disabled):hover { transform:translateY(-1px); }
+@media(max-width:700px){.bot-root{padding:0;border:0;background:transparent;box-shadow:none}.bot-overview-strip{grid-template-columns:1fr 1fr}.bot-health{grid-column:1/-1}.bot-header{align-items:stretch}.bot-actions{width:100%;display:grid;grid-template-columns:1fr auto}.bot-search{grid-column:1/-1;width:100%;min-width:0}.bot-tabs-wrap{top:62px;margin:0 -2px 14px;padding:10px 2px;overflow-x:auto}.bot-tabs{width:max-content;flex-wrap:nowrap}.bot-grid,.bot-loading-grid{grid-template-columns:1fr}.bot-card{min-height:120px}.bot-modal{max-height:96svh}.bot-modal-body{padding:13px}.bot-modal-header{padding:13px 15px}}
 `;
 
 /* ─── Sub-components ───────────────────────────────────────── */
@@ -290,6 +297,7 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   const { token, user } = useAuth();
 
   const [loading, setLoading] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [overview, setOverview] = React.useState<ApiBotOverview | null>(null);
   const [commands, setCommands] = React.useState<ApiBotCommand[]>([]);
@@ -314,11 +322,10 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
       ]);
       setOverview(ov); setCommands(c.commands); setAutoposts(a.autoposts); setLogs(l.logs);
     } catch (e: any) { setErr(String(e?.message || "Erreur")); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setLoaded(true); }
   }
 
   React.useEffect(() => { reloadAll(); /* eslint-disable-next-line */ }, [token]);
-  React.useEffect(() => { if (activeModule) reloadAll(); /* eslint-disable-next-line */ }, [activeModule]);
 
   if (!token) {
     return (
@@ -335,7 +342,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     { id: "obs", category: "general", status: "ready", title: "Widget OBS", desc: "URL Browser Source", icon: "📺", onOpen: () => setActiveModule("obs") },
     { id: "commands", category: "general", status: "ready", title: "Commandes", desc: "!commandes custom", icon: "⌨️", onOpen: () => setActiveModule("commands") },
     { id: "autoposts", category: "general", status: "ready", title: "Autoposts", desc: "Messages automatiques", icon: "🗓️", onOpen: () => setActiveModule("autoposts") },
-    { id: "clips", category: "general", status: "ready", title: "Clips", desc: "!clip (DLive VOD)", icon: "🎬", onOpen: () => setActiveModule("clips") },
     { id: "logs", category: "general", status: "ready", title: "Logs", desc: "Événements / erreurs", icon: "🧾", onOpen: () => setActiveModule("logs") },
 
     // Mini-jeux & Rubis (5 modules)
@@ -369,7 +375,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     obs:       { title: "Widget OBS", desc: "URL Browser Source (avec secret) + options overlay." },
     commands:  { title: "Commandes personnalisées", desc: "Crée, active/désactive et supprime tes !commandes." },
     autoposts: { title: "Messages automatiques", desc: "Planifie des messages (exécution live-only)." },
-    clips:     { title: "Clips (!clip)", desc: "Fenêtre : 1m45 avant / 15s après. DLive VOD." },
     logs:      { title: "Logs & diagnostic", desc: "Événements / erreurs bot." },
     calls:     { title: "Calls & Hunt", desc: "Queue, limites user, bans (users/machines/providers)." },
     "bot-wheel": { title: "Roue (tirage stream)", desc: "Inscriptions + tirage (bot_wheel)." },
@@ -378,9 +383,7 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     "discord-welcome": { title: "Discord Welcome/Goodbye", desc: "Messages arrivée/départ (2 salons)." },
   };
   const meta = activeModule ? modalMeta[activeModule] : null;
-  const countsText = overview?.ok
-    ? `Cmd: ${overview.counts.commands} • Auto: ${overview.counts.autoposts} • Logs: ${overview.counts.logs}`
-    : "Stats indisponibles";
+  const counts = overview?.ok ? overview.counts : { commands: commands.length, autoposts: autoposts.length, logs: logs.length };
 
   return (
     <>
@@ -394,11 +397,17 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
           </div>
           <div className="bot-actions">
             <button className="bot-btn" onClick={reloadAll} disabled={loading}>
-              {loading ? "⏳" : "🔄 Recharger"}
+              {loading ? "Actualisation…" : "Actualiser"}
             </button>
-            <span className="bot-stats">{countsText}</span>
-            <input className="bot-search" value={q} onChange={e => setQ(e.target.value)} placeholder="🔎 Rechercher…" />
+            <input className="bot-search" value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un outil…" aria-label="Rechercher un outil LunaBot" />
           </div>
+        </div>
+
+        <div className="bot-overview-strip">
+          <div className="bot-health"><i className="bot-health-dot"/><div><span>État du service</span><strong>{err ? "À vérifier" : loading && !loaded ? "Connexion…" : "LunaBot opérationnel"}</strong></div></div>
+          <div className="bot-kpi"><span>Commandes</span><strong>{counts.commands}</strong></div>
+          <div className="bot-kpi"><span>Messages auto</span><strong>{counts.autoposts}</strong></div>
+          <div className="bot-kpi"><span>Activité récente</span><strong>{counts.logs}</strong></div>
         </div>
 
         {err ? <div className="bot-hint">⚠️ {err}</div> : null}
@@ -420,13 +429,13 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
         </div>
 
         {/* Grid cards */}
-        <div className="bot-grid">
+        {!loaded && loading ? <div className="bot-loading-grid">{[0,1,2,3,4,5].map(i=><div className="bot-skeleton" key={i}/>)}</div> : <div className="bot-grid">
           {visibleModules.length ? (
             visibleModules.map(m => <ModuleCard key={m.id} m={m} />)
           ) : (
             <div className="bot-empty">Aucun module ne correspond à ta recherche.</div>
           )}
-        </div>
+        </div>}
 
         {/* Modal */}
         <Modal open={!!activeModule} title={meta?.title ?? "Module"} desc={meta?.desc} onClose={() => setActiveModule(null)}>
@@ -441,8 +450,6 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
             <CommandsModule token={token} commands={commands} onReload={reloadAll} />
           ) : activeModule === "autoposts" ? (
             <AutopostsModule token={token} autoposts={autoposts} onReload={reloadAll} />
-          ) : activeModule === "clips" ? (
-            <ClipsModule token={token} onReload={reloadAll} />
           ) : activeModule === "logs" ? (
             <LogsModule token={token} logs={logs} onReload={reloadAll} />
           ) : activeModule === "calls" ? (

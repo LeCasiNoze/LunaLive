@@ -16,8 +16,18 @@ import { AppearanceSection } from "./dashboard/sections/AppearanceSection";
 import { EarningsSection } from "./dashboard/sections/EarningsSection";
 import { StatsSection } from "./dashboard/sections/StatsSection";
 import { SettingsSection } from "./dashboard/sections/SettingsSection";
-import { AgencySection } from "./dashboard/sections/AgencySection";
 import "./dashboard/dashboard-theme.css";
+
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+function dashboardAvatar(user: any) {
+  const raw = user?.avatarUrl ?? user?.avatar_url ?? user?.avatar ?? null;
+  if (raw && !String(raw).startsWith("/Avatar/")) {
+    const value = String(raw).trim();
+    if (/^https?:\/\//.test(value)) return value;
+    if (value.startsWith("/")) return `${API_BASE}${value}`;
+  }
+  return user?.id ? `${API_BASE}/avatars/u/${user.id}?v=${encodeURIComponent(user.avatarVersion ?? user.avatar_updated_at ?? user.updatedAt ?? user.id)}` : null;
+}
 
 function fmt(n: number | null | undefined) {
   const v = Number(n);
@@ -31,6 +41,7 @@ export default function DashboardPage() {
   const [streamer, setStreamer] = React.useState<ApiMyStreamer | null>(null);
   const [connection, setConnection] = React.useState<ApiStreamConnection | null>(null);
   const [tab, setTab] = React.useState<DashboardTab>("overview");
+  const [avatarFailed, setAvatarFailed] = React.useState(false);
   const canAccess = !!user && (user.role === "streamer" || user.role === "admin");
 
   async function load() {
@@ -55,6 +66,7 @@ export default function DashboardPage() {
   );
 
   const live = Boolean((streamer as any)?.isLive);
+  const avatarUrl = dashboardAvatar(user);
   const meta = DASHBOARD_META[tab];
   const TabIcon = meta.icon;
 
@@ -64,7 +76,7 @@ export default function DashboardPage() {
         <div className="dashHeroGlow" aria-hidden />
         <div className="dashHeroIdentity">
           <div className={`dashAvatar ${live ? "isLive" : ""}`}>
-            {(streamer?.displayName || "L").slice(0, 1).toUpperCase()}
+            {avatarUrl && !avatarFailed ? <img src={avatarUrl} alt={`Avatar de ${streamer?.displayName ?? user.username}`} onError={() => setAvatarFailed(true)} /> : (streamer?.displayName || user.username || "L").slice(0, 1).toUpperCase()}
             {live && <span />}
           </div>
           <div>
@@ -101,7 +113,6 @@ export default function DashboardPage() {
             </header>
             <div className="dashSectionBody">
               {tab === "overview" && <OverviewSection streamer={streamer} connection={connection} onGoStream={() => setTab("stream")} onGoModeration={() => setTab("moderation")} />}
-              {tab === "agency" && <AgencySection streamer={streamer} />}
               {tab === "lunabot" && <LunaBotSection streamer={streamer} />}
               {tab === "stream" && <StreamSection streamer={streamer} connection={connection} onSaveTitle={async title => { if (!token) return; const r = await updateMyStreamerTitle(token, title); setStreamer(r.streamer); }} />}
               {tab === "moderation" && <ModerationSection streamer={streamer} />}

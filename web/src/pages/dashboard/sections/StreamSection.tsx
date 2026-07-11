@@ -14,7 +14,7 @@ export function StreamSection({
   onSaveTitle: (title: string) => Promise<void>;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="streamSetup">
       <TitleEditorCard streamer={streamer} onSave={onSaveTitle} />
       <StreamKeysCard connection={connection} />
     </div>

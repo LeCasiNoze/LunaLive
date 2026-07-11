@@ -10,6 +10,7 @@ import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
 import { PinchZoomBox } from "../../components/PinchZoomBox";
+import { FloatingBot } from "../../components/botmenu/FloatingBot";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
@@ -512,6 +513,10 @@ export default function StreamerPageMobile() {
     <div className="mob-root" style={{ display:"flex", flexDirection:"column", gap:14, paddingBottom:"calc(88px + env(safe-area-inset-bottom))" }}>
       <style>{MOBILE_STYLES}</style>
 
+      {/* LunaBot détaché : bouton flottant accessible sur TOUS les onglets
+          de la page streamer (plus seulement la section chat) */}
+      <FloatingBot slug={String(slug||"")} token={token} role={isOwner ? "streamer" : "viewer"} canMod={isOwner} onRequireLogin={() => setLoginOpen(true)} />
+
       <ChestToast toast={chest.toast} isOwner={isOwner} canJoinNow={chest.canJoinNow} alreadyJoined={chest.alreadyJoined} joinLoading={chest.joinLoading} onJoin={chest.join} onView={() => chest.setChestModalOpen(true)} error={chest.chestError} onClose={() => chest.setToast(null)} />
 
       {hostedBy ? (
@@ -580,8 +585,10 @@ export default function StreamerPageMobile() {
         // Chat panel : taille adaptative — quand live + chat actif on remplit
         // ce qu'il reste de l'écran sous le player pour que stream+chat+input
         // soient visibles sans scroll. ~280px = player (16/9) + paddings.
+        // + 96px = bottom bar de navigation (retour Lucas : le composer
+        // passait dessous). Le composer doit rester JUSTE au-dessus.
         const chatHeightStyle: React.CSSProperties = streamer.isLive
-          ? { padding:0, height:"calc(100dvh - 290px)", minHeight:360, maxHeight:640, display:"flex", flexDirection:"column" }
+          ? { padding:0, height:"calc(100dvh - 290px - 96px - env(safe-area-inset-bottom))", minHeight:300, maxHeight:600, display:"flex", flexDirection:"column" }
           : { padding:0, height:"min(52vh,520px)", minHeight:330, display:"flex", flexDirection:"column" };
 
         const Content = (
@@ -601,7 +608,7 @@ export default function StreamerPageMobile() {
                     <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14, padding:"4px 8px" }}>⛶</button>
                   </div>
                   <div style={{ flex:1, minHeight:0 }}>
-                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} actionsRef={chatActionsRef} onCanManageSettings={setChatCanManage} />
+                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} actionsRef={chatActionsRef} onCanManageSettings={setChatCanManage} showBotFab={false} />
                   </div>
                 </div>
               ) : (

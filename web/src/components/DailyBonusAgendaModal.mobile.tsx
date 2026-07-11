@@ -936,6 +936,16 @@ export function DailyBonusAgendaModalMobile({
           box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
         }
 
+        /* Mobile first : moins de chrome, davantage d'espace pour l'action. */
+        .llDBmOverlay{background:rgba(3,2,9,.88);backdrop-filter:blur(16px)}
+        .llDBmSheet{height:min(94svh,860px);border-color:rgba(167,139,250,.2);border-radius:26px 26px 0 0;background:radial-gradient(520px 250px at 8% 0%,rgba(124,92,252,.2),transparent 62%),#090711;box-shadow:0 -35px 100px rgba(0,0,0,.72)}
+        .llDBmHeader{padding:9px 17px 13px}.llDBmTitle{font-size:20px;letter-spacing:-.04em}.llDBmSub{margin-top:3px;max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(190,183,205,.52);font-size:9px}.llDBmClose{width:38px;height:38px;border-radius:12px}
+        .llDBmTabsWrap{padding:10px 14px 12px}.llDBmTabs{padding:4px;border-radius:14px;background:rgba(0,0,0,.25)}.llDBmTab{min-height:40px;border:0!important;border-radius:10px;background:transparent!important;font-size:11px}.llDBmTab.isActive{color:#fff;background:rgba(124,92,252,.23)!important;box-shadow:inset 0 0 0 1px rgba(167,139,250,.22)}
+        .llDBmContent{padding:0}.llDBmSlide{padding:14px 14px 34px}.llDBmChips{gap:6px;overflow-x:auto;flex-wrap:nowrap}.llDBmChip{flex:none;border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.025);font-size:9px}
+        .llDBmToday{padding:17px;border-color:rgba(139,92,246,.38);border-radius:18px;background:radial-gradient(circle at 80% 0%,rgba(124,92,252,.22),transparent 60%),rgba(124,92,252,.07)}.llDBmTodayTitle{font-size:10px;letter-spacing:.11em;text-transform:uppercase}.llDBmRewardBig{font-size:29px}.llDBmCTA{min-height:48px;border-radius:13px;font-size:12px;background:linear-gradient(135deg,#7c3aed,#4f46e5)}
+        .llDBmWeekGrid{gap:6px}.llDBmWDay{min-height:67px;padding:9px 7px;border-color:rgba(255,255,255,.07);border-radius:12px;background:rgba(255,255,255,.018)}.llDBmWDay.isToday{border-color:rgba(139,92,246,.48);background:rgba(124,92,252,.12)}.llDBmWDayL{font-size:8px}.llDBmWDayR{font-size:11px}
+        .llDBmInfoCard{border-color:rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.018)}
+
         @media (prefers-reduced-motion: reduce){
           .llDBmSlides{ transition: none !important; }
         }

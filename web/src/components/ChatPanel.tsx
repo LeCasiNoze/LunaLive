@@ -1306,6 +1306,7 @@ export function ChatPanel({
   streamControl = false,
   actionsRef,
   onCanManageSettings,
+  showBotFab = true,
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1324,6 +1325,9 @@ export function ChatPanel({
   actionsRef?: React.MutableRefObject<{ openBot?: () => void; openSettings?: () => void } | null>;
   /** notifie le parent si l'utilisateur peut gérer les options (⚙️ mobile) */
   onCanManageSettings?: (v: boolean) => void;
+  /** false = pas de bouton/menu bot interne (la page fournit son propre
+      FloatingBot détaché). true par défaut = popout chat autonome. */
+  showBotFab?: boolean;
 }) {
 
 
@@ -2779,37 +2783,41 @@ function openChatPopup() {
         doSetMod={doSetMod}
       />
 
-      {/* Bouton flottant LunaBot (style widget assistance) — toggle du
-          popup dock draggable */}
-      <button
-        type="button"
-        className="llBotFab"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (botOpen) setBotOpen(false);
-          else onClickBot();
-        }}
-        title="LunaBot"
-        aria-label="Ouvrir le menu LunaBot"
-      >
-        🤖
-      </button>
+      {/* Bot : rendu ICI uniquement quand le chat est autonome (popout).
+          Sur la page streamer, le bot est un FloatingBot détaché au niveau
+          page (accessible sur tous les onglets) → showBotFab=false. */}
+      {showBotFab ? (
+        <>
+          <button
+            type="button"
+            className="llBotFab"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (botOpen) setBotOpen(false);
+              else onClickBot();
+            }}
+            title="LunaBot"
+            aria-label="Ouvrir le menu LunaBot"
+          >
+            🤖
+          </button>
 
-      {/* bot menu */}
-      <BotMenu
-        open={botOpen}
-        onClose={() => setBotOpen(false)}
-        slug={slug}
-        token={token || null}
-        role={join?.role}
-        canMod={!!join?.perms?.canMod}
-        onRequireLogin={onRequireLogin}
-        sendBang={(text) => {
-          sockRef.current?.emit("chat:send", { slug, body: text, streamControl }, () => {});
-        }}
-        variant={botMenuVariant}
-        dockWidth={isPopup ? (botMenuDockWidth ?? 420) : undefined} // ✅ NEW
-      />
+          <BotMenu
+            open={botOpen}
+            onClose={() => setBotOpen(false)}
+            slug={slug}
+            token={token || null}
+            role={join?.role}
+            canMod={!!join?.perms?.canMod}
+            onRequireLogin={onRequireLogin}
+            sendBang={(text) => {
+              sockRef.current?.emit("chat:send", { slug, body: text, streamControl }, () => {});
+            }}
+            variant={botMenuVariant}
+            dockWidth={isPopup ? (botMenuDockWidth ?? 420) : undefined}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

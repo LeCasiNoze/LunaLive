@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react";
-import { BarChart3, Bot, Building2, Clapperboard, Coins, Gauge, Image, Settings, Shield, SmilePlus } from "lucide-react";
+import { BarChart3, Bot, Clapperboard, Coins, Gauge, Image, Settings, Shield, SmilePlus } from "lucide-react";
 import type { ApiMyStreamer } from "../../lib/api";
 
-export type DashboardTab = "overview" | "agency" | "lunabot" | "stream" | "moderation" | "appearance" | "emotes" | "earnings" | "stats" | "settings";
+export type DashboardTab = "overview" | "lunabot" | "stream" | "moderation" | "appearance" | "emotes" | "earnings" | "stats" | "settings";
 type Meta = { title: string; short: string; kicker: string; description: string; icon: LucideIcon };
 
 export const DASHBOARD_META: Record<DashboardTab, Meta> = {
@@ -14,14 +14,13 @@ export const DASHBOARD_META: Record<DashboardTab, Meta> = {
   lunabot: { title: "LunaBot", short: "LunaBot", kicker: "AUTOMATISATIONS", description: "Configure les outils qui donnent vie à ton stream.", icon: Bot },
   appearance: { title: "Apparence", short: "Apparence", kicker: "IDENTITÉ VISUELLE", description: "Façonne une expérience reconnaissable au premier regard.", icon: Image },
   emotes: { title: "Emojis & GIFs", short: "Emotes", kicker: "EXPRESSION", description: "Crée le langage visuel propre à ta communauté.", icon: SmilePlus },
-  agency: { title: "Agence", short: "Agence", kicker: "DÉVELOPPEMENT", description: "Retrouve ton activité d’affiliation et tes opportunités.", icon: Building2 },
   settings: { title: "Paramètres", short: "Réglages", kicker: "CONFIGURATION", description: "Gère les informations et préférences de ta chaîne.", icon: Settings },
 };
 
 const GROUPS: { label: string; items: DashboardTab[] }[] = [
   { label: "Pilotage", items: ["overview", "stream", "stats", "earnings"] },
   { label: "Communauté", items: ["moderation", "lunabot", "appearance", "emotes"] },
-  { label: "Compte", items: ["agency", "settings"] },
+  { label: "Compte", items: ["settings"] },
 ];
 
 export function DashboardSidebar({ tab, setTab, streamer }: { tab: DashboardTab; setTab: (t: DashboardTab) => void; streamer: ApiMyStreamer }) {

@@ -172,7 +172,6 @@ export function ObsWidgetModule({
   const [showUrl, setShowUrl] = React.useState(false);
   const [showAlertUrl, setShowAlertUrl] = React.useState(false);
 
-  const [addDlive, setAddDlive] = React.useState(false);
 
   const [savingChat, setSavingChat] = React.useState(false);
   const [savingGoal, setSavingGoal] = React.useState(false);
@@ -238,7 +237,6 @@ export function ObsWidgetModule({
         setGoalAnimEnabled(Boolean((r.config as any).goal?.anim_enabled ?? true));
 
         // Viewers
-        setAddDlive(Boolean((r.config as any).viewers?.add_dlive ?? false));
       } catch {
         // ignore
       }
@@ -314,7 +312,7 @@ export function ObsWidgetModule({
     `&name=${encodeURIComponent(streamerName)}&fg=${encodeURIComponent(sh(fg))}&bg=${encodeURIComponent(
       sh(bg)
     )}&pos=br&sec=8&poll=8000` +
-    (addDlive ? "&dlive=1" : "");
+    "";
 
   const goalObsUrl =
     `${base}/overlay/obs/follow-goal.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(
@@ -397,7 +395,7 @@ export function ObsWidgetModule({
     setSavingViewers(true);
     try {
       await obsSaveWidgetsConfig(token, {
-        viewers: { fg, bg, pos: "br", sec: 8, add_dlive: addDlive },
+        viewers: { fg, bg, pos: "br", sec: 8, add_dlive: false },
       });
       flash("Viewers enregistré ✅");
     } catch {
@@ -1245,22 +1243,6 @@ export function ObsWidgetModule({
                 Ouvrir
               </button>
             </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.12)" }}>
-            <input
-              id="addDliveCheck"
-              type="checkbox"
-              checked={addDlive}
-              onChange={(e) => setAddDlive(e.target.checked)}
-              style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#7c3aed" }}
-            />
-            <label htmlFor="addDliveCheck" style={{ cursor: "pointer", fontWeight: 800, fontSize: 14 }}>
-              Additionner les viewers DLive
-            </label>
-            <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>
-              (nécessite une chaîne DLive liée)
-            </span>
           </div>
 
           <details style={detailsStyle()}>
