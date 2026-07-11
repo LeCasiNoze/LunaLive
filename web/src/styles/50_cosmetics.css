@@ -192,180 +192,171 @@
    • ease-in-out au lieu de linear sauf quand ça aide
 */
 
-/* ── RAINBOW ──────────────────────────────────────────────── */
-/* Astuce loop invisible : le gradient commence ET finit par le
-   même segment de couleur. background-size réduit à 180%. */
-@keyframes unameRainbowLoop {
-  0%   { background-position: 0% 50%; }
-  100% { background-position: 180% 50%; }
+/* Boucles parfaites : gradients périodiques en PX (size Npx, déplacement
+   multiple de N) — jamais en %, dont la période dépend du conteneur.
+   Sheens à pause : couche no-repeat qui sort du texte puis revient. */
+
+/* ── RAINBOW SCROLL (ÉPIQUE : arc-en-ciel franc qui coule en continu
+      + sheen blanc qui passe) ── */
+@keyframes uRainbowFlow {
+  0% { background-position-x: 260px, 0; }
+  100% { background-position-x: -260px, -320px; }
 }
 .username--rainbow {
   color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    #ff4d6d 0%,
-    #ff9f1c 16%,
-    #ffd54a 32%,
-    #2de2a6 48%,
-    #5b8ef8 64%,
-    #a78bfa 80%,
-    #ff4d6d 100%   /* ← même couleur qu'en 0% → loop invisible */
-  );
-  background-size: 180% 100%;
+  background-image:
+    linear-gradient(90deg, transparent 0 42%, rgba(255,255,255,0.5) 50%, transparent 58% 100%),
+    linear-gradient(90deg, #ff4d6d, #ff9f1c 17%, #ffd54a 33%, #2de2a6 50%, #5b8ef8 67%, #a78bfa 83%, #ff4d6d 100%);
+  background-size: 130px 100%, 320px 100%;
+  background-repeat: no-repeat, repeat;
+  background-blend-mode: screen, normal;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: unameRainbowLoop 4.5s linear infinite;
+  text-shadow: 0 0 10px rgba(167, 139, 250, 0.25);
+  animation: uRainbowFlow 6s linear infinite;
 }
 
-/* ── CHROMA ───────────────────────────────────────────────── */
-/* Pendulum : retour à la position de départ → boucle parfaite */
-@keyframes chromaLoop {
-  0%   { background-position: 0% 50%, -100% 50%; }
-  50%  { background-position: 160% 50%, 160% 50%; }
-  100% { background-position: 0% 50%, -100% 50%; }
+/* ── CHROMA (LÉGENDAIRE : nacre liquide — irisation pastel qui coule en
+      diagonale + sheen intense, halo qui cycle) ── */
+@keyframes uChromaFlow {
+  0% { background-position-x: 300px, 0; }
+  100% { background-position-x: -300px, -520px; }
+}
+@keyframes uChromaHalo {
+  0%, 100% { text-shadow: 0 0 10px rgba(255, 110, 199, 0.35); }
+  33% { text-shadow: 0 0 10px rgba(110, 231, 183, 0.35); }
+  66% { text-shadow: 0 0 10px rgba(96, 165, 250, 0.35); }
 }
 .username--chroma {
   color: transparent;
   background-image:
-    linear-gradient(
-      90deg,
-      #7c5cfc 0%,
-      #3b4dc8 35%,
-      #a78bfa 65%,
-      #7c5cfc 100%   /* ← même → invisible */
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255,255,255,0)    0%,
-      rgba(255,255,255,0.50) 48%,
-      rgba(255,255,255,0)    62%
-    );
-  background-size: 180% 100%, 120% 100%;
-  background-blend-mode: screen;
+    linear-gradient(115deg, transparent 0 40%, rgba(255,255,255,0.75) 50%, transparent 60% 100%),
+    linear-gradient(115deg, #ff6ec7, #ffd166 20%, #6ee7b7 40%, #60a5fa 60%, #c084fc 80%, #ff6ec7 100%);
+  background-size: 150px 100%, 260px 100%;
+  background-repeat: no-repeat, repeat;
+  background-blend-mode: overlay, normal;
   -webkit-background-clip: text;
   background-clip: text;
   will-change: background-position;
-  animation: chromaLoop 4.5s ease-in-out infinite;
+  animation:
+    uChromaFlow 6.5s linear infinite,
+    uChromaHalo 6.5s linear infinite;
 }
 
-/* ── GOLD ─────────────────────────────────────────────────── */
-/* Pendulum : retour à la position de départ → boucle parfaite */
-@keyframes goldGlintLoop {
-  0%   { background-position: 0% 50%, -80% 50%; }
-  50%  { background-position: 120% 50%, 180% 50%; }
-  100% { background-position: 0% 50%, -80% 50%; }
+/* ── GOLD (ÉPIQUE : métal massif — dégradé or multi-stops FIXE, seul le
+      glint traverse puis pause) ── */
+@keyframes uGoldGlint {
+  0% { background-position-x: 300px, 0; }
+  55%, 100% { background-position-x: -280px, 0; }
 }
 .username--gold {
   color: transparent;
   background-image:
-    linear-gradient(
-      90deg,
-      #5c3d0e 0%,
-      #9a7230 16%,
-      #d4aa68 30%,
-      #f7e0b4 46%,
-      #fff5e0 52%,
-      #e8cc8a 64%,
-      #b89040 80%,
-      #5c3d0e 100%   /* ← loop invisible */
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255,255,255,0)    0%,
-      rgba(255,255,255,0.48) 46%,
-      rgba(255,255,255,0)    58%
-    );
-  background-size: 160% 100%, 60% 100%;
-  background-blend-mode: normal, screen;
+    linear-gradient(105deg, transparent 0 38%, rgba(255,252,240,0.85) 50%, transparent 62% 100%),
+    linear-gradient(180deg, #fff3c4 0%, #ffd77a 30%, #c9940f 52%, #ffcf5c 68%, #9a7210 100%);
+  background-size: 120px 100%, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-blend-mode: screen, normal;
   -webkit-background-clip: text;
   background-clip: text;
-  -webkit-text-stroke: 0.25px rgba(255, 226, 160, 0.18);
+  -webkit-text-stroke: 0.3px rgba(255, 226, 160, 0.35);
+  text-shadow: 0 1px 8px rgba(251, 191, 36, 0.25);
   will-change: background-position;
-  animation: goldGlintLoop 5.0s ease-in-out infinite;
+  animation: uGoldGlint 3.8s ease-in-out infinite;
 }
 
-/* ── NEON ─────────────────────────────────────────────────── */
-/* Statique — le glow pulse très doucement */
-@keyframes neonPulse {
-  0%, 100% {
-    text-shadow:
-      0 0 3px rgba(168, 85, 247, 0.90),
-      0 0 7px rgba(139, 92, 246, 0.70),
-      0 0 14px rgba(129, 140, 248, 0.55);
-  }
-  50% {
-    text-shadow:
-      0 0 4px rgba(168, 85, 247, 1.00),
-      0 0 10px rgba(139, 92, 246, 0.85),
-      0 0 20px rgba(124, 92, 252, 0.65);
-  }
-}
+/* ── NEON + SOULIGNAGE (RARE système : tube néon réaliste statique,
+      halo en couches serrées + underline lumineux) ── */
 .username--neon {
-  color: #e4d9ff;
-  -webkit-text-stroke: 0.4px rgba(168, 85, 247, 0.80);
-  will-change: filter;
-  animation: neonPulse 3.8s ease-in-out infinite;
+  display: inline-block;
+  color: #f5edff;
+  -webkit-text-stroke: 0.35px rgba(168, 85, 247, 0.85);
+  text-shadow:
+    0 0 1px rgba(233, 213, 255, 0.9),
+    0 0 4px rgba(168, 85, 247, 0.9),
+    0 0 9px rgba(139, 92, 246, 0.6),
+    0 0 18px rgba(124, 92, 252, 0.4);
+  border-bottom: 2px solid rgba(168, 85, 247, 0.75);
+  box-shadow: 0 3px 8px -2px rgba(139, 92, 246, 0.55);
+  line-height: 1.15;
 }
 
-
-/* ── NOUVEAU : FROST (bleu glacé, shimmer froid) ─────────── */
-/* Identité : froid, premium, "gamer esport".
-   Pendulum : position revient à 0% → boucle parfaite. */
-@keyframes frostShimmer {
-  0%   { background-position: 0% 50%, -90% 50%; }
-  50%  { background-position: 140% 50%, 160% 50%; }
-  100% { background-position: 0% 50%, -90% 50%; }
-}
+/* ── FROST (RARE : glacier statique — blanc givré → bleu profond,
+      contour givré) ── */
 .username--frost {
   color: transparent;
-  background-image:
-    linear-gradient(
-      90deg,
-      #4a8abf 0%,
-      #8ecae6 25%,
-      #cde8f8 50%,
-      #8ecae6 75%,
-      #4a8abf 100%   /* loop invisible */
-    ),
-    linear-gradient(
-      90deg,
-      rgba(255,255,255,0)    0%,
-      rgba(255,255,255,0.55) 44%,
-      rgba(255,255,255,0)    60%
-    );
-  background-size: 160% 100%, 80% 100%;
-  background-blend-mode: normal, screen;
+  background-image: linear-gradient(180deg, #f0f9ff 0%, #bae6fd 38%, #38bdf8 72%, #0369a1 100%);
   -webkit-background-clip: text;
   background-clip: text;
-  will-change: background-position;
-  animation: frostShimmer 6.0s ease-in-out infinite;
+  -webkit-text-stroke: 0.3px rgba(186, 230, 253, 0.4);
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
 }
 
-
-/* ── NOUVEAU : EMBER (braise orange → rouge profond) ─────── */
-/* Identité : chaud, dangereux, heat-wave discret.
-   Gradient symétrique → loop imperceptible. */
-@keyframes emberPulse {
-  0%   { background-position: 0% 50%;   opacity: 0.94; }
-  50%  { background-position: 100% 50%; opacity: 1.00; }
-  100% { background-position: 0% 50%;   opacity: 0.94; } /* ← retour à 0% → invisible */
+/* ── EMBER (ÉPIQUE : braise vivante — points chauds qui dérivent dans un
+      lit de braise, rougeoiement lent) ── */
+@keyframes uEmberDrift {
+  0% { background-position-x: 0, 0, 0; }
+  100% { background-position-x: -180px, 260px, 0; }
+}
+@keyframes uEmberGlow {
+  0%, 100% { text-shadow: 0 0 5px rgba(249, 115, 22, 0.35); }
+  50% { text-shadow: 0 0 11px rgba(251, 146, 60, 0.65), 0 0 22px rgba(234, 88, 12, 0.3); }
 }
 .username--ember {
   color: transparent;
-  background-image: linear-gradient(
-    90deg,
-    #7a1c0a 0%,
-    #c0391b 20%,
-    #f26a2e 38%,
-    #fba55d 52%,
-    #f26a2e 64%,
-    #c0391b 82%,
-    #7a1c0a 100%   /* symétrique → loop parfaite */
-  );
-  background-size: 200% 100%;
+  background-image:
+    radial-gradient(22px 12px at 45px 40%, rgba(255, 190, 80, 0.95), transparent 70%),
+    radial-gradient(28px 14px at 65px 65%, rgba(255, 120, 40, 0.85), transparent 70%),
+    linear-gradient(180deg, #b91c1c 0%, #7f1d1d 55%, #450a0a 100%);
+  background-size: 90px 100%, 130px 100%, 100% 100%;
+  background-repeat: repeat, repeat, no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: emberPulse 4.0s ease-in-out infinite;
+  will-change: background-position;
+  animation:
+    uEmberDrift 12s linear infinite,
+    uEmberGlow 3.6s ease-in-out infinite;
+}
+
+/* ── RARES statiques (grille raretés : 1-2 couleurs, zéro animation) ──
+   Pas de couleurs plates : dégradés riches, directions variées, relief
+   par text-shadow discret. */
+.username--crimson {
+  color: transparent;
+  background-image: linear-gradient(135deg, #7f1d1d 0%, #dc2626 42%, #fb7185 78%, #fecdd3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 1px 6px rgba(225, 29, 72, 0.25);
+}
+.username--ocean {
+  color: transparent;
+  background-image: linear-gradient(90deg, #0c4a6e 0%, #0e7490 30%, #06b6d4 62%, #99f6e4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 1px 6px rgba(6, 182, 212, 0.22);
+}
+.username--mint {
+  color: transparent;
+  background-image: linear-gradient(180deg, #ecfdf5 0%, #6ee7b7 45%, #059669 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 0 7px rgba(52, 211, 153, 0.25);
+}
+.username--amber {
+  color: transparent;
+  background-image: linear-gradient(120deg, #78350f 0%, #d97706 38%, #fbbf24 68%, #fef3c7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 1px 6px rgba(245, 158, 11, 0.22);
+}
+.username--steel {
+  color: transparent;
+  /* stops durs = reflet métal froid, sans animation */
+  background-image: linear-gradient(180deg, #cbd5e1 0%, #eef2f7 34%, #64748b 50%, #94a3b8 66%, #334155 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 0.25px rgba(226, 232, 240, 0.3);
+  text-shadow: 0 1px 5px rgba(100, 116, 139, 0.3);
 }
 
 
@@ -433,6 +424,255 @@
 }
 
 
+/* ══ CADRANS EVENT (récompenses top-3 / #1) ══════════════════ */
+/* ── wheelRoulette : quart de ROULETTE au coin haut-droit qui tourne,
+      décélère, s'arrête… puis relance (loop) — spec Lucas ── */
+.chatFrame--wheelRoulette {
+  --frame-ambient:
+    radial-gradient(240px 130px at 12% 100%, rgba(220, 38, 38, 0.12), transparent 65%),
+    radial-gradient(200px 110px at 88% 10%, rgba(253, 230, 138, 0.1), transparent 60%);
+  border: 1px solid transparent;
+  /* fond bordeaux nuit façon tapis de casino (peaufinage post-validation) */
+  background:
+    linear-gradient(150deg, rgba(26, 8, 12, 0.95), rgba(10, 6, 10, 0.95) 55%, rgba(20, 6, 9, 0.95)) padding-box,
+    linear-gradient(135deg, rgba(220, 38, 38, 0.55), rgba(24, 20, 24, 0.9) 55%, rgba(253, 230, 138, 0.5)) border-box;
+  box-shadow:
+    0 0 0 1px rgba(253, 230, 138, 0.08),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+/* le ::before de cette frame devient la roulette : quart de VRAIE roue au
+   coin haut-droit (numéros + case verte du 0), qui tourne 2 tours en
+   décélérant, s'arrête, puis relance (SMIL embarqué dans le SVG) */
+.chatFrame--wheelRoulette::before {
+  top: 0;
+  right: 0;
+  left: auto;
+  width: 76px;
+  height: 76px;
+  border-radius: 0 14px 0 100%;
+  border-left: 1px solid rgba(253, 230, 138, 0.4);
+  border-bottom: 1px solid rgba(253, 230, 138, 0.4);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='152' height='152' viewBox='0 0 144 144'%3E%3Cg%3E%3CanimateTransform attributeName='transform' type='rotate' values='0 72 72;720 72 72;720 72 72' keyTimes='0;0.32;1' dur='9s' repeatCount='indefinite' calcMode='spline' keySplines='0.15 0.75 0.25 1;0 0 1 1'/%3E%3Cpath d='M72 72 L142 72 A70 70 0 0 1 136.7 98.8 Z' fill='%2315803d'/%3E%3Cpath d='M72 72 L136.7 98.8 A70 70 0 0 1 121.5 121.5 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L121.5 121.5 A70 70 0 0 1 98.8 136.7 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L98.8 136.7 A70 70 0 0 1 72 142 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L72 142 A70 70 0 0 1 45.2 136.7 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L45.2 136.7 A70 70 0 0 1 22.5 121.5 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L22.5 121.5 A70 70 0 0 1 7.3 98.8 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L7.3 98.8 A70 70 0 0 1 2 72 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L2 72 A70 70 0 0 1 7.3 45.2 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L7.3 45.2 A70 70 0 0 1 22.5 22.5 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L22.5 22.5 A70 70 0 0 1 45.2 7.3 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L45.2 7.3 A70 70 0 0 1 72 2 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L72 2 A70 70 0 0 1 98.8 7.3 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L98.8 7.3 A70 70 0 0 1 121.5 22.5 Z' fill='%23b91c1c'/%3E%3Cpath d='M72 72 L121.5 22.5 A70 70 0 0 1 136.7 45.2 Z' fill='%231c1c22'/%3E%3Cpath d='M72 72 L136.7 45.2 A70 70 0 0 1 142 72 Z' fill='%23b91c1c'/%3E%3Ccircle cx='72' cy='72' r='69.5' fill='none' stroke='%23d4af37' stroke-width='2.6'/%3E%3Cg fill='%23ffffff' font-family='Arial' font-size='9' font-weight='bold' text-anchor='middle'%3E%3Ctext x='126.9' y='85.9'%3E0%3C/text%3E%3Ctext x='118.5' y='106.1'%3E32%3C/text%3E%3Ctext x='103.1' y='121.5'%3E15%3C/text%3E%3Ctext x='82.9' y='129.9'%3E19%3C/text%3E%3Ctext x='61.1' y='129.9'%3E4%3C/text%3E%3Ctext x='40.9' y='121.5'%3E21%3C/text%3E%3Ctext x='25.5' y='106.1'%3E2%3C/text%3E%3Ctext x='17.1' y='85.9'%3E25%3C/text%3E%3Ctext x='17.1' y='64.1'%3E17%3C/text%3E%3Ctext x='25.5' y='43.9'%3E34%3C/text%3E%3Ctext x='40.9' y='28.5'%3E6%3C/text%3E%3Ctext x='61.1' y='20.1'%3E27%3C/text%3E%3Ctext x='82.9' y='20.1'%3E13%3C/text%3E%3Ctext x='103.1' y='28.5'%3E36%3C/text%3E%3Ctext x='118.5' y='43.9'%3E11%3C/text%3E%3Ctext x='126.9' y='64.1'%3E30%3C/text%3E%3C/g%3E%3Ccircle cx='72' cy='72' r='10' fill='%23b8860b'/%3E%3Ccircle cx='72' cy='72' r='6.6' fill='%23ffd85e'/%3E%3C/g%3E%3Cg%3E%3CanimateTransform attributeName='transform' type='rotate' values='0 72 72;-1080 72 72;-1080 72 72' keyTimes='0;0.28;1' dur='9s' repeatCount='indefinite' calcMode='spline' keySplines='0.15 0.75 0.25 1;0 0 1 1'/%3E%3Ccircle cx='45.5' cy='114.4' r='4.6' fill='%23f5f2ea' stroke='%23b8b2a4' stroke-width='0.8'/%3E%3C/g%3E%3C/svg%3E") 0px -76px / 152px 152px no-repeat;
+  opacity: 0.85;
+  /* la roue reste EN FOND : sous le contenu du message (retour Lucas) */
+  z-index: 0;
+}
+/* impulsion néon verte qui parcourt la bordure ("border beam") */
+@property --wrbeam {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.chatFrame--wheelRoulette::after {
+  /* l'anneau déborde de 2px et fait 4px d'épaisseur : l'impulsion est
+     centrée SUR le trait de bordure (ni intérieur ni extérieur) */
+  inset: -2px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(74, 222, 128, 0.08) 318deg,
+    rgba(74, 222, 128, 0.65) 342deg,
+    #b9f8cf 352deg,
+    transparent 360deg);
+  padding: 4px;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(74, 222, 128, 0.7));
+  animation: wrBeam 4.2s linear infinite;
+}
+@keyframes wrBeam {
+  to { --wrbeam: 360deg; }
+}
+
+/* ── chestVault : PLUIE DE PIÈCES D'OR en fond — spec Lucas ── */
+.chatFrame--chestVault {
+  --frame-reflet: rgba(253, 230, 138, 0.4);
+  /* bordure "porte de coffre-fort" : métal doré cranté + double liseré.
+     Fond padding-box OPAQUE : sinon le crénelage transparaît en rayures
+     sur toute la carte. */
+  border: 2px solid transparent;
+  background:
+    linear-gradient(150deg, rgb(26, 21, 11), rgb(17, 14, 8) 55%, rgb(23, 18, 10)) padding-box,
+    repeating-linear-gradient(90deg,
+      rgba(212, 175, 55, 0.75) 0 7px,
+      rgba(106, 76, 14, 0.85) 7px 9px,
+      rgba(212, 175, 55, 0.55) 9px 16px,
+      rgba(74, 52, 10, 0.9) 16px 18px
+    ) border-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(253, 230, 138, 0.18),
+    0 0 0 1px rgba(106, 76, 14, 0.55),
+    0 0 14px rgba(212, 175, 55, 0.12),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+/* border beam DORÉ (même effet que la roulette) le long de la bordure */
+.chatFrame--chestVault::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(255, 216, 94, 0.08) 318deg,
+    rgba(255, 216, 94, 0.7) 342deg,
+    #fff3c4 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(255, 216, 94, 0.7));
+  animation: wrBeam 5.4s linear infinite;
+}
+/* De VRAIES pièces d'or (SVG : tranche, bord, éclat) qui tombent en pluie
+   chaotique : 3 couches, tailles/angles différents, périodes premières
+   entre elles → le motif ne se répète jamais visiblement. */
+.chatFrame--chestVault::after {
+  /* Pluie CHAOTIQUE : 2-3 pièces par grande tuile à des positions toutes
+     différentes (aucun alignement), 3 couches à vitesses distinctes dont
+     les cycles ne coïncident qu'à 30s. */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='330' height='260' viewBox='0 0 330 260'%3E%3Cg transform='translate(40 60) rotate(14 13 13)'%3E%3Cellipse cx='13' cy='13' rx='12' ry='12' fill='%23c9930f'/%3E%3Cellipse cx='13' cy='11.8' rx='12' ry='11' fill='%23ffd85e'/%3E%3Cellipse cx='13' cy='11.8' rx='8' ry='7.4' fill='none' stroke='%23b8860b' stroke-width='1.6'/%3E%3Ctext x='13' y='15.5' text-anchor='middle' font-family='Arial' font-size='9' font-weight='bold' fill='%23916708'%3EL%3C/text%3E%3Cpath d='M7.4 7 L10.4 9.6' stroke='%23fff3c4' stroke-width='2' stroke-linecap='round'/%3E%3C/g%3E%3Cg transform='translate(240 190) rotate(-20 8 8)'%3E%3Cellipse cx='8' cy='8' rx='7.4' ry='7.4' fill='%23a8741a'/%3E%3Cellipse cx='8' cy='7.3' rx='7.4' ry='6.8' fill='%23fbc531'/%3E%3Cellipse cx='8' cy='7.3' rx='4.6' ry='4.2' fill='none' stroke='%23916708' stroke-width='1.1'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='410' height='300' viewBox='0 0 410 300'%3E%3Cg transform='translate(120 40) rotate(-32 10 10)'%3E%3Cellipse cx='10' cy='10' rx='9.4' ry='9.4' fill='%23a8741a'/%3E%3Cellipse cx='10' cy='9' rx='9.4' ry='8.6' fill='%23fbc531'/%3E%3Cellipse cx='10' cy='9' rx='6' ry='5.5' fill='none' stroke='%23916708' stroke-width='1.3'/%3E%3Cpath d='M5.8 5.4 L8.2 7.4' stroke='%23fff3c4' stroke-width='1.6' stroke-linecap='round'/%3E%3C/g%3E%3Cg transform='translate(330 150) rotate(40 7 7)'%3E%3Cellipse cx='7' cy='7' rx='6.4' ry='6.4' fill='%23c9930f'/%3E%3Cellipse cx='7' cy='6.4' rx='6.4' ry='5.9' fill='%23ffd85e'/%3E%3C/g%3E%3Cg transform='translate(60 240) rotate(8 9 9)'%3E%3Cellipse cx='9' cy='9' rx='8.4' ry='8.4' fill='%23c9930f'/%3E%3Cellipse cx='9' cy='8.2' rx='8.4' ry='7.7' fill='%23ffd85e'/%3E%3Cellipse cx='9' cy='8.2' rx='5.2' ry='4.8' fill='none' stroke='%23b8860b' stroke-width='1.2'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='370' height='230' viewBox='0 0 370 230'%3E%3Cg transform='translate(290 60) rotate(58 8 8)'%3E%3Cellipse cx='8' cy='8' rx='7.4' ry='7.4' fill='%23c9930f'/%3E%3Cellipse cx='8' cy='7.3' rx='7.4' ry='6.8' fill='%23ffd85e'/%3E%3Cellipse cx='8' cy='7.3' rx='4.6' ry='4.2' fill='none' stroke='%23b8860b' stroke-width='1.1'/%3E%3C/g%3E%3Cg transform='translate(150 170) rotate(-12 11 11)'%3E%3Cellipse cx='11' cy='11' rx='10.4' ry='10.4' fill='%23a8741a'/%3E%3Cellipse cx='11' cy='10' rx='10.4' ry='9.5' fill='%23fbc531'/%3E%3Cellipse cx='11' cy='10' rx='6.6' ry='6' fill='none' stroke='%23916708' stroke-width='1.4'/%3E%3Cpath d='M6.4 6 L9 8.2' stroke='%23fff3c4' stroke-width='1.8' stroke-linecap='round'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 330px 260px, 410px 300px, 370px 230px;
+  opacity: 0.55;
+  animation: vaultCoinsFall 30s linear infinite;
+}
+@keyframes vaultCoinsFall {
+  0% { background-position-y: -1560px, -1200px, -1610px; }
+  100% { background-position-y: 0, 0, 0; }
+}
+
+/* ── bossFlames (LÉGENDAIRE : champ de bataille désolé + flammes vivantes
+      qui lèchent le cadre — spec Lucas) ── */
+.chatFrame--bossFlames {
+  --frame-reflet: rgba(255, 176, 102, 0.55);
+  --frame-ambient:
+    /* ciel de guerre : voile de fumée pendante + corbeaux + braises hautes */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='34' viewBox='0 0 260 34'%3E%3Cpath d='M0 0 L260 0 L260 7 Q210 14 165 8 T85 12 T0 6 Z' fill='%23050203' opacity='0.6'/%3E%3Cg stroke='%230d0507' fill='none' stroke-width='1.7' stroke-linecap='round' opacity='0.85'%3E%3Cpath d='M96 16 q3.5 -4.5 7 0 q3.5 -4.5 7 0'/%3E%3Cpath d='M186 22 q2.6 -3.4 5.2 0 q2.6 -3.4 5.2 0'/%3E%3C/g%3E%3Ccircle cx='40' cy='18' r='1.4' fill='%23ff9e44' opacity='0.75'/%3E%3Ccircle cx='142' cy='25' r='1.1' fill='%23ff5a1f' opacity='0.65'/%3E%3Ccircle cx='232' cy='13' r='1.3' fill='%23ffc26e' opacity='0.7'/%3E%3C/svg%3E") left top / 260px 34px repeat-x,
+    /* silhouette du champ de bataille (sol vallonné + épées plantées) */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='56' viewBox='0 0 260 56'%3E%3Cpath d='M0 56 L0 46 Q40 40 80 45 T160 43 T260 46 L260 56 Z' fill='%23050203' opacity='0.75'/%3E%3Cg stroke='%230a0405' stroke-width='3.4' stroke-linecap='round' opacity='0.9'%3E%3Cpath d='M52 46 L45 22'/%3E%3Cpath d='M39 29 L54 26'/%3E%3Cpath d='M198 45 L206 20'/%3E%3Cpath d='M194 27 L212 24'/%3E%3Cpath d='M130 44 L127 14'/%3E%3C/g%3E%3C/svg%3E") left bottom / 260px 56px repeat-x,
+    radial-gradient(120px 40px at 25% -4%, rgba(220, 38, 38, 0.18), transparent 65%),
+    radial-gradient(140px 46px at 75% -6%, rgba(255, 120, 40, 0.14), transparent 62%),
+    radial-gradient(190px 110px at 15% 108%, rgba(255, 90, 31, 0.3), transparent 62%),
+    radial-gradient(210px 120px at 55% 112%, rgba(220, 38, 38, 0.26), transparent 65%),
+    radial-gradient(180px 100px at 88% 106%, rgba(255, 158, 68, 0.28), transparent 60%);
+  border: 1px solid transparent;
+  background:
+    linear-gradient(rgba(14, 6, 6, 0.94), rgba(14, 6, 6, 0.94)) padding-box,
+    linear-gradient(0deg, rgba(255, 90, 31, 0.75), rgba(220, 38, 38, 0.4) 45%, rgba(255, 176, 102, 0.35)) border-box;
+  animation: frameBossPulse 2.6s ease-in-out infinite;
+}
+/* border beam ROUGE : impulsion de guerre le long de la bordure */
+.chatFrame--bossFlames::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(255, 68, 68, 0.08) 318deg,
+    rgba(255, 68, 68, 0.75) 342deg,
+    #ffc4b0 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 5px rgba(255, 68, 68, 0.75));
+  animation: wrBeam 4.6s linear infinite;
+}
+.chatFrame--bossFlames::after {
+  opacity: 1;
+  animation: frameBossFlicker 1.15s steps(6) infinite;
+}
+/* flicker par luminosité uniquement — pas de transform : l'image ne
+   tremble pas (retour Lucas) */
+@keyframes frameBossFlicker {
+  0% { filter: brightness(1) saturate(1); }
+  25% { filter: brightness(1.35) saturate(1.25); }
+  50% { filter: brightness(0.9) saturate(1.05); }
+  75% { filter: brightness(1.22) saturate(1.3); }
+  100% { filter: brightness(1) saturate(1); }
+}
+@keyframes frameBossPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(255, 90, 31, 0.12), 0 0 18px rgba(255, 90, 31, 0.22), 0 18px 50px rgba(0, 0, 0, 0.4); }
+  50% { box-shadow: 0 0 0 1px rgba(255, 90, 31, 0.22), 0 0 34px rgba(255, 90, 31, 0.42), 0 18px 50px rgba(0, 0, 0, 0.4); }
+}
+
+/* ── viewerHearts (#1 Semaine du viewer : cœurs gonflés à l'hélium qui
+      montent dans le fond — spec Lucas) ── */
+.chatFrame--viewerHearts {
+  --frame-reflet: rgba(244, 114, 182, 0.42);
+  border: 1px solid transparent;
+  /* fond dégradé rose/violet nuit (retour Lucas : de la couleur) */
+  background:
+    linear-gradient(150deg, rgba(32, 9, 23, 0.96), rgba(21, 7, 28, 0.96) 55%, rgba(34, 8, 19, 0.96)) padding-box,
+    linear-gradient(135deg, rgba(244, 114, 182, 0.55), rgba(220, 38, 38, 0.35), rgba(255, 200, 220, 0.4)) border-box;
+  box-shadow:
+    0 0 0 1px rgba(244, 114, 182, 0.1),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+/* border beam ROSE néon le long de la bordure */
+.chatFrame--viewerHearts::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(244, 114, 182, 0.08) 318deg,
+    rgba(244, 114, 182, 0.75) 342deg,
+    #ffd6ea 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(244, 114, 182, 0.7));
+  animation: wrBeam 5s linear infinite;
+}
+/* Quelques cœurs seulement, ascension CHAOTIQUE (retour Lucas) : 3 couches
+   d'UN cœur chacune sur de très grandes tuiles décalées, vitesses toutes
+   différentes et zigzag horizontal → aucune symétrie perceptible. */
+.chatFrame--viewerHearts::after {
+  /* un seul petit cœur par grande tuile, positions excentrées → quelques
+     cœurs épars qui montent, aucune symétrie */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='170' height='190' viewBox='0 0 170 190'%3E%3Cpath transform='translate(38 58) scale(0.62)' d='M12 21 C5 15 1 11 1 6.5 C1 3 3.5 1 6.5 1 C8.8 1 11 2.5 12 4.5 C13 2.5 15.2 1 17.5 1 C20.5 1 23 3 23 6.5 C23 11 19 15 12 21 Z' fill='%23f472b6'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='260' viewBox='0 0 240 260'%3E%3Cpath transform='translate(178 138) scale(0.42)' d='M12 21 C5 15 1 11 1 6.5 C1 3 3.5 1 6.5 1 C8.8 1 11 2.5 12 4.5 C13 2.5 15.2 1 17.5 1 C20.5 1 23 3 23 6.5 C23 11 19 15 12 21 Z' fill='%23ef4444'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='230' viewBox='0 0 300 230'%3E%3Cpath transform='translate(216 44) scale(0.5)' d='M12 21 C5 15 1 11 1 6.5 C1 3 3.5 1 6.5 1 C8.8 1 11 2.5 12 4.5 C13 2.5 15.2 1 17.5 1 C20.5 1 23 3 23 6.5 C23 11 19 15 12 21 Z' fill='%23fda4af'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 170px 190px, 240px 260px, 300px 230px;
+  opacity: 0.5;
+  animation:
+    heartRise1 8.3s linear infinite,
+    heartSway 5.1s ease-in-out infinite;
+}
+@keyframes heartRise1 {
+  0% { background-position-y: 190px, 260px, 230px; }
+  100% { background-position-y: 0, 0, 0; }
+}
+/* zigzag façon ballon : léger balancement horizontal désynchronisé */
+@keyframes heartSway {
+  0%, 100% { background-position-x: 22px, 130px, 240px; }
+  30% { background-position-x: 30px, 122px, 252px; }
+  65% { background-position-x: 16px, 138px, 232px; }
+}
+
 /* ── lunaPetals ───────────────────────────────────────────── */
 .chatFrame--lunaPetals {
   --frame-reflet: rgba(167, 139, 250, 0.36);
@@ -449,109 +689,304 @@
     0 18px 50px rgba(0,0,0,0.35);
 }
 
-/* ── gold ─────────────────────────────────────────────────── */
+/* ══ GRILLE RARETÉS (validée Lucas) ═════════════════════════════
+   rare       = 1-2 couleurs statiques (uni/dégradé), zéro animation
+   épique     = habillage de fond dans la DA, animation très légère
+   légendaire = border beam + animation moyenne du cadran
+   mythique   = DA complète : beam + animation complète du cadran
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── gold (MYTHIQUE : lingot royal — bordure métal ouvragée, beam doré,
+      éclat itinérant + poussière d'or qui monte) ── */
 .chatFrame--gold {
   --frame-reflet: rgba(251, 191, 36, 0.38);
-  --frame-ambient:
-    radial-gradient(240px 130px at 10% 0%,  rgba(251,191,36,0.10), transparent 65%),
-    radial-gradient(240px 130px at 90% 15%,  rgba(124,92,252,0.08), transparent 60%);
-
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,8,14,0.94), rgba(10,8,14,0.94)) padding-box,
-    linear-gradient(135deg, rgba(251,191,36,0.44), rgba(124,92,252,0.26)) border-box;
-  box-shadow:
-    0 0 0 1px rgba(251,191,36,0.07),
-    0 18px 50px rgba(0,0,0,0.35);
+    linear-gradient(150deg, rgb(22, 15, 4), rgb(13, 9, 3) 55%, rgb(19, 13, 3)) padding-box,
+    linear-gradient(135deg, #fde68a, #a16207 30%, #ffd85e 52%, #7c5806 72%, #fbbf24) border-box;
+  animation: goldRoyalPulse 4.5s ease-in-out infinite;
+}
+/* border beam doré */
+.chatFrame--gold::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(255, 216, 94, 0.08) 318deg,
+    rgba(255, 216, 94, 0.7) 342deg,
+    #fff3c4 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(255, 216, 94, 0.7));
+  animation: wrBeam 4.4s linear infinite;
+}
+/* éclat itinérant + 2 couches de poussière d'or montante (tuiles éparses,
+   cycles entiers différents sur 26s → boucle invisible) */
+.chatFrame--gold::after {
+  background:
+    linear-gradient(115deg, transparent 32%, rgba(255, 226, 130, 0.16) 46%, rgba(255, 246, 200, 0.24) 50%, rgba(255, 226, 130, 0.16) 54%, transparent 68%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='260' viewBox='0 0 240 260'%3E%3Cpath d='M40 52 L42.2 60.8 L51 63 L42.2 65.2 L40 74 L37.8 65.2 L29 63 L37.8 60.8 Z' fill='%23ffd85e'/%3E%3Cpath d='M178 176 L179.6 182.4 L186 184 L179.6 185.6 L178 192 L176.4 185.6 L170 184 L176.4 182.4 Z' fill='%23fff3c4'/%3E%3Ccircle cx='104' cy='118' r='1.6' fill='%23fbbf24'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='320' viewBox='0 0 300 320'%3E%3Cpath d='M226 78 L227.8 85 L234 86.8 L227.8 88.6 L226 95.6 L224.2 88.6 L218 86.8 L224.2 85 Z' fill='%23ffd85e'/%3E%3Cpath d='M84 232 L85.4 237.4 L90.6 238.8 L85.4 240.2 L84 245.6 L82.6 240.2 L77.4 238.8 L82.6 237.4 Z' fill='%23fff3c4'/%3E%3Ccircle cx='150' cy='160' r='1.4' fill='%23fbbf24'/%3E%3Ccircle cx='258' cy='288' r='1.2' fill='%23ffd85e'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat, repeat;
+  background-size: 300% 100%, 240px 260px, 300px 320px;
+  background-position-x: 160%, 30px, 160px;
+  animation:
+    goldSweepX 4.5s ease-in-out infinite,
+    goldDustRise 26s linear infinite;
+}
+@keyframes goldSweepX {
+  0% { background-position-x: 160%, 30px, 160px; }
+  60%, 100% { background-position-x: -160%, 30px, 160px; }
+}
+@keyframes goldDustRise {
+  0% { background-position-y: 0, 0, 0; }
+  100% { background-position-y: 0, -1560px, -1280px; }
+}
+@keyframes goldRoyalPulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(251,191,36,0.1), 0 0 16px rgba(251,191,36,0.12), 0 18px 50px rgba(0,0,0,0.35); }
+  50% { box-shadow: 0 0 0 1px rgba(251,191,36,0.24), 0 0 30px rgba(251,191,36,0.3), 0 18px 50px rgba(0,0,0,0.35); }
 }
 
-/* ── eclipse ──────────────────────────────────────────────── */
+/* ── eclipse (MYTHIQUE : cycle jour → éclipse → nuit → jour. La lune
+      glisse devant le soleil, le voile de nuit tombe (box-shadow inset,
+      peinte SOUS les pseudo-éléments), ~75% du cycle en nuit, les teintes
+      s'adaptent (glow doré le jour, violet la nuit). Beam violet. ── */
 .chatFrame--eclipse {
   --frame-reflet: rgba(196, 181, 253, 0.32);
-  --frame-ambient:
-    radial-gradient(240px 130px at 10% 0%,  rgba(124,92,252,0.14), transparent 65%),
-    radial-gradient(240px 130px at 90% 15%,  rgba(59,77,200,0.12), transparent 60%);
-
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,8,14,0.94), rgba(10,8,14,0.94)) padding-box,
+    linear-gradient(150deg, rgb(26, 20, 34), rgb(30, 24, 16) 60%, rgb(20, 16, 30)) padding-box,
     linear-gradient(135deg, rgba(124,92,252,0.52), rgba(59,77,200,0.44)) border-box;
-  box-shadow:
-    0 0 0 1px rgba(124,92,252,0.09),
-    0 18px 50px rgba(0,0,0,0.35);
+  animation: eclipseDayNight 20s linear infinite;
+}
+/* couleurs du beam animées : doré en plein jour, violet la nuit */
+@property --ecb1 {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: #fbbf24;
+}
+@property --ecb2 {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: rgba(251, 191, 36, 0.08);
+}
+@keyframes eclipseBeamTint {
+  0%, 8%, 96%, 100% { --ecb1: #fbbf24; --ecb2: rgba(251, 191, 36, 0.08); }
+  26%, 82% { --ecb1: #a78bfa; --ecb2: rgba(167, 139, 250, 0.08); }
+}
+/* border beam aux couleurs du cycle : doré le jour, violet la nuit
+   (mêmes % / même durée que le voile → sync) */
+.chatFrame--eclipse::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    var(--ecb2) 318deg,
+    var(--ecb1) 342deg,
+    #fff7e0 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px var(--ecb1));
+  animation:
+    wrBeam 6s linear infinite,
+    eclipseBeamTint 20s linear infinite;
+}
+/* couches : lune mobile · soleil fixe au coin · 2 tuiles d'étoiles.
+   La lune (r 15.5) est plus petite que le halo du soleil → quand elle le
+   couvre, l'anneau doré reste visible = éclipse annulaire. */
+.chatFrame--eclipse::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='58' height='58'%3E%3Ccircle cx='29' cy='29' r='17.5' fill='%230b0614' stroke='%23a78bfa' stroke-width='0.8' stroke-opacity='0.75'/%3E%3Ccircle cx='23' cy='24' r='2.8' fill='%231a1030'/%3E%3Ccircle cx='35' cy='34' r='2' fill='%231a1030'/%3E%3Ccircle cx='31' cy='19' r='1.3' fill='%23241542'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cdefs%3E%3CradialGradient id='s'%3E%3Cstop offset='55%25' stop-color='%23ffe9a3' stop-opacity='0.95'/%3E%3Cstop offset='75%25' stop-color='%23fbbf24' stop-opacity='0.45'/%3E%3Cstop offset='100%25' stop-color='%23fbbf24' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='20' cy='20' r='17' fill='url(%23s)'/%3E%3Ccircle cx='20' cy='20' r='12.5' fill='%23fde68a'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='200' viewBox='0 0 220 200'%3E%3Ccircle cx='34' cy='44' r='1.2' fill='%23e9d5ff'/%3E%3Ccircle cx='130' cy='150' r='1' fill='%23c4b5fd'/%3E%3Ccircle cx='184' cy='84' r='1.4' fill='%23ffffff' opacity='0.85'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='240' viewBox='0 0 300 240'%3E%3Ccircle cx='70' cy='170' r='1.1' fill='%23e9d5ff'/%3E%3Ccircle cx='210' cy='60' r='1.3' fill='%23c4b5fd' opacity='0.9'/%3E%3Ccircle cx='260' cy='200' r='1' fill='%23ffffff' opacity='0.7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat, repeat, repeat;
+  background-size: 58px 58px, 40px 40px, 220px 200px, 300px 240px;
+  background-position-y: 14px, 23px, 0, 30px;
+  animation: eclipseMoon 20s linear infinite;
+}
+/* trajet de la lune, RALENTI : glissement 8%→26% (3.6s), éclipse jusqu'à
+   82%, sortie 82%→96%. La lune (r 17.5) couvre soleil ET halo (r 19 sur
+   40px < 35px visibles… halo entier ⊂ lune) → nuit TOTALE, aucun rayon. */
+@keyframes eclipseMoon {
+  0%, 8% { background-position-x: calc(100% + 80px), calc(100% - 29px), 0, 50px; }
+  26%, 82% { background-position-x: calc(100% - 20px), calc(100% - 29px), 0, 50px; }
+  96%, 100% { background-position-x: calc(100% + 80px), calc(100% - 29px), 0, 50px; }
+}
+@keyframes eclipseDayNight {
+  0%, 8%, 96%, 100% { box-shadow: inset 0 0 0 999px rgba(8, 4, 26, 0), 0 0 18px rgba(251, 191, 36, 0.18), 0 18px 50px rgba(0, 0, 0, 0.35); }
+  26%, 82% { box-shadow: inset 0 0 0 999px rgba(8, 4, 26, 0.6), 0 0 22px rgba(124, 92, 252, 0.28), 0 18px 50px rgba(0, 0, 0, 0.35); }
 }
 
-/* ── lotusCrown ───────────────────────────────────────────── */
+/* ── lotusCrown (MYTHIQUE : lotus nacré posé au coin bas-droit, pétales
+      qui tombent en dérive, nacre irisée, beam nacre) ── */
 .chatFrame--lotusCrown {
   --frame-reflet: rgba(190, 240, 255, 0.30);
-  --frame-ambient:
-    radial-gradient(240px 130px at 10% 0%,  rgba(91,142,248,0.13), transparent 65%),
-    radial-gradient(240px 130px at 90% 15%,  rgba(190,240,255,0.09), transparent 60%);
-
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,8,14,0.94), rgba(10,8,14,0.94)) padding-box,
-    linear-gradient(135deg, rgba(59,77,200,0.48), rgba(190,240,255,0.20)) border-box;
-  box-shadow:
-    0 0 0 1px rgba(59,77,200,0.09),
-    0 18px 50px rgba(0,0,0,0.35);
+    linear-gradient(150deg, rgb(8, 12, 22), rgb(13, 9, 22) 55%, rgb(7, 11, 19)) padding-box,
+    linear-gradient(135deg, rgba(125,211,252,0.5), rgba(249,168,212,0.42) 50%, rgba(110,231,183,0.36)) border-box;
+  animation: lotusNacre 7s ease-in-out infinite;
+}
+/* border beam nacre */
+.chatFrame--lotusCrown::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(190, 240, 255, 0.08) 318deg,
+    rgba(249, 168, 212, 0.65) 342deg,
+    #f0fbff 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(249, 168, 212, 0.6));
+  animation: wrBeam 5.6s linear infinite;
+}
+/* LOTUS-MANDALA vu de dessus en haut-droit (2 rosaces contra-rotatives
+   SMIL : figures psychédéliques ~4.6s puis état stable ~6.4s, en boucle)
+   + 2 couches de pétales tombants ; un VENT périodique les emporte de
+   droite à gauche puis les laisse retomber (décalage X = largeur de tuile
+   → boucle invisible) — spec Lucas. */
+.chatFrame--lotusCrown::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='76' height='76' viewBox='0 0 76 76'%3E%3Cg fill='%23f9a8d4' opacity='0.85'%3E%3CanimateTransform attributeName='transform' type='rotate' values='0 38 38;135 38 38;135 38 38' keyTimes='0;0.42;1' dur='11s' repeatCount='indefinite' calcMode='spline' keySplines='0.4 0 0.2 1;0 0 1 1'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(45 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(90 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(135 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(180 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(225 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(270 38 38)'/%3E%3Cellipse cx='38' cy='21' rx='6.5' ry='15' transform='rotate(315 38 38)'/%3E%3C/g%3E%3Cg fill='%23fbcfe8' opacity='0.6'%3E%3CanimateTransform attributeName='transform' type='rotate' values='22.5 38 38;-112.5 38 38;-112.5 38 38' keyTimes='0;0.42;1' dur='11s' repeatCount='indefinite' calcMode='spline' keySplines='0.4 0 0.2 1;0 0 1 1'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(45 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(90 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(135 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(180 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(225 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(270 38 38)'/%3E%3Cellipse cx='38' cy='23' rx='5' ry='12' transform='rotate(315 38 38)'/%3E%3C/g%3E%3Ccircle cx='38' cy='38' r='7' fill='%23fdf2f8'/%3E%3Ccircle cx='38' cy='38' r='3.4' fill='%23f9a8d4'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='240' viewBox='0 0 220 240'%3E%3Cpath transform='translate(60 70) rotate(28)' d='M0 0 C6 4 8 12 4 20 C-2 14 -3 6 0 0 Z' fill='%23f9a8d4' opacity='0.8'/%3E%3Cpath transform='translate(150 170) rotate(-55)' d='M0 0 C5.4 3.6 7.2 10.8 3.6 18 C-1.8 12.6 -2.7 5.4 0 0 Z' fill='%23fbcfe8' opacity='0.72'/%3E%3Cpath transform='translate(28 190) rotate(84)' d='M0 0 C5 3.4 6.6 10 3.4 16.6 C-1.6 11.6 -2.5 5 0 0 Z' fill='%23f472b6' opacity='0.68'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='280' viewBox='0 0 300 280'%3E%3Cpath transform='translate(210 60) rotate(-40)' d='M0 0 C6 4 8 12 4 20 C-2 14 -3 6 0 0 Z' fill='%23fbcfe8' opacity='0.75'/%3E%3Cpath transform='translate(90 200) rotate(70)' d='M0 0 C5 3.4 6.6 10 3.4 16.6 C-1.6 11.6 -2.5 5 0 0 Z' fill='%23f472b6' opacity='0.7'/%3E%3Cpath transform='translate(260 210) rotate(15)' d='M0 0 C6 4 8 12 4 20 C-2 14 -3 6 0 0 Z' fill='%23f9a8d4' opacity='0.72'/%3E%3Cpath transform='translate(40 96) rotate(-72)' d='M0 0 C5.4 3.6 7.2 10.8 3.6 18 C-1.8 12.6 -2.7 5.4 0 0 Z' fill='%23fbcfe8' opacity='0.66'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat, repeat;
+  background-size: 64px 64px, 220px 240px, 300px 280px;
+  animation:
+    lotusFall 24s linear infinite,
+    lotusWind 9.5s ease-in-out infinite,
+    lotusIris 9s ease-in-out infinite;
+}
+@keyframes lotusFall {
+  0% { background-position-y: 5px, -1440px, -1120px; }
+  100% { background-position-y: 5px, 0, 0; }
+}
+/* rafale droite→gauche : décalage exact d'une largeur de tuile (220/300)
+   → au wrap, les pétales retombent verticalement sans couture */
+@keyframes lotusWind {
+  0%, 45% { background-position-x: calc(100% - 8px), 24px, 140px; }
+  78%, 100% { background-position-x: calc(100% - 8px), -416px, -460px; }
+}
+@keyframes lotusIris {
+  0%, 100% { filter: hue-rotate(0deg) brightness(1); opacity: 0.85; }
+  50% { filter: hue-rotate(22deg) brightness(1.1); opacity: 1; }
+}
+@keyframes lotusNacre {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(59,77,200,0.12), 0 0 14px rgba(190,240,255,0.14), 0 18px 50px rgba(0,0,0,0.35); }
+  33% { box-shadow: 0 0 0 1px rgba(190,240,255,0.2), 0 0 22px rgba(232,121,249,0.18), 0 18px 50px rgba(0,0,0,0.35); }
+  66% { box-shadow: 0 0 0 1px rgba(124,92,252,0.18), 0 0 22px rgba(110,231,183,0.16), 0 18px 50px rgba(0,0,0,0.35); }
 }
 
-
-/* ── NOUVEAU : void (abyssal, presque noir + violet à peine visible) ── */
-/* Identité : ultra rare, exclusif, "void / darkness".
-   Frontière de 1px bordeaux-violet très foncé.
-   Ambient quasiment invisible, reflet blanc glacé. */
+/* ── void (LÉGENDAIRE : le néant respire — brume violette qui dérive
+      + beam violet sombre très lent) ── */
 .chatFrame--void {
   --frame-reflet: rgba(220, 210, 255, 0.18);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(75, 0,130,0.14), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(30, 0, 80,0.10), transparent 60%);
-
   border: 1px solid transparent;
   background:
     linear-gradient(rgba(6,4,12,0.97), rgba(6,4,12,0.97)) padding-box,
     linear-gradient(135deg, rgba(90,20,130,0.55), rgba(30,10,70,0.42), rgba(60,0,100,0.50)) border-box;
-  box-shadow:
-    0 0 0 1px rgba(80, 0,120,0.10),
-    0 22px 60px rgba(0,0,0,0.45);
+  animation: voidBreath 5s ease-in-out infinite;
+}
+/* border beam violet abyssal */
+.chatFrame--void::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(147, 51, 234, 0.08) 318deg,
+    rgba(147, 51, 234, 0.65) 342deg,
+    #d8b4fe 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(147, 51, 234, 0.6));
+  animation: wrBeam 6.5s linear infinite;
+}
+/* le néant ASPIRE : vortex symétrique à 2 bras (rotation SMIL) vers
+   lequel convergent des particules venues de tout le cadran
+   (animateMotion, durées/départs décalés) + nappes de brume dérivantes */
+.chatFrame--void::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='120' viewBox='0 0 420 120'%3E%3Cdefs%3E%3ClinearGradient id='ad' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0%25' stop-color='%237e22ce' stop-opacity='0.8'/%3E%3Cstop offset='50%25' stop-color='%23e879f9' stop-opacity='0.95'/%3E%3Cstop offset='100%25' stop-color='%237e22ce' stop-opacity='0.8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cg transform='translate(354 34)'%3E%3Cg transform='rotate(-14)'%3E%3Cellipse rx='28' ry='8' fill='none' stroke='url(%23ad)' stroke-width='3.5' stroke-dasharray='12 7'%3E%3Canimate attributeName='stroke-dashoffset' from='19' to='0' dur='1.6s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3C/g%3E%3Ccircle r='9.5' fill='%23000000'/%3E%3Ccircle r='10.4' fill='none' stroke='%23f5d0fe' stroke-width='1' opacity='0.85'/%3E%3Cpath d='M-10 -5 A 11.5 11.5 0 0 1 10 -5' fill='none' stroke='%23e9d5ff' stroke-width='1.5' opacity='0.7'/%3E%3C/g%3E%3Cg%3E%3Ccircle r='2.2' fill='%23a855f7'%3E%3CanimateMotion path='M20 14 C140 24 260 30 352 34' dur='5.5s' begin='0s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.85;0.85;0' keyTimes='0;0.12;0.8;1' dur='5.5s' begin='0s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.6' fill='%23c4b5fd'%3E%3CanimateMotion path='M30 108 C150 92 270 56 350 40' dur='6.8s' begin='-2.4s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.8;0.8;0' keyTimes='0;0.12;0.8;1' dur='6.8s' begin='-2.4s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='2.6' fill='%237e22ce'%3E%3CanimateMotion path='M120 6 C220 12 300 22 350 30' dur='4.8s' begin='-1.2s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.9;0.9;0' keyTimes='0;0.12;0.8;1' dur='4.8s' begin='-1.2s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.4' fill='%23e9d5ff'%3E%3CanimateMotion path='M60 62 C180 54 280 42 348 36' dur='7.6s' begin='-4s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.75;0.75;0' keyTimes='0;0.12;0.8;1' dur='7.6s' begin='-4s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='2' fill='%23a855f7'%3E%3CanimateMotion path='M200 112 C280 84 330 54 352 42' dur='5.2s' begin='-3.1s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.85;0.85;0' keyTimes='0;0.12;0.8;1' dur='5.2s' begin='-3.1s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.8' fill='%23c4b5fd'%3E%3CanimateMotion path='M250 8 C300 16 336 24 350 28' dur='4.2s' begin='-0.6s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.8;0.8;0' keyTimes='0;0.12;0.8;1' dur='4.2s' begin='-0.6s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.5' fill='%23d8b4fe'%3E%3CanimateMotion path='M10 40 C120 40 240 38 350 34' dur='6.2s' begin='-5s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.8;0.8;0' keyTimes='0;0.12;0.8;1' dur='6.2s' begin='-5s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='2.3' fill='%237e22ce'%3E%3CanimateMotion path='M80 2 C180 8 290 20 352 28' dur='5.8s' begin='-2s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.9;0.9;0' keyTimes='0;0.12;0.8;1' dur='5.8s' begin='-2s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.7' fill='%23a855f7'%3E%3CanimateMotion path='M160 116 C240 96 320 60 354 44' dur='4.6s' begin='-3.6s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.85;0.85;0' keyTimes='0;0.12;0.8;1' dur='4.6s' begin='-3.6s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle r='1.4' fill='%23e9d5ff'%3E%3CanimateMotion path='M300 112 C330 84 346 56 352 44' dur='3.6s' begin='-1.8s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0.8;0.8;0' keyTimes='0;0.12;0.8;1' dur='3.6s' begin='-1.8s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(320px 150px at 30% 60%, rgba(88, 28, 135, 0.22), transparent 70%),
+    radial-gradient(360px 170px at 75% 30%, rgba(49, 16, 90, 0.26), transparent 70%);
+  background-repeat: no-repeat, repeat-x, repeat-x;
+  background-size: 420px 120px, 620px 100%, 740px 100%;
+  background-position-y: 0, 0, 0;
+  animation:
+    voidDrift 28s linear infinite,
+    voidSwirl 9s ease-in-out infinite;
+}
+@keyframes voidDrift {
+  0% { background-position-x: calc(100% - 2px), 0, 0; }
+  100% { background-position-x: calc(100% - 2px), -620px, -1480px; }
+}
+@keyframes voidBreath {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(80,0,120,0.10), inset 0 0 24px rgba(20,0,50,0.0), 0 22px 60px rgba(0,0,0,0.45); }
+  50% { box-shadow: 0 0 0 1px rgba(140,40,200,0.28), inset 0 0 34px rgba(40,0,90,0.5), 0 22px 60px rgba(0,0,0,0.55); }
+}
+@keyframes voidSwirl {
+  0%, 100% { opacity: 0.6; filter: brightness(0.92); }
+  50% { opacity: 1; filter: brightness(1.2); }
 }
 
-
-/* ── NOUVEAU : aurora (rose-vert boréal animé) ─────────────── */
-/* Identité : rare, vivant, "northern lights".
-   Le border-image ne peut pas s'animer directement, donc on
-   anime la teinte de l'ambient glow et du reflet via une pseudo-
-   animation sur opacity + hue-rotate du ::after. */
-@keyframes auroraShift {
-  0%   { opacity: 0.70; filter: hue-rotate(0deg); }
-  50%  { opacity: 0.92; filter: hue-rotate(24deg); }
-  100% { opacity: 0.70; filter: hue-rotate(0deg); }
-}
+/* ── aurora (ÉPIQUE : voile boréal qui ondule doucement) ── */
 .chatFrame--aurora {
   --frame-reflet: rgba(110, 231, 183, 0.32);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(52,211,153,0.16), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(232,121,249,0.12), transparent 60%);
-
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(8,10,14,0.94), rgba(8,10,14,0.94)) padding-box,
+    linear-gradient(160deg, rgb(5, 12, 12), rgb(4, 8, 12) 55%, rgb(6, 12, 14)) padding-box,
     linear-gradient(135deg, rgba(52,211,153,0.46), rgba(167,139,250,0.30), rgba(232,121,249,0.38)) border-box;
   box-shadow:
     0 0 0 1px rgba(52,211,153,0.08),
     0 18px 50px rgba(0,0,0,0.35);
 }
 .chatFrame--aurora::after {
-  animation: auroraShift 7s ease-in-out infinite;
+  background:
+    linear-gradient(100deg, transparent 15%, rgba(52, 211, 153, 0.14) 32%, rgba(167, 139, 250, 0.12) 48%, rgba(232, 121, 249, 0.10) 62%, transparent 80%),
+    radial-gradient(260px 140px at 10% 0%, rgba(52,211,153,0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%, rgba(232,121,249,0.10), transparent 60%);
+  animation: auroraShift 10s ease-in-out infinite;
+}
+@keyframes auroraShift {
+  0%, 100% { opacity: 0.72; filter: hue-rotate(0deg); }
+  50% { opacity: 0.9; filter: hue-rotate(20deg); }
 }
 
-
-/* ── NOUVEAU : neonPink ──────────────────────────────────────── */
-@keyframes neonPinkPulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(255,0,128,0.08), 0 18px 50px rgba(0,0,0,0.35); }
-  50%       { box-shadow: 0 0 0 1px rgba(255,0,128,0.20), 0 0 18px rgba(255,0,128,0.18), 0 18px 50px rgba(0,0,0,0.35); }
-}
+/* ── neonPink (RARE : rose→magenta statique, glow fixe) ── */
 .chatFrame--neonPink {
   --frame-reflet: rgba(255, 80, 160, 0.38);
   --frame-ambient:
@@ -559,17 +994,12 @@
     radial-gradient(260px 140px at 90% 20%,  rgba(200,0,100,0.10), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,4,14,0.95), rgba(10,4,14,0.95)) padding-box,
+    linear-gradient(150deg, rgb(18, 4, 12), rgb(11, 3, 9) 60%, rgb(16, 3, 11)) padding-box,
     linear-gradient(135deg, rgba(255,0,128,0.55), rgba(160,0,80,0.35)) border-box;
-  will-change: box-shadow;
-  animation: neonPinkPulse 3.5s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(255,0,128,0.14), 0 0 14px rgba(255,0,128,0.12), 0 18px 50px rgba(0,0,0,0.35);
 }
 
-/* ── NOUVEAU : neonCyan ──────────────────────────────────────── */
-@keyframes neonCyanPulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(0,220,255,0.08), 0 18px 50px rgba(0,0,0,0.35); }
-  50%       { box-shadow: 0 0 0 1px rgba(0,220,255,0.20), 0 0 18px rgba(0,220,255,0.18), 0 18px 50px rgba(0,0,0,0.35); }
-}
+/* ── neonCyan (RARE : cyan→bleu statique, glow fixe) ── */
 .chatFrame--neonCyan {
   --frame-reflet: rgba(0, 220, 255, 0.36);
   --frame-ambient:
@@ -577,50 +1007,94 @@
     radial-gradient(260px 140px at 90% 20%,  rgba(0,160,200,0.10), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(4,12,16,0.95), rgba(4,12,16,0.95)) padding-box,
+    linear-gradient(150deg, rgb(3, 13, 17), rgb(2, 9, 13) 60%, rgb(4, 14, 19)) padding-box,
     linear-gradient(135deg, rgba(0,220,255,0.50), rgba(0,100,160,0.30)) border-box;
-  will-change: box-shadow;
-  animation: neonCyanPulse 3.5s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(0,220,255,0.14), 0 0 14px rgba(0,220,255,0.12), 0 18px 50px rgba(0,0,0,0.35);
 }
 
-/* ── NOUVEAU : galaxy ────────────────────────────────────────── */
-@keyframes galaxyShift {
-  0%   { opacity: 0.72; filter: hue-rotate(0deg); }
-  50%  { opacity: 0.90; filter: hue-rotate(30deg); }
-  100% { opacity: 0.72; filter: hue-rotate(0deg); }
-}
+/* ── galaxy (ÉPIQUE : nébuleuse — ciel étoilé en fond, scintillement
+      très lent) ── */
 .chatFrame--galaxy {
   --frame-reflet: rgba(180, 100, 255, 0.38);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(120,0,220,0.18), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(60,80,240,0.14), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(6,4,14,0.95), rgba(6,4,14,0.95)) padding-box,
+    linear-gradient(150deg, rgb(10, 6, 20), rgb(6, 5, 16) 50%, rgb(11, 7, 22)) padding-box,
     linear-gradient(135deg, rgba(140,0,255,0.52), rgba(60,80,240,0.44), rgba(0,180,255,0.30)) border-box;
   box-shadow: 0 0 0 1px rgba(120,0,220,0.09), 0 18px 50px rgba(0,0,0,0.38);
 }
-.chatFrame--galaxy::after { animation: galaxyShift 8s ease-in-out infinite; }
-
-/* ── NOUVEAU : blood ─────────────────────────────────────────── */
-@keyframes bloodPulse {
-  0%, 100% { box-shadow: 0 0 0 1px rgba(180,0,0,0.10), 0 18px 50px rgba(0,0,0,0.38); }
-  50%       { box-shadow: 0 0 0 1px rgba(220,0,0,0.22), 0 0 20px rgba(200,0,0,0.16), 0 18px 50px rgba(0,0,0,0.38); }
+/* spirale galactique au coin haut-droit (rotation SMIL très lente, 48s)
+   + ciel étoilé (retour Lucas : combler le haut-droit) */
+.chatFrame--galaxy::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='90' viewBox='0 0 130 90'%3E%3Cdefs%3E%3CradialGradient id='c'%3E%3Cstop offset='0%25' stop-color='%23fdf4ff' stop-opacity='0.95'/%3E%3Cstop offset='50%25' stop-color='%23e9d5ff' stop-opacity='0.45'/%3E%3Cstop offset='100%25' stop-color='%23c084fc' stop-opacity='0'/%3E%3C/radialGradient%3E%3Cfilter id='b' x='-60%25' y='-60%25' width='220%25' height='220%25'%3E%3CfeGaussianBlur stdDeviation='4'/%3E%3C/filter%3E%3C/defs%3E%3Cg transform='translate(68 45) rotate(-16)'%3E%3Cg filter='url(%23b)'%3E%3Cellipse rx='44' ry='15' fill='%234c1d95' opacity='0.55'/%3E%3Cellipse rx='30' ry='10' fill='%237c3aed' opacity='0.55' transform='rotate(6)'/%3E%3Cellipse cx='7' rx='18' ry='7' fill='%23c026d3' opacity='0.45' transform='rotate(-8)'/%3E%3Cellipse cx='-12' cy='2' rx='12' ry='5' fill='%232563eb' opacity='0.4'/%3E%3C/g%3E%3Cellipse rx='9' ry='5.5' fill='url(%23c)'/%3E%3Cg fill='%23ffffff'%3E%3Ccircle cx='24' cy='-5' r='0.9' opacity='0.9'/%3E%3Ccircle cx='-28' cy='6' r='0.8' opacity='0.8'/%3E%3Ccircle cx='36' cy='4' r='0.7' opacity='0.7'/%3E%3Ccircle cx='-16' cy='-8' r='0.7' opacity='0.75'/%3E%3Ccircle cx='12' cy='9' r='0.8' opacity='0.85'/%3E%3Ccircle cx='-38' cy='-2' r='0.6' opacity='0.6'/%3E%3Ccircle cx='2' cy='-12' r='0.7' opacity='0.7'/%3E%3Ccircle cx='30' cy='11' r='0.6' opacity='0.65'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='210' height='190' viewBox='0 0 210 190'%3E%3Ccircle cx='30' cy='40' r='1.3' fill='%23e9d5ff'/%3E%3Ccircle cx='120' cy='150' r='1' fill='%23bfdbfe'/%3E%3Ccircle cx='180' cy='70' r='1.5' fill='%23ffffff' opacity='0.9'/%3E%3Cpath d='M80 100 L81.2 104.8 L86 106 L81.2 107.2 L80 112 L78.8 107.2 L74 106 L78.8 104.8 Z' fill='%23c4b5fd'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='290' height='230' viewBox='0 0 290 230'%3E%3Ccircle cx='60' cy='180' r='1.1' fill='%23e9d5ff'/%3E%3Ccircle cx='200' cy='50' r='1.4' fill='%23bfdbfe' opacity='0.9'/%3E%3Ccircle cx='250' cy='190' r='1' fill='%23ffffff' opacity='0.75'/%3E%3Ccircle cx='140' cy='110' r='0.9' fill='%23c4b5fd'/%3E%3C/svg%3E"),
+    radial-gradient(260px 140px at 15% 0%, rgba(120, 0, 220, 0.16), transparent 65%),
+    radial-gradient(260px 140px at 85% 100%, rgba(60, 80, 240, 0.14), transparent 60%);
+  background-repeat: no-repeat, repeat, repeat, no-repeat, no-repeat;
+  background-size: 130px 90px, 210px 190px, 290px 230px, auto, auto;
+  background-position: calc(100% - 4px) 0, 0 0, 0 0, 0 0, 0 0;
+  animation: galaxyTwinkle 11s ease-in-out infinite;
 }
+@keyframes galaxyTwinkle {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.92; }
+}
+
+/* ── blood (LÉGENDAIRE, monté d'épique sur demande Lucas : le sang
+      dégouline comme le titre Bourreau — coulures au bord haut + gouttes
+      qui tombent + beam rouge sang) ── */
 .chatFrame--blood {
   --frame-reflet: rgba(220, 40, 40, 0.32);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(200,0,0,0.16), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(140,0,0,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,2,2,0.96), rgba(10,2,2,0.96)) padding-box,
+    linear-gradient(165deg, rgb(16, 3, 3), rgb(9, 2, 2) 60%, rgb(14, 2, 2)) padding-box,
     linear-gradient(135deg, rgba(200,0,0,0.55), rgba(100,0,0,0.40)) border-box;
-  will-change: box-shadow;
-  animation: bloodPulse 4s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(200,0,0,0.14), 0 0 16px rgba(200,0,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
+}
+/* border beam rouge SANG (plus sombre que le beam feu du Champ de
+   Bataille) */
+.chatFrame--blood::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(185, 28, 28, 0.08) 318deg,
+    rgba(185, 28, 28, 0.72) 342deg,
+    #fecaca 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(185, 28, 28, 0.65));
+  animation: wrBeam 5s linear infinite;
+}
+/* coulures fixes en haut + 2 couches de gouttes qui tombent (5×280 et
+   4×320 cycles entiers sur 22s → boucle invisible) */
+.chatFrame--blood::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='40' viewBox='0 0 220 40'%3E%3Cpath fill='%237f1d1d' opacity='0.92'%3E%3Canimate attributeName='d' values='M0 40 L0 16 Q27.5 9 55 16 T110 16 T165 16 T220 16 L220 40 Z;M0 40 L0 16 Q27.5 22 55 16 T110 16 T165 16 T220 16 L220 40 Z;M0 40 L0 16 Q27.5 9 55 16 T110 16 T165 16 T220 16 L220 40 Z' dur='3.6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath fill='%23a51d1d' opacity='0.7'%3E%3Canimate attributeName='d' values='M0 40 L0 22 Q36 17 73 22 T146 22 T220 22 L220 40 Z;M0 40 L0 22 Q36 27 73 22 T146 22 T220 22 L220 40 Z;M0 40 L0 22 Q36 17 73 22 T146 22 T220 22 L220 40 Z' dur='2.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M0 16 Q27.5 9 55 16 T110 16 T165 16 T220 16' fill='none' stroke='%23dc2626' stroke-width='1' stroke-opacity='0.4'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='280' viewBox='0 0 240 280'%3E%3Cpath transform='translate(60 70)' d='M4 0 C6 4 8 7 8 10 A4 4 0 1 1 0 10 C0 7 2 4 4 0 Z' fill='%23991b1b'/%3E%3Cpath transform='translate(180 200)' d='M3 0 C4.5 3 6 5.2 6 7.5 A3 3 0 1 1 0 7.5 C0 5.2 1.5 3 3 0 Z' fill='%237f1d1d'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320' viewBox='0 0 320 320'%3E%3Cpath transform='translate(250 90)' d='M3.5 0 C5.2 3.4 7 6 7 8.6 A3.5 3.5 0 1 1 0 8.6 C0 6 1.8 3.4 3.5 0 Z' fill='%23b91c1c'/%3E%3Cpath transform='translate(100 250)' d='M2.6 0 C3.9 2.6 5.2 4.5 5.2 6.5 A2.6 2.6 0 1 1 0 6.5 C0 4.5 1.3 2.6 2.6 0 Z' fill='%236b1212'/%3E%3C/svg%3E"),
+    radial-gradient(260px 140px at 10% 0%, rgba(200, 0, 0, 0.14), transparent 65%);
+  background-repeat: repeat-x, repeat, repeat, no-repeat;
+  background-size: 220px 40px, 240px 280px, 320px 320px, auto;
+  background-position-x: 0, 20px, 130px, 0;
+  opacity: 0.9;
+  animation: bloodDrip 22s linear infinite;
+}
+@keyframes bloodDrip {
+  0% { background-position-y: 100%, -1400px, -1280px, 0; }
+  100% { background-position-y: 100%, 0, 0, 0; }
 }
 
-/* ── NOUVEAU : emerald ───────────────────────────────────────── */
+/* ── emerald (RARE : vert émeraude statique) ── */
 .chatFrame--emerald {
   --frame-reflet: rgba(52, 211, 100, 0.32);
   --frame-ambient:
@@ -628,105 +1102,257 @@
     radial-gradient(260px 140px at 90% 20%,  rgba(0,120,60,0.10), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(4,12,6,0.95), rgba(4,12,6,0.95)) padding-box,
+    linear-gradient(150deg, rgb(4, 14, 8), rgb(3, 10, 6) 60%, rgb(5, 15, 9)) padding-box,
     linear-gradient(135deg, rgba(16,185,80,0.52), rgba(0,120,60,0.34)) border-box;
   box-shadow: 0 0 0 1px rgba(16,185,80,0.08), 0 18px 50px rgba(0,0,0,0.35);
 }
 
-/* ── NOUVEAU : royal ─────────────────────────────────────────── */
+/* ── royal (ÉPIQUE : pourpre + or — semis de losanges or, double liseré,
+      respiration très douce) ── */
 .chatFrame--royal {
   --frame-reflet: rgba(255, 200, 60, 0.36);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(251,191,36,0.12), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(120,60,200,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,6,16,0.95), rgba(10,6,16,0.95)) padding-box,
+    linear-gradient(150deg, rgb(16, 8, 24), rgb(11, 6, 18) 55%, rgb(15, 7, 22)) padding-box,
     linear-gradient(135deg, rgba(251,191,36,0.50), rgba(120,60,200,0.42)) border-box;
-  box-shadow: 0 0 0 1px rgba(180,130,0,0.09), 0 18px 50px rgba(0,0,0,0.35);
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.14),
+    0 0 0 1px rgba(180,130,0,0.09),
+    0 18px 50px rgba(0,0,0,0.35);
+}
+.chatFrame--royal::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M18 5 L31 18 L18 31 L5 18 Z' fill='none' stroke='%23fbbf24' stroke-opacity='0.13'/%3E%3Ccircle cx='18' cy='18' r='1' fill='%23fbbf24' opacity='0.18'/%3E%3C/svg%3E"),
+    radial-gradient(260px 140px at 50% 0%, rgba(251, 191, 36, 0.10), transparent 65%);
+  background-repeat: repeat, no-repeat;
+  background-size: 36px 36px, auto;
+  animation: royalBreath 8s ease-in-out infinite;
+}
+@keyframes royalBreath {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 0.9; }
 }
 
-/* ── NOUVEAU : glitch (legendary) ───────────────────────────── */
-@keyframes glitchShift {
-  0%, 90%, 100% { filter: none; transform: none; }
-  92%  { filter: hue-rotate(90deg) saturate(2); transform: translateX(1px); }
-  94%  { filter: hue-rotate(-60deg) saturate(3); transform: translateX(-2px); }
-  96%  { filter: hue-rotate(120deg) saturate(2); transform: translateX(1px); }
-  98%  { filter: none; transform: none; }
-}
+/* ── glitch (LÉGENDAIRE : signal corrompu — scanlines, double comète
+      cyan/magenta sur la bordure, bursts brefs) ── */
 .chatFrame--glitch {
   --frame-reflet: rgba(255, 0, 200, 0.30);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(0,255,200,0.12), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(255,0,200,0.10), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(6,6,14,0.96), rgba(6,6,14,0.96)) padding-box,
+    linear-gradient(rgb(6, 6, 14), rgb(6, 6, 14)) padding-box,
     linear-gradient(135deg, rgba(0,255,200,0.45), rgba(255,0,200,0.45)) border-box;
   box-shadow: 0 0 0 1px rgba(0,255,200,0.10), 0 18px 50px rgba(0,0,0,0.40);
   will-change: transform, filter;
-  animation: glitchShift 7s ease-in-out infinite;
+  animation: glitchShift 9s ease-in-out infinite;
+}
+/* double comète : une cyan et une magenta aux antipodes */
+.chatFrame--glitch::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 132deg,
+    rgba(0, 255, 200, 0.6) 162deg,
+    #b3fff0 172deg,
+    transparent 180deg 312deg,
+    rgba(255, 0, 200, 0.6) 342deg,
+    #ffb3f5 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(0, 255, 200, 0.5));
+  animation: wrBeam 3.6s linear infinite;
+}
+/* écran corrompu : scanline qui descend en continu + le fond qui se
+   déchire en TRANCHES décalées (clip-path) sur deux bursts par cycle —
+   plus de hue-rotate (retour Lucas : « arc-en-ciel qui clignote ») */
+.chatFrame--glitch::after {
+  background:
+    linear-gradient(180deg, transparent 0 42%, rgba(180, 255, 240, 0.05) 47%, rgba(0, 255, 200, 0.11) 50%, rgba(180, 255, 240, 0.05) 53%, transparent 58% 100%),
+    repeating-linear-gradient(0deg, rgba(0, 255, 200, 0.045) 0 1px, transparent 1px 3px),
+    radial-gradient(260px 140px at 10% 0%, rgba(0,255,200,0.12), transparent 65%),
+    radial-gradient(260px 140px at 90% 20%, rgba(255,0,200,0.10), transparent 60%);
+  background-repeat: no-repeat, repeat, no-repeat, no-repeat;
+  background-size: 100% 240px, auto, auto, auto;
+  animation:
+    glitchScan 4.5s linear infinite,
+    glitchSlices 9s steps(1, end) infinite;
+}
+@keyframes glitchScan {
+  0% { background-position-y: calc(0% - 240px), 0, 0, 0; }
+  100% { background-position-y: calc(100% + 240px), 0, 0, 0; }
+}
+/* 3 bursts par cycle, longs (~0.7s chacun — retour Lucas : trop courts) */
+@keyframes glitchSlices {
+  0%, 8.9%, 15.1%, 23.9%, 30.1%, 39.9%, 46.1%, 100% { clip-path: none; transform: none; }
+  9% { clip-path: inset(12% 0 74% 0); transform: translateX(-6px); }
+  10.5% { clip-path: inset(58% 0 24% 0); transform: translateX(5px); }
+  12% { clip-path: inset(30% 0 48% 0); transform: translateX(-4px); }
+  13.5% { clip-path: inset(72% 0 10% 0); transform: translateX(6px); }
+  15% { clip-path: inset(5% 0 82% 0); transform: translateX(-5px); }
+  24% { clip-path: inset(64% 0 18% 0); transform: translateX(5px); }
+  25.5% { clip-path: inset(22% 0 60% 0); transform: translateX(-6px); }
+  27% { clip-path: inset(48% 0 36% 0); transform: translateX(4px); }
+  28.5% { clip-path: inset(10% 0 76% 0); transform: translateX(-3px); }
+  30% { clip-path: inset(80% 0 4% 0); transform: translateX(6px); }
+  40% { clip-path: inset(70% 0 12% 0); transform: translateX(6px); }
+  41.5% { clip-path: inset(8% 0 80% 0); transform: translateX(-5px); }
+  43% { clip-path: inset(45% 0 40% 0); transform: translateX(4px); }
+  44.5% { clip-path: inset(18% 0 66% 0); transform: translateX(-6px); }
+  46% { clip-path: inset(55% 0 28% 0); transform: translateX(5px); }
+}
+@keyframes glitchShift {
+  0%, 8.9%, 15%, 23.9%, 30%, 39.9%, 46%, 100% { transform: none; }
+  10%  { transform: translateX(1.5px); }
+  13%  { transform: translateX(-1.5px); }
+  25%  { transform: translateX(-1.5px); }
+  28%  { transform: translateX(1.5px); }
+  41%  { transform: translateX(1.5px); }
+  44%  { transform: translateX(-1.5px); }
 }
 
-/* ── NOUVEAU : diamond (legendary) ──────────────────────────── */
-@keyframes diamondSpin {
-  0%   { filter: brightness(1) hue-rotate(0deg); }
-  50%  { filter: brightness(1.15) hue-rotate(20deg); }
-  100% { filter: brightness(1) hue-rotate(0deg); }
-}
+/* ── diamond (LÉGENDAIRE : éclat pur — beam blanc glacé + éclats qui
+      scintillent en fond) ── */
 .chatFrame--diamond {
   --frame-reflet: rgba(200, 240, 255, 0.44);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(180,230,255,0.16), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(100,200,255,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(6,10,16,0.95), rgba(6,10,16,0.95)) padding-box,
+    linear-gradient(150deg, rgb(7, 12, 19), rgb(5, 9, 15) 55%, rgb(8, 13, 20)) padding-box,
     linear-gradient(135deg, rgba(180,230,255,0.55), rgba(255,255,255,0.28), rgba(100,180,255,0.50)) border-box;
   box-shadow: 0 0 0 1px rgba(180,230,255,0.12), 0 18px 50px rgba(0,0,0,0.38);
 }
-.chatFrame--diamond::after { animation: diamondSpin 6s ease-in-out infinite; }
-
-/* ── NOUVEAU : phoenix (legendary) ──────────────────────────── */
-@keyframes phoenixFlare {
-  0%   { opacity: 0.68; filter: hue-rotate(0deg); }
-  40%  { opacity: 0.92; filter: hue-rotate(-15deg); }
-  80%  { opacity: 0.78; filter: hue-rotate(10deg); }
-  100% { opacity: 0.68; filter: hue-rotate(0deg); }
+/* border beam blanc glacé */
+.chatFrame--diamond::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(200, 240, 255, 0.08) 318deg,
+    rgba(200, 240, 255, 0.75) 342deg,
+    #ffffff 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(200, 240, 255, 0.75));
+  animation: wrBeam 4.8s linear infinite;
 }
+/* facettes discrètes + éclats — scintillement irrégulier */
+.chatFrame--diamond::after {
+  background:
+    linear-gradient(115deg, transparent 44%, rgba(200, 240, 255, 0.05) 47%, transparent 50%, rgba(200, 240, 255, 0.04) 56%, transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='230' height='210' viewBox='0 0 230 210'%3E%3Cpath d='M60 44 L62 52 L70 54 L62 56 L60 64 L58 56 L50 54 L58 52 Z' fill='%23e8f6ff'/%3E%3Ccircle cx='172' cy='158' r='1.5' fill='%23bae6fd'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='310' height='260' viewBox='0 0 310 260'%3E%3Cpath d='M240 64 L241.6 70.4 L248 72 L241.6 73.6 L240 80 L238.4 73.6 L232 72 L238.4 70.4 Z' fill='%23ffffff' opacity='0.9'/%3E%3Cpath d='M100 204 L101.2 208.8 L106 210 L101.2 211.2 L100 216 L98.8 211.2 L94 210 L98.8 208.8 Z' fill='%23bae6fd'/%3E%3Ccircle cx='34' cy='118' r='1.2' fill='%23e8f6ff'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat, repeat;
+  background-size: auto, 230px 210px, 310px 260px;
+  animation: diamondTwinkle 5.2s ease-in-out infinite;
+}
+@keyframes diamondTwinkle {
+  0%, 100% { opacity: 0.55; filter: brightness(1); }
+  22% { opacity: 0.95; filter: brightness(1.3); }
+  50% { opacity: 0.6; filter: brightness(1); }
+  74% { opacity: 0.9; filter: brightness(1.2); }
+}
+
+/* ── phoenix (LÉGENDAIRE : renaissance — braises et flammèches qui
+      montent + beam de feu) ── */
 .chatFrame--phoenix {
   --frame-reflet: rgba(255, 160, 40, 0.42);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(255,140,0,0.18), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(255,60,0,0.14), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(12,4,2,0.96), rgba(12,4,2,0.96)) padding-box,
+    linear-gradient(150deg, rgb(20, 7, 3), rgb(13, 4, 2) 55%, rgb(18, 6, 2)) padding-box,
     linear-gradient(135deg, rgba(255,140,0,0.58), rgba(255,60,0,0.50), rgba(255,220,0,0.35)) border-box;
   box-shadow: 0 0 0 1px rgba(255,140,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
 }
-.chatFrame--phoenix::after { animation: phoenixFlare 5s ease-in-out infinite; }
-
-/* ── NOUVEAU : ice (epic) ────────────────────────────────────── */
-@keyframes iceShimmer {
-  0%   { opacity: 0.72; filter: brightness(1); }
-  50%  { opacity: 0.90; filter: brightness(1.12); }
-  100% { opacity: 0.72; filter: brightness(1); }
+/* border beam de feu */
+.chatFrame--phoenix::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(255, 122, 26, 0.08) 318deg,
+    rgba(255, 122, 26, 0.72) 342deg,
+    #ffd9a8 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(255, 122, 26, 0.7));
+  animation: wrBeam 4.2s linear infinite;
 }
+/* braises montantes (6×260 / 4×300 sur 24s) + flare */
+.chatFrame--phoenix::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='230' height='260' viewBox='0 0 230 260'%3E%3Cpath transform='translate(50 180)' d='M7 20 C2 14 4 8 9 3 C8 8 12 9 11 14 C10.4 17.6 9 19 7 20 Z' fill='%23fb923c'/%3E%3Ccircle cx='160' cy='80' r='2' fill='%23fbbf24'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='310' height='300' viewBox='0 0 310 300'%3E%3Cpath transform='translate(230 210)' d='M9 26 C2.6 18.2 5.2 10.4 11.7 3.9 C10.4 10.4 15.6 11.7 14.3 18.2 C13.5 22.9 11.7 24.7 9 26 Z' fill='%23f97316'/%3E%3Ccircle cx='90' cy='120' r='1.6' fill='%23fde68a'/%3E%3Ccircle cx='180' cy='40' r='1.3' fill='%23fb923c'/%3E%3C/svg%3E");
+  background-repeat: repeat, repeat;
+  background-size: 230px 260px, 310px 300px;
+  background-position-x: 30px, 150px;
+  animation:
+    phoenixRise 24s linear infinite,
+    phoenixFlare 5s ease-in-out infinite;
+}
+@keyframes phoenixRise {
+  0% { background-position-y: 0, 0; }
+  100% { background-position-y: -1560px, -1200px; }
+}
+@keyframes phoenixFlare {
+  0%, 100% { opacity: 0.68; filter: hue-rotate(0deg); }
+  40% { opacity: 0.92; filter: hue-rotate(-15deg); }
+  80% { opacity: 0.78; filter: hue-rotate(10deg); }
+}
+
+/* ── ice (ÉPIQUE : givre dans les coins — habillage statique, shimmer
+      très léger) ── */
 .chatFrame--ice {
   --frame-reflet: rgba(200, 240, 255, 0.44);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(150,220,255,0.16), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(200,240,255,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(4,10,16,0.95), rgba(4,10,16,0.95)) padding-box,
+    linear-gradient(150deg, rgb(6, 13, 20), rgb(4, 9, 15) 55%, rgb(7, 14, 22)) padding-box,
     linear-gradient(135deg, rgba(150,220,255,0.52), rgba(200,240,255,0.30), rgba(100,180,240,0.44)) border-box;
   box-shadow: 0 0 0 1px rgba(150,220,255,0.10), 0 18px 50px rgba(0,0,0,0.35);
 }
-.chatFrame--ice::after { animation: iceShimmer 6s ease-in-out infinite; }
+/* GELURES chaotiques sur tout le cadran (retour Lucas : pas de flocon,
+   du givre façon fougère, jusqu'au centre) : coins + 2 tuiles éparses
+   d'amas à angles variés, jamais alignés */
+.chatFrame--ice::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='200' viewBox='0 0 300 200'%3E%3Cg stroke='%23bae6fd' fill='none' stroke-linecap='round'%3E%3Cg transform='translate(110 28) rotate(24)' stroke-width='1.35' opacity='0.48'%3E%3Cpath d='M0 0 L58 30'/%3E%3Cpath d='M14 7 L18 -4'/%3E%3Cpath d='M27 14 L33 2'/%3E%3Cpath d='M40 21 L46 10'/%3E%3Cpath d='M16 8 L12 20'/%3E%3Cpath d='M31 16 L27 27'/%3E%3Cpath d='M46 24 L42 34'/%3E%3C/g%3E%3Cg transform='translate(225 84) rotate(-58)' stroke-width='1.25' opacity='0.42'%3E%3Cpath d='M0 0 L48 26'/%3E%3Cpath d='M12 6 L16 -4'/%3E%3Cpath d='M24 13 L30 3'/%3E%3Cpath d='M14 8 L10 18'/%3E%3Cpath d='M33 18 L29 28'/%3E%3C/g%3E%3Cg transform='translate(35 112) rotate(102)' stroke-width='1.2' opacity='0.4'%3E%3Cpath d='M0 0 L40 20'/%3E%3Cpath d='M10 5 L14 -4'/%3E%3Cpath d='M20 10 L25 2'/%3E%3Cpath d='M12 6 L9 15'/%3E%3C/g%3E%3Cg transform='translate(200 52) rotate(-130)' stroke-width='1.3' opacity='0.45'%3E%3Cpath d='M0 0 L44 22'/%3E%3Cpath d='M11 5 L15 -5'/%3E%3Cpath d='M22 11 L28 2'/%3E%3Cpath d='M13 7 L9 17'/%3E%3Cpath d='M30 15 L26 25'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='380' height='240' viewBox='0 0 380 240'%3E%3Cg stroke='%23bae6fd' fill='none' stroke-linecap='round'%3E%3Cg transform='translate(295 45) rotate(148)' stroke-width='1.35' opacity='0.46'%3E%3Cpath d='M0 0 L54 27'/%3E%3Cpath d='M13 6 L17 -5'/%3E%3Cpath d='M26 13 L32 3'/%3E%3Cpath d='M39 20 L45 9'/%3E%3Cpath d='M15 8 L11 19'/%3E%3Cpath d='M30 15 L26 26'/%3E%3C/g%3E%3Cg transform='translate(85 64) rotate(-20)' stroke-width='1.25' opacity='0.42'%3E%3Cpath d='M0 0 L46 22'/%3E%3Cpath d='M12 6 L16 -4'/%3E%3Cpath d='M23 11 L29 2'/%3E%3Cpath d='M14 7 L10 17'/%3E%3Cpath d='M32 15 L28 25'/%3E%3C/g%3E%3Cg transform='translate(195 120) rotate(66)' stroke-width='1.2' opacity='0.38'%3E%3Cpath d='M0 0 L38 19'/%3E%3Cpath d='M10 5 L13 -3'/%3E%3Cpath d='M19 10 L24 2'/%3E%3Cpath d='M11 6 L8 14'/%3E%3C/g%3E%3Cg transform='translate(185 26) rotate(12)' stroke-width='1.3' opacity='0.46'%3E%3Cpath d='M0 0 L50 24'/%3E%3Cpath d='M12 6 L16 -5'/%3E%3Cpath d='M25 12 L31 2'/%3E%3Cpath d='M14 7 L10 18'/%3E%3Cpath d='M36 17 L32 28'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='140' viewBox='0 0 260 140'%3E%3Cg stroke='%23bae6fd' fill='none'%3E%3Cg transform='translate(120 30)' opacity='0.45'%3E%3Ccircle r='16' stroke-width='1.2' stroke-dasharray='3 4'/%3E%3Ccircle r='9' stroke-width='1.1' stroke-dasharray='2 3'/%3E%3Ccircle r='3' stroke-width='1'/%3E%3C/g%3E%3Cg transform='translate(32 66)' opacity='0.38'%3E%3Ccircle r='11' stroke-width='1.1' stroke-dasharray='3 3'/%3E%3Ccircle r='5' stroke-width='1'/%3E%3C/g%3E%3Cg transform='translate(210 78)' opacity='0.4'%3E%3Ccircle r='13' stroke-width='1.1' stroke-dasharray='2 4'/%3E%3Ccircle r='6.5' stroke-width='1' stroke-dasharray='2 2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='80' viewBox='0 0 96 80'%3E%3Cg stroke='%23bae6fd' stroke-width='1.4' fill='none' opacity='0.55' stroke-linecap='round'%3E%3Cpath d='M2 2 L40 34'/%3E%3Cpath d='M14 12 L20 4'/%3E%3Cpath d='M22 19 L30 12'/%3E%3Cpath d='M2 2 L26 60'/%3E%3Cpath d='M12 26 L4 30'/%3E%3Cpath d='M18 40 L9 45'/%3E%3Cpath d='M2 2 L64 18'/%3E%3Cpath d='M30 9 L34 2'/%3E%3Cpath d='M46 13 L51 5'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='80' viewBox='0 0 96 80'%3E%3Cg transform='rotate(180 48 40)' stroke='%23bae6fd' stroke-width='1.4' fill='none' opacity='0.5' stroke-linecap='round'%3E%3Cpath d='M2 2 L40 34'/%3E%3Cpath d='M14 12 L20 4'/%3E%3Cpath d='M22 19 L30 12'/%3E%3Cpath d='M2 2 L26 60'/%3E%3Cpath d='M12 26 L4 30'/%3E%3Cpath d='M18 40 L9 45'/%3E%3Cpath d='M2 2 L64 18'/%3E%3Cpath d='M30 9 L34 2'/%3E%3Cpath d='M46 13 L51 5'/%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(260px 140px at 10% 0%, rgba(150, 220, 255, 0.14), transparent 65%),
+    radial-gradient(260px 140px at 90% 100%, rgba(200, 240, 255, 0.10), transparent 60%);
+  background-repeat: repeat, repeat, repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: 300px 200px, 380px 240px, 260px 140px, 96px 80px, 96px 80px, auto, auto;
+  background-position: 0 0, 150px 40px, 70px 6px, 0 0, 100% 100%, 0 0, 0 0;
+  animation: iceShimmer 8s ease-in-out infinite;
+}
+@keyframes iceShimmer {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 0.88; }
+}
 
-/* ── NOUVEAU : sakura (rare) ─────────────────────────────────── */
+/* ── sakura (RARE : rose pâle → blanc rosé statique) ── */
 .chatFrame--sakura {
   --frame-reflet: rgba(255, 180, 200, 0.32);
   --frame-ambient:
@@ -734,79 +1360,149 @@
     radial-gradient(260px 140px at 90% 20%,  rgba(255,200,220,0.10), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(14,6,10,0.95), rgba(14,6,10,0.95)) padding-box,
-    linear-gradient(135deg, rgba(255,150,180,0.48), rgba(255,200,220,0.32)) border-box;
+    linear-gradient(150deg, rgb(18, 8, 12), rgb(13, 6, 10) 60%, rgb(17, 7, 12)) padding-box,
+    linear-gradient(135deg, rgba(255,150,180,0.5), rgba(255,228,235,0.35)) border-box;
   box-shadow: 0 0 0 1px rgba(255,150,180,0.08), 0 18px 50px rgba(0,0,0,0.35);
 }
 
-/* ── NOUVEAU : festEclair (epic) ─────────────────────────────── */
-@keyframes eclairFlash {
-  0%, 88%, 100% { opacity: 0.78; filter: none; }
-  90%  { opacity: 1.00; filter: brightness(1.3) saturate(1.5); }
-  92%  { opacity: 0.82; filter: none; }
-  94%  { opacity: 1.00; filter: brightness(1.2); }
-}
+/* ── festEclair (ÉPIQUE : nuit d'orage — nuages + éclair au coin, flash
+      bref et espacé sur le fond uniquement) ── */
 .chatFrame--festEclair {
   --frame-reflet: rgba(255, 240, 60, 0.40);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(255,220,0,0.16), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(180,100,255,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(10,8,2,0.96), rgba(10,8,2,0.96)) padding-box,
+    linear-gradient(160deg, rgb(13, 11, 4), rgb(8, 7, 3) 55%, rgb(12, 10, 6)) padding-box,
     linear-gradient(135deg, rgba(255,220,0,0.55), rgba(180,100,255,0.40)) border-box;
   box-shadow: 0 0 0 1px rgba(255,220,0,0.10), 0 18px 50px rgba(0,0,0,0.38);
-  will-change: opacity, filter;
-  animation: eclairFlash 4.5s ease-in-out infinite;
+}
+/* LÉGENDAIRE : ORAGE CHAOTIQUE — 5 éclairs à cycles tous différents qui
+   APPARAISSENT avec leur coup de foudre (halo flash + trait néon +
+   grondement en lueur radiale vibrante), restent un instant, s'effacent.
+   Piège SMIL : le dernier keyTime DOIT être 1, sinon l'animation est
+   ignorée et l'éclair reste figé. */
+.chatFrame--festEclair::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(253, 224, 71, 0.08) 318deg,
+    rgba(253, 224, 71, 0.72) 342deg,
+    #fffbe0 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(253, 224, 71, 0.7));
+  animation: wrBeam 4.4s linear infinite;
+}
+.chatFrame--festEclair::after {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='30' viewBox='0 0 240 30'%3E%3Cpath d='M0 0 L240 0 L240 8 Q200 16 170 9 T110 13 T50 8 T0 12 Z' fill='%23050503' opacity='0.7'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='420' height='160' viewBox='0 0 420 160'%3E%3Cdefs%3E%3CradialGradient id='ra'%3E%3Cstop offset='0%25' stop-color='%23fde047' stop-opacity='0.55'/%3E%3Cstop offset='55%25' stop-color='%23fde047' stop-opacity='0.2'/%3E%3Cstop offset='100%25' stop-color='%23fde047' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cellipse cx='72' cy='66' rx='78' ry='88' fill='url(%23ra)' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.25;0.75;0.15;0.45;0.1;0;0' keyTimes='0;0.15;0.17;0.19;0.21;0.23;0.25;0.27;0.31;1' dur='6s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cellipse cx='337' cy='58' rx='72' ry='84' fill='url(%23ra)' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.95;0.22;0.7;0.14;0.4;0;0' keyTimes='0;0.45;0.47;0.49;0.51;0.53;0.55;0.6;1' dur='7.5s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cellipse cx='206' cy='60' rx='60' ry='75' fill='url(%23ra)' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.8;0.2;0.55;0.1;0;0' keyTimes='0;0.28;0.3;0.32;0.34;0.36;0.4;1' dur='8.2s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M84 0 L74 38 L82 40 L66 84 L73 86 L58 130' stroke='%23fde047' stroke-width='4.2' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.55;0.4;0.28;0;0' keyTimes='0;0.15;0.19;0.3;0.44;0.56;0.64;1' dur='6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M84 0 L74 38 L82 40 L66 84 L73 86 L58 130' stroke='%23fefce8' stroke-width='1.4' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.85;0.6;0.42;0;0' keyTimes='0;0.15;0.19;0.3;0.44;0.56;0.64;1' dur='6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M74 38 L60 60 L63 61 L52 78' stroke='%23fefce8' stroke-width='1.1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.7;0.55;0.38;0.26;0;0' keyTimes='0;0.15;0.19;0.3;0.44;0.56;0.64;1' dur='6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M66 84 L78 102' stroke='%23fefce8' stroke-width='1.1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.7;0.55;0.38;0.26;0;0' keyTimes='0;0.15;0.19;0.3;0.44;0.56;0.64;1' dur='6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M84 0 L74 38 L82 40 L66 84 L73 86 L58 130' stroke='%23ffffff' stroke-width='2.6' stroke-dasharray='26 220' opacity='0'%3E%3Canimate attributeName='stroke-dashoffset' values='246;246;0;0' keyTimes='0;0.15;0.3;1' dur='6s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.14;0.16;0.3;0.34;1' dur='6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M328 0 L336 40 L329 42 L342 82 L336 83 L346 112' stroke='%23fde047' stroke-width='4' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.5;0.35;0;0' keyTimes='0;0.45;0.49;0.6;0.7;0.8;1' dur='7.5s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M328 0 L336 40 L329 42 L342 82 L336 83 L346 112' stroke='%23fefce8' stroke-width='1.3' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.8;0.55;0;0' keyTimes='0;0.45;0.49;0.6;0.7;0.8;1' dur='7.5s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M336 40 L350 56' stroke='%23fefce8' stroke-width='1.1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.65;0.5;0.35;0;0' keyTimes='0;0.45;0.49;0.6;0.7;0.8;1' dur='7.5s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M328 0 L336 40 L329 42 L342 82 L336 83 L346 112' stroke='%23ffffff' stroke-width='2.4' stroke-dasharray='24 200' opacity='0'%3E%3Canimate attributeName='stroke-dashoffset' values='224;224;0;0' keyTimes='0;0.45;0.58;1' dur='7.5s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.44;0.46;0.58;0.62;1' dur='7.5s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M206 0 L196 30 L203 32 L190 70 L197 72 L184 108' stroke='%23fde047' stroke-width='3.6' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.5;0.32;0;0' keyTimes='0;0.28;0.32;0.42;0.52;0.6;1' dur='8.2s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M206 0 L196 30 L203 32 L190 70 L197 72 L184 108' stroke='%23fefce8' stroke-width='1.2' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.75;0.5;0;0' keyTimes='0;0.28;0.32;0.42;0.52;0.6;1' dur='8.2s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M196 30 L184 48' stroke='%23fefce8' stroke-width='1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.6;0.45;0.3;0;0' keyTimes='0;0.28;0.32;0.42;0.52;0.6;1' dur='8.2s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M206 0 L196 30 L203 32 L190 70 L197 72 L184 108' stroke='%23ffffff' stroke-width='2.2' stroke-dasharray='22 200' opacity='0'%3E%3Canimate attributeName='stroke-dashoffset' values='222;222;0;0' keyTimes='0;0.28;0.42;1' dur='8.2s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.27;0.29;0.42;0.46;1' dur='8.2s' repeatCount='indefinite'/%3E%3C/path%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='150' viewBox='0 0 340 150'%3E%3Cdefs%3E%3CradialGradient id='rb'%3E%3Cstop offset='0%25' stop-color='%23fde047' stop-opacity='0.5'/%3E%3Cstop offset='55%25' stop-color='%23fde047' stop-opacity='0.18'/%3E%3Cstop offset='100%25' stop-color='%23fde047' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Cellipse cx='188' cy='54' rx='70' ry='80' fill='url(%23rb)' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.9;0.2;0.65;0.12;0.35;0;0' keyTimes='0;0.7;0.72;0.74;0.76;0.78;0.8;0.85;1' dur='6.8s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cellipse cx='60' cy='50' rx='55' ry='70' fill='url(%23rb)' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.75;0.18;0.5;0;0' keyTimes='0;0.52;0.54;0.56;0.58;0.63;1' dur='5.6s' repeatCount='indefinite'/%3E%3C/ellipse%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M196 0 L188 34 L194 36 L182 72 L188 74 L176 106' stroke='%23fde047' stroke-width='3.8' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.5;0.32;0;0' keyTimes='0;0.7;0.74;0.82;0.9;0.96;1' dur='6.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M196 0 L188 34 L194 36 L182 72 L188 74 L176 106' stroke='%23fefce8' stroke-width='1.2' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.75;0.5;0;0' keyTimes='0;0.7;0.74;0.82;0.9;0.96;1' dur='6.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M188 34 L176 50' stroke='%23fefce8' stroke-width='1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;0.6;0.45;0.3;0;0' keyTimes='0;0.7;0.74;0.82;0.9;0.96;1' dur='6.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M196 0 L188 34 L194 36 L182 72 L188 74 L176 106' stroke='%23ffffff' stroke-width='2.2' stroke-dasharray='22 200' opacity='0'%3E%3Canimate attributeName='stroke-dashoffset' values='222;222;0;0' keyTimes='0;0.7;0.84;1' dur='6.8s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.69;0.71;0.84;0.88;1' dur='6.8s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M64 0 L58 28 L63 30 L52 64 L58 66 L48 96' stroke='%23fde047' stroke-width='3.4' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.5;0.3;0;0' keyTimes='0;0.52;0.56;0.64;0.72;0.78;1' dur='5.6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M64 0 L58 28 L63 30 L52 64 L58 66 L48 96' stroke='%23fefce8' stroke-width='1.1' opacity='0'%3E%3Canimate attributeName='opacity' values='0;0;1;0.7;0.45;0;0' keyTimes='0;0.52;0.56;0.64;0.72;0.78;1' dur='5.6s' repeatCount='indefinite'/%3E%3C/path%3E%3Cpath d='M64 0 L58 28 L63 30 L52 64 L58 66 L48 96' stroke='%23ffffff' stroke-width='2' stroke-dasharray='20 190' opacity='0'%3E%3Canimate attributeName='stroke-dashoffset' values='210;210;0;0' keyTimes='0;0.52;0.66;1' dur='5.6s' repeatCount='indefinite'/%3E%3Canimate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.51;0.53;0.66;0.7;1' dur='5.6s' repeatCount='indefinite'/%3E%3C/path%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(220px 120px at 80% 0%, rgba(255, 220, 0, 0.12), transparent 60%),
+    radial-gradient(260px 140px at 10% 100%, rgba(180, 100, 255, 0.10), transparent 60%);
+  background-repeat: repeat-x, repeat, repeat, no-repeat, no-repeat;
+  background-size: 240px 30px, 420px 160px, 340px 150px, auto, auto;
+  background-position: 0 0, 0 0, 150px 0, 0 0, 0 0;
+  opacity: 0.9;
 }
 
-/* ── NOUVEAU : neonRainbow (mythic) ──────────────────────────── */
-@keyframes neonRainbowBorder {
-  0%   { filter: hue-rotate(0deg); }
-  100% { filter: hue-rotate(360deg); }
-}
+/* ── neonRainbow (MYTHIQUE : cyber spectre — bordure arc-en-ciel qui
+      TOURNE (conic + --wrbeam), beam blanc, reflets néon cyclants) ── */
 .chatFrame--neonRainbow {
   --frame-reflet: rgba(255, 255, 255, 0.30);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(255,0,128,0.14), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(0,200,255,0.12), transparent 60%);
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(8,6,14,0.95), rgba(8,6,14,0.95)) padding-box,
-    linear-gradient(135deg, #ff0080, #ff8000, #ffff00, #00ff80, #0080ff, #8000ff, #ff0080) border-box;
+    linear-gradient(rgb(8, 7, 14), rgb(8, 7, 14)) padding-box,
+    conic-gradient(from var(--wrbeam), #ff0080, #ff8000, #ffff00, #00ff80, #0080ff, #8000ff, #ff0080) border-box;
   box-shadow: 0 0 0 1px rgba(200,0,255,0.12), 0 18px 50px rgba(0,0,0,0.40);
-  will-change: filter;
-  animation: neonRainbowBorder 3s linear infinite;
+  animation: wrBeam 6s linear infinite;
+}
+/* border beam blanc pur rapide par-dessus l'arc-en-ciel */
+.chatFrame--neonRainbow::before {
+  top: -2px;
+  right: -2px;
+  bottom: -2px;
+  left: -2px;
+  height: auto;
+  border-radius: inherit;
+  padding: 4px;
+  background: conic-gradient(from var(--wrbeam),
+    transparent 0deg 300deg,
+    rgba(255, 255, 255, 0.08) 318deg,
+    rgba(255, 255, 255, 0.75) 342deg,
+    #ffffff 352deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
+  animation: wrBeam 3.2s linear infinite;
+}
+/* scanlines + reflets néon qui cyclent (hue sur le ::after seulement,
+   jamais sur la carte : le texte ne change pas de couleur) */
+.chatFrame--neonRainbow::after {
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 4px),
+    radial-gradient(200px 110px at 12% 0%, rgba(255, 0, 128, 0.16), transparent 60%),
+    radial-gradient(220px 120px at 88% 100%, rgba(0, 200, 255, 0.14), transparent 60%),
+    radial-gradient(180px 100px at 55% 50%, rgba(128, 0, 255, 0.10), transparent 65%);
+  animation: rainbowGlow 7s linear infinite;
+}
+@keyframes rainbowGlow {
+  0% { opacity: 0.85; filter: hue-rotate(0deg); }
+  50% { opacity: 1; filter: hue-rotate(180deg); }
+  100% { opacity: 0.85; filter: hue-rotate(360deg); }
 }
 
-/* ── NOUVEAU : carbon (rare) ─────────────────────────────────── */
+/* ── carbon (RARE : noir carbone profond + tissage de fibre subtil dans
+      le fond — retour Lucas : « pas assez noir carbone ») ── */
 .chatFrame--carbon {
-  --frame-reflet: rgba(180, 180, 180, 0.22);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(80,80,80,0.12), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(50,50,50,0.10), transparent 60%);
+  --frame-reflet: rgba(190, 195, 205, 0.1);
+  --frame-ambient: none;
   border: 1px solid transparent;
   background:
-    linear-gradient(rgba(8,8,8,0.97), rgba(8,8,8,0.97)) padding-box,
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.012) 0 3px, transparent 3px 6px) padding-box,
+    repeating-linear-gradient(-45deg, rgba(255,255,255,0.008) 0 3px, transparent 3px 6px) padding-box,
+    linear-gradient(rgb(2, 2, 3), rgb(2, 2, 3)) padding-box,
     repeating-linear-gradient(
       45deg,
-      rgba(60,60,60,0.55) 0px,
-      rgba(60,60,60,0.55) 2px,
-      rgba(90,90,90,0.35) 2px,
-      rgba(90,90,90,0.35) 4px
+      rgba(28,28,32,0.9) 0px,
+      rgba(28,28,32,0.9) 2px,
+      rgba(46,46,52,0.5) 2px,
+      rgba(46,46,52,0.5) 4px
     ) border-box;
-  box-shadow: 0 0 0 1px rgba(100,100,100,0.10), 0 18px 50px rgba(0,0,0,0.40);
+  box-shadow: 0 0 0 1px rgba(56,56,62,0.12), 0 18px 50px rgba(0,0,0,0.5);
 }
 
-/* ── NOUVEAU : paper (common) ────────────────────────────────── */
+/* ── paper (COMMUN : papier kraft nuit — DA refaite sur retour Lucas.
+      Fond kraft brun sombre, grain, corne de page pliée au coin
+      haut-droit. Statique, lisible immédiatement.) ── */
 .chatFrame--paper {
-  --frame-reflet: rgba(240, 230, 210, 0.20);
-  --frame-ambient:
-    radial-gradient(260px 140px at 10% 0%,  rgba(200,190,170,0.08), transparent 65%),
-    radial-gradient(260px 140px at 90% 20%,  rgba(180,170,150,0.06), transparent 60%);
-  border: 1px solid rgba(200, 190, 160, 0.22);
-  background: rgba(14, 12, 10, 0.95);
-  box-shadow: 0 0 0 1px rgba(200,190,160,0.06), 0 18px 50px rgba(0,0,0,0.30);
+  --frame-reflet: rgba(240, 226, 195, 0.16);
+  border: 1px solid rgba(214, 196, 158, 0.28);
+  background: linear-gradient(155deg, rgb(34, 28, 20), rgb(25, 21, 15) 60%, rgb(30, 25, 18));
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 226, 195, 0.05),
+    0 18px 50px rgba(0, 0, 0, 0.3);
+}
+.chatFrame--paper::after {
+  background:
+    /* corne de page pliée : bande diagonale coupant le coin haut-droit */
+    linear-gradient(225deg, rgb(12, 10, 7) 0 11px, rgba(240, 226, 195, 0.35) 11px 12.5px, rgba(214, 196, 158, 0.12) 12.5px 22px, transparent 22px),
+    /* grain kraft épars */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='100' viewBox='0 0 120 100'%3E%3Cg fill='%23f0e2c3' opacity='0.05'%3E%3Ccircle cx='22' cy='30' r='1'/%3E%3Ccircle cx='74' cy='14' r='0.8'/%3E%3Ccircle cx='102' cy='58' r='1.1'/%3E%3Ccircle cx='48' cy='76' r='0.9'/%3E%3Ccircle cx='12' cy='88' r='0.7'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat;
+  background-size: auto, 120px 100px;
+  background-position: 100% 0, 0 0;
 }
 
 
@@ -814,131 +1510,223 @@
    3b. USERNAME EFFECTS — nouveaux
    ============================================================ */
 
-/* ── pulseRed ────────────────────────────────────────────────── */
-@keyframes pulseRedAnim {
-  0%, 100% { text-shadow: 0 0 4px rgba(220,50,50,0.70), 0 0 10px rgba(180,0,0,0.50); }
-  50%       { text-shadow: 0 0 7px rgba(255,80,80,0.90), 0 0 18px rgba(220,0,0,0.65); }
+/* ── pulseRed (ÉPIQUE : battement de cœur — double coup puis repos,
+      léger gonflement à chaque beat) ── */
+@keyframes uHeartbeatRed {
+  0%, 40%, 100% { text-shadow: 0 0 4px rgba(248, 60, 60, 0.35); transform: scale(1); }
+  8% { text-shadow: 0 0 10px rgba(255, 90, 90, 0.95), 0 0 22px rgba(220, 0, 0, 0.55); transform: scale(1.035); }
+  16% { text-shadow: 0 0 5px rgba(248, 60, 60, 0.45); transform: scale(1); }
+  24% { text-shadow: 0 0 13px rgba(255, 110, 110, 1), 0 0 28px rgba(220, 0, 0, 0.65); transform: scale(1.05); }
 }
 .username--pulseRed {
-  color: #ff6060;
-  will-change: filter;
-  animation: pulseRedAnim 2.8s ease-in-out infinite;
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(180deg, #fca5a5 0%, #ef4444 55%, #991b1b 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  will-change: transform;
+  animation: uHeartbeatRed 2.2s ease-out infinite;
 }
 
-/* ── pulseBlue ───────────────────────────────────────────────── */
-@keyframes pulseBlueAnim {
-  0%, 100% { text-shadow: 0 0 4px rgba(60,100,255,0.70), 0 0 10px rgba(30,80,240,0.50); }
-  50%       { text-shadow: 0 0 7px rgba(80,140,255,0.90), 0 0 18px rgba(60,120,255,0.65); }
+/* ── pulseBlue (ÉPIQUE : battement électrique bleu) ── */
+@keyframes uHeartbeatBlue {
+  0%, 40%, 100% { text-shadow: 0 0 4px rgba(70, 120, 255, 0.35); transform: scale(1); }
+  8% { text-shadow: 0 0 10px rgba(110, 160, 255, 0.95), 0 0 22px rgba(40, 90, 240, 0.55); transform: scale(1.035); }
+  16% { text-shadow: 0 0 5px rgba(70, 120, 255, 0.45); transform: scale(1); }
+  24% { text-shadow: 0 0 13px rgba(130, 175, 255, 1), 0 0 28px rgba(40, 90, 240, 0.65); transform: scale(1.05); }
 }
 .username--pulseBlue {
-  color: #80aaff;
-  will-change: filter;
-  animation: pulseBlueAnim 2.8s ease-in-out infinite;
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(180deg, #bfdbfe 0%, #3b82f6 55%, #1e3a8a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  will-change: transform;
+  animation: uHeartbeatBlue 2.2s ease-out infinite;
 }
 
-/* ── glitch username ─────────────────────────────────────────── */
-@keyframes unameGlitch {
-  0%, 86%, 100% { text-shadow: none; transform: none; }
-  88%  { text-shadow: -2px 0 rgba(255,0,200,0.7), 2px 0 rgba(0,255,200,0.7); transform: translateX(1px); }
-  90%  { text-shadow: 2px 0 rgba(255,0,200,0.7), -2px 0 rgba(0,255,200,0.7); transform: translateX(-2px); }
-  92%  { text-shadow: none; transform: none; }
+/* ── glitch (LÉGENDAIRE : signal corrompu — copies RGB décalées en
+      tranches (clip-path) + sauts secs du texte, steps(1) = saccades.
+      Nécessite data-text sur le span (dégradation gracieuse sinon). ── */
+@keyframes uGlitchBase {
+  0%, 11.9%, 18%, 61.9%, 68%, 100% { transform: none; }
+  12% { transform: translateX(-1px) skewX(-4deg); }
+  14% { transform: translateX(1.5px); }
+  16% { transform: translateX(-0.5px) skewX(3deg); }
+  62% { transform: translateX(1.5px); }
+  65% { transform: translateX(-1px) skewX(5deg); }
+}
+@keyframes uGlitchCyan {
+  0%, 11.9%, 18.1%, 61.9%, 70.1%, 100% { opacity: 0; }
+  12% { opacity: 0.85; transform: translate(-2px, -1px); clip-path: inset(8% 0 55% 0); }
+  14% { opacity: 0.85; transform: translate(2px, 1px); clip-path: inset(45% 0 18% 0); }
+  16% { opacity: 0.85; transform: translate(-1.5px, 0); clip-path: inset(70% 0 4% 0); }
+  18% { opacity: 0.85; transform: translate(1px, 0); clip-path: inset(25% 0 40% 0); }
+  62% { opacity: 0.85; transform: translate(2px, 0); clip-path: inset(15% 0 48% 0); }
+  66% { opacity: 0.85; transform: translate(-2px, 1px); clip-path: inset(58% 0 10% 0); }
+  70% { opacity: 0.85; transform: translate(1.5px, -1px); clip-path: inset(35% 0 30% 0); }
+}
+@keyframes uGlitchMagenta {
+  0%, 11.9%, 18.1%, 61.9%, 70.1%, 100% { opacity: 0; }
+  12% { opacity: 0.85; transform: translate(2px, 1px); clip-path: inset(50% 0 12% 0); }
+  14% { opacity: 0.85; transform: translate(-2px, -1px); clip-path: inset(10% 0 62% 0); }
+  16% { opacity: 0.85; transform: translate(1.5px, 0); clip-path: inset(30% 0 35% 0); }
+  18% { opacity: 0.85; transform: translate(-1px, 0); clip-path: inset(65% 0 8% 0); }
+  62% { opacity: 0.85; transform: translate(-2px, 0); clip-path: inset(42% 0 22% 0); }
+  66% { opacity: 0.85; transform: translate(2px, -1px); clip-path: inset(5% 0 70% 0); }
+  70% { opacity: 0.85; transform: translate(-1.5px, 1px); clip-path: inset(28% 0 38% 0); }
 }
 .username--glitch {
-  color: #e4d9ff;
-  will-change: transform, filter;
-  animation: unameGlitch 6s ease-in-out infinite;
+  position: relative;
+  display: inline-block;
+  color: #f3efff;
+  text-shadow: 0 0 6px rgba(168, 85, 247, 0.3);
+  will-change: transform;
+  animation: uGlitchBase 3.4s steps(1, end) infinite;
+}
+.username--glitch::before,
+.username--glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  text-shadow: none;
+}
+.username--glitch::before {
+  color: #22ffe0;
+  animation: uGlitchCyan 3.4s steps(1, end) infinite;
+}
+.username--glitch::after {
+  color: #ff2bd6;
+  animation: uGlitchMagenta 3.4s steps(1, end) infinite;
 }
 
-/* ── fire ────────────────────────────────────────────────────── */
-@keyframes fireFlicker {
-  0%   { color: #ff6030; text-shadow: 0 -2px 6px rgba(255,100,0,0.80), 0 -4px 12px rgba(255,50,0,0.50); }
-  33%  { color: #ff8040; text-shadow: 0 -3px 8px rgba(255,140,0,0.90), 0 -6px 16px rgba(255,80,0,0.55); }
-  66%  { color: #ff5020; text-shadow: 0 -2px 5px rgba(255,80,0,0.75), 0 -5px 14px rgba(255,40,0,0.45); }
-  100% { color: #ff6030; text-shadow: 0 -2px 6px rgba(255,100,0,0.80), 0 -4px 12px rgba(255,50,0,0.50); }
+/* ── fire (ÉPIQUE : en feu — dégradé de flamme qui vacille + copie floue
+      derrière qui lèche vers le haut + halo qui flicker) ── */
+@keyframes uFireWobble {
+  0%, 100% { background-position-y: 0; }
+  30% { background-position-y: 3px; }
+  55% { background-position-y: 1px; }
+  80% { background-position-y: 4px; }
+}
+@keyframes uFireFlicker {
+  0%, 100% { text-shadow: 0 -2px 7px rgba(255, 120, 0, 0.75), 0 -6px 16px rgba(255, 60, 0, 0.4); }
+  27% { text-shadow: 0 -3px 9px rgba(255, 160, 30, 0.9), 0 -8px 20px rgba(255, 80, 0, 0.5); }
+  52% { text-shadow: 0 -2px 6px rgba(255, 100, 0, 0.65), 0 -5px 13px rgba(255, 50, 0, 0.35); }
+  74% { text-shadow: 0 -3px 10px rgba(255, 150, 20, 0.95), 0 -7px 18px rgba(255, 70, 0, 0.55); }
+}
+@keyframes uFireGhost {
+  0%, 100% { opacity: 0.5; transform: translateY(-1px) scaleY(1.06); }
+  33% { opacity: 0.75; transform: translateY(-2.5px) scaleY(1.1); }
+  66% { opacity: 0.55; transform: translateY(-1.5px) scaleY(1.04); }
 }
 .username--fire {
-  will-change: color, filter;
-  animation: fireFlicker 1.8s ease-in-out infinite;
+  position: relative;
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(0deg, #fde68a 0%, #f59e0b 32%, #ea580c 62%, #9a3412 100%);
+  background-size: 100% 130%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  will-change: background-position;
+  animation:
+    uFireWobble 2.4s ease-in-out infinite,
+    uFireFlicker 1.7s ease-in-out infinite;
+}
+/* langue de feu : copie floue orange derrière le texte */
+.username--fire::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: visible;
+  white-space: nowrap;
+  pointer-events: none;
+  color: #fb923c;
+  filter: blur(4px);
+  transform-origin: bottom;
+  animation: uFireGhost 1.3s ease-in-out infinite;
 }
 
-/* ── ice username ────────────────────────────────────────────── */
-@keyframes iceGlow {
-  0%, 100% { text-shadow: 0 0 4px rgba(150,220,255,0.65), 0 0 8px rgba(100,200,255,0.40); }
-  50%       { text-shadow: 0 0 6px rgba(200,240,255,0.80), 0 0 14px rgba(150,220,255,0.55); }
+/* ── ice (ÉPIQUE : glacier — dégradé glacé + reflet cristallin qui
+      traverse puis pause, contour givré) ── */
+@keyframes uIceSheen {
+  0% { background-position-x: 280px, 0; }
+  45%, 100% { background-position-x: -260px, 0; }
 }
 .username--ice {
-  color: #c8f0ff;
-  will-change: filter;
-  animation: iceGlow 3.5s ease-in-out infinite;
+  color: transparent;
+  background-image:
+    linear-gradient(105deg, transparent 0 40%, rgba(240, 250, 255, 0.9) 50%, transparent 60% 100%),
+    linear-gradient(180deg, #f0f9ff 0%, #7dd3fc 45%, #0ea5e9 78%, #075985 100%);
+  background-size: 110px 100%, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-blend-mode: screen, normal;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-stroke: 0.3px rgba(186, 230, 253, 0.45);
+  text-shadow: 0 0 9px rgba(125, 211, 252, 0.3);
+  will-change: background-position;
+  animation: uIceSheen 4.6s ease-in-out infinite;
 }
 
-/* ── silverToggle ────────────────────────────────────────────── */
-@keyframes silverGlint {
-  0%   { background-position: 0% 50%, -80% 50%; }
-  50%  { background-position: 140% 50%, 180% 50%; }
-  100% { background-position: 0% 50%, -80% 50%; }
-}
+/* ── silver (RARE : argent massif statique, stops métal) ── */
 .username--silver {
   color: transparent;
-  background-image:
-    linear-gradient(90deg, #6a7080 0%, #a0aabc 20%, #d4d8e4 44%, #ffffff 52%, #d4d8e4 60%, #a0aabc 78%, #6a7080 100%),
-    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 46%, rgba(255,255,255,0) 58%);
-  background-size: 160% 100%, 60% 100%;
-  background-blend-mode: normal, screen;
+  background-image: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 30%, #7c8598 50%, #e2e8f0 68%, #94a3b8 100%);
   -webkit-background-clip: text;
   background-clip: text;
-  will-change: background-position;
-  animation: silverGlint 5.0s ease-in-out infinite;
+  -webkit-text-stroke: 0.25px rgba(248, 250, 252, 0.35);
+  text-shadow: 0 1px 5px rgba(148, 163, 184, 0.35);
 }
 
-/* ── purpleToggle ────────────────────────────────────────────── */
-@keyframes purpleShimmer {
-  0%   { background-position: 0% 50%, -80% 50%; }
-  50%  { background-position: 140% 50%, 180% 50%; }
-  100% { background-position: 0% 50%, -80% 50%; }
-}
+/* ── purple (RARE : pourpre royal statique, profond → lilas) ── */
 .username--purple {
   color: transparent;
-  background-image:
-    linear-gradient(90deg, #3d1a7a 0%, #7c3aed 22%, #c084fc 48%, #e9d5ff 56%, #c084fc 66%, #7c3aed 82%, #3d1a7a 100%),
-    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 46%, rgba(255,255,255,0) 60%);
-  background-size: 160% 100%, 60% 100%;
-  background-blend-mode: normal, screen;
+  background-image: linear-gradient(180deg, #e9d5ff 0%, #a855f7 45%, #6b21a8 100%);
   -webkit-background-clip: text;
   background-clip: text;
-  will-change: background-position;
-  animation: purpleShimmer 5.0s ease-in-out infinite;
+  text-shadow: 0 1px 7px rgba(168, 85, 247, 0.3);
 }
 
-/* ── gradientSunset ──────────────────────────────────────────── */
-@keyframes sunsetFlow {
-  0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* ── sunset (ÉPIQUE : coucher de soleil qui coule lentement) ── */
+@keyframes uSunsetFlow {
+  0% { background-position-x: 0; }
+  100% { background-position-x: -280px; }
 }
 .username--sunset {
   color: transparent;
-  background-image: linear-gradient(90deg, #ff6b35 0%, #f7c59f 30%, #ff6b9d 55%, #f7c59f 80%, #ff6b35 100%);
-  background-size: 200% 100%;
+  background-image: linear-gradient(90deg, #ff9e5e, #ff5e8a 30%, #c86bfa 55%, #ff8a5e 80%, #ff9e5e 100%);
+  background-size: 280px 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: sunsetFlow 4.5s ease-in-out infinite;
+  text-shadow: 0 0 9px rgba(255, 94, 138, 0.25);
+  animation: uSunsetFlow 11s linear infinite;
 }
 
-/* ── galaxyUsername ──────────────────────────────────────────── */
-@keyframes galaxyUsernameFlow {
-  0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* ── galaxy (LÉGENDAIRE : nébuleuse vivante — étoiles en parallaxe DANS
+      les lettres + nébuleuse qui coule, halo violet) ── */
+@keyframes uGalaxyDrift {
+  0% { background-position-x: 0, 0, 0; }
+  100% { background-position-x: -270px, -260px, -440px; }
 }
 .username--galaxy {
   color: transparent;
-  background-image: linear-gradient(90deg, #1a0050 0%, #7c3aed 22%, #06b6d4 50%, #7c3aed 78%, #1a0050 100%);
-  background-size: 200% 100%;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='22' viewBox='0 0 90 22'%3E%3Cpath d='M18 5 L18.9 8.1 L22 9 L18.9 9.9 L18 13 L17.1 9.9 L14 9 L17.1 8.1 Z' fill='%23ffffff'/%3E%3Ccircle cx='60' cy='15' r='1' fill='%23ddd6fe'/%3E%3Ccircle cx='40' cy='4' r='0.8' fill='%23bfdbfe'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='130' height='26' viewBox='0 0 130 26'%3E%3Ccircle cx='15' cy='12' r='1.1' fill='%23ffffff' opacity='0.9'/%3E%3Ccircle cx='70' cy='6' r='0.9' fill='%23ddd6fe'/%3E%3Ccircle cx='100' cy='18' r='1.2' fill='%23bfdbfe'/%3E%3Ccircle cx='45' cy='22' r='0.7' fill='%23e9d5ff'/%3E%3C/svg%3E"),
+    linear-gradient(100deg, #6d28d9, #a78bfa 28%, #6366f1 50%, #38bdf8 72%, #6d28d9 100%);
+  background-size: 90px 22px, 130px 26px, 220px 100%;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: galaxyUsernameFlow 5s ease-in-out infinite;
+  text-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+  will-change: background-position;
+  animation: uGalaxyDrift 14s linear infinite;
 }
+
 
 
 /* ============================================================
@@ -1033,3 +1821,166 @@
 .cosPreview .chatMsgRow {
   padding: 9px 10px;
 }
+/* ============================================================
+   5.  BADGES FX — rework 11 juil (effets par badge, intensité
+       proportionnelle à la rareté ; DA héritée des cadrans)
+   ============================================================ */
+@property --bfxa { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+
+@media (prefers-reduced-motion: reduce) {
+  *[class*="bfx--"], *[class*="bfx--"]::before, *[class*="bfx--"]::after {
+    animation: none !important;
+  }
+}
+
+/* les effets à bande brillante clippent leur ::after */
+.bfx--badge_rich, .bfx--badge_chef, .bfx--badge_og, .bfx--badge_777 {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── LUNA (peu commun) : respiration lunaire violette ── */
+.bfx--badge_luna {
+  border-color: rgba(167, 139, 250, 0.45);
+  animation: bfxLunaBreath 7s ease-in-out infinite;
+}
+@keyframes bfxLunaBreath {
+  0%, 100% { box-shadow: 0 0 4px rgba(167, 139, 250, 0.15); }
+  50%      { box-shadow: 0 0 9px rgba(167, 139, 250, 0.5); }
+}
+
+/* ── CŒUR (peu commun) : battement double (systole/diastole) ── */
+.bfx--badge_heart { animation: bfxHeartBeat 2.8s ease-in-out infinite; }
+@keyframes bfxHeartBeat {
+  0%, 24%, 100% { transform: scale(1); }
+  8%  { transform: scale(1.12); }
+  12% { transform: scale(1); }
+  18% { transform: scale(1.08); }
+}
+
+/* ── ÉTOILE (peu commun) : scintillement ── */
+.bfx--badge_star { animation: bfxStarTwinkle 4.5s ease-in-out infinite; }
+@keyframes bfxStarTwinkle {
+  0%, 100% { filter: brightness(1); }
+  38% { filter: brightness(1); }
+  44% { filter: brightness(1.6) drop-shadow(0 0 3px rgba(253, 230, 138, 0.8)); }
+  50% { filter: brightness(1); }
+  72% { filter: brightness(1.35) drop-shadow(0 0 2px rgba(253, 230, 138, 0.6)); }
+  78% { filter: brightness(1); }
+}
+
+/* ── CHEF (rare) : passage de brillance dorée sur fond sombre chaud ── */
+.bfx--badge_chef {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: linear-gradient(135deg, rgba(69, 26, 3, 0.6), rgba(120, 53, 15, 0.35));
+}
+.bfx--badge_chef::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(253, 230, 138, 0.35) 50%, transparent 70%);
+  transform: translateX(-110%);
+  animation: bfxSheen 6.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes bfxSheen {
+  0%, 55% { transform: translateX(-110%); }
+  75%, 100% { transform: translateX(110%); }
+}
+
+/* ── ÉCLAIR (rare) : flicker électrique cyan ── */
+.bfx--badge_lightning {
+  border-color: rgba(103, 232, 249, 0.5);
+  animation: bfxZap 5.2s linear infinite;
+}
+@keyframes bfxZap {
+  0%, 61%, 65.5%, 100% { box-shadow: 0 0 3px rgba(103, 232, 249, 0.15); filter: brightness(1); }
+  62% { box-shadow: 0 0 10px rgba(103, 232, 249, 0.85); filter: brightness(1.7); }
+  63% { box-shadow: 0 0 4px rgba(103, 232, 249, 0.3); filter: brightness(1.05); }
+  64.5% { box-shadow: 0 0 12px rgba(103, 232, 249, 0.9); filter: brightness(1.8); }
+}
+
+/* ── DISCORD (rare) : fond blurple + pastille « en ligne » verte ── */
+.bfx--badge_discord { border-color: rgba(114, 137, 218, 0.55); background: rgba(88, 101, 242, 0.14); }
+.bfx--badge_discord::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-right: 3px;
+  border-radius: 999px;
+  background: #4ade80;
+  vertical-align: middle;
+  animation: bfxOnlinePulse 1.8s ease-in-out infinite;
+}
+@keyframes bfxOnlinePulse {
+  0%, 100% { opacity: 0.5; box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+  50%      { opacity: 1; box-shadow: 0 0 5px 1px rgba(74, 222, 128, 0.5); }
+}
+
+/* ── SKULL (épique) : braise infernale qui couve ── */
+.bfx--badge_skull {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(180deg, rgba(28, 6, 6, 0.7), rgba(69, 10, 10, 0.45));
+  animation: bfxEmber 4.6s ease-in-out infinite;
+}
+@keyframes bfxEmber {
+  0%, 100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.2), inset 0 -3px 6px rgba(249, 115, 22, 0.12); }
+  45% { box-shadow: 0 0 11px rgba(239, 68, 68, 0.55), inset 0 -3px 8px rgba(249, 115, 22, 0.38); }
+  58% { box-shadow: 0 0 7px rgba(239, 68, 68, 0.35), inset 0 -3px 6px rgba(249, 115, 22, 0.2); }
+  70% { box-shadow: 0 0 12px rgba(249, 115, 22, 0.5), inset 0 -3px 9px rgba(249, 115, 22, 0.42); }
+}
+
+/* ── $$ (épique) : richesse — fond doré + bande brillante ── */
+.bfx--badge_rich {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: linear-gradient(135deg, rgba(120, 53, 15, 0.5), rgba(180, 83, 9, 0.3));
+  color: #fde68a;
+  text-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+}
+.bfx--badge_rich::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 32%, rgba(255, 243, 196, 0.5) 50%, transparent 68%);
+  transform: translateX(-110%);
+  animation: bfxSheen 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ── 777 (légendaire) : border beam doré rotatif + flash jackpot ── */
+.bfx--badge_777 {
+  border-color: transparent;
+  background:
+    linear-gradient(#141018, #141018) padding-box,
+    conic-gradient(from var(--bfxa), rgba(251,191,36,0.05), #fbbf24 12%, #fff3c4 18%, #fbbf24 24%, rgba(251,191,36,0.05) 40%) border-box;
+  color: #fde68a;
+  animation: bfxBeam 3.5s linear infinite, bfxJackpot 7s ease-in-out infinite;
+}
+@keyframes bfxBeam { to { --bfxa: 360deg; } }
+@keyframes bfxJackpot {
+  0%, 80%, 100% { text-shadow: 0 0 4px rgba(251, 191, 36, 0.25); }
+  86% { text-shadow: 0 0 10px rgba(255, 243, 196, 0.95); }
+  90% { text-shadow: 0 0 5px rgba(251, 191, 36, 0.4); }
+  94% { text-shadow: 0 0 9px rgba(255, 243, 196, 0.8); }
+}
+
+/* ── OG (légendaire) : holographique — fond irisé dérivant + beam blanc ── */
+.bfx--badge_og {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: linear-gradient(115deg, #7c3aed, #db2777 25%, #f59e0b 50%, #06b6d4 75%, #7c3aed 100%);
+  background-size: 300% 100%;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  animation: bfxHolo 8s linear infinite;
+}
+.bfx--badge_og::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%);
+  transform: translateX(-110%);
+  animation: bfxSheen 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes bfxHolo { to { background-position: 300% 0; } }

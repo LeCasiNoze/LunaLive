@@ -19,6 +19,14 @@ const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ defa
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
 const ParticipatePage = React.lazy(() => import("./pages/ParticipatePage"));
+// Page utilitaire de consultation des skins d'event (non listée)
+const EventSkinsPreviewPage = React.lazy(() => import("./pages/EventSkinsPreviewPage"));
+// Page utilitaire de traitement de TOUS les cosmétiques (workflow validation)
+const SkinsReviewPage = React.lazy(() => import("./pages/SkinsReviewPage"));
+// Labo dev des pseudos animés moteur (PixiJS) — non listé
+const UsernameFxLabPage = React.lazy(() => import("./pages/UsernameFxLabPage"));
+// Catalogue complet des cosmétiques + obtentions actuelles/proposées (non listé)
+const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage"));
 
 // Lazy load heavy admin pages for performance
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
@@ -352,6 +360,10 @@ function AppInner() {
           />
           <Route path="/event" element={<EventPage />} />
           <Route path="/event/:type" element={<EventPage />} />
+          <Route path="/skins-events" element={<EventSkinsPreviewPage />} />
+          <Route path="/skins-review" element={<SkinsReviewPage />} />
+          <Route path="/dev/username-effects" element={<UsernameFxLabPage />} />
+          <Route path="/skins-catalogue" element={<SkinsCataloguePage />} />
           <Route path="/participer" element={<ParticipatePage />} />
           <Route path="/oauth/done" element={<LoadingFallback />} />
 

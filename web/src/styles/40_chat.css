@@ -153,6 +153,17 @@
   z-index: 3;
 }
 
+/* Chapeau cosmétique en vrai prop image (largeur/top par chapeau, inline) */
+.chatHatImg{
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  height: auto;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+  z-index: 3;
+  pointer-events: none;
+}
+
 .avatarBorder--luna{
   border-color: rgba(126,76,179,0.65);
   box-shadow: 0 0 0 2px rgba(126,76,179,0.12), 0 18px 45px rgba(63,86,203,0.12);

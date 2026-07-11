@@ -124,6 +124,12 @@ export function usernameEffectClass(effect: any) {
   if (e === "uanim_purple_toggle" || e === "purple") return "username--purple";
   if (e === "uanim_gradient_sunset" || e === "sunset") return "username--sunset";
   if (e === "uanim_galaxy" || e === "galaxy") return "username--galaxy";
+  // rares statiques (repeuplement du tier rare, règle raretés)
+  if (e === "uanim_crimson" || e === "crimson") return "username--crimson";
+  if (e === "uanim_ocean" || e === "ocean") return "username--ocean";
+  if (e === "uanim_mint" || e === "mint") return "username--mint";
+  if (e === "uanim_amber" || e === "amber") return "username--amber";
+  if (e === "uanim_steel" || e === "steel") return "username--steel";
 
   return "";
 }
@@ -168,6 +174,11 @@ export function frameClass(frameId: any) {
   if (k === "neon_rainbow") return "chatFrame--neonRainbow";
   if (k === "carbon") return "chatFrame--carbon";
   if (k === "paper") return "chatFrame--paper";
+  // cadrans event (récompenses top-3 / #1)
+  if (k === "wheel_roulette") return "chatFrame--wheelRoulette";
+  if (k === "chest_vault") return "chatFrame--chestVault";
+  if (k === "boss_flames") return "chatFrame--bossFlames";
+  if (k === "viewer_hearts") return "chatFrame--viewerHearts";
 
   return "";
 }
