@@ -33,9 +33,19 @@ export function hasWebGL(): boolean {
   }
 }
 
-/** Plafonds par niveau (particules simultanées par instance, dpr). */
+/** Plafonds par niveau (particules simultanées par instance, dpr).
+    dpr = 2 partout : les canvases sont petits (un pseudo), le surcoût est
+    négligeable, et dpr 1 rendait le TEXTE flou sur mobile (retour Lucas).
+    L'économie mobile passe par les particules et le FPS, pas la netteté. */
 export const QUALITY_CAPS: Record<FxQuality, { particles: number; dpr: number }> = {
-  low: { particles: 40, dpr: 1 },
-  medium: { particles: 120, dpr: 1.5 },
+  low: { particles: 40, dpr: 2 },
+  medium: { particles: 120, dpr: 2 },
   high: { particles: 250, dpr: 2 },
+};
+
+/** FPS du ticker global par niveau (économie batterie mobile). */
+export const QUALITY_FPS: Record<FxQuality, number> = {
+  low: 30,
+  medium: 45,
+  high: 60,
 };

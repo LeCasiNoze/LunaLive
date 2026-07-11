@@ -604,21 +604,28 @@ const CSS = `
   96%, 100% { opacity: 0; transform: translate(0, 0.7em); }
 }
 
-/* trophy — Ultime (20 succès débloqués) : les lettres se dorent une à
-   une (chaque succès gagné), et au 20e le trophée s'embrase — reflet
-   intégral + rebond de victoire */
-.tfx--trophy .tfx-l { animation: tfxGoldize 7s ease-in-out calc(var(--i) * 0.16s) infinite; }
-@keyframes tfxGoldize {
-  0%, 4% { color: #a8a29e; text-shadow: none; transform: translateY(0); }
-  12%, 46% { color: #fbbf24; text-shadow: 0 0 3px rgba(251,191,36,0.5); }
-  54% { color: #fff3c4; text-shadow: 0 0 8px rgba(255,243,196,1); transform: translateY(-0.1em); }
+/* trophy — Ultime (20 succès débloqués) : PLATINE-DIAMANT (fini le jaune,
+   retour Lucas) — les lettres passent du brut au platine une à une, et au
+   20e succès l'éclat diamant glacé traverse le titre */
+.tfx--trophy {
+  background: linear-gradient(135deg, #10141d, #1e2433);
+  border-color: rgba(165, 243, 252, 0.35);
+  color: #e2e8f0;
+  text-shadow: none;
+  animation: none;
+}
+.tfx--trophy .tfx-l { animation: tfxPlatinize 7s ease-in-out calc(var(--i) * 0.16s) infinite; }
+@keyframes tfxPlatinize {
+  0%, 4% { color: #64748b; text-shadow: none; transform: translateY(0); }
+  12%, 46% { color: #e2e8f0; text-shadow: 0 0 3px rgba(226,232,240,0.5); }
+  54% { color: #ffffff; text-shadow: 0 0 8px rgba(165,243,252,1); transform: translateY(-0.1em); }
   60% { transform: translateY(0); }
-  66%, 86% { color: #fbbf24; text-shadow: 0 0 4px rgba(251,191,36,0.6); }
-  94%, 100% { color: #a8a29e; text-shadow: none; }
+  66%, 86% { color: #e2e8f0; text-shadow: 0 0 4px rgba(165,243,252,0.55); }
+  94%, 100% { color: #64748b; text-shadow: none; }
 }
 .tfx--trophy .tfx-prop--1 {
   inset: 0; border-radius: inherit;
-  background: linear-gradient(115deg, transparent 36%, rgba(255,243,196,0.55) 50%, transparent 64%);
+  background: linear-gradient(115deg, transparent 36%, rgba(207,250,254,0.55) 50%, transparent 64%);
   transform: translateX(-110%);
   animation: tfxTrophySheen 7s ease-in-out infinite;
 }
@@ -907,9 +914,10 @@ const CSS = `
 
 /* flag — One Piece : le drapeau ondule, le Jolly Roger apparaît dans la
    trame, un éclat de trésor doré traverse la toile */
-.tfx--flag { background: linear-gradient(135deg, #1a0d0d, #331717); animation: none; }
+/* lettres rouge-blanc (fini l'or, retour Lucas) — toile de drapeau pirate */
+.tfx--flag { background: linear-gradient(135deg, #170b0b, #2c1212); border-color: rgba(244,63,94,0.4); animation: none; }
 .tfx--flag .tfx-l {
-  background: linear-gradient(180deg, #fde68a, #f59e0b 60%, #b45309);
+  background: linear-gradient(180deg, #ffe4e6, #fb7185 55%, #9f1239);
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: tfxFlagWave 2.6s ease-in-out calc(var(--i) * 0.14s) infinite;
 }
@@ -921,15 +929,16 @@ const CSS = `
    éléments de la 1re lettre → il suit sa houle automatiquement) :
    calotte jaune paille à bande rouge + bord large */
 .tfx--flag .tfx-l:first-child { position: relative; }
+/* posé PILE sur le sommet du O (retour Lucas : plus bas, sur la lettre) */
 .tfx--flag .tfx-l:first-child::before {
   content: ""; position: absolute; z-index: 2;
-  top: -0.3em; left: 50%; width: 0.46em; height: 0.3em; margin-left: -0.23em;
+  top: -0.18em; left: 50%; width: 0.46em; height: 0.28em; margin-left: -0.23em;
   background: linear-gradient(180deg, #fbbf24 0 58%, #dc2626 58% 86%, #f59e0b 86%);
   border-radius: 0.23em 0.23em 0.04em 0.04em;
 }
 .tfx--flag .tfx-l:first-child::after {
   content: ""; position: absolute; z-index: 2;
-  top: -0.06em; left: 50%; width: 0.78em; height: 0.13em; margin-left: -0.39em;
+  top: 0.04em; left: 50%; width: 0.78em; height: 0.12em; margin-left: -0.39em;
   background: linear-gradient(180deg, #fbbf24, #d97706);
   border-radius: 999px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);

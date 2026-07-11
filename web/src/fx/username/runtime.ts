@@ -4,7 +4,7 @@
 // contexte propre ; le ticker global rend chaque instance active dedans.
 import { autoDetectRenderer, Container, Graphics, Ticker } from "pixi.js";
 import type { Renderer, Texture } from "pixi.js";
-import { QUALITY_CAPS } from "./quality";
+import { detectQuality, QUALITY_CAPS, QUALITY_FPS } from "./quality";
 import type { FxQuality } from "./types";
 
 export type FxInstance = {
@@ -50,7 +50,9 @@ export class UsernameFxRuntime {
         resolution: 1,
       });
       rt.ticker = new Ticker();
-      rt.ticker.maxFPS = 60;
+      // 30 fps sur machine modeste : le rendu (blit multiView) est le vrai
+      // coût — GSAP continue de tweener à sa cadence, on rend moins souvent
+      rt.ticker.maxFPS = QUALITY_FPS[detectQuality()];
       rt.ticker.add(() => rt.renderAll());
       rt.ticker.start();
       singleton = rt;

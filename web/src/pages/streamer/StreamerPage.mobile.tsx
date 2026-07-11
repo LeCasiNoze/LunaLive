@@ -9,6 +9,7 @@ import { watchHeartbeat, me, getLives } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
+import { PinchZoomBox } from "../../components/PinchZoomBox";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
@@ -302,6 +303,10 @@ export default function StreamerPageMobile() {
 
   const [actionsOpen, setActionsOpen] = React.useState(false);
 
+  // ouvreurs bot/options exposés par ChatPanel (bouton 🤖 dans la barre chat)
+  const chatActionsRef = React.useRef<{ openBot?: () => void; openSettings?: () => void } | null>(null);
+  const [chatCanManage, setChatCanManage] = React.useState(false);
+
   const { isMobile } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
@@ -452,16 +457,20 @@ export default function StreamerPageMobile() {
   const initials = String(displayName || "S").replace(/^@/, "").trim().slice(0, 1).toUpperCase();
 
   const PlayerBlock = streamer.isLive ? (
-    streamer.platform === "rumble" ? (
-      <RumbleStreamPlayer
-        hlsUrl={streamer.rumbleHlsUrl}
-        thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
-        title={streamer.title}
-        isLive={streamer.isLive}
-      />
-    ) : (
-      <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
-    )
+    // pinch-zoom : 2 doigts zooment LE STREAM seul (layout intact),
+    // double-tap = reset — demande Lucas (mieux voir le contenu du slot)
+    <PinchZoomBox>
+      {streamer.platform === "rumble" ? (
+        <RumbleStreamPlayer
+          hlsUrl={streamer.rumbleHlsUrl}
+          thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+          title={streamer.title}
+          isLive={streamer.isLive}
+        />
+      ) : (
+        <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
+      )}
+    </PinchZoomBox>
   ) : (
     <div className="mob-card" style={{ padding:0, aspectRatio:"16/9", background:streamer.offlineBgUrl ? `linear-gradient(to top,rgba(0,0,0,.70),rgba(0,0,0,.20)),url(${streamer.offlineBgUrl}) center/cover no-repeat` : "rgba(124,92,252,.08)", display:"flex", alignItems:"flex-end" }}>
       <div style={{ padding:16, background:"linear-gradient(to top,rgba(0,0,0,.55),transparent)" }}>
@@ -580,12 +589,19 @@ export default function StreamerPageMobile() {
             <div className="mob-card" key={tabView}>
               {tabView === "chat" ? (
                 <div style={chatHeightStyle}>
-                  <div style={{ padding:"12px 14px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                    <div style={{ fontWeight:800, fontSize:14 }}>Chat</div>
-                    <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14 }}>⛶</button>
+                  {/* barre compacte : Bot + options + plein écran sur la
+                      même ligne que « Chat » (hauteur réduite, retour Lucas) */}
+                  <div style={{ padding:"5px 10px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ fontWeight:800, fontSize:13 }}>Chat</div>
+                    <div style={{ flex:1 }} />
+                    <button type="button" className="btnGhostSmall" onClick={() => chatActionsRef.current?.openBot?.()} style={{ fontSize:13, padding:"4px 8px" }}>🤖 Bot</button>
+                    {chatCanManage ? (
+                      <button type="button" className="btnGhostSmall" onClick={() => chatActionsRef.current?.openSettings?.()} style={{ fontSize:13, padding:"4px 8px" }}>⚙️</button>
+                    ) : null}
+                    <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14, padding:"4px 8px" }}>⛶</button>
                   </div>
                   <div style={{ flex:1, minHeight:0 }}>
-                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} />
+                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} actionsRef={chatActionsRef} onCanManageSettings={setChatCanManage} />
                   </div>
                 </div>
               ) : (

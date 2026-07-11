@@ -43,11 +43,15 @@ export function buildGraphemeLayer(
   fontSize: number,
   areaWidth: number,
   areaHeight: number,
+  // ⚠ le stage est scalé ×dpr : sans résolution ≥ dpr le texte est
+  // rasterisé à 1× puis upscalé = FLOU (bug qualité chat, 11 juil)
+  resolution = 1,
 ): GraphemeLayout {
   const style = new TextStyle({
     fontFamily: FONT_STACK,
     fontSize,
-    fontWeight: "800",
+    // même graisse que .chatUsername (950) — 800 rendait plus maigre/sale
+    fontWeight: "950" as never,
     fill: 0xffffff,
   });
 
@@ -59,7 +63,7 @@ export function buildGraphemeLayer(
   let maxH = 0;
   const measured: { t: Text; w: number; h: number }[] = [];
   for (const part of parts) {
-    const t = new Text({ text: part, style });
+    const t = new Text({ text: part, style, resolution: Math.max(1, resolution) });
     t.anchor.set(0.5, 0.5);
     measured.push({ t, w: t.width, h: t.height });
     maxH = Math.max(maxH, t.height);
