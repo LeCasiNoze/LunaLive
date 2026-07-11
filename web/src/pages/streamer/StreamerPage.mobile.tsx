@@ -594,7 +594,7 @@ export default function StreamerPageMobile() {
                   <div style={{ padding:"5px 10px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", gap:8 }}>
                     <div style={{ fontWeight:800, fontSize:13 }}>Chat</div>
                     <div style={{ flex:1 }} />
-                    <button type="button" className="btnGhostSmall" onClick={() => chatActionsRef.current?.openBot?.()} style={{ fontSize:13, padding:"4px 8px" }}>🤖 Bot</button>
+                    {/* (bouton Bot retiré : LunaBot = bouton flottant 🤖) */}
                     {chatCanManage ? (
                       <button type="button" className="btnGhostSmall" onClick={() => chatActionsRef.current?.openSettings?.()} style={{ fontSize:13, padding:"4px 8px" }}>⚙️</button>
                     ) : null}

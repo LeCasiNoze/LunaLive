@@ -9,6 +9,7 @@ import { EventAvatar } from "../components/events/EventAvatar";
 import { computeWheelSegments, EventWheelDial, WHEEL_SPIN_MS } from "../components/events/EventWheelDial";
 import { playSpinSound } from "../components/events/wheelSound";
 import BossStage from "../components/events/BossStage";
+import { EventLaunchLock, fetchLaunchLock, type LaunchLockState } from "../components/events/EventLaunchLock";
 import { BOSS_WEAPONS, type BossWeapon } from "../components/events/boss3d/weapons";
 import "../components/events/events-theme.css";
 import {
@@ -2047,6 +2048,9 @@ export default function EventPage() {
   const [err, setErr] = React.useState<string | null>(null);
 
   const [event, setEvent] = React.useState<ApiEventRow | null>(null);
+  // cadenas de lancement : tant qu'il n'est pas déverrouillé, la page
+  // event affiche la scène cadenas (aucun event ne tourne, gate moteur)
+  const [launchLock, setLaunchLock] = React.useState<LaunchLockState | null>(null);
   const [viewerWeek, setViewerWeek] = React.useState<ApiViewerWeekResp | null>(null);
   const [wheelWeek, setWheelWeek] = React.useState<ApiWheelPageResp | null>(null);
   const [chest, setChest] = React.useState<ApiChestResp | null>(null);
@@ -2066,6 +2070,20 @@ export default function EventPage() {
     setErr(null);
     setLoading(true);
     try {
+      // cadenas de lancement : si fermé, on n'affiche que la scène cadenas
+      const lock = await fetchLaunchLock(token);
+      setLaunchLock(lock);
+      if (lock && !lock.unlocked) {
+        setEvent(null);
+        setViewerWeek(null);
+        setWheelWeek(null);
+        setChest(null);
+        setClipRace(null);
+        setBoss(null);
+        setDuo(null);
+        setLoading(false);
+        return;
+      }
       // Aperçu local des events sans modifier le cycle de production.
       const previewType = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("preview") : null;
       if (previewType === "viewer_week") {
@@ -2338,6 +2356,17 @@ export default function EventPage() {
             Récupération de l'event courant et du classement.
           </div>
         </div>
+      ) : launchLock && !launchLock.unlocked ? (
+        <EventLaunchLock
+          token={token}
+          state={launchLock}
+          onRequireLogin={() => setLoginOpen(true)}
+          onChanged={(s) => {
+            setLaunchLock(s);
+            // 30e clic : l'event 1 vient d'être déclenché → recharge la page
+            if (s.unlocked) load().catch(() => {});
+          }}
+        />
       ) : !event ? (
         <div className="evCard">
           <div style={{ fontWeight: 1200 }}>Aucun event actif</div>

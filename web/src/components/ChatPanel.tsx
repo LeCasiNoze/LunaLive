@@ -324,7 +324,6 @@ function ChatHeader(props: {
   isBanned: boolean;
   isTimedOut: boolean;
   timeoutUntil: string | null;
-  onClickBot: () => void;
   onClickGear: () => void;
   canManageSettings: boolean;
 }) {
@@ -349,9 +348,6 @@ function ChatHeader(props: {
         {props.isBanned ? " • banni" : props.isTimedOut ? ` • timeout ${fmtRemaining(props.timeoutUntil)}` : ""}
       </div>
       <div style={{ flex: 1 }} />
-      <button type="button" style={headBtn} onClick={props.onClickBot} title="Menu du bot" aria-label="Menu du bot">
-        🤖 Bot
-      </button>
       {props.canManageSettings ? (
         <button
           type="button"
@@ -1297,7 +1293,9 @@ export function ChatPanel({
   compact = false,
   autoFocus = false,
   onFollowsCount,
-  botMenuVariant = "modal",
+  // dock par défaut (11 juil) : le menu bot est un popup contextuel
+  // draggable par-dessus le reste, ouvert par le bouton flottant 🤖
+  botMenuVariant = "dock",
   visualMode = "default",
 
   // ✅ NEW
@@ -2362,6 +2360,30 @@ function openChatPopup() {
         .chat-enter.slide {
           animation: chatEnterSlide 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
         }
+
+        .llBotFab{
+          position: fixed;
+          right: 14px;
+          bottom: calc(96px + env(safe-area-inset-bottom));
+          z-index: 130;
+          width: 52px;
+          height: 52px;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,0.20);
+          background: linear-gradient(135deg, #7c4dff, #38bdf8);
+          box-shadow: 0 12px 34px rgba(0,0,0,0.5), 0 0 0 3px rgba(124,77,255,0.16);
+          font-size: 24px;
+          line-height: 1;
+          color: white;
+          cursor: pointer;
+          animation: llBotFabBreath 3s ease-in-out infinite;
+        }
+        .llBotFab:active{ transform: scale(0.94); }
+        @keyframes llBotFabBreath{
+          0%, 100% { box-shadow: 0 12px 34px rgba(0,0,0,0.5), 0 0 0 3px rgba(124,77,255,0.16); }
+          50% { box-shadow: 0 12px 34px rgba(0,0,0,0.5), 0 0 0 7px rgba(124,77,255,0.26); }
+        }
+        @media (prefers-reduced-motion: reduce){ .llBotFab{ animation: none; } }
       `}
       </style>
 
@@ -2371,7 +2393,6 @@ function openChatPopup() {
         isBanned={isBanned}
         isTimedOut={isTimedOut}
         timeoutUntil={timeoutUntil}
-        onClickBot={onClickBot}
         onClickGear={() => void onClickGear()}
         canManageSettings={canManageSettings}
       />
@@ -2500,7 +2521,12 @@ function openChatPopup() {
           display: "flex",
           flexDirection: "column",
           gap: 10,
-          position: "relative",
+          // RÈGLE (Lucas) : la zone d'envoi reste TOUJOURS visible en bas
+          // de l'écran, même quand la page scrolle autour du panneau chat
+          position: "sticky",
+          bottom: 0,
+          zIndex: 8,
+          background: "rgba(15,10,24,0.97)",
         }}
       >
         {error ? <div style={{ fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div> : null}
@@ -2752,6 +2778,22 @@ function openChatPopup() {
         doBan={doBan}
         doSetMod={doSetMod}
       />
+
+      {/* Bouton flottant LunaBot (style widget assistance) — toggle du
+          popup dock draggable */}
+      <button
+        type="button"
+        className="llBotFab"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (botOpen) setBotOpen(false);
+          else onClickBot();
+        }}
+        title="LunaBot"
+        aria-label="Ouvrir le menu LunaBot"
+      >
+        🤖
+      </button>
 
       {/* bot menu */}
       <BotMenu

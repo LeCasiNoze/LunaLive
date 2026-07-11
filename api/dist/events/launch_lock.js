@@ -1,0 +1,120 @@
+// Cadenas de lancement des events (décision Lucas 11 juil).
+// Règle : 30 comptes ayant rempli les prérequis (features de base) ET
+// cliqué le cadenas → le premier event (Semaine du Viewer) se déclenche
+// immédiatement, puis la rotation hebdo reprend (ordre acté : viewer →
+// clips → coffre → roue → boss → duo) ancrée sur la fin de cet event.
+import { pool } from "../db.js";
+import { WEEK_MS, weekStartUtcMsParis } from "./engine.js";
+export const LAUNCH_LOCK_TARGET = 30;
+const FLAG_KEY = "events_launch";
+export async function getLaunchFlag() {
+    try {
+        const r = await pool.query(`SELECT value FROM app_flags WHERE key=$1`, [FLAG_KEY]);
+        const v = r.rows?.[0]?.value;
+        return v && typeof v === "object" ? v : { unlocked: false };
+    }
+    catch {
+        // table pas encore migrée : considérer verrouillé (sécurité lancement)
+        return { unlocked: false };
+    }
+}
+export async function countLockClicks() {
+    try {
+        const r = await pool.query(`SELECT COUNT(*)::int AS n FROM launch_lock_clicks`);
+        return Number(r.rows?.[0]?.n ?? 0);
+    }
+    catch {
+        return 0;
+    }
+}
+export async function hasClicked(userId) {
+    const r = await pool.query(`SELECT 1 FROM launch_lock_clicks WHERE user_id=$1`, [userId]);
+    return !!r.rows?.[0];
+}
+async function tableExists(table) {
+    const r = await pool.query(`SELECT to_regclass($1) AS reg`, [`public.${table}`]);
+    return !!r.rows?.[0]?.reg;
+}
+// Prérequis = découvrir les features de base (et filtre anti multi-comptes
+// léger) : 1 message chat + 1 tour de roue + 1 bonus quotidien.
+export async function userPrereqs(userId) {
+    const [msg, spin] = await Promise.all([
+        pool.query(`SELECT 1 FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL LIMIT 1`, [userId]).then((r) => !!r.rows?.[0]).catch(() => false),
+        pool.query(`SELECT 1 FROM daily_wheel_spins WHERE user_id=$1 LIMIT 1`, [userId]).then((r) => !!r.rows?.[0]).catch(() => false),
+    ]);
+    let bonus = false;
+    for (const t of ["daily_bonus_claims", "user_daily_bonus_claims", "daily_bonus_days"]) {
+        if (!(await tableExists(t)))
+            continue;
+        try {
+            const r = await pool.query(`SELECT 1 FROM ${t} WHERE user_id=$1 LIMIT 1`, [userId]);
+            bonus = !!r.rows?.[0];
+        }
+        catch {
+            bonus = false;
+        }
+        break;
+    }
+    return [
+        { key: "chat", label: "Envoyer un message dans un chat", done: msg },
+        { key: "wheel", label: "Faire un tour de roue quotidienne", done: spin },
+        { key: "daily", label: "Récupérer un bonus quotidien", done: bonus },
+    ];
+}
+/** fin de l'event de lancement = premier lundi (Paris) ≥ maintenant + 7 j
+    → l'event dure 7 à 13 jours et se termine pile sur la grille hebdo */
+function launchEventEndMs(nowMs) {
+    const ws = weekStartUtcMsParis(new Date(nowMs));
+    let end = ws + WEEK_MS; // lundi prochain
+    while (end < nowMs + WEEK_MS)
+        end += WEEK_MS;
+    return end;
+}
+/**
+ * Clic sur le cadenas. Sérialisé par advisory lock (le 30e clic déclenche
+ * l'event — pas de double déclenchement possible).
+ */
+export async function clickLock(userId) {
+    const flag = await getLaunchFlag();
+    if (flag.unlocked)
+        return { ok: false, error: "already_unlocked" };
+    const reqs = await userPrereqs(userId);
+    if (!reqs.every((r) => r.done))
+        return { ok: false, error: "not_eligible" };
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        await client.query(`SELECT pg_advisory_xact_lock(981731)`);
+        const ins = await client.query(`INSERT INTO launch_lock_clicks (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING RETURNING user_id`, [userId]);
+        const alreadyClicked = !ins.rows?.[0];
+        const cnt = await client.query(`SELECT COUNT(*)::int AS n FROM launch_lock_clicks`);
+        const count = Number(cnt.rows?.[0]?.n ?? 0);
+        let unlocked = false;
+        if (count >= LAUNCH_LOCK_TARGET) {
+            // re-check du flag SOUS le lock (un clic concurrent a pu déclencher)
+            const f = await client.query(`SELECT value FROM app_flags WHERE key=$1`, [FLAG_KEY]);
+            const cur = (f.rows?.[0]?.value ?? {});
+            if (!cur.unlocked) {
+                const nowMs = Date.now();
+                const endMs = launchEventEndMs(nowMs);
+                // ÉVÉNEMENT N°1 : Semaine du Viewer, démarre immédiatement
+                await client.query(`INSERT INTO events(type, cycle_index, start_at, end_at, state, config)
+           VALUES ('viewer_week', 0, NOW(), $1::timestamptz, 'live', '{}'::jsonb)
+           ON CONFLICT (start_at, end_at) DO NOTHING`, [new Date(endMs).toISOString()]);
+                const value = { unlocked: true, unlockedAt: new Date(nowMs).toISOString(), anchorMs: endMs };
+                await client.query(`INSERT INTO app_flags (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
+           ON CONFLICT (key) DO UPDATE SET value=$2::jsonb, updated_at=NOW()`, [FLAG_KEY, JSON.stringify(value)]);
+            }
+            unlocked = true;
+        }
+        await client.query("COMMIT");
+        return { ok: true, count, unlocked, alreadyClicked };
+    }
+    catch (e) {
+        await client.query("ROLLBACK").catch(() => { });
+        throw e;
+    }
+    finally {
+        client.release();
+    }
+}

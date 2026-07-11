@@ -72,7 +72,6 @@ export function BotMenu({
   if (!open) return null;
 
   const panelW = Math.max(320, Math.min(520, Number(dockWidth ?? 360))); // ✅ ex: 420/440 en popup
-  const panelH = 520;
 
   const PanelInner = (
     <div
@@ -92,10 +91,12 @@ export function BotMenu({
         flexDirection: "column",
       }}
     >
-      {/* Header (draggable en dock) */}
+      {/* Header (draggable en dock — Pointer Events = souris ET tactile) */}
       <div
-        onMouseDown={(e) => {
+        onPointerDown={(e) => {
           if (variant !== "dock") return;
+          // ne pas capturer le clic du bouton ✕
+          if ((e.target as HTMLElement).closest("button")) return;
 
           e.preventDefault();
           e.stopPropagation();
@@ -107,7 +108,7 @@ export function BotMenu({
 
           const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
 
-          const onMove = (ev: MouseEvent) => {
+          const onMove = (ev: PointerEvent) => {
             const dx = ev.clientX - startX;
             const dy = ev.clientY - startY;
 
@@ -118,20 +119,23 @@ export function BotMenu({
             const maxY = window.innerHeight - 8;
 
             setDockPos({
-              x: clamp(nextX, 8, maxX - panelW),
-              y: clamp(nextY, 8, maxY - panelH),
+              x: clamp(nextX, 8, Math.max(8, maxX - panelW)),
+              y: clamp(nextY, 8, Math.max(8, maxY - 120)),
             });
           };
 
           const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
           };
 
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+          window.addEventListener("pointercancel", onUp);
         }}
         style={{
+          touchAction: "none",
           padding: 14,
           display: "flex",
           alignItems: "center",

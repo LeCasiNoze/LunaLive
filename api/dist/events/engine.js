@@ -7,12 +7,15 @@ import { recomputeBurnBoss } from "./burn_boss.js";
 import { proposeDuos, recomputeDuoWeek } from "./duo_week.js";
 import { closeAndDistribute, EVENT_REWARD_CONFIGS } from "./rewards.js";
 const TZ = "Europe/Paris";
-const WEEK_MS = 7 * 24 * 3600_000;
+export const WEEK_MS = 7 * 24 * 3600_000;
+// Ordre de rotation ACTÉ par Lucas (11 juil) : l'event de lancement est la
+// Semaine du Viewer (déclenchée par le cadenas, cf launch_lock.ts), puis
+// la rotation hebdo reprend à partir de son ANCRE (fin de l'event 1).
 const CYCLE = [
-    "clip_race",
     "viewer_week",
-    "wheel_week",
+    "clip_race",
     "global_chest",
+    "wheel_week",
     "burn_boss",
     "duo_week",
 ];
@@ -67,7 +70,7 @@ function parisMidnightUtcMs(y, m, d) {
     utc = guess - tzOffsetMsAt(new Date(utc));
     return utc;
 }
-function weekStartUtcMsParis(now = new Date()) {
+export function weekStartUtcMsParis(now = new Date()) {
     const p = tzParts(now);
     const wd = weekdayIndexFr(p.weekday);
     const deltaToMon = wd - 1;
@@ -76,9 +79,29 @@ function weekStartUtcMsParis(now = new Date()) {
     const pm = tzParts(new Date(mondayNoonUtc));
     return parisMidnightUtcMs(pm.year, pm.month, pm.day);
 }
-function cycleIndexForWeek(weekStartUtcMs) {
+// Rotation ancrée sur la fin de l'event de lancement (anchorMs = un lundi
+// Paris) : la semaine qui démarre à l'ancre = clip_race (index 1, le
+// viewer_week index 0 étant l'event de lancement lui-même).
+function cycleIndexForWeek(weekStartUtcMs, anchorMs) {
+    if (anchorMs && Number.isFinite(anchorMs)) {
+        const weeksSinceAnchor = Math.round((weekStartUtcMs - anchorMs) / WEEK_MS);
+        return (((weeksSinceAnchor + 1) % 6) + 6) % 6;
+    }
     const weeksSinceEpoch = Math.floor(weekStartUtcMs / WEEK_MS);
     return ((weeksSinceEpoch % 6) + 6) % 6;
+}
+// flag de lancement (app_flags.events_launch) — lu à chaque tick (60s).
+// Tant que le cadenas n'est pas déverrouillé : AUCUNE création/ouverture
+// d'event (la page /event montre la scène cadenas).
+async function getLaunchFlagRow() {
+    try {
+        const r = await pool.query(`SELECT value FROM app_flags WHERE key='events_launch'`);
+        const v = r.rows?.[0]?.value ?? {};
+        return { unlocked: !!v.unlocked, anchorMs: Number.isFinite(Number(v.anchorMs)) ? Number(v.anchorMs) : null };
+    }
+    catch {
+        return { unlocked: false, anchorMs: null };
+    }
 }
 /** ---- Core engine ---- */
 async function getCurrentEvent() {
@@ -91,10 +114,14 @@ async function getCurrentEvent() {
     `);
     return r.rows?.[0] ?? null;
 }
-async function ensureWeekEvent(weekStartUtcMs) {
+async function ensureWeekEvent(weekStartUtcMs, anchorMs) {
+    // pas de semaine hebdo pendant l'event de lancement (il court jusqu'à
+    // l'ancre) ni avant elle
+    if (anchorMs && weekStartUtcMs < anchorMs)
+        return;
     const startAt = new Date(weekStartUtcMs).toISOString();
     const endAt = new Date(weekStartUtcMs + WEEK_MS).toISOString();
-    const cycle_index = cycleIndexForWeek(weekStartUtcMs);
+    const cycle_index = cycleIndexForWeek(weekStartUtcMs, anchorMs);
     const type = CYCLE[cycle_index] || "viewer_week";
     const cfgRes = await pool.query(`SELECT config FROM event_type_configs WHERE type=$1`, [type]);
     const config = cfgRes.rows?.[0]?.config ?? {};
@@ -148,10 +175,20 @@ export function startEventsEnginePoller(everyMs = 60_000) {
     const tick = async () => {
         try {
             const ws = weekStartUtcMsParis(new Date());
-            await ensureWeekEvent(ws);
-            await closeIfNeeded();
-            await openIfNeeded();
-            await ensureWeekEvent(ws + WEEK_MS);
+            const launch = await getLaunchFlagRow();
+            if (!launch.unlocked) {
+                // CADENAS FERMÉ : on ne crée/ouvre RIEN. Les éditions déjà
+                // planifiées (pré-créées avant le gate) sont purgées, celles en
+                // cours se terminent naturellement (closeIfNeeded + recompute).
+                await pool.query(`DELETE FROM events WHERE state='scheduled'`);
+                await closeIfNeeded();
+            }
+            else {
+                await ensureWeekEvent(ws, launch.anchorMs);
+                await closeIfNeeded();
+                await openIfNeeded();
+                await ensureWeekEvent(ws + WEEK_MS, launch.anchorMs);
+            }
             await unfeatureExpiredStreamers();
             // ✅ recompute dans le tick (donc toutes les minutes)
             const cur = await getCurrentEvent();
