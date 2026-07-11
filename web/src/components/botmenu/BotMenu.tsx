@@ -85,6 +85,11 @@ export function BotMenu({
         background: "rgba(18,14,26,0.98)",
         boxShadow: "0 20px 80px rgba(0,0,0,0.55)",
         overflow: "hidden",
+        // le contenu long SCROLLE dans le panel (header/tabs restent
+        // visibles → le ✕ est toujours accessible) — fix retour Lucas
+        maxHeight: "min(86dvh, 640px)",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
       {/* Header (draggable en dock) */}
@@ -135,6 +140,7 @@ export function BotMenu({
           cursor: variant === "dock" ? "grab" : "default",
           userSelect: "none",
           background: "linear-gradient(135deg, rgba(124,77,255,0.22), rgba(80,200,255,0.10))",
+          flexShrink: 0,
         }}
         title={variant === "dock" ? "Glisse pour déplacer" : undefined}
       >
@@ -164,6 +170,7 @@ export function BotMenu({
           padding: 12,
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           flexWrap: "wrap",
+          flexShrink: 0,
         }}
       >
         {(["call", "hunt", "wheel", "rain", "predictions"] as const).map((k) => (
@@ -194,29 +201,31 @@ export function BotMenu({
         ))}
       </div>
 
-      {/* Content */}
-      {tab === "call" && (
-        <CallTab
-          token={token}
-          slug={slug}
-          canMod={canMod}
-          onClose={onClose}
-          onRequireLogin={onRequireLogin}
-          sendBang={sendBang}
-        />
-      )}
+      {/* Content — zone scrollable (le panel est plafonné en hauteur) */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+        {tab === "call" && (
+          <CallTab
+            token={token}
+            slug={slug}
+            canMod={canMod}
+            onClose={onClose}
+            onRequireLogin={onRequireLogin}
+            sendBang={sendBang}
+          />
+        )}
 
-      {tab === "hunt" && <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />}
+        {tab === "hunt" && <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />}
 
-      {tab === "wheel" && (
-        <WheelTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
-      )}
+        {tab === "wheel" && (
+          <WheelTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
+        )}
 
-      {tab === "rain" && <RainTab token={token} slug={slug} onRequireLogin={onRequireLogin} />}
+        {tab === "rain" && <RainTab token={token} slug={slug} onRequireLogin={onRequireLogin} />}
 
-      {tab === "predictions" && (
-        <PredictionsTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />
-      )}
+        {tab === "predictions" && (
+          <PredictionsTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />
+        )}
+      </div>
     </div>
   );
 

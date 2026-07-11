@@ -214,17 +214,8 @@ function svgGif(label: string, glyph: string) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
-const NATIVE_EMOJIS: EmoteItem[] = [
-  { kind: "emoji", scope: "native", name: "smile", label: "Smile", char: "😀" },
-  { kind: "emoji", scope: "native", name: "heart", label: "Heart", char: "❤️" },
-  { kind: "emoji", scope: "native", name: "fire", label: "Fire", char: "🔥" },
-  { kind: "emoji", scope: "native", name: "clap", label: "Clap", char: "👏" },
-  { kind: "emoji", scope: "native", name: "skull", label: "Skull", char: "💀" },
-  { kind: "emoji", scope: "native", name: "lol", label: "LOL", char: "😂" },
-  { kind: "emoji", scope: "native", name: "cry", label: "Cry", char: "😭" },
-  { kind: "emoji", scope: "native", name: "star", label: "Sparkles", char: "✨" },
-];
-
+// (les emojis unicode natifs ont été retirés du picker — retour Lucas :
+// « classiques que tout le monde a déjà » — seules les emotes custom restent)
 const NATIVE_GIFS: EmoteItem[] = [
   { kind: "gif", scope: "native", name: "party", label: "party", url: svgGif("party", "🎉") },
   { kind: "gif", scope: "native", name: "gg", label: "gg", url: svgGif("gg", "🏆") },
@@ -327,15 +318,51 @@ function applyViewerPolicy(cos: any, level: 1 | 2 | 3) {
 /* =========================================================
    Small UI components
    ========================================================= */
-function ChatHeader(props: { compact: boolean; join: JoinAck | null; isBanned: boolean; isTimedOut: boolean; timeoutUntil: string | null }) {
+function ChatHeader(props: {
+  compact: boolean;
+  join: JoinAck | null;
+  isBanned: boolean;
+  isTimedOut: boolean;
+  timeoutUntil: string | null;
+  onClickBot: () => void;
+  onClickGear: () => void;
+  canManageSettings: boolean;
+}) {
   if (props.compact) return null;
+  const headBtn: React.CSSProperties = {
+    padding: "6px 10px",
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(124,77,255,0.16)",
+    color: "white",
+    fontWeight: 900,
+    cursor: "pointer",
+    fontSize: 13,
+    lineHeight: 1.2,
+  };
   return (
-    <div style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+    // une seule ligne compacte : titre + rôle inline + actions à droite
+    <div style={{ padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.2 }}>Chat</div>
-      <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
-        {props.join?.role ? `Rôle: ${props.join.role}` : "…"}
+      <div style={{ opacity: 0.6, fontSize: 11, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {props.join?.role ? props.join.role : ""}
         {props.isBanned ? " • banni" : props.isTimedOut ? ` • timeout ${fmtRemaining(props.timeoutUntil)}` : ""}
       </div>
+      <div style={{ flex: 1 }} />
+      <button type="button" style={headBtn} onClick={props.onClickBot} title="Menu du bot" aria-label="Menu du bot">
+        🤖 Bot
+      </button>
+      {props.canManageSettings ? (
+        <button
+          type="button"
+          style={{ ...headBtn, background: "rgba(255,255,255,0.06)" }}
+          onClick={props.onClickGear}
+          title="Options du chat"
+          aria-label="Options du chat"
+        >
+          ⚙️
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -507,68 +534,49 @@ function EmotePicker(props: {
   bottomOffsetPx: number;
   emoteTab: EmoteKind;
   setEmoteTab: (k: EmoteKind) => void;
-  emoteSearch: string;
-  setEmoteSearch: (v: string) => void;
   emotesChannel: EmoteItem[];
   emotesGlobal: EmoteItem[];
   favs: { emoji: string[]; gif: string[] };
-  insertAtCaret: (s: string) => void;
+  /** clic sur une emote : envoi direct si la zone est vide, sinon insertion */
+  onPick: (e: EmoteItem) => void;
   toggleFav: (e: EmoteItem) => void;
   onClose: () => void;
 }) {
   if (!props.open) return null;
 
-  const q = safeTokenName(props.emoteSearch).replace(/_/g, "");
+  // rework 11 juil (retours Lucas) : plus de recherche, plus de noms,
+  // plus d'emojis natifs (tout le monde les a déjà) — que des vignettes
   const isGif = props.emoteTab === "gif";
 
-  const native = (isGif ? NATIVE_GIFS : NATIVE_EMOJIS).filter((e) => {
-    if (!q) return true;
-    const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
-    return hay.includes(q);
-  });
-
-  const global = props.emotesGlobal
-    .filter((e) => e.kind === props.emoteTab)
-    .filter((e) => {
-      if (!q) return true;
-      const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
-      return hay.includes(q);
-    });
-
-  const channel = props.emotesChannel
-    .filter((e) => e.kind === props.emoteTab)
-    .filter((e) => {
-      if (!q) return true;
-      const hay = (e.name + (e.label || "")).toLowerCase().replace(/[^a-z0-9]+/g, "");
-      return hay.includes(q);
-    });
+  const global = props.emotesGlobal.filter((e) => e.kind === props.emoteTab);
+  const channel = props.emotesChannel.filter((e) => e.kind === props.emoteTab);
 
   const favKeys = isGif ? props.favs.gif : props.favs.emoji;
 
   const byKey = new Map<string, EmoteItem>();
-  for (const e of [...native, ...global, ...channel]) byKey.set(favKeyOf(e), e);
+  for (const e of [...global, ...channel]) byKey.set(favKeyOf(e), e);
 
   const favItems = favKeys.map((k) => byKey.get(k)).filter(Boolean) as EmoteItem[];
 
-  const sections: Array<{ title: string; items: EmoteItem[]; note?: string }> = [
-    { title: "⭐ Favoris", items: favItems, note: "Favoris = natifs/globaux (DB)" },
+  const sections: Array<{ title: string; items: EmoteItem[] }> = [
+    { title: "⭐ Favoris", items: favItems },
     { title: "🌍 Global", items: global },
     { title: "🎯 Chaîne", items: channel },
-    { title: "🌙 Natifs", items: native },
   ];
 
+  // vignette carrée : l'image remplit le bouton, l'étoile est un badge coin
   const gridBtn: React.CSSProperties = {
-    borderRadius: 14,
+    position: "relative",
+    borderRadius: 12,
     border: "1px solid rgba(255,255,255,0.10)",
     background: "rgba(255,255,255,0.05)",
     color: "white",
-    fontWeight: 950,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    padding: "10px 10px",
+    justifyContent: "center",
+    aspectRatio: "1 / 1",
+    padding: 4,
     width: "100%",
   };
 
@@ -638,37 +646,16 @@ function EmotePicker(props: {
         </button>
       </div>
 
-      {/* search */}
-      <input
-        value={props.emoteSearch}
-        onChange={(e) => props.setEmoteSearch(e.target.value)}
-        placeholder={`Rechercher ${props.emoteTab === "gif" ? "un GIF" : "un emoji"}…`}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background: "rgba(0,0,0,0.25)",
-          color: "white",
-          outline: "none",
-          fontSize: 16,
-          marginBottom: 10,
-        }}
-      />
-
       <div style={{ maxHeight: 320, overflow: "auto", paddingRight: 2 }}>
         {sections.map((sec) => (
           <div key={sec.title} style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginBottom: 8 }}>{sec.title}</div>
-              {sec.note ? <div style={{ fontSize: 11, opacity: 0.55, fontWeight: 800 }}>{sec.note}</div> : null}
-            </div>
+            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, marginBottom: 8 }}>{sec.title}</div>
 
             {sec.items.length === 0 ? (
               <div style={{ fontSize: 12, opacity: 0.6, fontWeight: 800, padding: "6px 2px" }}>—</div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-                {sec.items.slice(0, 60).map((e) => {
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(56px, 1fr))", gap: 8 }}>
+                {sec.items.slice(0, 80).map((e) => {
                   const canFav = e.scope !== "channel" && e.id != null;
                   const fk = favKeyOf(e);
                   const isFav = (isGif ? props.favs.gif : props.favs.emoji).includes(fk);
@@ -678,68 +665,47 @@ function EmotePicker(props: {
                       key={`${e.scope}:${e.kind}:${e.name}`}
                       type="button"
                       style={gridBtn}
-                      title={`:${e.kind === "gif" ? "g" : "e"}:${e.name}:`}
-                      onClick={() => {
-                        if (e.kind === "emoji" && e.scope === "native" && e.char) {
-                          props.insertAtCaret(e.char);
-                        } else {
-                          props.insertAtCaret(`:${e.kind === "gif" ? "g" : "e"}:${e.name}:`);
-                        }
-                        props.onClose();
-                      }}
+                      title={e.label || e.name}
+                      onClick={() => props.onPick(e)}
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        {e.kind === "emoji" && e.scope === "native" && e.char ? (
-                          <span style={{ fontSize: 18 }}>{e.char}</span>
-                        ) : e.url ? (
-                          <img
-                            src={e.url}
-                            alt=""
-                            style={{
-                              width: e.kind === "gif" ? 28 : 20,
-                              height: e.kind === "gif" ? 28 : 20,
-                              borderRadius: e.kind === "gif" ? 10 : 6,
-                              border: e.kind === "gif" ? "1px solid rgba(255,255,255,0.10)" : "none",
-                              background: e.kind === "gif" ? "rgba(255,255,255,0.04)" : "transparent",
-                            }}
-                          />
-                        ) : (
-                          <span style={{ fontSize: 18 }}>{e.kind === "gif" ? "🎞️" : "🙂"}</span>
-                        )}
-
-                        <span
+                      {e.url ? (
+                        <img
+                          src={e.url}
+                          alt={e.label || e.name}
                           style={{
-                            fontSize: 12,
-                            opacity: 0.85,
-                            fontWeight: 950,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            borderRadius: 8,
+                          }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: 28 }}>{e.kind === "gif" ? "🎞️" : "🙂"}</span>
+                      )}
+
+                      {canFav ? (
+                        <span
+                          onClick={(ev) => {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            props.toggleFav(e);
+                          }}
+                          title={isFav ? "Retirer des favoris" : "Ajouter aux favoris"}
+                          style={{
+                            position: "absolute",
+                            top: 1,
+                            right: 1,
+                            padding: "1px 3px",
+                            borderRadius: 8,
+                            fontSize: 10,
+                            lineHeight: 1.2,
+                            background: isFav ? "rgba(255,210,110,0.30)" : "rgba(0,0,0,0.35)",
+                            opacity: isFav ? 1 : 0.55,
                           }}
                         >
-                          {e.kind === "emoji" && e.scope === "native" ? (e.name || "emoji") : e.label || e.name}
+                          ⭐
                         </span>
-                      </div>
-
-                      <span
-                        onClick={(ev) => {
-                          ev.preventDefault();
-                          ev.stopPropagation();
-                          if (!canFav) return;
-                          props.toggleFav(e);
-                        }}
-                        title={canFav ? (isFav ? "Retirer des favoris" : "Ajouter aux favoris") : "Favoris globaux uniquement"}
-                        style={{
-                          padding: "4px 6px",
-                          borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: canFav && isFav ? "rgba(255,210,110,0.18)" : "rgba(0,0,0,0.20)",
-                          opacity: canFav ? 1 : 0.35,
-                          fontSize: 12,
-                        }}
-                      >
-                        ⭐
-                      </span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -1340,6 +1306,8 @@ export function ChatPanel({
   // depuis ce panel sont exécutées par le bot mais N'APPARAISSENT PAS dans
   // le chat (épure la timeline pour les FSB depuis stream-control).
   streamControl = false,
+  actionsRef,
+  onCanManageSettings,
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1353,6 +1321,11 @@ export function ChatPanel({
   // ✅ NEW
   botMenuDockWidth?: number;
   streamControl?: boolean;
+  /** en mode compact (header caché), le parent peut piloter bot/options
+      depuis sa propre barre (mobile : bot à côté du plein écran) */
+  actionsRef?: React.MutableRefObject<{ openBot?: () => void; openSettings?: () => void } | null>;
+  /** notifie le parent si l'utilisateur peut gérer les options (⚙️ mobile) */
+  onCanManageSettings?: (v: boolean) => void;
 }) {
 
 
@@ -1701,7 +1674,6 @@ export function ChatPanel({
 
   const [emoteOpen, setEmoteOpen] = React.useState(false);
   const [emoteTab, setEmoteTab] = React.useState<EmoteKind>("emoji");
-  const [emoteSearch, setEmoteSearch] = React.useState("");
   const [emotesChannel, setEmotesChannel] = React.useState<EmoteItem[]>([]);
   const [emotesGlobal, setEmotesGlobal] = React.useState<EmoteItem[]>([]);
   const [favs, setFavs] = React.useState<{ emoji: string[]; gif: string[] }>({ emoji: [], gif: [] });
@@ -1998,6 +1970,12 @@ export function ChatPanel({
      Send message
      ------------------------- */
   async function send() {
+    const text = input.replace(/\r/g, "").trim();
+    await sendBody(text, { clearInput: true });
+  }
+
+  // envoi direct d'un body arbitraire (emote cliquée avec zone vide, etc.)
+  async function sendBody(text: string, opts?: { clearInput?: boolean }) {
     setError(null);
 
     if (!isAuthed) {
@@ -2007,7 +1985,6 @@ export function ChatPanel({
     if (isBanned) return setError("Tu es banni de ce chat.");
     if (isTimedOut) return setError(`Tu es en timeout (${fmtRemaining(timeoutUntil)}).`);
 
-    const text = input.replace(/\r/g, "").trim();
     if (!text) return;
 
     setSending(true);
@@ -2033,7 +2010,7 @@ export function ChatPanel({
               setError(String(ack?.error || "send_failed"));
             }
           } else {
-            setInput("");
+            if (opts?.clearInput) setInput("");
             atBottomRef.current = true;
             forceScrollBottomMultiPass();
             if (focusedRef.current) window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -2271,10 +2248,23 @@ export function ChatPanel({
   };
 
   const onClickEmoji = () => {
+    // pas de focus() ici : sur mobile ça ouvrait le clavier avec le menu
     setEmoteOpen((v) => !v);
-    setEmoteSearch("");
     fetchEmotes();
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  // clic emote : zone vide → ENVOI direct ; sinon insertion au curseur
+  const onPickEmote = (e: EmoteItem) => {
+    const token =
+      e.kind === "emoji" && e.scope === "native" && e.char
+        ? e.char
+        : `:${e.kind === "gif" ? "g" : "e"}:${e.name}:`;
+    if (!input.trim()) {
+      void sendBody(token);
+    } else {
+      insertAtCaret(token);
+    }
+    setEmoteOpen(false);
   };
 
   const onClickGear = async () => {
@@ -2282,6 +2272,20 @@ export function ChatPanel({
     setSettingsOpen(true);
     await fetchSettings();
   };
+
+  // expose bot/options au parent (barre mobile au-dessus du panel compact)
+  React.useEffect(() => {
+    onCanManageSettings?.(canManageSettings);
+    if (!actionsRef) return;
+    actionsRef.current = {
+      openBot: onClickBot,
+      openSettings: canManageSettings ? () => void onClickGear() : undefined,
+    };
+    return () => {
+      actionsRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionsRef, canManageSettings, token]);
 
   const popupRef = React.useRef<Window | null>(null);
 
@@ -2361,7 +2365,16 @@ function openChatPopup() {
       `}
       </style>
 
-      <ChatHeader compact={!!compact} join={join} isBanned={isBanned} isTimedOut={isTimedOut} timeoutUntil={timeoutUntil} />
+      <ChatHeader
+        compact={!!compact}
+        join={join}
+        isBanned={isBanned}
+        isTimedOut={isTimedOut}
+        timeoutUntil={timeoutUntil}
+        onClickBot={onClickBot}
+        onClickGear={() => void onClickGear()}
+        canManageSettings={canManageSettings}
+      />
 
       {/* bandeau reconnexion */}
       {!socketConnected && (
@@ -2492,89 +2505,16 @@ function openChatPopup() {
       >
         {error ? <div style={{ fontSize: 12, color: "rgba(255,120,150,0.95)" }}>{error}</div> : null}
 
-        {/* row 1: actions */}
-        <div style={{ display: "flex", gap: 10 }}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClickBot();
-            }}
-            style={{
-              flex: 1,
-              padding: "12px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(124,77,255,0.18)",
-              color: "white",
-              fontWeight: 950,
-              cursor: "pointer",
-            }}
-            title="Ouvrir le menu du bot"
-            aria-label="Ouvrir le menu du bot"
-          >
-            🤖 Bot
-          </button>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClickEmoji();
-            }}
-            style={{
-              padding: "12px 14px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: emoteOpen ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.06)",
-              color: "white",
-              fontWeight: 950,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-            title="Emojis & GIFs"
-            aria-label="Emojis & GIFs"
-          >
-            😀
-          </button>
-
-          {canManageSettings ? (
-            <button
-              type="button"
-              onClick={async (e) => {
-                e.stopPropagation();
-                await onClickGear();
-              }}
-              style={{
-                padding: "12px 14px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(255,255,255,0.06)",
-                color: "white",
-                fontWeight: 900,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-              title="Options du chat"
-              aria-label="Options du chat"
-            >
-              ⚙️
-            </button>
-          ) : null}
-        </div>
-
         {/* popovers */}
         <EmotePicker
           open={emoteOpen}
           bottomOffsetPx={pickerBottomOffset}
           emoteTab={emoteTab}
           setEmoteTab={setEmoteTab}
-          emoteSearch={emoteSearch}
-          setEmoteSearch={setEmoteSearch}
           emotesChannel={emotesChannel}
           emotesGlobal={emotesGlobal}
           favs={favs}
-          insertAtCaret={insertAtCaret}
+          onPick={onPickEmote}
           toggleFav={toggleFav}
           onClose={() => setEmoteOpen(false)}
         />
@@ -2729,6 +2669,30 @@ function openChatPopup() {
               overflow: "auto",
             }}
           />
+
+          {/* emoji juste à côté d'Envoyer (économie de place, retour Lucas) */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClickEmoji();
+            }}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: emoteOpen ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.06)",
+              color: "white",
+              fontWeight: 950,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              fontSize: 17,
+            }}
+            title="Emojis & GIFs"
+            aria-label="Emojis & GIFs"
+          >
+            😀
+          </button>
 
           <button
             onClick={(e) => {

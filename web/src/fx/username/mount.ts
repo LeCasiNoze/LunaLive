@@ -116,7 +116,10 @@ export async function mountUsernameFx(opts: {
 
   const inst = runtime.createInstance(opts.canvas, width, height, opts.quality);
 
-  const { layer, graphemes } = buildGraphemeLayer(opts.username, fontSize, width, height);
+  // texte rasterisé à la résolution du canvas (inst.dpr) → net une fois
+  // scalé par le stage (le probe de mesure reste à 1, les métriques
+  // logiques ne dépendent pas de la résolution)
+  const { layer, graphemes } = buildGraphemeLayer(opts.username, fontSize, width, height, inst.dpr);
   const behind = new Container(); // couche sous le texte (fumée, racines…)
   const front = new Container(); // couche au-dessus (braises, éclats…)
   inst.stage.addChild(behind, layer, front);
