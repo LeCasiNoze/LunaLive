@@ -100,6 +100,10 @@ export class UsernameFxRuntime {
 
   private renderAll() {
     if (!this.renderer) return;
+    // scroll en cours (flag posé par installFxScrollPause, cf App.tsx) → on
+    // ne blitte pas : le GPU reste libre pour le défilement. Les canvas
+    // gardent leur dernière frame (imperceptible), les tweens continuent.
+    if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-fx-scrolling")) return;
     // Collecte des instances actives puis TRI par taille : les instances de
     // même dimension sont rendues consécutivement → le renderer WebGL n'est
     // resize()é (= réallocation de framebuffer, coûteux) qu'UNE fois par
