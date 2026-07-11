@@ -112,6 +112,7 @@ import { eventsChestRouter } from "./routes/events_chest.js";
 import { eventsClipRaceRouter } from "./routes/events_clip_race.js";
 import { eventsBossRouter } from "./routes/events_boss.js";
 import { eventsDuoRouter } from "./routes/events_duo.js";
+import { launchLockRouter } from "./routes/launch_lock.js";
 import { adminEventsRouter } from "./routes/admin_events.js";
 import { lunaclipRouter } from "./lunaclip/routes.js";
 // Debug routes
@@ -181,6 +182,7 @@ export function createApp() {
     app.use("/api", eventsClipRaceRouter);
     app.use("/api", eventsBossRouter);
     app.use("/api", eventsDuoRouter);
+    app.use("/api", launchLockRouter);
     app.use("/api", igCommentsRouter);
     app.use("/api", offresStreamersRouter);
     app.use("/api", igConfigRouter);
