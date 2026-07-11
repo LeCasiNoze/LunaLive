@@ -17,6 +17,7 @@ import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
 import RumbleEmbedPlayer from "../../components/RumbleEmbedPlayer";
 import { ChatPanel } from "../../components/ChatPanel";
+import { FloatingBot } from "../../components/botmenu/FloatingBot";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
@@ -1110,7 +1111,7 @@ function StreamerPageDesktop() {
             )}
           </div>
           <div className="streamChatBody" style={{ flex: 1, minHeight: 0 }}>
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} />
+            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} showBotFab={false} />
           </div>
         </aside>
       </div>
@@ -1636,6 +1637,10 @@ function StreamerPageDesktop() {
       />
 
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+
+      {/* LunaBot détaché aussi sur desktop (le FAB interne du ChatPanel
+          n'était pas visible → showBotFab=false + FloatingBot au niveau page) */}
+      <FloatingBot slug={String(slug || "")} token={token} role={isOwner ? "streamer" : "viewer"} canMod={isOwner || isAdmin || isModLike} onRequireLogin={() => setLoginOpen(true)} />
     </div>
   );
 }

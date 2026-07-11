@@ -19,6 +19,8 @@ export type FxInstance = {
   visible: boolean;
   /** budget particules de l'instance */
   particleCap: number;
+  /** context 2D du canvas cible, caché (getContext par frame = coûteux) */
+  c2d?: CanvasRenderingContext2D | null;
   destroy(): void;
 };
 
@@ -98,18 +100,35 @@ export class UsernameFxRuntime {
 
   private renderAll() {
     if (!this.renderer) return;
+    // Collecte des instances actives puis TRI par taille : les instances de
+    // même dimension sont rendues consécutivement → le renderer WebGL n'est
+    // resize()é (= réallocation de framebuffer, coûteux) qu'UNE fois par
+    // taille distincte au lieu d'une fois par instance et par frame.
+    // (bug perf 11 juil : pseudos ~14px + cadrans ~200px alternés = thrash)
+    const active: FxInstance[] = [];
     for (const inst of this.instances) {
       if (!inst.playing || !inst.visible) continue;
+      if (inst.canvas.width === 0 || inst.canvas.height === 0) continue;
+      active.push(inst);
+    }
+    if (!active.length) return;
+    if (active.length > 1) {
+      active.sort((a, b) => a.canvas.width - b.canvas.width || a.canvas.height - b.canvas.height);
+    }
+
+    let curW = -1;
+    let curH = -1;
+    for (const inst of active) {
       const pw = inst.canvas.width;
       const ph = inst.canvas.height;
-      if (pw === 0 || ph === 0) continue;
-      if (this.renderer.width !== pw || this.renderer.height !== ph) {
+      if (pw !== curW || ph !== curH) {
         this.renderer.resize(pw, ph);
+        curW = pw;
+        curH = ph;
       }
-      // multiView blitte SANS effacer le canvas cible (backgroundAlpha 0 →
-      // composite par-dessus l'ancien contenu = traînées fantômes). Clear
-      // manuel du target avant chaque rendu.
-      const c2d = inst.canvas.getContext("2d");
+      // multiView blitte SANS effacer le canvas cible → clear manuel
+      // (context 2D caché sur l'instance : getContext par frame était coûteux)
+      const c2d = inst.c2d !== undefined ? inst.c2d : (inst.c2d = inst.canvas.getContext("2d"));
       if (c2d) c2d.clearRect(0, 0, pw, ph);
       this.renderer.render({ container: inst.stage, target: inst.canvas, clear: true });
     }
