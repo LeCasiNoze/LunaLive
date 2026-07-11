@@ -24,11 +24,12 @@ export function FloatingBot({
   const [open, setOpen] = React.useState(false);
   const sockRef = React.useRef<Socket | null>(null);
 
-  // connexion socket paresseuse : établie à la première ouverture du menu
-  // (inutile tant que l'utilisateur n'a pas ouvert le bot)
+  // Socket établi au MONTAGE (pas à l'ouverture du menu) et gardé jusqu'au
+  // démontage du composant. ⚠ Bug corrigé : CallTab ferme le menu juste
+  // après sendBang ; si le socket se fermait à la fermeture du menu, l'emit
+  // du !call n'avait pas le temps de partir (call perdu).
   React.useEffect(() => {
-    if (!open || !slug) return;
-    if (sockRef.current) return;
+    if (!slug) return;
 
     const socket = io(apiBase(), {
       transports: ["websocket", "polling"],
@@ -36,7 +37,9 @@ export function FloatingBot({
       auth: token ? { token } : {},
     });
     sockRef.current = socket;
-    socket.emit("chat:join", { slug, mode: "public" }, () => {});
+    // (re)join à chaque connexion — pas requis pour envoyer, mais garde le
+    // socket propre côté serveur
+    socket.on("connect", () => socket.emit("chat:join", { slug, mode: "public" }, () => {}));
 
     return () => {
       try {
@@ -46,11 +49,22 @@ export function FloatingBot({
       }
       sockRef.current = null;
     };
-  }, [open, slug, token]);
+  }, [slug, token]);
 
   const sendBang = React.useCallback(
     (text: string) => {
-      sockRef.current?.emit("chat:send", { slug, body: text }, () => {});
+      const s = sockRef.current;
+      if (!s) return;
+      // socket.io bufferise si pas encore connecté → l'emit part à la connexion
+      s.emit("chat:send", { slug, body: text }, (ack: any) => {
+        if (ack && ack.ok === false) {
+          window.dispatchEvent(
+            new CustomEvent("ui:toast", {
+              detail: { kind: "error", slot: "bottom", durationMs: 2600, title: `Bot : ${ack.error || "échec"}` },
+            })
+          );
+        }
+      });
     },
     [slug]
   );

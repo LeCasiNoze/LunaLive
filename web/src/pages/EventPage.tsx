@@ -58,16 +58,6 @@ function normMod(n: number, m: number) {
   return ((n % m) + m) % m;
 }
 
-// Sélecteur rapide : un chip par event pour passer de page en page.
-const EVENT_SWITCH: { slug: string; type: string; label: string }[] = [
-  { slug: "roue", type: "wheel_week", label: "Roue" },
-  { slug: "viewer", type: "viewer_week", label: "Viewers" },
-  { slug: "clips", type: "clip_race", label: "Clips" },
-  { slug: "coffre", type: "global_chest", label: "Coffre" },
-  { slug: "boss", type: "burn_boss", label: "Boss" },
-  { slug: "duo", type: "duo_week", label: "Duo" },
-];
-
 function fmtShortRemain(ms: number) {
   const s = Math.max(0, Math.floor(ms / 1000));
   const d = Math.floor(s / 86400);
@@ -2334,16 +2324,15 @@ export default function EventPage() {
       {/* Fallback : la rangée utilitaire vit dans le bloc dashboard des events
           qui en ont un ; barre autonome uniquement pour les autres (roue,
           chargement, teaser). */}
-      {!hasDashboard ? <section className="evTopBar">{utilityRow}</section> : null}
+      {/* barre utilitaire cachée quand le CADENAS est affiché (sinon
+          « Aucun event actif » redondant avec la scène de lancement) */}
+      {!hasDashboard && !(launchLock && !launchLock.unlocked) ? (
+        <section className="evTopBar">{utilityRow}</section>
+      ) : null}
 
-      <nav className="evSwitch" aria-label="Tous les events">
-        {EVENT_SWITCH.map((e) => (
-          <Link key={e.slug} to={`/event/${e.slug}`} className={`evSwitchChip${event?.type === e.type ? " active" : ""}`}>
-            <span className="evSwitchIcon">{eventEmoji(e.type)}</span>
-            {e.label}
-          </Link>
-        ))}
-      </nav>
+      {/* Nav entre types d'event RETIRÉE (retour Lucas 11 juil) : la page
+          montre uniquement l'event courant de la rotation (ou le cadenas),
+          pas de balade entre les 6 types. */}
 
       {err ? (
         <div className="alert" style={{ margin: 0 }}>{err}</div>
