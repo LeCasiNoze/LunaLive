@@ -308,6 +308,11 @@ export default function StreamerPageMobile() {
   const chatActionsRef = React.useRef<{ openBot?: () => void; openSettings?: () => void } | null>(null);
   const [chatCanManage, setChatCanManage] = React.useState(false);
 
+  // hauteur mesurée du chat en live (bloc défini plus bas, après le chargement
+  // du streamer — cf useLayoutEffect près de useStreamerData)
+  const chatBoxRef = React.useRef<HTMLDivElement>(null);
+  const [liveChatH, setLiveChatH] = React.useState<number | null>(null);
+
   const { isMobile } = useResponsive();
   const { cinema, chatOpen, enterCinema, leaveCinema, openCinemaChat, closeCinemaChat } = useCinema(isMobile);
 
@@ -337,6 +342,31 @@ export default function StreamerPageMobile() {
 
   const { loading, streamer, followsCount, setFollowsCount, isFollowing, notifyEnabled, followLoading, toggleFollow, toggleNotify } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
   const handleFollowsCount = React.useCallback((n: number) => setFollowsCount(n), [setFollowsCount]);
+
+  // Mesure de la hauteur du chat en live : le bas (composer) doit tomber
+  // pile au-dessus de la bottom bar, quelle que soit la taille du player.
+  const streamerIsLive = !!streamer?.isLive;
+  React.useLayoutEffect(() => {
+    if (!streamerIsLive || tabView !== "chat") return;
+    const compute = () => {
+      const el = chatBoxRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top; // viewport-relative
+      const BOTTOM_BAR = 66; // bt-bar (~56) + petite marge
+      const safe = Number(getComputedStyle(document.documentElement).getPropertyValue("--bt-safe").replace("px", "")) || 0;
+      const h = Math.round(window.innerHeight - top - BOTTOM_BAR - safe);
+      setLiveChatH(h > 260 ? h : 260);
+    };
+    compute();
+    const t = window.setTimeout(compute, 250); // rattrape le layout du player
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+    };
+  }, [streamerIsLive, tabView]);
 
   const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
   const isAdmin = String(myRole) === "admin";
@@ -582,20 +612,19 @@ export default function StreamerPageMobile() {
           </div>
         );
 
-        // Chat panel : taille adaptative — quand live + chat actif on remplit
-        // ce qu'il reste de l'écran sous le player pour que stream+chat+input
-        // soient visibles sans scroll. ~280px = player (16/9) + paddings.
-        // + 96px = bottom bar de navigation (retour Lucas : le composer
-        // passait dessous). Le composer doit rester JUSTE au-dessus.
+        // Chat panel : en live, la hauteur est MESURÉE (liveChatH, cf effect
+        // ci-dessous) pour que le bas (composer) tombe pile au-dessus de la
+        // bottom bar — quelle que soit la taille du player/écran. Fallback
+        // CSS si la mesure n'a pas encore eu lieu.
         const chatHeightStyle: React.CSSProperties = streamer.isLive
-          ? { padding:0, height:"calc(100dvh - 290px - 96px - env(safe-area-inset-bottom))", minHeight:300, maxHeight:600, display:"flex", flexDirection:"column" }
+          ? { padding:0, height: liveChatH ? `${liveChatH}px` : "calc(100dvh - 320px)", minHeight:300, display:"flex", flexDirection:"column" }
           : { padding:0, height:"min(52vh,520px)", minHeight:330, display:"flex", flexDirection:"column" };
 
         const Content = (
           <div onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} style={{ touchAction:"pan-y" }}>
             <div className="mob-card" key={tabView}>
               {tabView === "chat" ? (
-                <div style={chatHeightStyle}>
+                <div ref={chatBoxRef} style={chatHeightStyle}>
                   {/* barre compacte : Bot + options + plein écran sur la
                       même ligne que « Chat » (hauteur réduite, retour Lucas) */}
                   <div style={{ padding:"5px 10px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", gap:8 }}>

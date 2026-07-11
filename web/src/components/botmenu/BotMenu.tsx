@@ -136,7 +136,7 @@ export function BotMenu({
         }}
         style={{
           touchAction: "none",
-          padding: 14,
+          padding: "8px 12px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -148,32 +148,36 @@ export function BotMenu({
         }}
         title={variant === "dock" ? "Glisse pour déplacer" : undefined}
       >
-        <div style={{ fontWeight: 950 }}>🤖 LunaBot</div>
+        <div style={{ fontWeight: 950, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ opacity: 0.55, fontSize: 12 }}>⠿</span> 🤖 LunaBot
+        </div>
         <button
           type="button"
           onClick={onClose}
           style={{
-            padding: "8px 10px",
-            borderRadius: 12,
+            width: 26,
+            height: 26,
+            borderRadius: 8,
             border: "1px solid rgba(255,255,255,0.10)",
             background: "rgba(255,255,255,0.06)",
             color: "white",
             fontWeight: 900,
+            fontSize: 12,
             cursor: "pointer",
+            lineHeight: 1,
           }}
         >
           ✕
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — compacts (retour Lucas : plus propre et petit) */}
       <div
         style={{
           display: "flex",
-          gap: 8,
-          padding: 12,
+          gap: 5,
+          padding: "8px",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
-          flexWrap: "wrap",
           flexShrink: 0,
         }}
       >
@@ -183,24 +187,23 @@ export function BotMenu({
             type="button"
             onClick={() => setTab(k)}
             style={{
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: tab === k ? "rgba(124,77,255,0.20)" : "rgba(255,255,255,0.05)",
-              color: "white",
-              fontWeight: 950,
+              flex: 1,
+              padding: "6px 2px",
+              borderRadius: 10,
+              border: `1px solid ${tab === k ? "rgba(124,77,255,0.45)" : "rgba(255,255,255,0.08)"}`,
+              background: tab === k ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.04)",
+              color: tab === k ? "#fff" : "rgba(230,230,245,0.72)",
+              fontWeight: 900,
               cursor: "pointer",
+              whiteSpace: "nowrap",
             }}
           >
-            {k === "call"
-              ? "Call"
-              : k === "hunt"
-              ? "Hunt"
-              : k === "wheel"
-              ? "Roue"
-              : k === "rain"
-              ? "Rain"
-              : "Prédictions"}
+            <div style={{ fontSize: 15, lineHeight: 1 }}>
+              {k === "call" ? "📞" : k === "hunt" ? "🎯" : k === "wheel" ? "🎡" : k === "rain" ? "🌧" : "🔮"}
+            </div>
+            <div style={{ fontSize: 9, marginTop: 2, opacity: 0.9 }}>
+              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : "Prédi."}
+            </div>
           </button>
         ))}
       </div>

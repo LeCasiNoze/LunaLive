@@ -32,57 +32,41 @@ const CSS = `
   pointer-events:none;
 }
 
-.bt-spacer { height: calc(64px + var(--bt-safe)); }
+.bt-spacer { height: calc(60px + var(--bt-safe)); }
 
+/* Tous les onglets à taille ÉGALE (fini l'agrandissement de l'actif —
+   retour Lucas : gain de place). L'actif = simple surbrillance. */
 .bt-tab {
   position: relative;
   display: inline-flex; align-items: center; justify-content: center;
-  gap: 6px;
-  padding: 8px 12px; border-radius: 14px;
+  padding: 8px 0; border-radius: 14px;
   border: 1px solid transparent; background: transparent;
-  color: var(--bt-text-2); text-decoration: none; min-height: 48px;
-  font-family: 'Syne', system-ui, sans-serif;
-  font-size: 12px; font-weight: 800; letter-spacing: -.05px;
-  transition:
-    color 180ms ease,
-    background 180ms ease,
-    border-color 180ms ease,
-    flex-grow 320ms var(--bt-ease),
-    flex-basis 320ms var(--bt-ease),
-    padding 280ms var(--bt-ease),
-    transform 130ms var(--bt-ease);
+  color: var(--bt-text-2); text-decoration: none; min-height: 44px;
+  flex: 1 1 0; min-width: 0;
+  transition: color 180ms ease, background 180ms ease, border-color 180ms ease, transform 130ms var(--bt-ease);
   -webkit-tap-highlight-color: transparent; user-select: none; cursor: pointer;
-  overflow: hidden;
-  white-space: nowrap;
-  flex: 0 0 auto;
 }
-.bt-tab:active { transform: scale(.95); }
+.bt-tab:active { transform: scale(.92); }
 
 .bt-tab-icon {
-  font-size: 20px; line-height: 1; flex-shrink: 0;
+  font-size: 21px; line-height: 1; flex-shrink: 0;
   transition: transform 220ms var(--bt-ease), filter 200ms ease;
 }
+/* label caché (icônes seules) mais conservé pour l'accessibilité */
 .bt-tab-label {
-  max-width: 0; opacity: 0; overflow: hidden;
-  font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
-  transition: max-width 280ms var(--bt-ease), opacity 200ms ease 60ms;
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
 }
 
 .bt-tab.active {
   color: rgba(235,232,255,.98);
-  background: linear-gradient(135deg, rgba(124,92,252,.20), rgba(91,142,248,.14));
+  background: linear-gradient(135deg, rgba(124,92,252,.22), rgba(91,142,248,.14));
   border-color: rgba(124,92,252,.34);
-  box-shadow: 0 0 0 1px rgba(167,139,250,.06) inset, 0 6px 18px rgba(124,92,252,.18);
-  flex: 1 1 auto;
-  padding: 8px 16px;
+  box-shadow: 0 0 0 1px rgba(167,139,250,.06) inset, 0 4px 14px rgba(124,92,252,.16);
 }
 .bt-tab.active .bt-tab-icon {
-  transform: scale(1.05);
+  transform: scale(1.08);
   filter: drop-shadow(0 0 8px rgba(167,139,250,.55));
-}
-.bt-tab.active .bt-tab-label {
-  max-width: 160px;
-  opacity: 1;
 }
 `;
 
@@ -98,7 +82,7 @@ function useBottomTabsStyles() {
 }
 
 type TabDef = {
-  key: "lives" | "clips" | "bonus" | "menu" | "casinos";
+  key: "lives" | "clips" | "bonus" | "menu" | "casinos" | "events";
   to: string;
   icon: string;
   label: string;
@@ -108,6 +92,7 @@ type TabDef = {
 const TABS: TabDef[] = [
   { key: "menu",   to: "/?tab=menu",   icon: "☰",  label: "Menu",        ariaLabel: "Menu" },
   { key: "lives",  to: "/",            icon: "📡", label: "Lives",       ariaLabel: "Lives en direct" },
+  { key: "events", to: "/event",       icon: "🏆", label: "Événements",  ariaLabel: "Événements" },
   { key: "bonus",  to: "/?tab=bonus",  icon: "🎁", label: "Bonus",       ariaLabel: "Bonus & quêtes" },
   { key: "clips",  to: "/?tab=clips",  icon: "🎬", label: "Clips",       ariaLabel: "Clips" },
   { key: "casinos", to: "/casinos",    icon: "🎰", label: "CheckTaSlot", ariaLabel: "CheckTaSlot" },
@@ -115,6 +100,7 @@ const TABS: TabDef[] = [
 
 function activeKeyFor(pathname: string, search: string): TabDef["key"] | null {
   if (pathname === "/casinos" || pathname.startsWith("/casinos/")) return "casinos";
+  if (pathname === "/event" || pathname.startsWith("/event")) return "events";
   if (pathname !== "/") return null;
   const t = new URLSearchParams(search).get("tab");
   if (t === "clips" || t === "bonus" || t === "menu") return t;
