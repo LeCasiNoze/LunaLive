@@ -7,6 +7,13 @@ import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
 import type { ChatCosmetics } from "../lib/cosmetics";
 import { BotMenu } from "../components/BotMenu";
+import SpecialEventCard, { type SpecialEventType } from "./chat/SpecialEventCard";
+import ActiveEventsBar, { type ActiveEvent } from "./chat/ActiveEventsBar";
+
+// Types de messages spéciaux affichés en carte "célébration" dans le flux.
+const CELEBRATION_TYPES = new Set<string>(["raid", "follow", "combo", "sub", "don", "boss", "level"]);
+// Types affichés en chip épinglé dans la barre d'events actifs (jamais dans le flux).
+const ACTIONABLE_TYPES = new Set<string>(["rain", "wheel", "predict", "chest"]);
 
 import {
   DEFAULT_APPEARANCE as DEFAULT_STREAMER_APPEARANCE,
@@ -41,6 +48,10 @@ type ChatMsg = {
   createdAt: string;
   cosmetics?: ChatCosmetics | null;
   rumble?: boolean;
+  // Messages spéciaux (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level).
+  // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
+  type?: SpecialEventType;
+  data?: any;
 };
 
 type JoinAck = {
@@ -1357,6 +1368,8 @@ export function ChatPanel({
      State (chat core)
      ------------------------- */
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
+  const [activeEvents, setActiveEvents] = React.useState<ActiveEvent[]>([]);
+  const specialSeqRef = React.useRef(0);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [socketConnected, setSocketConnected] = React.useState(true);
@@ -1621,6 +1634,58 @@ export function ChatPanel({
   }
 
   /* -------------------------
+     Messages spéciaux : handlers
+     ------------------------- */
+  // Ajoute une ligne "récap" centrée dans le flux (ex: "🌧️ Rain terminée…").
+  function pushRecap(html: string) {
+    const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
+    const m: ChatMsg = {
+      id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+      type: "recap" as any, data: { html },
+    };
+    animatedMsgIdsRef.current.add(id);
+    setMessages((prev) => {
+      const next = [...prev, m];
+      if (next.length > 50) next.splice(0, next.length - 50);
+      return next;
+    });
+    forceScrollBottomMultiPass();
+  }
+
+  // Bouton GG! → envoie un message dans le chat (remerciement ou GG @pseudo).
+  const GG_THANKS = ["Merci pour le soutien 💜", "Bienvenue dans la famille !", "GG à toi 🔥", "Legend 🙌"];
+  function handleGg(who: string | null) {
+    const txt = who && Math.random() > 0.5 ? `GG ! @${who} 🔥` : GG_THANKS[Math.floor(Math.random() * GG_THANKS.length)];
+    void sendBody(txt);
+  }
+
+  // Bouton Combo → follow viral : spawn une carte combo dans le flux + met à jour le chip épinglé.
+  function handleCombo(nextMult: number) {
+    const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
+    const who = join?.me?.username ?? "Un viewer";
+    const m: ChatMsg = {
+      id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+      type: "combo", data: { mult: nextMult, who },
+    };
+    animatedMsgIdsRef.current.add(id);
+    setMessages((prev) => {
+      const next = [...prev, m];
+      if (next.length > 50) next.splice(0, next.length - 50);
+      return next;
+    });
+    forceScrollBottomMultiPass();
+    setActiveEvents((prev) => {
+      const others = prev.filter((e) => e.type !== "combo");
+      const comboChip: ActiveEvent = { id: "combo", type: "combo", data: { mult: nextMult } };
+      return [...others, comboChip].slice(-4);
+    });
+  }
+
+  function removeActiveEvent(id: string) {
+    setActiveEvents((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  /* -------------------------
      Load last messages
      ------------------------- */
   async function loadLastMessages(s: string) {
@@ -1870,6 +1935,12 @@ export function ChatPanel({
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
+      // Events actionnables (rain/roue/prédiction/coffre) → barre épinglée, pas dans le flux.
+      if (msg && typeof msg.type === "string" && ACTIONABLE_TYPES.has(msg.type)) {
+        const id = `ev_${Math.abs(msg.id)}_${(specialSeqRef.current = (specialSeqRef.current + 1) % 100000)}`;
+        setActiveEvents((prev) => [...prev, { id, type: msg.type as ActiveEvent["type"], data: msg.data || {} }].slice(-4));
+        return;
+      }
       animatedMsgIdsRef.current.add(msg.id);
       setMessages((prev) => {
         // Dédup par id : un même socket peut être dans plusieurs rooms (public+popup)
@@ -2413,6 +2484,18 @@ function openChatPopup() {
         </div>
       )}
 
+      {/* barre d'events actifs épinglée (rain / roue / prédiction / coffre / combo) */}
+      <ActiveEventsBar
+        events={activeEvents}
+        onExpire={removeActiveEvent}
+        onJoinRain={() => void joinRain("chat")}
+        onSpin={() => {}}
+        onVote={() => {}}
+        onChestOpen={() => {}}
+        onComboAdvance={handleCombo}
+        recap={pushRecap}
+      />
+
       {/* zone scroll + jump */}
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
         <div
@@ -2439,6 +2522,43 @@ function openChatPopup() {
 
           {(() => {
             return messages.map((m) => {
+            // Ligne récap centrée (fin de rain, résultat prédiction, combo terminé…)
+            if ((m.type as any) === "recap") {
+              return (
+                <div
+                  key={m.id}
+                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
+                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
+                  style={{
+                    alignSelf: "center", fontSize: 11.5, fontWeight: 700,
+                    color: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)", padding: "5px 12px", borderRadius: 999,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: String(m.data?.html || "") }}
+                />
+              );
+            }
+
+            // Carte "célébration" (raid / follow / combo / sub / don / boss / level)
+            if (m.type && CELEBRATION_TYPES.has(m.type)) {
+              return (
+                <div
+                  key={m.id}
+                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
+                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
+                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? "0 auto" : undefined }}
+                >
+                  <SpecialEventCard
+                    type={m.type as SpecialEventType}
+                    data={m.data || {}}
+                    currentUsername={join?.me?.username ?? null}
+                    onGg={handleGg}
+                    onCombo={handleCombo}
+                  />
+                </div>
+              );
+            }
+
             const isSystem = m.userId === 0;
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;

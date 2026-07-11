@@ -481,9 +481,63 @@ internalBotRouter.post(
   }
 );
 
-// --------------------  
+// --------------------
+// 6b) ✅ Special event message (emit-only : socket uniquement, pas de DB, pas de mirror Rumble)
+//     Sert à afficher les cartes spéciales (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level)
+//     dans le chat live. Le body reste vide : tout passe par { type, data }.
+// --------------------
+const SPECIAL_TYPES = new Set([
+  "raid", "follow", "combo", "sub", "don", "chest", "rain", "wheel", "predict", "boss", "level",
+]);
+let __specialSeq = 0;
+internalBotRouter.post(
+  "/internal/bot/chat/special",
+  express.json(),
+  async (req, res) => {
+    if (!requireBotKey(req, res)) return;
+
+    const body: any = req.body || {};
+    const type = String(body.type || "").trim();
+    if (!SPECIAL_TYPES.has(type)) {
+      return res.status(400).json({ ok: false, error: "invalid_type" });
+    }
+    const data = body.data && typeof body.data === "object" ? body.data : {};
+    const username = String(body.username || "LunaLive").trim() || "LunaLive";
+
+    // Accepte slug direct OU streamerId
+    let slug = String(body.slug || "").trim().toLowerCase();
+    const streamerId = Number(body.streamerId || 0);
+    if (!slug && streamerId) {
+      const r = await pool.query(`SELECT slug FROM streamers WHERE id = $1 LIMIT 1`, [streamerId]);
+      slug = String(r.rows?.[0]?.slug || "").trim().toLowerCase();
+    }
+    if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
+
+    // id synthétique négatif : jamais en collision avec les BIGSERIAL (positifs) de chat_messages,
+    // et unique pour le dédoublonnage par id côté front.
+    __specialSeq = (__specialSeq + 1) % 100000;
+    const id = -(Date.now() * 100000 + __specialSeq);
+
+    const msg = {
+      id,
+      userId: 0,
+      username,
+      body: "",
+      createdAt: new Date().toISOString(),
+      type,
+      data,
+    };
+
+    const io = req.app.locals.io;
+    if (io) emitChatAll(io, slug, "chat:message", msg);
+
+    return res.json({ ok: true, id, slug, type });
+  }
+);
+
+// --------------------
 // 7) ✅ Utility functions
-// --------------------  
+// --------------------
 function requireBotKey(req: express.Request, res: express.Response): boolean {
   const key = String(req.headers["x-bot-key"] || "").trim();
 

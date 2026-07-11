@@ -1,0 +1,172 @@
+/* web/src/components/chat/specialEvents.css */
+/* Port du prototype "messages spéciaux du chat" — cartes célébration
+   (SpecialEventCard) + barre épinglée actionnable (ActiveEventsBar) +
+   scènes animées CSS + canvas particules. Le chrome du prototype (phone,
+   feed, composer, dock, pitch…) n'est PAS porté ici.
+   Toutes les classes sont préfixées `lle-` pour éviter toute collision
+   avec le CSS du chat existant. */
+
+@property --angle { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+
+/* ===== pinned active-events bar ===== */
+.lle-pinbar{display:flex;gap:7px;padding:9px 11px;border-bottom:1px solid rgba(255,255,255,.10);background:rgba(10,7,17,.55);backdrop-filter:blur(8px);overflow-x:auto;flex:none}
+.lle-pinbar::-webkit-scrollbar{height:0}
+.lle-chip{flex:none;min-width:186px;max-width:236px;border-radius:12px;padding:8px 9px;position:relative;overflow:hidden;--c:#7C4DFF;--c2:#b39cff;
+  border:1px solid color-mix(in srgb,var(--c) 45%,rgba(255,255,255,.10));
+  background:linear-gradient(180deg,color-mix(in srgb,var(--c) 16%,transparent),transparent),rgba(17,10,23,.92);
+  box-shadow:0 6px 22px rgba(0,0,0,.35);animation:lle-chipIn .35s cubic-bezier(.2,1.1,.3,1) both}
+@keyframes lle-chipIn{from{opacity:0;transform:translateY(-10px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes lle-chipOut{to{opacity:0;transform:scale(.9);margin-left:-186px}}
+.lle-chip--rain{--c:#ff2d6b;--c2:#ff6b9d}.lle-chip--wheel{--c:#38bdf8;--c2:#a78bfa}
+.lle-chip--predict{--c:#818cf8;--c2:#a5b4fc}.lle-chip--chest{--c:#f59e0b;--c2:#fcd34d}.lle-chip--combo{--c:#ffd54a;--c2:#ff8a3d}
+.lle-chip__row{display:flex;align-items:center;gap:8px}
+.lle-chip__ic{font-size:16px;flex:none;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--c) 60%,transparent))}
+.lle-chip__mid{flex:1;min-width:0}
+.lle-chip__t{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.3px;color:color-mix(in srgb,var(--c2) 82%,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lle-chip__meta{font-size:10.5px;color:#a99fc0;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.lle-chip__cta{flex:none;border:0;cursor:pointer;font-family:inherit;font-weight:800;font-size:11px;padding:6px 10px;border-radius:8px;color:#fff;background:linear-gradient(135deg,var(--c),var(--c2));box-shadow:0 3px 12px color-mix(in srgb,var(--c) 45%,transparent)}
+.lle-chip__cta[disabled]{opacity:.5;cursor:default}
+.lle-chip__prog{position:absolute;left:0;bottom:0;height:2px;width:100%;background:rgba(255,255,255,.08)}
+.lle-chip__prog i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--c),var(--c2));transition:width 1s linear}
+.lle-chip__expand{display:none;margin-top:8px;flex-direction:column;gap:6px}
+.lle-chip.lle-open .lle-chip__expand{display:flex}
+.lle-chip .lle-pbar{height:30px}
+
+/* ===== generic special event card ===== */
+.lle-ev{position:relative;border-radius:16px;overflow:hidden;
+  border:1px solid color-mix(in srgb, var(--c) 40%, rgba(255,255,255,.10));
+  background:linear-gradient(180deg, color-mix(in srgb,var(--c) 12%, transparent), transparent 40%), rgba(17,10,23,.92);
+  backdrop-filter:blur(12px);
+  box-shadow:0 10px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05);
+  animation:lle-evIn .5s cubic-bezier(.2,.9,.25,1) both;--c:#7C4DFF;--c2:#b39cff}
+@keyframes lle-evIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+.lle-ev[data-tier="epic"]{animation:lle-evInEpic .6s cubic-bezier(.16,1.1,.3,1) both}
+@keyframes lle-evInEpic{0%{opacity:0;transform:translateY(18px) scale(.92)}60%{transform:translateY(-2px) scale(1.02)}100%{opacity:1;transform:none}}
+
+.lle-ev[data-tier="epic"]::before{content:"";position:absolute;inset:0;padding:1.5px;border-radius:16px;
+  background:conic-gradient(from var(--angle), transparent, var(--c), var(--c2), transparent 60%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  animation:lle-spinBorder 4s linear infinite;pointer-events:none;z-index:3}
+@keyframes lle-spinBorder{to{--angle:360deg}}
+.lle-ev[data-tier="epic"] .lle-flash{position:absolute;inset:0;background:radial-gradient(circle at 50% 40%, color-mix(in srgb,var(--c2) 80%,#fff), transparent 60%);
+  opacity:0;pointer-events:none;z-index:2;animation:lle-flash .6s ease-out both}
+@keyframes lle-flash{0%{opacity:.55}100%{opacity:0}}
+
+.lle-ev__stage{position:relative;height:66px;overflow:hidden;
+  background:radial-gradient(120% 100% at 50% 120%, color-mix(in srgb,var(--c) 22%, transparent), transparent 70%);
+  border-bottom:1px solid color-mix(in srgb,var(--c) 22%, transparent)}
+.lle-ev[data-tier="epic"] .lle-ev__stage{height:84px}
+.lle-pf{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}
+
+.lle-ev__body{display:flex;align-items:center;gap:11px;padding:11px 13px}
+.lle-ev__icon{width:38px;height:38px;flex:none;border-radius:11px;display:grid;place-items:center;font-size:19px;
+  background:color-mix(in srgb,var(--c) 22%, rgba(255,255,255,.03));
+  border:1px solid color-mix(in srgb,var(--c) 45%, transparent);
+  box-shadow:0 0 18px color-mix(in srgb,var(--c) 45%, transparent)}
+.lle-ev__text{flex:1;min-width:0}
+.lle-ev__title{font-size:13.5px;font-weight:900;letter-spacing:.4px;text-transform:uppercase;color:color-mix(in srgb,var(--c2) 80%, #fff);line-height:1.15}
+.lle-ev__title .lle-who{color:#fff}
+.lle-ev__sub{font-size:12px;color:#a99fc0;margin-top:2px;line-height:1.3}
+.lle-ev__sub b{color:#e9e2fb}
+.lle-ev__value{flex:none;font-weight:900;font-size:16px;color:#fff;text-align:right;text-shadow:0 0 14px color-mix(in srgb,var(--c) 70%, transparent);font-variant-numeric:tabular-nums}
+.lle-ev__value small{display:block;font-size:9px;font-weight:700;color:#a99fc0;letter-spacing:.5px;text-transform:uppercase}
+
+.lle-ev__actions{display:flex;gap:8px;padding:0 13px 12px}
+.lle-btn{flex:1;border:0;cursor:pointer;font-family:inherit;font-weight:800;font-size:12.5px;padding:9px 12px;border-radius:10px;color:#fff;transition:transform .12s, filter .12s;
+  background:linear-gradient(135deg,var(--c),var(--c2));box-shadow:0 4px 16px color-mix(in srgb,var(--c) 45%, transparent)}
+.lle-btn:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.lle-btn:active{transform:translateY(0)}
+.lle-btn.lle-ghost{flex:none;padding-left:14px;padding-right:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);box-shadow:none;color:#e7dffb}
+.lle-btn.lle-ghost:hover{background:rgba(255,255,255,.11)}
+.lle-btn[disabled]{opacity:.5;cursor:default;transform:none;filter:none}
+.lle-btn .lle-k{font-size:10px;opacity:.85;margin-left:4px}
+
+/* ===== RAID — marching soldiers ===== */
+.lle-ev--raid{--c:#7C4DFF;--c2:#b39cff}
+.lle-march-move{position:absolute;inset:0;z-index:1;animation:lle-advance 3.2s ease-in-out infinite}
+.lle-march{position:absolute;inset:0;display:flex;align-items:flex-end;gap:3px;padding:0 8px 8px;justify-content:center}
+.lle-soldier{width:20px;height:36px;opacity:.95;animation:lle-step .46s steps(1) infinite}
+.lle-soldier svg{display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))}
+.lle-soldier .lle-leg1,.lle-soldier .lle-leg2{transform-origin:top center}
+.lle-soldier:nth-child(odd){animation-delay:.23s}
+@keyframes lle-step{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes lle-advance{0%,100%{transform:translateX(-10px)}50%{transform:translateX(10px)}}
+.lle-flag{position:absolute;left:calc(50% - 52px);bottom:26px;width:2px;height:24px;background:#d9cffb;z-index:1}
+.lle-flag::after{content:"";position:absolute;left:2px;top:0;width:18px;height:12px;background:linear-gradient(90deg,var(--c),var(--c2));animation:lle-wave 1.1s ease-in-out infinite;transform-origin:left}
+@keyframes lle-wave{0%,100%{clip-path:polygon(0 0,100% 8%,100% 92%,0 100%)}50%{clip-path:polygon(0 0,100% -8%,100% 108%,0 100%)}}
+
+/* ===== FOLLOW / COMBO ===== */
+.lle-ev--follow{--c:#38bdf8;--c2:#7dd3fc}
+.lle-ev--combo{--c:#ffd54a;--c2:#ff8a3d}
+.lle-hearts{position:absolute;inset:0;z-index:1}
+.lle-hearts i{position:absolute;bottom:-6px;font-style:normal;font-size:14px;animation:lle-floatUp 2.4s ease-in infinite;opacity:0}
+@keyframes lle-floatUp{0%{transform:translateY(0) scale(.6);opacity:0}20%{opacity:.95}100%{transform:translateY(-64px) scale(1);opacity:0}}
+.lle-combo-burst{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:1}
+.lle-combo-x{font-weight:900;font-size:32px;color:#fff;letter-spacing:-1px;text-shadow:0 0 26px var(--c);animation:lle-pop .5s cubic-bezier(.2,1.4,.3,1) both}
+@keyframes lle-pop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* ===== SUB ===== */
+.lle-ev--sub{--c:#ffd54a;--c2:#ffe89a}
+.lle-crown{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-crown .lle-c{font-size:28px;animation:lle-drop .7s cubic-bezier(.2,1.3,.3,1) both,lle-bob 2.6s ease-in-out .7s infinite}
+@keyframes lle-drop{from{transform:translateY(-32px) rotate(-12deg);opacity:0}to{opacity:1}}
+
+/* ===== CHEST ===== */
+.lle-ev--chest{--c:#f59e0b;--c2:#fcd34d}
+.lle-chest-scene{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-chest{position:relative;width:54px;height:42px}
+.lle-chest .lle-base{position:absolute;bottom:0;width:54px;height:27px;border-radius:5px;background:linear-gradient(#7a4a12,#5a3410);border:1px solid #a5691f}
+.lle-chest .lle-lid{position:absolute;top:0;width:54px;height:19px;border-radius:6px 6px 0 0;transform-origin:bottom;background:linear-gradient(#9a5c16,#6e3f0f);border:1px solid #c07d24;animation:lle-lidOpen 2.4s ease-in-out infinite}
+@keyframes lle-lidOpen{0%,38%,100%{transform:rotateX(0)}58%,86%{transform:rotateX(-62deg)}}
+.lle-chest .lle-glow{position:absolute;inset:-16px;border-radius:50%;pointer-events:none;background:radial-gradient(circle,color-mix(in srgb,var(--c2) 75%,transparent),transparent 60%);opacity:0;animation:lle-glowPulse 2.4s ease-in-out infinite}
+@keyframes lle-glowPulse{0%,42%,100%{opacity:0}60%,84%{opacity:1}}
+
+/* ===== RAIN RUBIS (canvas downpour) ===== */
+.lle-ev--rain{--c:#ff2d6b;--c2:#ff6b9d}
+.lle-rain-timer{font-variant-numeric:tabular-nums;color:var(--c2)}
+
+/* ===== PREDICTION ===== */
+.lle-ev--predict{--c:#818cf8;--c2:#a5b4fc}
+.lle-pred-orb{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-pred-orb .lle-o{width:32px;height:32px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff8,transparent 45%),radial-gradient(circle,#a5b4fc,#4f46e5);box-shadow:0 0 24px rgba(129,140,248,.7);animation:lle-bob 2.4s ease-in-out infinite}
+@keyframes lle-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.lle-pred-bars{padding:2px 13px 12px;display:flex;flex-direction:column;gap:7px}
+.lle-pbar{position:relative;height:34px;border-radius:9px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);display:flex;align-items:center;padding:0 11px;font-weight:800;font-size:12.5px;transition:transform .12s}
+.lle-pbar:hover{transform:translateY(-1px)}
+.lle-pbar .lle-fill{position:absolute;inset:0;width:var(--w,0%);transition:width .8s cubic-bezier(.2,.9,.25,1);background:linear-gradient(90deg,color-mix(in srgb,var(--pc) 55%,transparent),color-mix(in srgb,var(--pc) 20%,transparent))}
+.lle-pbar .lle-lbl{position:relative;z-index:1}
+.lle-pbar .lle-pct{position:relative;z-index:1;margin-left:auto;font-variant-numeric:tabular-nums}
+.lle-pbar.lle-yes{--pc:#34d399}.lle-pbar.lle-no{--pc:#f87171}
+
+/* ===== WHEEL ===== */
+.lle-ev--wheel{--c:#38bdf8;--c2:#a78bfa}
+.lle-wheel-scene{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-wheel{width:54px;height:54px;border-radius:50%;position:relative;
+  background:conic-gradient(#ff2d6b 0 60deg,#f59e0b 60deg 120deg,#ffd54a 120deg 180deg,#34d399 180deg 240deg,#38bdf8 240deg 300deg,#a78bfa 300deg 360deg);
+  border:2px solid rgba(255,255,255,.4);box-shadow:0 0 22px rgba(56,189,248,.5);transition:transform 3.2s cubic-bezier(.12,.85,.15,1)}
+.lle-wheel.lle-idle{animation:lle-idleSpin 8s linear infinite}
+@keyframes lle-idleSpin{to{transform:rotate(360deg)}}
+.lle-wheel::after{content:"";position:absolute;inset:0;margin:auto;width:12px;height:12px;border-radius:50%;background:#0d0916;border:2px solid #fff6}
+.lle-wheel-scene .lle-ptr{position:absolute;top:6px;left:50%;transform:translateX(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid #fff;z-index:2;filter:drop-shadow(0 1px 2px #000)}
+
+/* ===== BOSS ===== */
+.lle-ev--boss{--c:#ef4444;--c2:#f87171}
+.lle-boss-scene{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-skull{font-size:28px;filter:drop-shadow(0 0 12px rgba(239,68,68,.85));animation:lle-shakeR 1.8s ease-in-out infinite}
+@keyframes lle-shakeR{0%,100%{transform:rotate(0)}25%{transform:rotate(-5deg)}75%{transform:rotate(5deg)}}
+.lle-flames{position:absolute;bottom:0;left:0;right:0;height:26px;background:linear-gradient(0deg,rgba(239,68,68,.85),rgba(245,158,11,.3),transparent);filter:blur(3px);animation:lle-flick .16s infinite alternate;z-index:1}
+@keyframes lle-flick{from{opacity:.6;transform:scaleY(.9)}to{opacity:1;transform:scaleY(1.12)}}
+
+/* ===== LEVEL UP ===== */
+.lle-ev--level{--c:#a78bfa;--c2:#38bdf8}
+.lle-lvl-scene{position:absolute;inset:0;display:grid;place-items:center;z-index:1}
+.lle-lvl-badge{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-weight:900;color:#fff;font-size:15px;
+  background:conic-gradient(from var(--angle),#ff2d6b,#f59e0b,#ffd54a,#34d399,#38bdf8,#a78bfa,#ff2d6b);
+  animation:lle-spinBorder 3s linear infinite, lle-riseUp 2.4s ease-in-out infinite;box-shadow:0 0 24px rgba(167,139,250,.65)}
+@keyframes lle-riseUp{0%,100%{transform:translateY(4px)}50%{transform:translateY(-4px)}}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001s!important;animation-iteration-count:1!important}
+  .lle-ev{animation:lle-evIn .3s both}
+  .lle-pf{display:none}
+}
