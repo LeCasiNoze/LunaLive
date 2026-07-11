@@ -4,6 +4,21 @@
    Revert : supprimer ce fichier + sa ligne dans styles/index.css.
 ─────────────────────────────────────────────────────────────────────────── */
 
+/* Pendant le scroll (attribut data-fx-scrolling posé par lib/fxScrollPause),
+   les animations CSS du chat (beams de cadrans, pseudos, badges, titres)
+   sont mises en PAUSE → le GPU reste libre pour le défilement = scroll
+   fluide. Elles reprennent instantanément à l'arrêt (aucune altération de
+   leur qualité). Complément de la pause du moteur Pixi. Desktop + mobile. */
+html[data-fx-scrolling] .chatScroll [class*="chatFrame--"]::before,
+html[data-fx-scrolling] .chatScroll [class*="chatFrame--"]::after,
+html[data-fx-scrolling] .chatScroll [class*="username--"],
+html[data-fx-scrolling] .chatScroll .chatUsername,
+html[data-fx-scrolling] .chatScroll [class*="bfx--"],
+html[data-fx-scrolling] .chatScroll .tp,
+html[data-fx-scrolling] .chatScroll .tfx-l {
+  animation-play-state: paused !important;
+}
+
 @media (max-width: 768px), (pointer: coarse) {
   /* backdrop-filter blur = re-flou de tout ce qui scrolle derrière, à
      chaque frame. Coupé sur mobile : les fonds rgba des éléments concernés

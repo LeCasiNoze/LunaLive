@@ -86,6 +86,7 @@ import { LoadingScreen } from "./components/LoadingScreen";
 const LoadingFallback = () => <LoadingScreen />;
 import { BgEffect } from "./components/Bgeffects";
 import { captureUtmFromUrl } from "./lib/utm";
+import { installFxScrollPause } from "./lib/fxScrollPause";
 import { LevelUpToast } from "./components/LevelUpToast";
 import { me } from "./lib/api";
 
@@ -100,6 +101,12 @@ function AppInner() {
   React.useEffect(() => {
     captureUtmFromUrl();
   }, [location.pathname, location.search]);
+
+  // Détecteur de scroll global : fige les animations (Pixi + CSS du chat)
+  // pendant le défilement pour un scroll fluide (elles reprennent à l'arrêt).
+  React.useEffect(() => {
+    installFxScrollPause();
+  }, []);
   const isStandaloneReferral =
     location.pathname.startsWith("/r/") ||
     location.pathname.startsWith("/s1") ||
