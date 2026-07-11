@@ -12,20 +12,39 @@ import { mountFieldFor } from "./specialParticles";
 export type SpecialEventType =
   | "raid" | "follow" | "combo" | "sub" | "don" | "chest" | "rain" | "wheel" | "predict" | "boss" | "level";
 
-function Soldier() {
+function Runner() {
+  // Silhouette de coureur penché en avant, foulée figée (le bob CSS anime la course).
   return (
-    <svg viewBox="0 0 20 36" width="20" height="36">
-      <g fill="#241847">
-        <ellipse cx="10" cy="6" rx="7" ry="3.2" fill="#2f2160" />
-        <circle cx="10" cy="9" r="3.3" fill="#241847" />
-        <rect x="6.5" y="12" width="7" height="11" rx="2" fill="#2f2160" />
-        <rect x="2" y="10" width="13" height="2.4" rx="1.2" transform="rotate(-34 8 11)" fill="#0e0820" />
-        <rect className="lle-leg1" x="6.6" y="23" width="2.6" height="11" rx="1" fill="#1c1240" transform="rotate(-9 7.9 23)" />
-        <rect className="lle-leg2" x="10.8" y="23" width="2.6" height="11" rx="1" fill="#2a1d52" transform="rotate(9 12 23)" />
+    <svg viewBox="0 0 22 30" width="22" height="30">
+      <g fill="#2f2160">
+        <circle cx="13" cy="5" r="3" />
+        <rect x="10" y="7" width="3.4" height="12" rx="1.7" transform="rotate(18 11 8)" />
+        <rect x="11" y="9" width="6" height="2.2" rx="1.1" transform="rotate(35 11 10)" />
+        <rect x="5" y="10" width="6" height="2.2" rx="1.1" transform="rotate(-25 11 11)" />
+        <rect x="8.5" y="17" width="2.6" height="10" rx="1.3" transform="rotate(24 9.8 18)" />
+        <rect x="8.5" y="17" width="2.6" height="10" rx="1.3" transform="rotate(-20 9.8 18)" />
       </g>
     </svg>
   );
 }
+
+// Foule qui déboule : profondeur via scale/opacity/bottom, staggerée.
+const RAID_RUNNERS = [
+  { d: 0.5, o: 0.4, b: 26, dur: 3.0, delay: 0.0 },
+  { d: 0.62, o: 0.55, b: 21, dur: 2.7, delay: 0.9 },
+  { d: 0.72, o: 0.68, b: 16, dur: 2.9, delay: 0.4 },
+  { d: 0.85, o: 0.8, b: 11, dur: 2.5, delay: 1.4 },
+  { d: 0.95, o: 0.9, b: 6, dur: 2.3, delay: 0.2 },
+  { d: 1.12, o: 1, b: 2, dur: 2.1, delay: 1.0 },
+  { d: 0.8, o: 0.75, b: 13, dur: 2.6, delay: 1.8 },
+  { d: 1.0, o: 0.95, b: 4, dur: 2.35, delay: 0.6 },
+];
+const RAID_STREAKS = [
+  { top: 18, sdur: 0.9, sdelay: 0.2 },
+  { top: 33, sdur: 1.1, sdelay: 0.7 },
+  { top: 47, sdur: 1.0, sdelay: 1.2 },
+  { top: 27, sdur: 0.8, sdelay: 1.6 },
+];
 
 export default function SpecialEventCard(props: {
   type: SpecialEventType;
@@ -88,14 +107,18 @@ export default function SpecialEventCard(props: {
       icon = "⚔️";
       epic = true;
       stage = (
-        <>
-          <div className="lle-march-move">
-            <div className="lle-march">
-              {Array.from({ length: 8 }).map((_, i) => <span className="lle-soldier" key={i}><Soldier /></span>)}
-            </div>
-          </div>
-          <div className="lle-flag" />
-        </>
+        <div className="lle-crowd">
+          {RAID_STREAKS.map((s, i) => (
+            <span key={`s${i}`} className="lle-speedline" style={{ top: s.top, ["--sdur" as any]: `${s.sdur}s`, ["--sdelay" as any]: `${s.sdelay}s` }} />
+          ))}
+          {RAID_RUNNERS.map((r, i) => (
+            <span key={i} className="lle-runner" style={{ ["--b" as any]: `${r.b}px`, ["--o" as any]: r.o, ["--dur" as any]: `${r.dur}s`, ["--delay" as any]: `${r.delay}s` }}>
+              <span className="lle-runner-d" style={{ ["--d" as any]: r.d }}>
+                <span className="lle-runner-b"><Runner /></span>
+              </span>
+            </span>
+          ))}
+        </div>
       );
       title = <>Raid de <span className="lle-who">{from}</span></>;
       sub = "débarque avec sa communauté";
