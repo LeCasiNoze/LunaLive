@@ -75,7 +75,9 @@ import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
-import ReferralLandingPage from "./pages/ReferralLandingPage";
+// lazy : cette page importe AffiEditorPage (~3000 lignes) — en statique
+// elle gonflait le bundle principal de toute la plateforme
+const ReferralLandingPage = React.lazy(() => import("./pages/ReferralLandingPage"));
 import { trackFeatureEvent } from "./lib/feature_events";
 
 // Suspense fallback component

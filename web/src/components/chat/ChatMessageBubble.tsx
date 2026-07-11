@@ -222,7 +222,7 @@ function renderBodyRich(
 }
 
 /* ─── Main component ─────────────────────────────────────── */
-export function ChatMessageBubble({
+function ChatMessageBubbleImpl({
   msg, streamerAppearance, currentUsername, resolveEmote, isGrouped,
 }: {
   msg: ChatMsgLike;
@@ -494,3 +494,28 @@ export function ChatMessageBubble({
     </div>
   );
 }
+// Mémoïsation : SANS ça, chaque nouveau message re-rend les ~50 bulles du
+// chat (cosmétiques, cadrans, emotes compris). Le parent recrée l'objet
+// msg à chaque render (spread + cosmetics dérivés) → comparateur manuel :
+// id/body/deleted + identité des props stables + cosmetics par valeur
+// (petits objets, stringify ~µs, négligeable devant un re-render de bulle).
+function bubblePropsEqual(
+  prev: React.ComponentProps<typeof ChatMessageBubbleImpl>,
+  next: React.ComponentProps<typeof ChatMessageBubbleImpl>,
+) {
+  const a = prev.msg as any;
+  const b = next.msg as any;
+  if (a.id !== b.id || a.body !== b.body || a.deleted !== b.deleted) return false;
+  if (prev.isGrouped !== next.isGrouped) return false;
+  if (prev.currentUsername !== next.currentUsername) return false;
+  if (prev.streamerAppearance !== next.streamerAppearance) return false;
+  if (prev.resolveEmote !== next.resolveEmote) return false;
+  if (a.cosmetics === b.cosmetics) return true;
+  try {
+    return JSON.stringify(a.cosmetics ?? null) === JSON.stringify(b.cosmetics ?? null);
+  } catch {
+    return false;
+  }
+}
+
+export const ChatMessageBubble = React.memo(ChatMessageBubbleImpl, bubblePropsEqual);

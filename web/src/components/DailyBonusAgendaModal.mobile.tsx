@@ -754,94 +754,61 @@ export function DailyBonusAgendaModalMobile({
         }
         .llDBmCTA:active{ transform: scale(0.99); }
 
-        .llDBmList{
-          display:flex;
-          flex-direction: column;
-          gap: 10px;
+        /* ── Semaine en GRILLE calendrier (rework 11 juil — fini les 7
+              grosses cartes empilées à scroller) ── */
+        .llDBmWeekGrid{
+          display:grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 6px;
         }
-        .llDBmDay{
-          border-radius: 18px;
+        .llDBmWDay{
+          border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.10);
-          background:
-            radial-gradient(180px 90px at 18% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 62%),
-            rgba(0,0,0,0.16);
-          padding: 12px;
-        }
-        .llDBmDay.isMissed{ opacity: 0.55; filter: grayscale(1); }
-        .llDBmDay.isDim{ opacity: 0.78; }
-        .llDBmDayHead{
-          display:flex;
-          align-items:center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-        .llDBmDayLeft{
+          background: rgba(0,0,0,0.18);
+          padding: 8px 2px 7px;
           display:flex;
           flex-direction: column;
-          gap: 2px;
+          align-items: center;
+          gap: 3px;
           min-width: 0;
         }
-        .llDBmDayLabel{
+        .llDBmWDayL{
+          font-weight: 1000;
+          font-size: 10px;
+          letter-spacing: 0.4px;
+          text-transform: uppercase;
+          color: rgba(255,255,255,0.55);
+        }
+        .llDBmWDayR{
           font-weight: 1100;
-          font-size: 13px;
+          font-size: 11.5px;
           color: rgba(255,255,255,0.92);
-        }
-        .llDBmDayDate{
-          font-size: 12px;
-          color: rgba(255,255,255,0.62);
-        }
-        .llDBmBadge{
-          font-weight: 1200;
-          opacity: 0.85;
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(0,0,0,0.14);
-          color: rgba(255,255,255,0.86);
-        }
-
-        .llDBmDayReward{
-          margin-top: 10px;
-          display:flex;
-          align-items:center;
-          justify-content: space-between;
-          gap: 10px;
-        }
-        .llDBmReward{
-          font-weight: 1100;
-          font-size: 18px;
-          letter-spacing: -0.2px;
-          color: rgba(255,255,255,0.92);
-        }
-
-        .llDBmChipStatus{
-          display:inline-flex;
-          align-items:center;
-          gap: 8px;
-          padding: 7px 10px;
-          border-radius: 999px;
-          font-weight: 950;
-          font-size: 12px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(0,0,0,0.14);
-          color: rgba(255,255,255,0.80);
           white-space: nowrap;
         }
-        .llDBmChipStatus.ok{
-          border-color: rgba(60, 240, 180, 0.26);
-          background: rgba(60, 240, 180, 0.10);
-          color: rgba(230,255,248,0.92);
+        .llDBmWDayS{
+          font-weight: 1200;
+          font-size: 12px;
+          line-height: 1;
+          height: 13px;
         }
-        .llDBmChipStatus.bad{
-          border-color: rgba(255,90,90,0.24);
-          background: rgba(255,90,90,0.10);
-          color: rgba(255,210,210,0.92);
+        .llDBmWDay.isClaimed{
+          border-color: rgba(60,240,180,0.30);
+          background: linear-gradient(180deg, rgba(60,240,180,0.12), rgba(0,0,0,0.14));
         }
-        .llDBmChipStatus.cta{
-          border-color: rgba(124,77,255,0.55);
-          background: rgba(124,77,255,0.16);
-          color: rgba(255,255,255,0.92);
-          box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
+        .llDBmWDay.isClaimed .llDBmWDayS{ color: #3cf0b4; }
+        .llDBmWDay.isMissed{ opacity: 0.42; filter: grayscale(1); }
+        .llDBmWDay.isMissed .llDBmWDayS{ color: rgba(255,120,120,0.9); }
+        .llDBmWDay.isFuture{ opacity: 0.72; }
+        .llDBmWDay.isToday{
+          border-color: rgba(124,77,255,0.75);
+          background: linear-gradient(180deg, rgba(124,77,255,0.26), rgba(124,77,255,0.08));
+          box-shadow: 0 0 0 2px rgba(124,77,255,0.18), 0 0 16px rgba(124,77,255,0.30);
+          animation: llDBmTodayPulse 2.4s ease-in-out infinite;
+        }
+        .llDBmWDay.isToday .llDBmWDayL{ color: rgba(220,205,255,0.95); }
+        @keyframes llDBmTodayPulse{
+          0%, 100% { box-shadow: 0 0 0 2px rgba(124,77,255,0.18), 0 0 10px rgba(124,77,255,0.22); }
+          50% { box-shadow: 0 0 0 2px rgba(124,77,255,0.30), 0 0 20px rgba(124,77,255,0.45); }
         }
 
         .llDBmSectionTitle{
@@ -850,37 +817,60 @@ export function DailyBonusAgendaModalMobile({
           font-size: 13px;
           color: rgba(255,255,255,0.88);
         }
-        .llDBmMilestones{
-          display:flex;
-          gap: 10px;
-          overflow-x: auto;
-          padding-bottom: 6px;
-          -webkit-overflow-scrolling: touch;
-        }
-        .llDBmMilestone{
-          flex: 0 0 auto;
-          display:inline-flex;
-          align-items:center;
-          gap: 8px;
-          padding: 10px 12px;
+
+        /* ── Paliers du mois : barre de progression + jalons posés dessus ── */
+        .llDBmTrack{
+          position: relative;
+          height: 10px;
           border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: rgba(0,0,0,0.14);
-          font-weight: 1000;
-          font-size: 12px;
+          background: rgba(255,255,255,0.08);
+          margin: 26px 12px 34px;
+        }
+        .llDBmFill{
+          position: absolute;
+          left: 0; top: 0; bottom: 0;
+          border-radius: 999px;
+          background: linear-gradient(90deg, #7c4dff, #b39dff);
+          box-shadow: 0 0 12px rgba(124,77,255,0.55);
+          transition: width .4s ease;
+        }
+        .llDBmStone{
+          position: absolute;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          display:flex;
+          flex-direction: column;
+          align-items:center;
+          justify-content:center;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: rgba(16,12,24,0.98);
+          font-weight: 1100;
+          font-size: 10px;
           color: rgba(255,255,255,0.88);
           user-select: none;
+          line-height: 1.05;
         }
-        .llDBmMilestone.isLocked{ opacity: 0.55; filter: grayscale(1); }
-        .llDBmMilestone.isClaimed{ opacity: 0.78; }
-        .llDBmMilestone.isClaimable{
-          border-color: rgba(255,255,255,0.18);
+        .llDBmStone small{ font-size: 9px; opacity: 0.7; font-weight: 900; }
+        .llDBmStone.isLocked{ opacity: 0.55; filter: grayscale(1); }
+        .llDBmStone.isClaimed{
+          border-color: rgba(60,240,180,0.45);
+          background: rgba(20,40,34,0.98);
+          color: #3cf0b4;
+        }
+        .llDBmStone.isClaimable{
+          border-color: rgba(255,214,110,0.75);
+          background: rgba(40,32,10,0.98);
+          color: #ffd66e;
           cursor: pointer;
+          animation: llDBmStonePulse 1.6s ease-in-out infinite;
         }
-        .llDBmMilestone.isClaimable:active{
-          transform: scale(0.98);
-          border-color: rgba(124,77,255,0.55);
-          background: rgba(124,77,255,0.14);
+        .llDBmStone.isClaimable:active{ transform: translate(-50%, -50%) scale(0.94); }
+        @keyframes llDBmStonePulse{
+          0%, 100% { box-shadow: 0 0 0 0 rgba(255,214,110,0.35); }
+          50% { box-shadow: 0 0 0 7px rgba(255,214,110,0); }
         }
 
         .llDBmInfoCard{
@@ -1078,60 +1068,46 @@ export function DailyBonusAgendaModalMobile({
                 </div>
               ) : null}
 
-              <div className="llDBmList">
+              {/* semaine en grille calendrier compacte (tout visible d'un
+                  coup, l'état se lit à la couleur — rework 11 juil) */}
+              <div className="llDBmSectionTitle" style={{ marginTop: 0 }}>Ma semaine</div>
+              <div className="llDBmWeekGrid">
                 {week.map((d) => {
-                  const chip = statusChip(d.status);
-                  const dim = d.status === "future" || d.status === "claimed" || d.status === "today_claimed";
-                  const missed = d.status === "missed";
-
+                  const cls =
+                    d.status === "today_claimable" || d.status === "today_claimed"
+                      ? "isToday"
+                      : d.status === "claimed"
+                      ? "isClaimed"
+                      : d.status === "missed"
+                      ? "isMissed"
+                      : "isFuture";
                   return (
-                    <div key={d.date} className={["llDBmDay", dim ? "isDim" : "", missed ? "isMissed" : ""].join(" ")}>
-                      <div className="llDBmDayHead">
-                        <div className="llDBmDayLeft">
-                          <div className="llDBmDayLabel">{d.label}</div>
-                          <div className="llDBmDayDate">{d.date}</div>
-                        </div>
-                        <div className="llDBmBadge" aria-hidden="true">
-                          {dayBadge(d.status)}
-                        </div>
-                      </div>
-
-                      <div className="llDBmDayReward">
-                        <div className="llDBmReward">{rewardLabel(d.reward)}</div>
-                        {premiumActive ? <div className="llDBmX2">x2</div> : null}
-                      </div>
-
-                      <div style={{ marginTop: 10 }}>
-                        <span className={`llDBmChipStatus ${chip.kind}`}>
-                          {chip.kind === "cta" && busy === "today" ? "Récupération…" : chip.label}
-                        </span>
-                      </div>
+                    <div key={d.date} className={`llDBmWDay ${cls}`} title={`${d.label} • ${d.date} • ${statusChip(d.status).label}`}>
+                      <div className="llDBmWDayL">{String(d.label || "").slice(0, 3)}</div>
+                      <div className="llDBmWDayR">{rewardLabel(d.reward)}</div>
+                      <div className="llDBmWDayS" aria-hidden="true">{dayBadge(d.status)}</div>
                     </div>
                   );
                 })}
               </div>
 
-              <div className="llDBmSectionTitle">Paliers du mois</div>
-              <div className="llDBmMilestones">
+              {/* paliers = jalons posés sur la progression du mois */}
+              <div className="llDBmSectionTitle">
+                Paliers du mois — {state.monthClaimedDays}/30 jours
+              </div>
+              <div className="llDBmTrack">
+                <div className="llDBmFill" style={{ width: `${clamp((state.monthClaimedDays / 30) * 100, 0, 100)}%` }} />
                 {milestones.map((m) => {
                   const isClaimable = m.status === "claimable" && !busy;
                   const cls = m.status === "locked" ? "isLocked" : m.status === "claimed" ? "isClaimed" : "isClaimable";
-
-                  const right =
-                    m.status === "claimed"
-                      ? "✓"
-                      : m.status === "claimable"
-                      ? busy === `m${m.milestone}`
-                        ? "…"
-                        : "★"
-                      : "🔒";
-
+                  const icon = m.status === "claimed" ? "✓" : m.status === "claimable" ? (busy === `m${m.milestone}` ? "…" : "★") : "🔒";
                   return (
                     <div
                       key={m.milestone}
                       role={isClaimable ? "button" : undefined}
                       tabIndex={isClaimable ? 0 : -1}
-                      className={`llDBmMilestone ${cls}`}
+                      className={`llDBmStone ${cls}`}
+                      style={{ left: `${(m.milestone / 30) * 100}%` }}
                       onClick={() => {
                         if (m.status === "claimable" && !busy) claimMilestone(m.milestone);
                       }}
@@ -1142,10 +1118,10 @@ export function DailyBonusAgendaModalMobile({
                           claimMilestone(m.milestone);
                         }
                       }}
-                      title={m.status === "claimable" ? "Cliquer pour récupérer" : undefined}
+                      title={m.status === "claimable" ? "Cliquer pour récupérer" : `Palier ${m.milestone} jours`}
                     >
                       <span>{m.milestone}j</span>
-                      <span style={{ opacity: 0.86 }}>{right}</span>
+                      <small>{icon}</small>
                     </div>
                   );
                 })}
