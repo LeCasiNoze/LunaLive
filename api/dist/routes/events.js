@@ -10,6 +10,7 @@ eventsRouter.get("/events/current", a(async (_req, res) => {
       SELECT *
       FROM events
       WHERE start_at <= NOW() AND NOW() < end_at
+        AND state <> 'archived'
       ORDER BY start_at DESC
       LIMIT 1
       `);
