@@ -5,8 +5,14 @@
 // les autres onglets du bot sont en HTTP pur).
 import * as React from "react";
 import { io, type Socket } from "socket.io-client";
-import { apiBase } from "../../lib/http";
 import { BotMenu } from "./BotMenu";
+
+// ⚠ MÊME base que ChatPanel (VITE_API_BASE, fallback onrender). PAS
+// lib/http apiBase() (VITE_API_URL, fallback localhost) qui empêchait le
+// socket de se connecter en prod → call cassé.
+function apiBase() {
+  return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
+}
 
 export function FloatingBot({
   slug,
