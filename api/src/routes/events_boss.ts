@@ -124,6 +124,40 @@ eventsBossRouter.get(
       [event.id]
     );
 
+    // Coup fatal : premier burn dont le cumul franchit le seuil restant une
+    // fois l'activité déduite (approximation : l'activité est comptée à sa
+    // valeur finale). Si l'activité seule a achevé le boss → null (la commu).
+    let killedBy: string | null = null;
+    let killedAt: string | null = null;
+    if (totalDamage >= hp && hp > 0) {
+      const burnsTotal = await pool.query(
+        `SELECT COALESCE(SUM(rubis),0)::int AS total FROM event_boss_damage WHERE event_id=$1`,
+        [event.id]
+      );
+      const threshold = hp - (totalDamage - Number(burnsTotal.rows?.[0]?.total ?? 0));
+      if (threshold > 0) {
+        const fin = await pool.query(
+          `
+          SELECT username, created_at FROM (
+            SELECT u.username, d.created_at,
+                   SUM(d.rubis) OVER (ORDER BY d.created_at, d.id) AS cum
+            FROM event_boss_damage d
+            JOIN users u ON u.id = d.user_id
+            WHERE d.event_id = $1
+          ) t
+          WHERE cum >= $2
+          ORDER BY created_at
+          LIMIT 1
+          `,
+          [event.id, threshold]
+        );
+        if (fin.rows?.[0]) {
+          killedBy = String(fin.rows[0].username);
+          killedAt = new Date(fin.rows[0].created_at).toISOString();
+        }
+      }
+    }
+
     let myDamage: number | undefined;
     let myRank: number | undefined;
     if (userId) {
@@ -147,6 +181,8 @@ eventsBossRouter.get(
       hp,
       totalDamage,
       killed: totalDamage >= hp,
+      killedBy,
+      killedAt,
       myDamage,
       myRank,
       topDamagers: (topRes.rows || []).map((r: any, idx: number) => ({

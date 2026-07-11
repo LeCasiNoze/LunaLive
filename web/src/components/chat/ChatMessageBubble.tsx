@@ -14,6 +14,12 @@ import {
 } from "../../lib/cosmetics";
 import type { StreamerAppearance } from "../../lib/appearance";
 import { TitleSecondLine } from "./TitlePill";
+// Effets moteur (canvas) : modules LÉGERS — pixi/gsap ne chargent que via
+// AnimatedUsername/FrameFxOverlay (import() interne, chunk séparé)
+import AnimatedUsername from "../../fx/username/AnimatedUsername";
+import FrameFxOverlay from "../../fx/username/FrameFxOverlay";
+import { FRAME_FX_CODES } from "../../fx/username/frameFxCodes";
+import { resolveEngineUsernameFx } from "../../fx/username/engineCodes";
 
 export type ChatMsgLike = {
   id: number | string;
@@ -26,6 +32,36 @@ export type ChatMsgLike = {
   dlive?: boolean;
   dliveRestreamFrom?: string | null;
   rumble?: boolean;
+  /** Rôle de l'auteur (attaché par l'API) : viewer | mod | streamer | admin | bot */
+  role?: string | null;
+};
+
+// Chapeaux cosmétiques : vrais props graphiques (web/public/Hats, planche
+// générée par Lucas + détourage) — largeur/offset calibrés par chapeau,
+// ancrés sur l'avatar 48px. L'emoji reste le fallback si l'asset manque.
+const HAT_ASSETS: Record<string, { w: number; top: number; dx?: number }> = {
+  luna_cap: { w: 46, top: -17 },
+  carton_crown: { w: 44, top: -19 },
+  demon_horn: { w: 48, top: -15 },
+  eclipse_halo: { w: 46, top: -19 },
+  astral_helmet: { w: 48, top: -15 },
+  lotus_aureole: { w: 42, top: -17 },
+  top_hat: { w: 44, top: -23 },
+  santa: { w: 46, top: -19 },
+  witch: { w: 48, top: -23 },
+  pirate: { w: 50, top: -19 },
+  viking: { w: 48, top: -15 },
+  propeller: { w: 44, top: -19 },
+};
+
+// Signe distinctif de rôle, à gauche du pseudo (maquette Stitch "Densité
+// Verticale") — l'icône change selon qui parle.
+const ROLE_META: Record<string, { icon: string; label: string }> = {
+  viewer: { icon: "⚡", label: "Viewer" },
+  mod: { icon: "🛡️", label: "Modérateur" },
+  streamer: { icon: "🎙️", label: "Streamer" },
+  admin: { icon: "👑", label: "Admin LunaLive" },
+  bot: { icon: "🤖", label: "Bot" },
 };
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -214,6 +250,8 @@ export function ChatMessageBubble({
   const frame     = c?.frame ?? null;
 
   const unameEffect        = c?.username?.effect ?? "none";
+  // Effet pseudo MOTEUR (canvas) ? — inclut le mapping legacy uanim_*→ufx-*
+  const engineFx           = isBot ? null : resolveEngineUsernameFx(unameEffect);
   const skinUnameColor     = c?.username?.color ?? null;
   const allowViewerNameColor = lvl < 2;
   const effectiveUnameColor = allowViewerNameColor ? skinUnameColor : null;
@@ -224,6 +262,8 @@ export function ChatMessageBubble({
 
   const [imgErr, setImgErr] = React.useState(false);
   React.useEffect(() => setImgErr(false), [avatarUrl]);
+  // asset chapeau manquant → retombe sur l'emoji
+  const [hatImgErr, setHatImgErr] = React.useState(false);
 
   const hatIdNorm = (avatar as any)?.hatId ? String((avatar as any).hatId).replace(/^hat_/, "") : null;
   const hatEmoji = (avatar as any)?.hatEmoji || (hatIdNorm ? ({
@@ -234,6 +274,37 @@ export function ChatMessageBubble({
   const meKey   = currentUsername ? normKey(currentUsername) : "";
   const mentions = extractMentions(String(msg.body ?? ""));
   const isPinged = !!meKey && mentions.some(t => normKey(t) === meKey);
+
+  // Variante "slim" (aucun badge) : avatar réduit sur la ligne du pseudo,
+  // contenu pleine largeur — économise la colonne et de la hauteur.
+  const slim = badges.length === 0;
+  const roleKey = isBot ? "bot" : String((msg as any)?.role || "viewer");
+  const roleMeta = ROLE_META[roleKey] ?? ROLE_META.viewer;
+
+  const hatAsset = hatIdNorm && !hatImgErr ? HAT_ASSETS[hatIdNorm] : null;
+  const avatarCore = (
+    <div className={`chatAvatarBorder ${avatarBorderClass((avatar as any).borderId)}`}>
+      <div className="chatAvatarCircle">
+        {avatarUrl && !imgErr ? (
+          <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImgErr(true)} />
+        ) : getInitials(msg.username)}
+      </div>
+      {hatAsset ? (
+        <img
+          className="chatHatImg"
+          src={`/Hats/hat_${hatIdNorm}.png`}
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+          style={{ width: hatAsset.w, top: hatAsset.top, marginLeft: hatAsset.dx ?? 0 }}
+          onError={() => setHatImgErr(true)}
+        />
+      ) : hatEmoji ? (
+        <div className="chatHatEmoji" aria-hidden="true">{hatEmoji}</div>
+      ) : null}
+    </div>
+  );
 
   /* ── Styles contextuels ── */
   const rowStyle: React.CSSProperties = isPinged
@@ -259,22 +330,47 @@ export function ChatMessageBubble({
         isBot        ? "chatMsgRow--bot"   : "",
         isGrouped    ? "chatMsgRow--grouped" : "",
       ].filter(Boolean).join(" ")}
-      style={rowStyle}>
-      <div className="chatMsgInner">
+      style={{ position: "relative", ...rowStyle }}>
+      {/* Particules canvas des cadrans premium (pièces, braises, cœurs…) —
+          par-dessus le cadre CSS, pointer-events none */}
+      {!isGrouped && frame?.frameId && FRAME_FX_CODES.includes(String(frame.frameId)) ? (
+        <FrameFxOverlay effectId={String(frame.frameId)} />
+      ) : null}
+      <div className={`chatMsgInner${slim ? " chatMsgInner--slim" : ""}`}>
 
-        {/* ── Avatar : toujours affiché sur le 1er message, slot invisible sur les groupés ── */}
-        <div className={`chatAvatarBorder chatAvatarSlot ${avatarBorderClass((avatar as any).borderId)}`}>
-          {!isGrouped ? (
-            <>
-              <div className="chatAvatarCircle">
-                {avatarUrl && !imgErr ? (
-                  <img className="chatAvatarImg" src={avatarUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImgErr(true)} />
-                ) : getInitials(msg.username)}
-              </div>
-              {hatEmoji ? <div className="chatHatEmoji" aria-hidden="true">{hatEmoji}</div> : null}
-            </>
-          ) : null}
-        </div>
+        {/* ── Colonne gauche : avatar imposant + badges empilés dessous ──
+            (maquette Stitch "Densité Verticale" ; slot invisible si groupé ;
+            absente en variante slim = compte sans badge) */}
+        {!slim ? (
+          <div className="chatColLeft chatAvatarSlot">
+            {!isGrouped ? (
+              <>
+                {avatarCore}
+                <div className="chatColBadges">
+                  {badges.slice(0, 2).map((b: any) => {
+                    const label = badgeLabel(b);
+                    // police adaptative : le badge doit TOUJOURS tenir dans
+                    // la largeur de la colonne, quel que soit le texte
+                    const fontSize = label.length <= 4 ? 9 : label.length <= 6 ? 8 : 7;
+                    return (
+                      <span key={b.id}
+                        className={`chatBadge chatBadge--col badge--${b.tier || "silver"} bfx--${String(b.id || "").replace(/[^a-z0-9_-]/gi, "")}`}
+                        style={{
+                          fontSize,
+                          ...(b.borderColor     ? { borderColor:b.borderColor }           : null),
+                          ...(b.textColor       ? { color:b.textColor }                   : null),
+                          ...(b.backgroundColor ? { backgroundColor:b.backgroundColor }   : null),
+                        }}>
+                        {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* ── Contenu ── */}
         <div className="chatMsgContent" style={{ minWidth:0 }}>
@@ -283,45 +379,48 @@ export function ChatMessageBubble({
           {!isGrouped ? (
             <>
               <div className="chatMsgTop">
-                <div className="chatMsgTopLeft" style={{ minWidth:0, display:"flex", flexWrap:"wrap", alignItems:"center", gap:5 }}>
+                {/* nowrap : le pseudo se tronque (ellipsis) plutôt que de
+                    passer à la ligne sous l'avatar/l'icône de rôle */}
+                <div className="chatMsgTopLeft" style={{ minWidth:0, display:"flex", flexWrap:"nowrap", alignItems:"center", gap:6 }}>
 
-                  {/* Badge BOT */}
-                  {isBot ? (
-                    <span className="chatBadge badge--bot"
-                      style={{ fontWeight:950, border:"1px solid rgba(239,68,68,.28)", background:"rgba(239,68,68,.12)", color:"rgba(252,165,165,.95)" }}
-                      title="Bot">BOT</span>
-                  ) : null}
+                  {/* Variante slim : l'avatar (réduit) vit sur la ligne du pseudo */}
+                  {slim ? <span className="chatAvatarSm">{avatarCore}</span> : null}
 
-                  {/* Badges cosmétiques */}
-                  {badges.length ? (
-                    <div className="chatBadges">
-                      {badges.map((b: any) => (
-                        <span key={b.id}
-                          className={`chatBadge badge--${b.tier || "silver"}`}
-                          style={{
-                            ...(b.borderColor     ? { borderColor:b.borderColor }           : null),
-                            ...(b.textColor       ? { color:b.textColor }                   : null),
-                            ...(b.backgroundColor ? { backgroundColor:b.backgroundColor }   : null),
-                          }}>
-                          {b.icon ? <span className="chatBadgeIcon">{b.icon}</span> : null}
-                          {badgeLabel(b)}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
+                  {/* Signe distinctif de rôle (viewer/modo/streamer/admin/bot) */}
+                  <span className={`chatRoleChip chatRoleChip--${roleKey}`} title={roleMeta.label}>
+                    {roleMeta.icon}
+                  </span>
 
-                  {/* Username */}
+                  {/* Username — moteur canvas si l'effet est au registre,
+                      sinon span CSS classique */}
                   <div
-                    className={`chatUsername ${usernameEffectClass(unameEffect as any)}`}
+                    className={`chatUsername ${engineFx ? "" : usernameEffectClass(unameEffect as any)}`}
+                    data-text={msg.username}
                     style={{
+                      minWidth: 0,
                       ["--uname-color" as any]: isBot
                         ? "rgba(252,165,165,.95)"
                         : (effectiveUnameColor ?? "var(--chat-name-color)"),
                       ...(isBot ? { fontWeight:950, letterSpacing:".5px", textTransform:"uppercase" } : null),
+                      // moteur : le canvas déborde volontairement du texte
+                      // (particules) — l'overflow:hidden du CSS le clipperait
+                      ...(engineFx ? { overflow: "visible" } : null),
                       opacity: isDlive ? .92 : undefined,
                     } as React.CSSProperties}
                     title={msg.username}>
-                    {msg.username}
+                    {engineFx ? (
+                      <AnimatedUsername
+                        username={msg.username}
+                        effectId={engineFx.id}
+                        rarity={engineFx.rarity}
+                        context="chat"
+                        intensity={1}
+                        size={14.5}
+                        inline
+                      />
+                    ) : (
+                      msg.username
+                    )}
 
                     {/* Pill DLive */}
                     {isDlive ? (
@@ -376,17 +475,19 @@ export function ChatMessageBubble({
             </>
           ) : null}
 
-          {/* Corps du message */}
-          <div
-            className={`chatBodyText ${isEmotesOnly(String(msg.body ?? "")) ? "emotes-only" : ""}`}
-            style={{
-              minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
-              wordBreak:"break-word", lineHeight:1.3,
-              marginTop: isGrouped ? 0 : undefined,
-              opacity: isDlive ? .92 : undefined,
-              color:"var(--chat-msg-color,rgba(235,232,255,.88))",
-            }}>
-            {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
+          {/* Corps du message : dans sa propre bulle (séparation stricte
+              meta/message, maquette Stitch) */}
+          <div className="chatBodyBubble" style={{ marginTop: isGrouped ? 0 : undefined }}>
+            <div
+              className={`chatBodyText ${isEmotesOnly(String(msg.body ?? "")) ? "emotes-only" : ""}`}
+              style={{
+                minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
+                wordBreak:"break-word", lineHeight:1.35,
+                opacity: isDlive ? .92 : undefined,
+                color:"var(--chat-msg-color,rgba(235,232,255,.88))",
+              }}>
+              {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
+            </div>
           </div>
         </div>
       </div>

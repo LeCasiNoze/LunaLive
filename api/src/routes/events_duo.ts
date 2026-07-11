@@ -28,9 +28,10 @@ async function getOwnStreamerId(userId: number) {
 function mapDuo(d: Awaited<ReturnType<typeof getRankedDuos>>[number]) {
   return {
     duoId: d.duoId,
-    streamerA: { id: d.streamerAId, slug: d.streamerASlug, displayName: d.streamerADisplayName },
+    // userId : permet au front d'afficher l'avatar du streamer (/avatars/u/{userId})
+    streamerA: { id: d.streamerAId, slug: d.streamerASlug, displayName: d.streamerADisplayName, userId: d.streamerAUserId },
     streamerB: d.streamerBId
-      ? { id: d.streamerBId, slug: d.streamerBSlug, displayName: d.streamerBDisplayName }
+      ? { id: d.streamerBId, slug: d.streamerBSlug, displayName: d.streamerBDisplayName, userId: d.streamerBUserId }
       : null,
     status: d.status,
     shared: d.sharedViewers,

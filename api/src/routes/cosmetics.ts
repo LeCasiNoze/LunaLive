@@ -253,9 +253,12 @@ cosmeticsRouter.get(
 
     const owned = emptyOwned();
     for (const r of ent.rows as any[]) {
-      const k = String(r.kind || "") as Kind;
+      let k = String(r.kind || "") as Kind;
       const c = String(r.code || "");
       if (!k || !c) continue;
+      // Les récompenses d'event (events/rewards.ts) insèrent kind='skin'
+      // pour les cadrans — sans cet alias elles restent invisibles.
+      if ((k as string) === "skin") k = "frame";
       if (!ALLOWED_KINDS.includes(k)) continue;
       owned[k].push(c);
     }
@@ -376,12 +379,14 @@ cosmeticsRouter.patch(
       }
     }
 
-    // entitlement requis (sauf free / unlockAll)
+    // entitlement requis (sauf free / unlockAll) — kind='skin' accepté comme
+    // alias de frame (récompenses d'event)
     if (!isFree && !unlockAll) {
       const check = await pool.query(
         `SELECT 1
         FROM user_entitlements
-        WHERE user_id = $1 AND kind = $2 AND code = $3
+        WHERE user_id = $1 AND code = $3
+          AND (kind = $2 OR ($2 = 'frame' AND kind = 'skin'))
         LIMIT 1`,
         [userId, kind, code]
       );

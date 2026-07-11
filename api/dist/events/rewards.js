@@ -14,7 +14,10 @@ const REWARD_TOP_SNAPSHOT_N = 10;
 export const EVENT_REWARD_CONFIGS = {
     viewer_week: {
         tiers: [
-            { rankFrom: 1, rankTo: 1, rubis: 600, entitlement: { kind: "title", codeTemplate: "vw_champion_YYYYMM" } },
+            // #1 : cadran « Roi des Viewers » (cœurs à l'hélium) — code FIXE,
+            // permanent, s'accumule d'une édition à l'autre (décision Lucas :
+            // remplace l'ancien titre daté vw_champion_YYYYMM).
+            { rankFrom: 1, rankTo: 1, rubis: 600, entitlement: { kind: "skin", codeTemplate: "frame_viewer_hearts" } },
             { rankFrom: 2, rankTo: 3, rubis: 300 },
             { rankFrom: 4, rankTo: 5, rubis: 150 },
         ],

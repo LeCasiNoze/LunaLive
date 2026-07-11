@@ -98,21 +98,21 @@
 
 /* chat cosmetics */
 .chatMsgRow{
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.10);
   background: rgba(17, 10, 23, 0.92);
   box-shadow: 0 10px 40px rgba(0,0,0,0.25);
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 .chatMsgInner{
   display:flex;
-  gap: 10px;
+  gap: 12px;
   align-items:flex-start;
 }
 
 .chatAvatarBorder{
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.06);
@@ -124,8 +124,8 @@
 }
 
 .chatAvatarCircle{
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   border-radius: 999px;
   display: grid;
   place-items: center;
@@ -153,6 +153,17 @@
   z-index: 3;
 }
 
+/* Chapeau cosmétique en vrai prop image (largeur/top par chapeau, inline) */
+.chatHatImg{
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  height: auto;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+  z-index: 3;
+  pointer-events: none;
+}
+
 .avatarBorder--luna{
   border-color: rgba(126,76,179,0.65);
   box-shadow: 0 0 0 2px rgba(126,76,179,0.12), 0 18px 45px rgba(63,86,203,0.12);
@@ -167,6 +178,80 @@
 }
 
 .chatMsgContent{ min-width: 0; flex: 1; }
+
+/* ─── Disposition "Densité Verticale" (maquette Stitch validée) ────── */
+/* Colonne gauche : avatar imposant + badges empilés dessous */
+.chatColLeft{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 48px;
+}
+.chatColBadges{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  max-width: 52px;
+}
+/* Badge sous l'avatar : mini-tag discret (ne doit jamais dominer l'avatar).
+   Sélecteur composé : la base .chatBadge est définie plus bas dans le
+   fichier et écraserait une simple classe modifieuse. */
+.chatColBadges .chatBadge{
+  /* border-box : sans ça le padding s'ajoute au max-width et le badge
+     déborde de la colonne (passait sous la bulle du message) */
+  box-sizing: border-box;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  border-radius: 7px;
+  gap: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Variante slim (compte sans badge) : pas de colonne — l'avatar (même
+   taille que partout, demande Lucas) vit sur la ligne du pseudo, le
+   message prend toute la largeur. */
+.chatMsgInner--slim{ display: block; }
+.chatAvatarSm{ display: inline-flex; flex: 0 0 auto; }
+
+/* Signe distinctif de rôle, à gauche du pseudo */
+.chatRoleChip{
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  font-size: 12px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+}
+.chatRoleChip--viewer{ border-color: rgba(167,139,250,0.35); background: rgba(124,92,252,0.14); }
+.chatRoleChip--mod{ border-color: rgba(80,200,255,0.45); background: rgba(80,200,255,0.14); }
+.chatRoleChip--streamer{ border-color: rgba(253,230,138,0.5); background: rgba(253,230,138,0.14); box-shadow: 0 0 8px rgba(253,230,138,0.18); }
+.chatRoleChip--admin{ border-color: rgba(244,114,182,0.5); background: rgba(244,114,182,0.14); box-shadow: 0 0 8px rgba(244,114,182,0.2); }
+.chatRoleChip--bot{ border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.12); }
+
+/* Corps du message dans sa propre bulle (séparation stricte meta/message) */
+.chatBodyBubble{
+  margin-top: 9px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.045);
+}
+.chatBodyBubble .chatBodyText{
+  margin-top: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
 
 .chatMsgTop{
   display:flex;
@@ -249,7 +334,7 @@
 
 .chatUsername{
   font-weight: 950;
-  font-size: 14px;
+  font-size: 14.5px;
   color: var(--uname-color, var(--chat-name-color, #ffd54a));
   max-width: 100%;
   overflow:hidden;

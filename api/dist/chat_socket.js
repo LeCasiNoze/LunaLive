@@ -231,6 +231,7 @@ async function sendBotChat(io, meta, body) {
         createdAt: new Date(row.createdAt).toISOString(),
         cosmetics,
         isBot: true,
+        role: "bot",
         style: {
             nameColor: appearance.chat.usernameColor,
             msgColor: appearance.chat.messageColor,
@@ -830,6 +831,8 @@ export function attachChat(io) {
                     body: text,
                     createdAt: new Date(row.createdAt).toISOString(),
                     cosmetics,
+                    // icône de rôle côté front (viewer/mod/streamer/admin)
+                    role: data.role === "guest" ? "viewer" : data.role,
                     style,
                 };
                 // ✅ broadcast to both rooms (public + popup) WITHOUT duplicates

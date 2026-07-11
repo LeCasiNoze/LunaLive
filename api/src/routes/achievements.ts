@@ -102,6 +102,28 @@ type Metrics = {
 
   // Stream first chatters
   firstChatterCount: number;
+
+  // ── Nouvelles métriques skins (11 juil) ──
+  // "jour d'activité" = jour Paris avec ≥1 minute de watch OU ≥1 message
+  activityDaysTotal: number; // jours d'activité cumulés (Inoxydable 50 / Éveil 100 / Sablier 365)
+  activityMaxStreak: number; // plus longue série de jours consécutifs (Feu 14)
+  phoenixOk: boolean; // revenu après ≥30 j d'absence puis ≥7 jours consécutifs
+  jourEtNuitDays: number; // jours avec activité matin (5-12h) ET soir (18h+)
+  winterWatchMinutes: number; // minutes de watch en décembre-février (Hibernation)
+  lateNightWatchNights: number; // nuits distinctes avec ≥30 min de watch entre 0h et 4h
+  silentWatchMinutes: number; // minutes de watch sur des jours SANS message (Spectre)
+  maxChatDayMessages: number; // record de messages sur une seule journée (Glitch)
+  ogOk: boolean; // compte créé avant le lancement officiel
+  wheelMaxGainHits: number; // nombre de fois le gain MAXIMAL de la roue quotidienne
+
+  // Events (0 si les tables n'existent pas encore)
+  bossDamageTotal: number; // dégâts cumulés sur tous les boss (DPS 10K / Forge 50K)
+  bossDamageBestEdition: number; // meilleurs dégâts sur UNE édition (Berserker 5K)
+  chestEventContribTotal: number; // rubis contribués cumulés aux Coffres communs (Abysses)
+  wheelEventSpinsBestEdition: number; // max de spins sur UNE édition d'event Roue (Éclair)
+  viewerWeekWins: number; // nombre de victoires (#1) à la Semaine du viewer (Réacteur)
+  podiumEventTypes: number; // nb de TYPES d'event classés où top 3 atteint (Maître des Cendres /4)
+  top10EventTypes: number; // nb de TYPES d'event classés où top 10 atteint (Orage /4)
 };
 
 type AchievementDef = {
@@ -800,6 +822,227 @@ async function getMetrics(userId: number): Promise<Metrics> {
       )
     : 0;
 
+  // ── Nouvelles métriques skins (11 juil) ──────────────────────────────────
+  // "jour d'activité" = jour Paris avec ≥1 minute de watch OU ≥1 message.
+  // CTE commune réutilisée par plusieurs requêtes ci-dessous.
+  const ACTIVITY_DAYS_CTE = `
+    SELECT DISTINCT date(bucket_ts AT TIME ZONE 'Europe/Paris') AS d
+    FROM stream_viewer_minutes WHERE user_id=$1
+    UNION
+    SELECT DISTINCT date(created_at AT TIME ZONE 'Europe/Paris')
+    FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL
+  `;
+  const canActivity = hasStreamViewerMinutes || hasChatMessages;
+
+  const activityDaysTotal = canActivity
+    ? await safeCount(`SELECT COUNT(*)::int AS n FROM (${ACTIVITY_DAYS_CTE}) t`, [userId])
+    : 0;
+
+  // plus longue série de jours consécutifs (îlots : d - row_number = constante)
+  const activityMaxStreak = canActivity
+    ? await safeCount(
+        `
+        WITH days AS (${ACTIVITY_DAYS_CTE}),
+        seq AS (SELECT d, (d - (ROW_NUMBER() OVER (ORDER BY d))::int) AS grp FROM days)
+        SELECT COALESCE(MAX(c),0)::int AS n FROM (SELECT COUNT(*) AS c FROM seq GROUP BY grp) t
+        `,
+        [userId]
+      )
+    : 0;
+
+  // Phénix : une série de ≥7 jours consécutifs DÉMARRÉE après un trou ≥30 jours
+  const phoenixOk = canActivity
+    ? (await safeCount(
+        `
+        WITH days AS (${ACTIVITY_DAYS_CTE}),
+        seq AS (SELECT d, LAG(d) OVER (ORDER BY d) AS pd FROM days),
+        marks AS (
+          SELECT d,
+                 CASE WHEN pd IS NULL OR (d - pd) > 1 THEN 1 ELSE 0 END AS brk,
+                 CASE WHEN pd IS NOT NULL AND (d - pd) >= 30 THEN 1 ELSE 0 END AS big
+          FROM seq
+        ),
+        grp AS (SELECT d, big, SUM(brk) OVER (ORDER BY d) AS g FROM marks)
+        SELECT COUNT(*)::int AS n
+        FROM (SELECT g, COUNT(*) AS len, MAX(big) AS bigflag FROM grp GROUP BY g) r
+        WHERE r.bigflag = 1 AND r.len >= 7
+        `,
+        [userId]
+      )) > 0
+    : false;
+
+  // Jour et nuit : activité le matin (5h-12h) ET le soir (18h+) le même jour
+  const jourEtNuitDays = canActivity
+    ? await safeCount(
+        `
+        WITH acts AS (
+          SELECT (bucket_ts AT TIME ZONE 'Europe/Paris') AS ts
+          FROM stream_viewer_minutes WHERE user_id=$1
+          UNION ALL
+          SELECT (created_at AT TIME ZONE 'Europe/Paris')
+          FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL
+        )
+        SELECT COUNT(*)::int AS n FROM (
+          SELECT date(ts) AS d FROM acts GROUP BY 1
+          HAVING BOOL_OR(EXTRACT(HOUR FROM ts) >= 5 AND EXTRACT(HOUR FROM ts) < 12)
+             AND BOOL_OR(EXTRACT(HOUR FROM ts) >= 18)
+        ) t
+        `,
+        [userId]
+      )
+    : 0;
+
+  const winterWatchMinutes = hasStreamViewerMinutes
+    ? await safeCount(
+        `SELECT COUNT(*)::int AS n FROM stream_viewer_minutes
+         WHERE user_id=$1
+           AND EXTRACT(MONTH FROM (bucket_ts AT TIME ZONE 'Europe/Paris')) IN (12, 1, 2)`,
+        [userId]
+      )
+    : 0;
+
+  const lateNightWatchNights = hasStreamViewerMinutes
+    ? await safeCount(
+        `SELECT COUNT(*)::int AS n FROM (
+           SELECT date(bucket_ts AT TIME ZONE 'Europe/Paris') AS d, COUNT(*) AS mins
+           FROM stream_viewer_minutes
+           WHERE user_id=$1
+             AND EXTRACT(HOUR FROM (bucket_ts AT TIME ZONE 'Europe/Paris')) < 4
+           GROUP BY 1
+           HAVING COUNT(*) >= 30
+         ) t`,
+        [userId]
+      )
+    : 0;
+
+  // Spectre : minutes de watch sur des jours où AUCUN message n'a été écrit
+  const silentWatchMinutes = hasStreamViewerMinutes
+    ? await safeCount(
+        `
+        WITH msgdays AS (
+          SELECT DISTINCT date(created_at AT TIME ZONE 'Europe/Paris') AS d
+          FROM chat_messages WHERE user_id=$1 AND deleted_at IS NULL
+        )
+        SELECT COUNT(*)::int AS n
+        FROM stream_viewer_minutes w
+        LEFT JOIN msgdays md ON md.d = date(w.bucket_ts AT TIME ZONE 'Europe/Paris')
+        WHERE w.user_id=$1 AND md.d IS NULL
+        `,
+        [userId]
+      )
+    : 0;
+
+  // record de messages sur une journée : live + archive quotidienne
+  const maxLiveDay = hasChatMessages
+    ? await safeCount(
+        `SELECT COALESCE(MAX(c),0)::int AS n FROM (
+           SELECT COUNT(*) AS c FROM chat_messages
+           WHERE user_id=$1 AND deleted_at IS NULL
+           GROUP BY date(created_at AT TIME ZONE 'Europe/Paris')
+         ) t`,
+        [userId]
+      )
+    : 0;
+  const maxArchivedDay = hasChatMessageStats
+    ? await safeCount(
+        `SELECT COALESCE(MAX(messages_sent),0)::int AS n FROM chat_message_stats WHERE user_id=$1`,
+        [userId]
+      )
+    : 0;
+  const maxChatDayMessages = Math.max(maxLiveDay, maxArchivedDay);
+
+  // OG : compte créé avant le lancement officiel.
+  // ⚠ AJUSTER cette date au lancement réel (event de lancement à venir).
+  const OG_CUTOFF = "2026-09-01";
+  const ogOk =
+    (await safeCount(
+      `SELECT COUNT(*)::int AS n FROM users WHERE id=$1 AND created_at < $2::date`,
+      [userId, OG_CUTOFF]
+    )) > 0;
+
+  // Jackpot roue quotidienne : segment_index=8 = "+500" (max, cf SEGMENTS
+  // dans routes/wheel.ts — reward_rubis peut être boosté, l'index est fiable)
+  const wheelMaxGainHits = hasWheel
+    ? await safeCount(
+        `SELECT COUNT(*)::int AS n FROM daily_wheel_spins WHERE user_id=$1 AND segment_index = 8`,
+        [userId]
+      )
+    : 0;
+
+  // ── Events (moteur events : tables mig046/123/125/126/128/130) ──────────
+  const hasEvents = await tableExists("events");
+  const hasEventScores = await tableExists("event_scores");
+  const hasEventGrants = await tableExists("event_reward_grants");
+  const hasChestDeposits = await tableExists("event_chest_deposits");
+  const hasEventWheelSpins = await tableExists("event_wheel_spins");
+
+  // event_scores.points = dégâts sur les events boss
+  const bossDamageTotal = hasEvents && hasEventScores
+    ? await safeSum(
+        `SELECT COALESCE(SUM(s.points),0)::bigint AS s
+         FROM event_scores s JOIN events e ON e.id = s.event_id
+         WHERE s.user_id=$1 AND e.type='burn_boss'`,
+        [userId]
+      )
+    : 0;
+
+  const bossDamageBestEdition = hasEvents && hasEventScores
+    ? await safeCount(
+        `SELECT COALESCE(MAX(s.points),0)::int AS n
+         FROM event_scores s JOIN events e ON e.id = s.event_id
+         WHERE s.user_id=$1 AND e.type='burn_boss'`,
+        [userId]
+      )
+    : 0;
+
+  const chestEventContribTotal = hasChestDeposits
+    ? await safeSum(
+        `SELECT COALESCE(SUM(rubis),0)::bigint AS s FROM event_chest_deposits WHERE user_id=$1`,
+        [userId]
+      )
+    : 0;
+
+  const wheelEventSpinsBestEdition = hasEventWheelSpins
+    ? await safeCount(
+        `SELECT COALESCE(MAX(c),0)::int AS n FROM (
+           SELECT COUNT(*) AS c FROM event_wheel_spins WHERE user_id=$1 GROUP BY event_id
+         ) t`,
+        [userId]
+      )
+    : 0;
+
+  // Rangs finaux figés dans event_reward_grants (tier='win' → rank fiable)
+  const RANKED_EVENT_TYPES = `('viewer_week','wheel_week','global_chest','burn_boss')`;
+
+  const viewerWeekWins = hasEvents && hasEventGrants
+    ? await safeCount(
+        `SELECT COUNT(*)::int AS n
+         FROM event_reward_grants g JOIN events e ON e.id = g.event_id
+         WHERE g.user_id=$1 AND g.tier='win' AND g.rank = 1 AND e.type='viewer_week'`,
+        [userId]
+      )
+    : 0;
+
+  const podiumEventTypes = hasEvents && hasEventGrants
+    ? await safeCount(
+        `SELECT COUNT(DISTINCT e.type)::int AS n
+         FROM event_reward_grants g JOIN events e ON e.id = g.event_id
+         WHERE g.user_id=$1 AND g.tier='win' AND g.rank BETWEEN 1 AND 3
+           AND e.type IN ${RANKED_EVENT_TYPES}`,
+        [userId]
+      )
+    : 0;
+
+  const top10EventTypes = hasEvents && hasEventGrants
+    ? await safeCount(
+        `SELECT COUNT(DISTINCT e.type)::int AS n
+         FROM event_reward_grants g JOIN events e ON e.id = g.event_id
+         WHERE g.user_id=$1 AND g.tier='win' AND g.rank BETWEEN 1 AND 10
+           AND e.type IN ${RANKED_EVENT_TYPES}`,
+        [userId]
+      )
+    : 0;
+
   return {
     userId,
     lastLoginAt,
@@ -878,6 +1121,25 @@ async function getMetrics(userId: number): Promise<Metrics> {
     xpThisWeek,
 
     firstChatterCount,
+
+    activityDaysTotal,
+    activityMaxStreak,
+    phoenixOk,
+    jourEtNuitDays,
+    winterWatchMinutes,
+    lateNightWatchNights,
+    silentWatchMinutes,
+    maxChatDayMessages,
+    ogOk,
+    wheelMaxGainHits,
+
+    bossDamageTotal,
+    bossDamageBestEdition,
+    chestEventContribTotal,
+    wheelEventSpinsBestEdition,
+    viewerWeekWins,
+    podiumEventTypes,
+    top10EventTypes,
   };
 }
 
@@ -895,8 +1157,11 @@ async function getMetrics(userId: number): Promise<Metrics> {
 // ─────────────────────────────────────────────
 const ACH_REWARD_ENTITLEMENTS: Record<string, Array<{ kind: Kind; code: string }>> = {
   // ── Rewards non-title (conservés) + titre en bonus ────────────────────────
-  master_collectionneur: [{ kind: "username", code: "uanim_rainbow_scroll" }, { kind: "title", code: "title_ultime" }],
-  master_parfait: [{ kind: "username", code: "uanim_chroma_toggle" }, { kind: "title", code: "title_parfait" }],
+  // Chroma/Arc-en-ciel : versions MOTEUR (les uanim_* sont désactivés au
+  // catalogue ; les entitlements legacy déjà en DB restent rendus via le
+  // mapping front uanim_*→ufx-*)
+  master_collectionneur: [{ kind: "username", code: "ufx-rainbow" }, { kind: "title", code: "title_ultime" }],
+  master_parfait: [{ kind: "username", code: "ufx-chroma" }, { kind: "title", code: "title_parfait" }],
 
   // alias "master_roulette" => ton id actuel = master_pretre_roue
   master_pretre_roue: [{ kind: "hat", code: "hat_demon_horn" }, { kind: "title", code: "title_pretre_de_la_roue" }],
@@ -905,7 +1170,35 @@ const ACH_REWARD_ENTITLEMENTS: Record<string, Array<{ kind: Kind; code: string }
   gold_marathon: [{ kind: "hat", code: "hat_carton_crown" }, { kind: "title", code: "title_marathon" }],
   master_pilier: [{ kind: "hat", code: "hat_eclipse_halo" }, { kind: "title", code: "title_pilier" }],
   master_archiviste: [{ kind: "frame", code: "mframe_lotus_crown" }, { kind: "title", code: "title_archiviste" }],
-  master_sous_la_lune: [{ kind: "frame", code: "mframe_eclipse" }, { kind: "title", code: "title_sous_la_lune" }],
+  // le cadran Eclipse est passé au succès « Jour et nuit » (décision 11 juil) —
+  // Sous la lune (30h watch/mois) garde uniquement son titre
+  master_sous_la_lune: [{ kind: "title", code: "title_sous_la_lune" }],
+
+  // ── Succès SKINS (11 juil — obtentions actées) ────────────────────────────
+  gold_inoxydable: [{ kind: "username", code: "uanim_steel" }],
+  gold_eveil_lunaire: [{ kind: "username", code: "eveil-lunaire" }],
+  master_sablier: [{ kind: "username", code: "sablier-eternite" }],
+  gold_serie_ardente: [{ kind: "username", code: "ufx-fire" }],
+  master_phenix: [{ kind: "frame", code: "mframe_phoenix" }],
+  master_jour_et_nuit: [{ kind: "frame", code: "mframe_eclipse" }],
+  master_noctambule_ultime: [{ kind: "username", code: "nuee-obsidienne" }],
+  master_spectre: [{ kind: "username", code: "spectre" }],
+  gold_hibernation: [{ kind: "username", code: "cristallisation" }],
+  gold_court_circuit: [{ kind: "username", code: "ufx-glitch" }],
+  gold_tete_dans_les_etoiles: [{ kind: "username", code: "ufx-galaxy" }],
+  master_anomalie: [{ kind: "frame", code: "mframe_glitch" }],
+  master_jackpot_divin: [{ kind: "username", code: "jackpot-divin" }],
+  master_cresus: [{ kind: "badge", code: "badge_rich" }],
+  silver_og: [{ kind: "badge", code: "badge_og" }],
+  gold_flibustier: [{ kind: "hat", code: "hat_pirate" }],
+  master_dps: [{ kind: "frame", code: "mframe_blood" }],
+  master_forge_celeste: [{ kind: "username", code: "forge-celeste" }],
+  master_berserker: [{ kind: "hat", code: "hat_viking" }],
+  master_abysses: [{ kind: "username", code: "leviathan-abyssal" }],
+  master_eclair: [{ kind: "frame", code: "mframe_fest_eclair" }],
+  master_reacteur: [{ kind: "username", code: "coeur-du-reacteur" }],
+  master_orage_interieur: [{ kind: "username", code: "orage-interieur" }],
+  master_maitre_des_cendres: [{ kind: "username", code: "garden-of-ashes" }],
 
   // ── Titres existants (5) ──────────────────────────────────────────────────
   bronze_first_chest: [{ kind: "title", code: "title_ratus" }],
@@ -933,7 +1226,7 @@ const ACH_REWARD_ENTITLEMENTS: Record<string, Array<{ kind: Kind; code: string }
   bronze_roue_sociale: [{ kind: "title", code: "title_roue_sociale" }],
   bronze_parraine: [{ kind: "title", code: "title_parraine" }],
   level_10_bronze: [{ kind: "title", code: "title_novice" }],
-  discord_linked_bronze: [{ kind: "title", code: "title_connecte" }],
+  discord_linked_bronze: [{ kind: "title", code: "title_connecte" }, { kind: "badge", code: "badge_discord" }],
 
   // ── Silver ────────────────────────────────────────────────────────────────
   silver_habitue: [{ kind: "title", code: "title_habitue" }],
@@ -2258,6 +2551,254 @@ const defs: AchievementDef[] = [
       unlocked: unlockedCountExceptCollector >= 50,
       progress: { current: unlockedCountExceptCollector, target: 50 },
     }),
+  },
+
+  // ───────────────── Succès SKINS (11 juil — obtentions actées avec Lucas)
+  // Fidélité / connexion
+  {
+    id: "gold_inoxydable",
+    tier: "gold",
+    category: "Découverte",
+    icon: "🔩",
+    name: "Inoxydable",
+    desc: "50 jours d'activité cumulés sur LunaLive.",
+    rewardPreview: "Pseudo : Acier",
+    eval: (m) => ({ unlocked: m.activityDaysTotal >= 50, progress: { current: m.activityDaysTotal, target: 50 } }),
+  },
+  {
+    id: "gold_eveil_lunaire",
+    tier: "gold",
+    category: "Découverte",
+    icon: "🌒",
+    name: "Éveil Lunaire",
+    desc: "100 jours d'activité cumulés sur LunaLive.",
+    rewardPreview: "Pseudo animé : Éveil Lunaire",
+    eval: (m) => ({ unlocked: m.activityDaysTotal >= 100, progress: { current: m.activityDaysTotal, target: 100 } }),
+  },
+  {
+    id: "master_sablier",
+    tier: "master",
+    category: "Master",
+    icon: "⏳",
+    name: "Sablier d'Éternité",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Sablier d'Éternité",
+    eval: (m) => ({ unlocked: m.activityDaysTotal >= 365, progress: { current: m.activityDaysTotal, target: 365 } }),
+  },
+  {
+    id: "gold_serie_ardente",
+    tier: "gold",
+    category: "Découverte",
+    icon: "🔥",
+    name: "Série ardente",
+    desc: "14 jours d'activité consécutifs.",
+    rewardPreview: "Pseudo animé : Feu",
+    eval: (m) => ({ unlocked: m.activityMaxStreak >= 14, progress: { current: m.activityMaxStreak, target: 14 } }),
+  },
+  {
+    id: "master_phenix",
+    tier: "master",
+    category: "Master",
+    icon: "🐦‍🔥",
+    name: "De ses cendres",
+    hidden: true,
+    rewardPreview: "Cadran : Phénix",
+    eval: (m) => ({ unlocked: m.phoenixOk, progress: boolProgress(m.phoenixOk) }),
+  },
+  {
+    id: "master_jour_et_nuit",
+    tier: "master",
+    category: "Master",
+    icon: "🌗",
+    name: "Jour et nuit",
+    hidden: true,
+    rewardPreview: "Cadran : Eclipse",
+    eval: (m) => ({ unlocked: m.jourEtNuitDays >= 60, progress: { current: m.jourEtNuitDays, target: 60 } }),
+  },
+  {
+    id: "master_noctambule_ultime",
+    tier: "master",
+    category: "Master",
+    icon: "🦇",
+    name: "Noctambule ultime",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Nuée d'Obsidienne",
+    eval: (m) => ({ unlocked: m.lateNightWatchNights >= 60, progress: { current: m.lateNightWatchNights, target: 60 } }),
+  },
+  {
+    id: "master_spectre",
+    tier: "master",
+    category: "Master",
+    icon: "👻",
+    name: "Spectre",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Spectre",
+    // 100 h de watch sur des jours sans écrire un seul message
+    eval: (m) => ({ unlocked: m.silentWatchMinutes >= 6000, progress: { current: m.silentWatchMinutes, target: 6000 } }),
+  },
+  {
+    id: "gold_hibernation",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "❄️",
+    name: "Hibernation",
+    desc: "40 h de watch en période hivernale (décembre à février).",
+    rewardPreview: "Pseudo animé : Cristallisation",
+    eval: (m) => ({ unlocked: m.winterWatchMinutes >= 2400, progress: { current: m.winterWatchMinutes, target: 2400 } }),
+  },
+  // Chat / watch
+  {
+    id: "gold_court_circuit",
+    tier: "gold",
+    category: "Chat & Social",
+    icon: "📟",
+    name: "Court-circuit",
+    desc: "Envoyer 500 messages dans le chat en une seule journée.",
+    rewardPreview: "Pseudo animé : Glitch",
+    eval: (m) => ({ unlocked: m.maxChatDayMessages >= 500, progress: { current: m.maxChatDayMessages, target: 500 } }),
+  },
+  {
+    id: "gold_tete_dans_les_etoiles",
+    tier: "gold",
+    category: "Watch & Lives",
+    icon: "🌌",
+    name: "La tête dans les étoiles",
+    desc: "50 h de watch sur un mois.",
+    rewardPreview: "Pseudo animé : Galaxy",
+    eval: (m) => ({ unlocked: m.watchMinutesMonth >= 3000, progress: { current: m.watchMinutesMonth, target: 3000 } }),
+  },
+  // Casino / économie
+  {
+    id: "master_anomalie",
+    tier: "master",
+    category: "Blackjack",
+    icon: "🃏",
+    name: "Anomalie",
+    hidden: true,
+    rewardPreview: "Cadran : Glitch",
+    // battre le système : 8 victoires consécutives au blackjack
+    eval: (m) => ({ unlocked: m.bjConsecutiveWins >= 8, progress: { current: m.bjConsecutiveWins, target: 8 } }),
+  },
+  {
+    id: "master_jackpot_divin",
+    tier: "master",
+    category: "Roue & Bonus",
+    icon: "🎰",
+    name: "Jackpot Divin",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Jackpot Divin",
+    eval: (m) => ({ unlocked: m.wheelMaxGainHits >= 3, progress: { current: m.wheelMaxGainHits, target: 3 } }),
+  },
+  {
+    id: "master_cresus",
+    tier: "master",
+    category: "Économie",
+    icon: "🤑",
+    name: "Crésus",
+    hidden: true,
+    rewardPreview: "Badge : $$",
+    eval: (m) => ({ unlocked: m.lifetimeRubisEarned >= 100000, progress: { current: m.lifetimeRubisEarned, target: 100000 } }),
+  },
+  {
+    id: "silver_og",
+    tier: "silver",
+    category: "Découverte",
+    icon: "🏛️",
+    name: "OG",
+    hidden: true,
+    rewardPreview: "Badge : OG",
+    eval: (m) => ({ unlocked: m.ogOk, progress: boolProgress(m.ogOk) }),
+  },
+  {
+    id: "gold_flibustier",
+    tier: "gold",
+    category: "Coffre",
+    icon: "🏴‍☠️",
+    name: "Flibustier",
+    desc: "Participer à 30 coffres.",
+    rewardPreview: "Chapeau : Bandeau Pirate",
+    eval: (m) => ({ unlocked: m.chestJoinsTotal >= 30, progress: { current: m.chestJoinsTotal, target: 30 } }),
+  },
+  // Events (classements figés dans event_reward_grants)
+  {
+    id: "master_dps",
+    tier: "master",
+    category: "Events",
+    icon: "⚔️",
+    name: "DPS",
+    desc: "Infliger 10 000 dégâts cumulés aux boss.",
+    rewardPreview: "Cadran : Blood",
+    eval: (m) => ({ unlocked: m.bossDamageTotal >= 10000, progress: { current: m.bossDamageTotal, target: 10000 } }),
+  },
+  {
+    id: "master_forge_celeste",
+    tier: "master",
+    category: "Events",
+    icon: "🔨",
+    name: "Forge Céleste",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Forge Céleste",
+    eval: (m) => ({ unlocked: m.bossDamageTotal >= 50000, progress: { current: m.bossDamageTotal, target: 50000 } }),
+  },
+  {
+    id: "master_berserker",
+    tier: "master",
+    category: "Events",
+    icon: "🪓",
+    name: "Berserker",
+    desc: "Infliger 5 000 dégâts au boss sur une seule édition.",
+    rewardPreview: "Chapeau : Casque Viking",
+    eval: (m) => ({ unlocked: m.bossDamageBestEdition >= 5000, progress: { current: m.bossDamageBestEdition, target: 5000 } }),
+  },
+  {
+    id: "master_abysses",
+    tier: "master",
+    category: "Events",
+    icon: "🌊",
+    name: "Abysses",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Léviathan Abyssal",
+    eval: (m) => ({ unlocked: m.chestEventContribTotal >= 50000, progress: { current: m.chestEventContribTotal, target: 50000 } }),
+  },
+  {
+    id: "master_eclair",
+    tier: "master",
+    category: "Events",
+    icon: "⚡",
+    name: "Éclair",
+    desc: "Réaliser 100 tours de roue pendant une seule édition de l'event Roue.",
+    rewardPreview: "Cadran : Éclair",
+    eval: (m) => ({ unlocked: m.wheelEventSpinsBestEdition >= 100, progress: { current: m.wheelEventSpinsBestEdition, target: 100 } }),
+  },
+  {
+    id: "master_reacteur",
+    tier: "master",
+    category: "Events",
+    icon: "☢️",
+    name: "Cœur du Réacteur",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Cœur du Réacteur",
+    eval: (m) => ({ unlocked: m.viewerWeekWins >= 3, progress: { current: m.viewerWeekWins, target: 3 } }),
+  },
+  {
+    id: "master_orage_interieur",
+    tier: "master",
+    category: "Events",
+    icon: "🌩️",
+    name: "Orage Intérieur",
+    desc: "Terminer dans le top 10 de chaque type d'event classé (Roue, Coffre, Boss, Semaine du viewer).",
+    rewardPreview: "Pseudo animé : Orage Intérieur",
+    eval: (m) => ({ unlocked: m.top10EventTypes >= 4, progress: { current: m.top10EventTypes, target: 4 } }),
+  },
+  {
+    id: "master_maitre_des_cendres",
+    tier: "master",
+    category: "Events",
+    icon: "🥀",
+    name: "Maître des Cendres",
+    hidden: true,
+    rewardPreview: "Pseudo animé : Jardin des Cendres",
+    eval: (m) => ({ unlocked: m.podiumEventTypes >= 4, progress: { current: m.podiumEventTypes, target: 4 } }),
   },
 ];
 
