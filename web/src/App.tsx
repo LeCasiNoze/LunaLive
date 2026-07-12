@@ -26,6 +26,8 @@ const EventSkinsPreviewPage = React.lazy(() => import("./pages/EventSkinsPreview
 const SkinsReviewPage = React.lazy(() => import("./pages/SkinsReviewPage"));
 // Labo dev des pseudos animés moteur (PixiJS) — non listé
 const UsernameFxLabPage = React.lazy(() => import("./pages/UsernameFxLabPage"));
+// Page de dev pour juger l'animation de level-up (à nettoyer avant lancement)
+const LevelUpDevPage = React.lazy(() => import("./pages/LevelUpDevPage"));
 // Catalogue complet des cosmétiques + obtentions actuelles/proposées (non listé)
 const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage"));
 
@@ -375,6 +377,7 @@ function AppInner() {
           <Route path="/skins-events" element={<EventSkinsPreviewPage />} />
           <Route path="/skins-review" element={<SkinsReviewPage />} />
           <Route path="/dev/username-effects" element={<UsernameFxLabPage />} />
+          <Route path="/dev/levelup" element={<LevelUpDevPage />} />
           <Route path="/skins-catalogue" element={<SkinsCataloguePage />} />
           <Route path="/participer" element={<ParticipatePage />} />
           <Route path="/devenir-streamer" element={<BecomeStreamerPage />} />
