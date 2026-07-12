@@ -1703,6 +1703,12 @@ export function ChatPanel({
     emitRecap: pushRecap,
     addChatCard: pushActCard,
     simulate: false,
+    // Participation RÉELLE : le clic "Participer" sur une carte réelle route
+    // vers le vrai endpoint. Rain = flux existant (ui:rain_join → /bot_rain/join).
+    onRealJoin: (e) => {
+      if (e.kind === "rain") void joinRain("chat");
+      // wheel/predict/chest : câblage réel à venir (même schéma).
+    },
   });
   const isStreamerRole = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
 
@@ -2074,6 +2080,15 @@ export function ChatPanel({
     socket.on("ui:toast", (payload: any) => {
       if (!payload?.title) return;
       window.dispatchEvent(new CustomEvent("ui:toast", { detail: payload }));
+    });
+
+    // État partagé rain (compteur + clôture) diffusé par le backend.
+    socket.on("act:rain", (p: any) => {
+      if (!p || p.round == null) return;
+      actEngine.patchByRound("rain", Number(p.round), {
+        serverCount: p.count != null ? Number(p.count) : undefined,
+        resolved: !!p.resolved,
+      });
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {

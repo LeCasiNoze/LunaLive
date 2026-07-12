@@ -34,6 +34,11 @@ export type ActEvent = {
   // rain / chest
   pot?: number;
   loot?: number;
+  // Mode RÉEL (vrai chat) : la participation passe par le backend et l'état
+  // (compteur, résolution) arrive par socket. real=false = simulation (banc).
+  real?: boolean;
+  round?: number;               // round backend (rain) pour matcher les updates
+  serverCount?: number;         // compteur diffusé par le serveur (prioritaire)
 };
 
 const DUR: Record<ActKind, number> = { rain: 45, wheel: 60, predict: 120, chest: 30 };
@@ -52,8 +57,11 @@ type EngineOpts = {
   emitRecap: (html: string) => void;  // récap centré dans le flux
   addChatCard: (actId: string) => void;
   // banc = true (faux participants qui arrivent). Vrai chat = false : seuls
-  // les vrais participants (backend, phase 2) rejoignent.
+  // les vrais participants (backend) rejoignent.
   simulate?: boolean;
+  // Vrai chat : participation RÉELLE. Appelé quand le viewer clique Participer
+  // sur un event real → le parent route vers le vrai endpoint (rain/roue/…).
+  onRealJoin?: (e: ActEvent) => void;
 };
 
 export type ActionableEngine = ReturnType<typeof useActionableEngine>;
@@ -89,11 +97,14 @@ export function useActionableEngine(opts: EngineOpts) {
 
   const open = React.useCallback((kind: ActKind, data?: any) => {
     const id = `act_${++seqRef.current}`;
+    const dur = Number(data?.durationSec) > 0 ? Math.round(Number(data.durationSec)) : DUR[kind];
     const ev: ActEvent = {
-      id, kind, joined: false, participants: [], remaining: DUR[kind], duration: DUR[kind],
+      id, kind, joined: false, participants: [], remaining: dur, duration: dur,
       locked: false, resolved: false,
       question: data?.question, opt1: data?.option1 ?? "OUI", opt2: data?.option2 ?? "NON",
       pctYes: 50, myVote: null, pot: data?.pot, loot: data?.loot,
+      real: !!data?.real, round: data?.round != null ? Number(data.round) : undefined,
+      serverCount: data?.real ? 0 : undefined,
     };
     setEvents((prev) => [...prev, ev]);
     optsRef.current.addChatCard(id);
@@ -109,10 +120,16 @@ export function useActionableEngine(opts: EngineOpts) {
   const join = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e || e.joined || e.locked || e.resolved) return;
+    // Marque "rejoint" (optimiste) dans les 2 cas.
+    setEvents((prev) => prev.map((x) => x.id === id && !x.joined && !x.locked ? { ...x, joined: true } : x));
+    if (e.real) {
+      // Vrai chat : le parent appelle le vrai endpoint ; le message système et
+      // le compteur arrivent ensuite par socket (backend). Pas d'emit local.
+      optsRef.current.onRealJoin?.(e);
+      return;
+    }
     const me = optsRef.current.me;
-    setEvents((prev) => prev.map((x) => x.id === id && !x.joined && !x.locked
-      ? { ...x, joined: true, participants: x.participants.includes(me) ? x.participants : [...x.participants, me] }
-      : x));
+    setEvents((prev) => prev.map((x) => x.id === id ? { ...x, participants: x.participants.includes(me) ? x.participants : [...x.participants, me] } : x));
     optsRef.current.emitSystem(participationMsg(e.kind, me));
   }, []);
 
@@ -184,6 +201,20 @@ export function useActionableEngine(opts: EngineOpts) {
 
   const dismiss = React.useCallback((id: string) => setEvents((prev) => prev.filter((e) => e.id !== id)), []);
 
+  // Mise à jour depuis le SOCKET backend (event real) : compteur partagé,
+  // résolution. Matche par (kind, round). Émet le recap une seule fois.
+  const patchByRound = React.useCallback((kind: ActKind, round: number, patch: { serverCount?: number; resolved?: boolean; recapHtml?: string }) => {
+    setEvents((prev) => prev.map((e) => {
+      if (!e.real || e.kind !== kind || Number(e.round) !== Number(round) || e.resolved) return e;
+      return {
+        ...e,
+        serverCount: patch.serverCount != null ? patch.serverCount : e.serverCount,
+        resolved: patch.resolved ? true : e.resolved,
+        locked: patch.resolved ? true : e.locked,
+      };
+    }));
+  }, []);
+
   // Simulation : d'autres comptes rejoignent rain/roue/coffre au fil du temps
   // (chaque arrivée émet son message système « … participe »).
   React.useEffect(() => {
@@ -205,6 +236,7 @@ export function useActionableEngine(opts: EngineOpts) {
   React.useEffect(() => {
     for (const e of events) {
       if (e.resolved || e.remaining > 0) continue;
+      if (e.real) continue; // les events réels sont résolus par le backend (socket)
       if ((e.kind === "rain" || e.kind === "chest") && !autoResolvedRef.current.has(e.id)) {
         autoResolvedRef.current.add(e.id);
         if (e.kind === "rain") rainPayout(e.id); else resolveChest(e.id);
@@ -215,8 +247,13 @@ export function useActionableEngine(opts: EngineOpts) {
   return {
     events, overlay, listFor, setListFor,
     open, join, vote, addParticipant, removeParticipant,
-    resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss,
+    resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss, patchByRound,
   };
+}
+
+/** Compteur de participants affiché : priorité au compteur serveur (event réel). */
+function pCount(e: ActEvent): number {
+  return e.serverCount != null ? e.serverCount : e.participants.length;
 }
 
 /* ═══════════════ Vues ═══════════════ */
@@ -297,7 +334,7 @@ export function ActionablePinnedBar({ engine, isStreamer }: { engine: Actionable
               <span className="lle-chip__ic">{m.ic}</span>
               <div className="lle-chip__mid">
                 <div className="lle-chip__t">{m.t}</div>
-                <div className="lle-chip__meta">{fmt(e.remaining)} · {e.kind === "predict" ? `${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : `${e.participants.length} pers.`}</div>
+                <div className="lle-chip__meta">{fmt(e.remaining)} · {e.kind === "predict" ? `${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : `${pCount(e)} pers.`}</div>
               </div>
               {e.kind !== "predict" && (
                 <button className="lle-chip__cta" disabled={e.joined || e.locked} onClick={() => engine.join(e.id)}>{joinLabel(e)}</button>
@@ -318,7 +355,7 @@ export function ActionableChatCard({ event, engine, isStreamer }: { event: ActEv
   if (!event) return <div className="lla-card lla-card--done">Événement terminé</div>;
   const e = event;
   const m = META[e.kind];
-  const value = e.kind === "rain" ? `${e.pot ?? 0} rubis` : e.kind === "chest" ? `${e.loot ?? 0} rubis` : e.kind === "wheel" ? `${e.participants.length} inscrits` : null;
+  const value = e.kind === "rain" ? `${e.pot ?? 0} rubis` : e.kind === "chest" ? `${e.loot ?? 0} rubis` : e.kind === "wheel" ? `${pCount(e)} inscrits` : null;
   return (
     <div className={`lle-ev lle-ev--${e.kind} lla-card`} data-tier="epic">
       <div className="lle-ev__body">
@@ -326,7 +363,7 @@ export function ActionableChatCard({ event, engine, isStreamer }: { event: ActEv
         <div className="lle-ev__text">
           <div className="lle-ev__title">{e.kind === "predict" ? "Prédiction" : m.t}</div>
           <div className="lle-ev__sub">
-            {e.resolved ? "Terminé" : e.locked ? "Fermé — en attente du résultat" : e.kind === "predict" ? e.question : `${fmt(e.remaining)} restantes · ${e.participants.length} participant(s)`}
+            {e.resolved ? "Terminé" : e.locked ? "Fermé — en attente du résultat" : e.kind === "predict" ? e.question : `${fmt(e.remaining)} restantes · ${pCount(e)} participant(s)`}
           </div>
         </div>
         {value ? <div className="lle-ev__value">{value}</div> : null}
