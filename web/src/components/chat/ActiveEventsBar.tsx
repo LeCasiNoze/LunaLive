@@ -151,6 +151,8 @@ function PredictChip({ id, data, onExpire, onVote, recap }: {
   recap: (html: string) => void;
 }) {
   const question = String(data?.question ?? "Prédiction en cours");
+  const opt1 = String(data?.option1 ?? "OUI");
+  const opt2 = String(data?.option2 ?? "NON");
   const [remaining, setRemaining] = React.useState(DUR.predict);
   const [open, setOpen] = React.useState(false);
   const [voted, setVoted] = React.useState(false);
@@ -167,7 +169,7 @@ function PredictChip({ id, data, onExpire, onVote, recap }: {
           clearInterval(iv);
           onExpire(id);
           const y = 30 + Math.floor(Math.random() * 40);
-          const winner = y >= 50 ? "OUI 🟢" : "NON 🔴";
+          const winner = y >= 50 ? opt1 : opt2;
           recap(`🔮 Résultat : <b>${winner} ${Math.max(y, 100 - y)}%</b>`);
         }
         return next;
@@ -194,7 +196,7 @@ function PredictChip({ id, data, onExpire, onVote, recap }: {
         <div className="lle-chip__mid">
           <div className="lle-chip__t">Prédiction</div>
           <div className="lle-chip__meta">
-            {voted ? <>Vote : <b>{chosen === "yes" ? "OUI 🟢" : "NON 🔴"}</b> — en attente</> : `${fmt(remaining)} · ${question}`}
+            {voted ? <>Vote : <b>{chosen === "yes" ? opt1 : opt2}</b> — en attente</> : `${fmt(remaining)} · ${question}`}
           </div>
         </div>
         <button className="lle-chip__cta" onClick={() => setOpen(o => !o)}>Voter</button>
@@ -205,7 +207,7 @@ function PredictChip({ id, data, onExpire, onVote, recap }: {
           style={{ pointerEvents: voted ? "none" : undefined, opacity: voted ? (chosen === "yes" ? 1 : .5) : undefined }}
           onClick={() => handleVote("yes")}>
           <span className="lle-fill" style={{ ["--w" as any]: `${yesPct}%` } as React.CSSProperties} />
-          <span className="lle-lbl">OUI 🟢</span>
+          <span className="lle-lbl">{opt1}</span>
           <span className="lle-pct">{yesPct}%</span>
         </div>
         <div
@@ -213,7 +215,7 @@ function PredictChip({ id, data, onExpire, onVote, recap }: {
           style={{ pointerEvents: voted ? "none" : undefined, opacity: voted ? (chosen === "no" ? 1 : .5) : undefined }}
           onClick={() => handleVote("no")}>
           <span className="lle-fill" style={{ ["--w" as any]: `${noPct}%` } as React.CSSProperties} />
-          <span className="lle-lbl">NON 🔴</span>
+          <span className="lle-lbl">{opt2}</span>
           <span className="lle-pct">{noPct}%</span>
         </div>
       </div>

@@ -41,6 +41,12 @@ export class Field {
   dpr: number;
   w = 0;
   h = 0;
+  elapsed = 0;
+  stopped = false;
+  // Après ce délai (en "frames" ~60fps) les émetteurs continus sont coupés ;
+  // la boucle rAF s'arrête ensuite dès que les particules restantes sont mortes.
+  // Évite que N cartes empilées dans le flux fassent tourner N boucles à vie.
+  static readonly EMIT_FRAMES = 260; // ~4.3s
 
   constructor(canvas: HTMLCanvasElement) {
     this.cv = canvas;
@@ -61,7 +67,7 @@ export class Field {
   }
 
   add(p: Particle) {
-    if (this.ps.length < 160) this.ps.push(p);
+    if (this.ps.length < 80) this.ps.push(p);
   }
 
   emitter(fn: (field: Field) => void) {
@@ -78,7 +84,7 @@ export class Field {
     const loop = (t: number) => {
       this.step((t - this.last) / 16.67);
       this.last = t;
-      this.raf = requestAnimationFrame(loop);
+      if (!this.stopped) this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
   }
@@ -87,12 +93,19 @@ export class Field {
     const c = this.ctx;
     c.clearRect(0, 0, this.w, this.h);
     if (!once) {
+      this.elapsed += dt;
+      if (this.elapsed > Field.EMIT_FRAMES && this.emits.length) this.emits.length = 0; // coupe les émetteurs
       for (const e of this.emits) {
         e.acc += dt;
         while (e.acc >= 1) {
           e.acc -= 1;
           e.fn(this);
         }
+      }
+      // plus d'émetteurs et plus de particules → on arrête la boucle
+      if (!this.emits.length && this.ps.length === 0) {
+        this.destroy();
+        return;
       }
     }
     for (let i = this.ps.length - 1; i >= 0; i--) {
@@ -114,6 +127,7 @@ export class Field {
   }
 
   destroy() {
+    this.stopped = true;
     cancelAnimationFrame(this.raf);
   }
 }
@@ -127,8 +141,6 @@ function draw(c: CanvasRenderingContext2D, p: Particle) {
     c.fillRect(-p.s / 2, -p.s / 2, p.s, p.s * .5);
   } else if (p.shape === "gem") {
     c.fillStyle = p.color;
-    c.shadowColor = p.color;
-    c.shadowBlur = 8;
     c.beginPath();
     c.moveTo(0, -p.s);
     c.lineTo(p.s * .8, -p.s * .2);
@@ -139,8 +151,6 @@ function draw(c: CanvasRenderingContext2D, p: Particle) {
   } else if (p.shape === "coin") {
     c.fillStyle = "#f5b622";
     c.strokeStyle = "#b8860b";
-    c.shadowColor = "#ffcf4d";
-    c.shadowBlur = 6;
     c.beginPath();
     c.arc(0, 0, p.s, 0, 7);
     c.fill();
@@ -153,14 +163,12 @@ function draw(c: CanvasRenderingContext2D, p: Particle) {
   } else if (p.shape === "ember") {
     c.fillStyle = p.color;
     c.shadowColor = p.color;
-    c.shadowBlur = 10;
+    c.shadowBlur = 6;
     c.beginPath();
     c.arc(0, 0, p.s, 0, 7);
     c.fill();
   } else {
     c.fillStyle = p.color;
-    c.shadowColor = p.color;
-    c.shadowBlur = 6;
     c.beginPath();
     c.arc(0, 0, p.s, 0, 7);
     c.fill();
@@ -239,42 +247,42 @@ export function mountFieldFor(kind: string, canvas: HTMLCanvasElement): Field {
 
   switch (kind) {
     case "raid":
-      burst(f, { n: 30, y: f.h, colors: V, shape: "spark", dir: -Math.PI / 2, spread: Math.PI, speed: [2, 5], life: [20, 40], size: [1.5, 3] });
-      f.emitter(x => { if (Math.random() > .5) x.add({ x: R(10, x.w - 10), y: x.h, vx: R(-.2, .2), vy: R(-.5, -1.1), g: -.004, life: R(30, 55), rot: 0, vr: 0, s: R(3, 7), color: "rgba(124,77,255,.5)", shape: "ember" }); });
+      burst(f, { n: 16, y: f.h, colors: V, shape: "spark", dir: -Math.PI / 2, spread: Math.PI, speed: [2, 5], life: [20, 40], size: [1.5, 3] });
+      f.emitter(x => { if (Math.random() > .6) x.add({ x: R(10, x.w - 10), y: x.h, vx: R(-.2, .2), vy: R(-.5, -1.1), g: -.004, life: R(30, 55), rot: 0, vr: 0, s: R(3, 7), color: "rgba(124,77,255,.5)", shape: "ember" }); });
       break;
     case "combo":
-      burst(f, { n: 34, colors: GOLD, speed: [2, 5.5], life: [24, 46], size: [2, 4.5] });
-      burst(f, { n: 16, colors: ["#fff", "#ffd54a"], shape: "spark", speed: [3, 6], g: 0, life: [12, 20], size: [1.5, 3] });
+      burst(f, { n: 18, colors: GOLD, speed: [2, 5.5], life: [24, 46], size: [2, 4.5] });
+      burst(f, { n: 10, colors: ["#fff", "#ffd54a"], shape: "spark", speed: [3, 6], g: 0, life: [12, 20], size: [1.5, 3] });
       break;
     case "sub":
-      burst(f, { n: 36, colors: GOLD, y: f.h * .4, speed: [2, 5], life: [26, 50] });
-      f.emitter(x => x.add({ x: R(0, x.w), y: R(0, x.h * .6), vx: 0, vy: R(.1, .4), g: 0, life: R(20, 40), rot: R(0, 7), vr: .1, s: R(1, 2.4), color: "#ffe89a", shape: "circle" }));
+      burst(f, { n: 18, colors: GOLD, y: f.h * .4, speed: [2, 5], life: [26, 50] });
+      f.emitter(x => { if (Math.random() > .5) x.add({ x: R(0, x.w), y: R(0, x.h * .6), vx: 0, vy: R(.1, .4), g: 0, life: R(20, 40), rot: R(0, 7), vr: .1, s: R(1, 2.4), color: "#ffe89a", shape: "circle" }); });
       break;
     case "don":
-      f.emitter(x => { x.add({ x: R(6, x.w - 6), y: -6, vx: R(-.3, .3), vy: R(.6, 1.4), g: .05, life: R(50, 80), rot: R(0, 7), vr: R(-.2, .2), s: R(5, 8), color: "#f5b622", shape: "coin" }); });
+      f.emitter(x => { if (Math.random() > .5) x.add({ x: R(6, x.w - 6), y: -6, vx: R(-.3, .3), vy: R(.6, 1.4), g: .05, life: R(50, 80), rot: R(0, 7), vr: R(-.2, .2), s: R(5, 8), color: "#f5b622", shape: "coin" }); });
       break;
     case "chest": {
       let t = 0;
-      f.emitter(x => { t++; if (t % 140 < 12) { x.add({ x: x.w / 2 + R(-8, 8), y: x.h * .6, vx: R(-1.6, 1.6), vy: R(-2.6, -4), g: .16, life: R(30, 50), rot: R(0, 7), vr: R(-.3, .3), s: R(4, 7), color: Math.random() > .4 ? "#f5b622" : "#ff2d6b", shape: Math.random() > .4 ? "coin" : "gem" }); } });
+      f.emitter(x => { t++; if (t % 150 < 8) { x.add({ x: x.w / 2 + R(-8, 8), y: x.h * .6, vx: R(-1.6, 1.6), vy: R(-2.6, -4), g: .16, life: R(30, 50), rot: R(0, 7), vr: R(-.3, .3), s: R(4, 7), color: Math.random() > .4 ? "#f5b622" : "#ff2d6b", shape: Math.random() > .4 ? "coin" : "gem" }); } });
       break;
     }
     case "rain":
-      burst(f, { n: 22, colors: RUBY, shape: "gem", dir: -Math.PI / 2, spread: Math.PI, speed: [1, 3], life: [16, 30], size: [3, 5] });
-      f.emitter(x => { for (let i = 0; i < 2; i++) x.add({ x: R(0, x.w), y: -8, vx: R(-.2, .2), vy: R(1.6, 3), g: .04, life: R(40, 70), rot: R(0, 7), vr: R(-.25, .25), s: R(3.5, 6), color: rand(RUBY), shape: "gem" }); });
+      burst(f, { n: 14, colors: RUBY, shape: "gem", dir: -Math.PI / 2, spread: Math.PI, speed: [1, 3], life: [16, 30], size: [3, 5] });
+      f.emitter(x => x.add({ x: R(0, x.w), y: -8, vx: R(-.2, .2), vy: R(1.6, 3), g: .04, life: R(40, 70), rot: R(0, 7), vr: R(-.25, .25), s: R(3.5, 6), color: rand(RUBY), shape: "gem" }));
       break;
     case "wheel":
-      burst(f, { n: 24, colors: HOLO, speed: [2, 4.5], life: [24, 44] });
+      burst(f, { n: 16, colors: HOLO, speed: [2, 4.5], life: [24, 44] });
       break;
     case "predict":
-      f.emitter(x => { if (Math.random() > .4) x.add({ x: x.w / 2 + R(-14, 14), y: x.h / 2 + R(-8, 8), vx: R(-.4, .4), vy: R(-.5, -1), g: -.01, life: R(24, 44), rot: 0, vr: 0, s: R(1, 2.4), color: "#a5b4fc", shape: "circle" }); });
+      f.emitter(x => { if (Math.random() > .5) x.add({ x: x.w / 2 + R(-14, 14), y: x.h / 2 + R(-8, 8), vx: R(-.4, .4), vy: R(-.5, -1), g: -.01, life: R(24, 44), rot: 0, vr: 0, s: R(1, 2.4), color: "#a5b4fc", shape: "circle" }); });
       break;
     case "boss":
-      burst(f, { n: 30, colors: ["#ef4444", "#f87171", "#f59e0b"], y: f.h, dir: -Math.PI / 2, spread: Math.PI * .8, speed: [2, 5], life: [20, 40] });
-      f.emitter(x => { for (let i = 0; i < 2; i++) x.add({ x: R(0, x.w), y: x.h + 4, vx: R(-.4, .4), vy: R(-1, -2.4), g: -.01, life: R(24, 46), rot: 0, vr: 0, s: R(2, 4.5), color: Math.random() > .5 ? "#ef4444" : "#f59e0b", shape: "ember" }); });
+      burst(f, { n: 18, colors: ["#ef4444", "#f87171", "#f59e0b"], y: f.h, dir: -Math.PI / 2, spread: Math.PI * .8, speed: [2, 5], life: [20, 40] });
+      f.emitter(x => x.add({ x: R(0, x.w), y: x.h + 4, vx: R(-.4, .4), vy: R(-1, -2.4), g: -.01, life: R(24, 46), rot: 0, vr: 0, s: R(2, 4.5), color: Math.random() > .5 ? "#ef4444" : "#f59e0b", shape: "ember" }));
       break;
     case "level":
-      burst(f, { n: 32, colors: HOLO, speed: [2, 5], life: [26, 48] });
-      f.emitter(x => x.add({ x: R(0, x.w), y: x.h, vx: 0, vy: R(-.6, -1.4), g: 0, life: R(30, 55), rot: R(0, 7), vr: .15, s: R(1.2, 2.6), color: rand(HOLO), shape: "circle" }));
+      burst(f, { n: 18, colors: HOLO, speed: [2, 5], life: [26, 48] });
+      f.emitter(x => { if (Math.random() > .5) x.add({ x: R(0, x.w), y: x.h, vx: 0, vy: R(-.6, -1.4), g: 0, life: R(30, 55), rot: R(0, 7), vr: .15, s: R(1.2, 2.6), color: rand(HOLO), shape: "circle" }); });
       break;
     default:
       break;

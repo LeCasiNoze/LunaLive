@@ -80,20 +80,26 @@
 .lle-btn.lle-ghost:hover{background:rgba(255,255,255,.11)}
 .lle-btn[disabled]{opacity:.5;cursor:default;transform:none;filter:none}
 .lle-btn .lle-k{font-size:10px;opacity:.85;margin-left:4px}
+.lle-btn.lle-mini{flex:none;font-size:11px;padding:6px 11px;border-radius:8px}
 
-/* ===== RAID — marching soldiers ===== */
+/* Raid : lignes avatar + nom + suivre */
+.lle-raid-follows{display:flex;flex-direction:column;gap:6px;width:100%}
+.lle-follow-row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:5px 7px}
+.lle-follow-av{width:26px;height:26px;flex:none;border-radius:50%;overflow:hidden;display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff;background:linear-gradient(135deg,var(--c),var(--c2))}
+.lle-follow-av img{width:100%;height:100%;object-fit:cover;display:block}
+.lle-follow-name{flex:1;min-width:0;font-weight:800;font-size:12.5px;color:#f3eefc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== RAID — foule qui déboule (course gauche→droite, profondeur) ===== */
 .lle-ev--raid{--c:#7C4DFF;--c2:#b39cff}
-.lle-march-move{position:absolute;inset:0;z-index:1;animation:lle-advance 3.2s ease-in-out infinite}
-.lle-march{position:absolute;inset:0;display:flex;align-items:flex-end;gap:3px;padding:0 8px 8px;justify-content:center}
-.lle-soldier{width:20px;height:36px;opacity:.95;animation:lle-step .46s steps(1) infinite}
-.lle-soldier svg{display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))}
-.lle-soldier .lle-leg1,.lle-soldier .lle-leg2{transform-origin:top center}
-.lle-soldier:nth-child(odd){animation-delay:.23s}
-@keyframes lle-step{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-@keyframes lle-advance{0%,100%{transform:translateX(-10px)}50%{transform:translateX(10px)}}
-.lle-flag{position:absolute;left:calc(50% - 52px);bottom:26px;width:2px;height:24px;background:#d9cffb;z-index:1}
-.lle-flag::after{content:"";position:absolute;left:2px;top:0;width:18px;height:12px;background:linear-gradient(90deg,var(--c),var(--c2));animation:lle-wave 1.1s ease-in-out infinite;transform-origin:left}
-@keyframes lle-wave{0%,100%{clip-path:polygon(0 0,100% 8%,100% 92%,0 100%)}50%{clip-path:polygon(0 0,100% -8%,100% 108%,0 100%)}}
+.lle-crowd{position:absolute;inset:0;overflow:hidden;z-index:1}
+.lle-runner{position:absolute;left:0;bottom:var(--b,4px);opacity:var(--o,1);animation:lle-run-across var(--dur,2.6s) linear infinite;animation-delay:var(--delay,0s);will-change:transform}
+.lle-runner-d{display:block;transform:scale(var(--d,1));transform-origin:bottom center}
+.lle-runner-b{display:block;animation:lle-run-bob .24s steps(2,jump-none) infinite;animation-delay:var(--delay,0s)}
+.lle-runner svg{display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+@keyframes lle-run-across{from{transform:translateX(-30px)}to{transform:translateX(400px)}}
+@keyframes lle-run-bob{0%{transform:translateY(0)}100%{transform:translateY(-3px)}}
+.lle-speedline{position:absolute;left:0;height:2px;width:34px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--c2));opacity:.4;animation:lle-streak var(--sdur,1s) linear infinite;animation-delay:var(--sdelay,0s)}
+@keyframes lle-streak{from{transform:translateX(-40px)}to{transform:translateX(400px)}}
 
 /* ===== FOLLOW / COMBO ===== */
 .lle-ev--follow{--c:#38bdf8;--c2:#7dd3fc}

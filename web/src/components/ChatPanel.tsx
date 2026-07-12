@@ -1370,6 +1370,8 @@ export function ChatPanel({
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [activeEvents, setActiveEvents] = React.useState<ActiveEvent[]>([]);
   const specialSeqRef = React.useRef(0);
+  const [viewerFollows, setViewerFollows] = React.useState(false);
+  const [viewerSubbed, setViewerSubbed] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [socketConnected, setSocketConnected] = React.useState(true);
@@ -1659,8 +1661,9 @@ export function ChatPanel({
     void sendBody(txt);
   }
 
-  // Bouton Combo → follow viral : spawn une carte combo dans le flux + met à jour le chip épinglé.
+  // Bouton Combo → le viewer suit la chaîne (follow viral) + feedback visuel local.
   function handleCombo(nextMult: number) {
+    void followChannel(slug);
     const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
     const who = join?.me?.username ?? "Un viewer";
     const m: ChatMsg = {
@@ -1684,6 +1687,52 @@ export function ChatPanel({
   function removeActiveEvent(id: string) {
     setActiveEvents((prev) => prev.filter((e) => e.id !== id));
   }
+
+  // Suivre une chaîne (boutons follow du raid, ou combo → follow la chaîne courante).
+  async function followChannel(chanSlug: string) {
+    if (!token) return onRequireLogin();
+    try {
+      await fetch(`${apiBase()}/streamers/${encodeURIComponent(chanSlug)}/follow`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (String(chanSlug).trim().toLowerCase() === String(slug).trim().toLowerCase()) setViewerFollows(true);
+      window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "success", title: "💜 Follow", message: `Tu suis ${chanSlug} !` } }));
+    } catch {
+      /* best-effort */
+    }
+  }
+  function goSubscribe() {
+    navigate(`/s/${slug}`);
+  }
+  function goBossPage() {
+    navigate("/event/boss");
+  }
+
+  // État follow/sub du viewer pour la chaîne courante (conditionne Combo / S'abonner).
+  React.useEffect(() => {
+    if (!token || !slug) {
+      setViewerFollows(false);
+      setViewerSubbed(false);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((x) => x.json());
+        if (alive) setViewerFollows(!!r?.isFollowing);
+      } catch { /* ignore */ }
+      try {
+        const st = await fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}/gift-subs/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((x) => x.json());
+        if (alive) setViewerSubbed(!!st?.isSub);
+      } catch { /* ignore */ }
+    })();
+    return () => { alive = false; };
+  }, [token, slug]);
 
   /* -------------------------
      Load last messages
@@ -2552,8 +2601,13 @@ function openChatPopup() {
                     type={m.type as SpecialEventType}
                     data={m.data || {}}
                     currentUsername={join?.me?.username ?? null}
+                    viewerFollows={viewerFollows}
+                    viewerSubbed={viewerSubbed}
                     onGg={handleGg}
                     onCombo={handleCombo}
+                    onFollowChannel={followChannel}
+                    onSubscribe={goSubscribe}
+                    onBossPage={goBossPage}
                   />
                 </div>
               );
