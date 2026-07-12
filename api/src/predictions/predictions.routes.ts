@@ -158,6 +158,29 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
       Math.max(10, Number(fixedStake) || 10)
     );
 
+    // Message spécial "predict" → affiche le chip prédiction (options réelles) dans le chat live.
+    try {
+      const io = (req.app as any)?.locals?.io;
+      if (io) {
+        const sr = await pool.query(`SELECT slug FROM streamers WHERE id=$1 LIMIT 1`, [Number(streamerId)]);
+        const slug = String(sr.rows?.[0]?.slug || "").trim().toLowerCase();
+        if (slug) {
+          const msg = {
+            id: -(Date.now() * 100000 + Math.floor(Math.random() * 100000)),
+            userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+            type: "predict",
+            data: {
+              question: String(question).trim(),
+              option1: String(option1).trim(),
+              option2: String(option2).trim(),
+              predictionId: (pred as any)?.id ?? null,
+            },
+          };
+          io.to(`chat:${slug}:public`).to(`chat:${slug}:popup`).emit("chat:message", msg);
+        }
+      }
+    } catch { /* emit non bloquant */ }
+
     return res.json({ ok: true, prediction: pred });
   } catch (e: any) {
     return res.status(400).json({ ok: false, reason: e?.message || "create_failed" });

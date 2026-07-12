@@ -176,6 +176,22 @@ botWheelRouter.post("/enroll", requireStreamer, express.json(), async (req: Auth
       const io = req.app.locals.io;
       if (io) io.to(`chat:${out.slug}`).emit("chat:message", out.msg);
     }
+
+    // Message spécial "wheel" → chip roue dans le chat live (rooms public+popup).
+    if (open && out?.slug) {
+      try {
+        const io = req.app.locals.io;
+        const s = String(out.slug).trim().toLowerCase();
+        if (io && s) {
+          const msg = {
+            id: -(Date.now() * 100000 + Math.floor(Math.random() * 100000)),
+            userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+            type: "wheel", data: {},
+          };
+          io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
+        }
+      } catch { /* emit non bloquant */ }
+    }
   }
 
   res.json({ ok: true });

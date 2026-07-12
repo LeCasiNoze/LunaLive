@@ -489,6 +489,22 @@ chestRouter.post("/streamers/:slug/chest/open", requireAuth, async (req: any, re
       );
 
       await client.query("COMMIT");
+
+      // Message spécial "chest" → affiche le chip coffre dans le chat live.
+      try {
+        const io = (req.app as any)?.locals?.io;
+        const s = String(streamer.slug || slug).trim().toLowerCase();
+        if (io && s) {
+          const msg = {
+            id: -(Date.now() * 100000 + Math.floor(Math.random() * 100000)),
+            userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+            type: "chest",
+            data: { minWatchMinutes, durationSec },
+          };
+          io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
+        }
+      } catch { /* emit non bloquant */ }
+
       return res.json({
         ok: true,
         opening: {
