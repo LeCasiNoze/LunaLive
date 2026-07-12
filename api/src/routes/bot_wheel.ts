@@ -4,6 +4,12 @@ import { pool } from "../db.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 import { requireAuth } from "../auth.js";
+import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
+
+async function wheelSlug(streamerId: number): Promise<string> {
+  const r = await pool.query(`SELECT slug FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+  return String(r.rows?.[0]?.slug || "");
+}
 
 export const botWheelRouter = express.Router();
 
@@ -177,20 +183,12 @@ botWheelRouter.post("/enroll", requireStreamer, express.json(), async (req: Auth
       if (io) io.to(`chat:${out.slug}`).emit("chat:message", out.msg);
     }
 
-    // Message spécial "wheel" → chip roue dans le chat live (rooms public+popup).
-    if (open && out?.slug) {
-      try {
-        const io = req.app.locals.io;
-        const s = String(out.slug).trim().toLowerCase();
-        if (io && s) {
-          const msg = {
-            id: -(Date.now() * 100000 + Math.floor(Math.random() * 100000)),
-            userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
-            type: "wheel", data: {},
-          };
-          io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
-        }
-      } catch { /* emit non bloquant */ }
+    // Ouverture des inscriptions → carte v2 "roue" (participation réelle,
+    // tirage partagé au /draw). Fermeture → clôture des inscriptions.
+    const io = req.app.locals.io;
+    const slug = out?.slug || (await wheelSlug(streamerId));
+    if (open) {
+      emitSpecialCard(io, slug, "wheel", { round: streamerId, real: true });
     }
   }
 
@@ -258,6 +256,19 @@ botWheelRouter.post("/draw", requireStreamer, async (req: AuthedReq, res) => {
 
   const index = Math.floor(Math.random() * list.length);
   const winner = list[index]?.username ?? null;
+
+  // Résultat PARTAGÉ : la roue apparaît et tourne vers le MÊME gagnant sur
+  // l'écran de tous les viewers, puis le gagnant est annoncé dans le chat.
+  try {
+    const io = req.app.locals.io;
+    const slug = await wheelSlug(streamerId);
+    const names = list.map((x) => x.username);
+    emitChatAll(io, slug, "act:wheel", { round: streamerId, names, winner, resolved: true });
+    if (winner) emitChatLine(io, slug, "recap", `🎡 <b>${winner}</b> remporte le tirage 🎉`);
+    // vide les inscriptions pour le prochain tour
+    await pool.query(`DELETE FROM bot_wheel_entries WHERE streamer_id=$1`, [streamerId]);
+    await pool.query(`UPDATE bot_wheel_cfg SET enroll_open=FALSE, updated_at=NOW() WHERE streamer_id=$1`, [streamerId]);
+  } catch {}
 
   res.json({ ok: true, winner, index });
 });
@@ -392,6 +403,20 @@ botWheelRouter.post("/join", requireAuth, express.json(), async (req: any, res) 
     );
     joined = !!ins.rows?.[0];
     already = !joined;
+  }
+
+  // État partagé : compteur + message système diffusés (sur un vrai nouveau join).
+  if (joined) {
+    try {
+      const io = req.app.locals.io;
+      const cntR = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM bot_wheel_entries WHERE streamer_id=$1`,
+        [streamerId]
+      );
+      const count = Number(cntR.rows?.[0]?.n || 0);
+      emitChatAll(io, slug, "act:wheel", { round: streamerId, count });
+      emitChatLine(io, slug, "sys", `🎡 <b>${username}</b> participe à la roue`);
+    } catch {}
   }
 
   return res.json({ ok: true, status: joined ? "joined" : "already" });

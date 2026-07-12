@@ -5,6 +5,7 @@ import { pool } from "../db.js";
 import { requireAuth, tryGetAuthUser } from "../auth.js";
 import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
 import { weightBp } from "../economy.js";
+import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
 
 const MAX_OUT_WEIGHT_BP = 2000; // 0.20
 const HEARTBEAT_TTL_SECONDS = 45;
@@ -490,25 +491,18 @@ chestRouter.post("/streamers/:slug/chest/open", requireAuth, async (req: any, re
 
       await client.query("COMMIT");
 
-      // Message spécial "chest" → affiche le chip coffre dans le chat live.
-      try {
-        const io = (req.app as any)?.locals?.io;
-        const s = String(streamer.slug || slug).trim().toLowerCase();
-        if (io && s) {
-          const msg = {
-            id: -(Date.now() * 100000 + Math.floor(Math.random() * 100000)),
-            userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
-            type: "chest",
-            data: { minWatchMinutes, durationSec },
-          };
-          io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
-        }
-      } catch { /* emit non bloquant */ }
+      // Carte v2 "coffre" dans le chat (auto-fermeture au décompte côté back).
+      const openingId = String(ins.rows?.[0]?.id || "");
+      emitSpecialCard(req.app?.locals?.io, streamer.slug, "chest", {
+        round: openingId,
+        durationSec,
+        real: true,
+      });
 
       return res.json({
         ok: true,
         opening: {
-          id: String(ins.rows?.[0]?.id || ""),
+          id: openingId,
           opensAt: opensAt.toISOString(),
           closesAt: closesAt.toISOString(),
           minWatchMinutes,
@@ -575,6 +569,19 @@ chestRouter.post("/streamers/:slug/chest/join", requireAuth, async (req: any, re
         ON CONFLICT (opening_id, user_id) DO NOTHING`,
         [Number(opening.id), userId]
       );
+
+      // État partagé : compteur + message système diffusés à tous.
+      try {
+        const io = req.app?.locals?.io;
+        const cntRes = await client.query(
+          `SELECT COUNT(*)::int AS n FROM streamer_chest_participants WHERE opening_id=$1`,
+          [Number(opening.id)]
+        );
+        const count = Number(cntRes.rows?.[0]?.n ?? 0);
+        const uname = String(req.user?.username || "Quelqu'un");
+        emitChatAll(io, streamer.slug, "act:chest", { round: String(opening.id), count });
+        emitChatLine(io, streamer.slug, "sys", `📦 <b>${uname}</b> a rejoint le coffre`);
+      } catch {}
 
       return res.json({ ok: true, openingId: String(opening.id) });
     } finally {
@@ -683,6 +690,15 @@ chestRouter.post("/streamers/:slug/chest/close", requireAuth, async (req: any, r
       if (!opening) return res.status(400).json({ ok: false, error: "no_opening" });
 
       const out = await closeOpeningAndPayout(Number(opening.id), "streamer");
+
+      // Clôture + recap partagés.
+      try {
+        const io = req.app?.locals?.io;
+        const n = Array.isArray(out.payouts) ? out.payouts.length : 0;
+        emitChatAll(io, streamer.slug, "act:chest", { round: String(opening.id), resolved: true });
+        emitChatLine(io, streamer.slug, "recap", `📦 Coffre distribué à <b>${n || 1}</b> participant(s) 🎁`);
+      } catch {}
+
       return res.json({ ok: true, openingId: String(opening.id), payouts: out.payouts ?? [] });
     } finally {
       client.release();
