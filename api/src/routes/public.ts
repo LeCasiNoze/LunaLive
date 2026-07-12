@@ -48,6 +48,23 @@ function isModLikeRole(role: any) {
 /* Health */
 publicRouter.get("/health", (_req, res) => res.json({ ok: true }));
 
+// Un pseudo correspond-il déjà à un VRAI compte (qui peut se connecter) ?
+// Utilisé par la page /devenir-streamer pour dire "tu as déjà un compte".
+publicRouter.get("/public/account-check", async (req, res) => {
+  try {
+    const u = String((req.query as any)?.u || "").trim();
+    if (!u || u.length > 60) return res.json({ ok: true, exists: false });
+    const r = await pool.query(
+      `SELECT username FROM users WHERE lower(username) = lower($1) AND password_hash IS NOT NULL LIMIT 1`,
+      [u]
+    );
+    const row = r.rows?.[0];
+    return res.json({ ok: true, exists: !!row, username: row?.username ?? null });
+  } catch {
+    return res.json({ ok: true, exists: false });
+  }
+});
+
 publicRouter.get(
   "/content/:key",
   a(async (req, res) => {
