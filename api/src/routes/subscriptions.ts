@@ -7,7 +7,8 @@ import { SUB_PRICE_RUBIS } from "../economy.js";
 import { chatStore } from "../chat_store.js";
 
 export const subscriptionsRouter = express.Router();
-import { emitSystemChat, formatSubSystemMessage } from "../chat_events.js";
+import { emitSpecialCard } from "../socket_emit.js";
+import { emitSystemChat } from "../chat_events.js";
 
 // ✅ Durée d’un sub (MVP)
 const SUB_DURATION_DAYS = 30;
@@ -273,17 +274,11 @@ subscriptionsRouter.post("/streamers/:slug/subscribe", requireAuth, async (req, 
     });
 
     const io = req.app.locals.io;
-    // emitSystemToChat(io, streamer.slug, _body);
-    emitSystemChat(
-      io,
-      streamer.slug,
-      formatSubSystemMessage({
-        user: viewerUsername || "Quelqu’un",
-        streamer: streamer.displayName || streamer.slug,
-        months: 1,
-        origin: "self",
-      })
-    );
+    // Abonnement LunaLive → carte "sub" contextuelle dans le chat.
+    emitSpecialCard(io, streamer.slug, "sub", {
+      who: viewerUsername || "Quelqu’un",
+      months: 1,
+    });
 
     return res.json({ ok: true, newBalance, expiresAt, usedTicket });
   } catch (e: any) {
@@ -367,18 +362,12 @@ subscriptionsRouter.post("/streamers/:slug/gift-sub", requireAuth, async (req, r
     });
 
     const io = req.app.locals.io;
-    // emitSystemToChat(io, streamer.slug, _body);
-    emitSystemChat(
-      io,
-      streamer.slug,
-      formatSubSystemMessage({
-        user: recipientUsername || "Quelqu’un",
-        streamer: streamer.displayName || streamer.slug,
-        months: 1,
-        origin: "gift",
-        giftedBy: gifterUsername || "Quelqu’un",
-      })
-    );
+    // Sub offert → carte "sub" contextuelle (le bénéficiaire, offert par).
+    emitSpecialCard(io, streamer.slug, "sub", {
+      who: recipientUsername || "Quelqu’un",
+      months: 1,
+      giftedBy: gifterUsername || "Quelqu’un",
+    });
 
     return res.json({
       ok: true,
@@ -599,7 +588,8 @@ subscriptionsRouter.post("/streamers/:slug/gift-subs/claim", requireAuth, async 
     await client.query("COMMIT");
 
     const io = req.app.locals.io;
-    emitSystemChat(io, streamer.slug, `🎉 ${username || "Quelqu’un"} a claim un sub offert !`);
+    // Claim d'un sub offert = nouveau sub actif → carte "sub" contextuelle.
+    emitSpecialCard(io, streamer.slug, "sub", { who: username || "Quelqu’un", months: 1 });
 
     return res.json({
       ok: true,
