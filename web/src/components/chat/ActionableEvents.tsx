@@ -59,9 +59,11 @@ type EngineOpts = {
   // banc = true (faux participants qui arrivent). Vrai chat = false : seuls
   // les vrais participants (backend) rejoignent.
   simulate?: boolean;
-  // Vrai chat : participation RÉELLE. Appelé quand le viewer clique Participer
-  // sur un event real → le parent route vers le vrai endpoint (rain/roue/…).
-  onRealJoin?: (e: ActEvent) => void;
+  // Vrai chat : participation RÉELLE. Le parent route vers le vrai endpoint.
+  onRealJoin?: (e: ActEvent) => void;                       // rain/roue/coffre : participer
+  onRealVote?: (e: ActEvent, opt: "yes" | "no") => void;    // prédiction : miser
+  onRealResolveWheel?: (e: ActEvent) => void;               // streamer : tirer la roue (backend)
+  onRealResolvePredict?: (e: ActEvent, winner: "yes" | "no") => void; // streamer : résoudre
 };
 
 export type ActionableEngine = ReturnType<typeof useActionableEngine>;
@@ -143,11 +145,16 @@ export function useActionableEngine(opts: EngineOpts) {
   }, []);
 
   const vote = React.useCallback((id: string, opt: "yes" | "no") => {
-    setEvents((prev) => prev.map((e) => {
-      if (e.id !== id || e.locked || e.myVote) return e;
-      const pctYes = opt === "yes" ? Math.min(92, e.pctYes + 8) : Math.max(8, e.pctYes - 8);
-      return { ...e, myVote: opt, joined: true, pctYes };
-    }));
+    const ev = eventsRef.current.find((x) => x.id === id);
+    if (!ev || ev.locked || ev.myVote || ev.resolved) return;
+    setEvents((prev) => prev.map((e) => e.id === id && !e.locked && !e.myVote ? { ...e, myVote: opt, joined: true } : e));
+    if (ev.real) {
+      // Vrai chat : mise réelle via le backend ; le % arrive par socket.
+      optsRef.current.onRealVote?.(ev, opt);
+      return;
+    }
+    setEvents((prev) => prev.map((e) => e.id === id
+      ? { ...e, pctYes: opt === "yes" ? Math.min(92, e.pctYes + 8) : Math.max(8, e.pctYes - 8) } : e));
   }, []);
 
   const addParticipant = React.useCallback((id: string, name: string) => {
@@ -161,25 +168,37 @@ export function useActionableEngine(opts: EngineOpts) {
 
   // Streamer "Ouvrir" sur une roue → overlay partagé (même gagnant chez tous,
   // ici tiré localement ; le backend fixera la graine pour tous les viewers).
-  const resolveWheel = React.useCallback((id: string) => {
-    const e = eventsRef.current.find((x) => x.id === id);
-    if (!e) return;
-    const names = e.participants.length ? e.participants : [optsRef.current.me];
-    const winner = names[Math.floor(Math.random() * names.length)];
+  // Anime l'overlay de la roue vers un gagnant donné (utilisé par le tirage
+  // local du banc ET par le résultat serveur partagé — même gagnant chez tous).
+  const spinWheelTo = React.useCallback((id: string, names: string[], winner: string) => {
+    const list = names.length ? names : [winner || optsRef.current.me];
+    const win = winner || list[0];
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, locked: true } : x));
-    setOverlay({ names, winner, spinning: true });
+    setOverlay({ names: list, winner: win, spinning: true });
     window.setTimeout(() => {
       setOverlay((o) => (o ? { ...o, spinning: false } : o));
-      optsRef.current.emitRecap(`🎡 <b>${winner}</b> remporte le tirage 🎉`);
       setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true } : x));
       window.setTimeout(() => setOverlay(null), 2800);
     }, 4200);
   }, []);
 
-  // Streamer choisit le vainqueur d'une prédiction.
+  // Streamer "Ouvrir" sur une roue. Réel → déclenche le tirage backend (qui
+  // diffuse le résultat à tous). Banc → tire localement.
+  const resolveWheel = React.useCallback((id: string) => {
+    const e = eventsRef.current.find((x) => x.id === id);
+    if (!e) return;
+    if (e.real) { optsRef.current.onRealResolveWheel?.(e); return; }
+    const names = e.participants.length ? e.participants : [optsRef.current.me];
+    const winner = names[Math.floor(Math.random() * names.length)];
+    optsRef.current.emitRecap(`🎡 <b>${winner}</b> remporte le tirage 🎉`);
+    spinWheelTo(id, names, winner);
+  }, [spinWheelTo]);
+
+  // Streamer choisit le vainqueur d'une prédiction. Réel → backend.
   const resolvePredict = React.useCallback((id: string, winner: "yes" | "no") => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
+    if (e.real) { optsRef.current.onRealResolvePredict?.(e, winner); return; }
     const label = winner === "yes" ? e.opt1 : e.opt2;
     optsRef.current.emitRecap(`🔮 Résultat : <b>${label}</b> l'emporte`);
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true, locked: true } : x));
@@ -188,7 +207,7 @@ export function useActionableEngine(opts: EngineOpts) {
   const resolveChest = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
-    optsRef.current.emitRecap(`📦 Coffre distribué à <b>${e.participants.length || 1}</b> participant(s) 🎁`);
+    optsRef.current.emitRecap(`📦 Coffre distribué à <b>${pCount(e) || 1}</b> participant(s) 🎁`);
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true, locked: true } : x));
   }, []);
 
@@ -201,19 +220,30 @@ export function useActionableEngine(opts: EngineOpts) {
 
   const dismiss = React.useCallback((id: string) => setEvents((prev) => prev.filter((e) => e.id !== id)), []);
 
-  // Mise à jour depuis le SOCKET backend (event real) : compteur partagé,
-  // résolution. Matche par (kind, round). Émet le recap une seule fois.
-  const patchByRound = React.useCallback((kind: ActKind, round: number, patch: { serverCount?: number; resolved?: boolean; recapHtml?: string }) => {
+  // Mise à jour depuis le SOCKET backend (event real) : compteur partagé, %
+  // live, résolution. Matche par (kind, round) — round comparé en string
+  // (ids rain=number, coffre/prédiction=string).
+  const patchByRound = React.useCallback((kind: ActKind, round: number | string, patch: { serverCount?: number; resolved?: boolean; pctYes?: number }) => {
     setEvents((prev) => prev.map((e) => {
-      if (!e.real || e.kind !== kind || Number(e.round) !== Number(round) || e.resolved) return e;
+      if (!e.real || e.kind !== kind || String(e.round) !== String(round) || e.resolved) return e;
       return {
         ...e,
         serverCount: patch.serverCount != null ? patch.serverCount : e.serverCount,
+        pctYes: patch.pctYes != null ? patch.pctYes : e.pctYes,
         resolved: patch.resolved ? true : e.resolved,
         locked: patch.resolved ? true : e.locked,
       };
     }));
   }, []);
+
+  // Résultat de roue diffusé par le serveur → même overlay (mêmes noms, même
+  // gagnant) chez TOUS les viewers. Matche la roue active (par round ou la
+  // dernière non résolue).
+  const applyWheelResult = React.useCallback((round: number | string | null, names: string[], winner: string) => {
+    const cands = eventsRef.current.filter((e) => e.real && e.kind === "wheel" && !e.resolved);
+    const target = round != null ? cands.find((e) => String(e.round) === String(round)) : cands[cands.length - 1];
+    if (target) spinWheelTo(target.id, names, winner);
+  }, [spinWheelTo]);
 
   // Simulation : d'autres comptes rejoignent rain/roue/coffre au fil du temps
   // (chaque arrivée émet son message système « … participe »).
@@ -236,7 +266,9 @@ export function useActionableEngine(opts: EngineOpts) {
   React.useEffect(() => {
     for (const e of events) {
       if (e.resolved || e.remaining > 0) continue;
-      if (e.real) continue; // les events réels sont résolus par le backend (socket)
+      // rain réel = résolu par le backend (act:rain). Coffre réel = auto-fermé
+      // au décompte côté back sans broadcast → on résout localement au timer.
+      if (e.real && e.kind === "rain") continue;
       if ((e.kind === "rain" || e.kind === "chest") && !autoResolvedRef.current.has(e.id)) {
         autoResolvedRef.current.add(e.id);
         if (e.kind === "rain") rainPayout(e.id); else resolveChest(e.id);
@@ -247,7 +279,7 @@ export function useActionableEngine(opts: EngineOpts) {
   return {
     events, overlay, listFor, setListFor,
     open, join, vote, addParticipant, removeParticipant,
-    resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss, patchByRound,
+    resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss, patchByRound, applyWheelResult,
   };
 }
 

@@ -1703,24 +1703,58 @@ export function ChatPanel({
     emitRecap: pushRecap,
     addChatCard: pushActCard,
     simulate: false,
-    // Participation RÉELLE : le clic "Participer" sur une carte réelle route
-    // vers le vrai endpoint. Rain = flux existant (ui:rain_join → /bot_rain/join).
+    // Participation RÉELLE : chaque action de carte route vers le vrai endpoint
+    // LunaLive ; l'état (compteur, %, résultat) revient par socket.
     onRealJoin: (e) => {
-      if (e.kind === "rain") void joinRain("chat");
-      // wheel/predict/chest : câblage réel à venir (même schéma).
+      if (e.kind === "rain") { void joinRain("chat"); return; }
+      if (!token) return onRequireLogin();
+      if (e.kind === "wheel") {
+        void fetch(`${apiBase()}/me/bot/bot_wheel/join`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ slug }),
+        }).catch(() => {});
+      } else if (e.kind === "chest") {
+        void fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}/chest/join`, {
+          method: "POST", headers: { Authorization: `Bearer ${token}` },
+        }).then((x) => x.json()).then((r) => {
+          if (r && r.ok === false) window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "📦 Coffre", message: r.error === "need_watchtime" ? "Il faut regarder le stream plus longtemps." : "Participation refusée." } }));
+        }).catch(() => {});
+      }
+    },
+    onRealVote: (_e, opt) => {
+      if (!token) return onRequireLogin();
+      void fetch(`${apiBase()}/api/bot/predictions/bet`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ streamerSlug: slug, choice: opt === "yes" ? 1 : 2 }),
+      }).then((x) => x.json()).then((r) => {
+        if (r && r.ok === false) window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "🔮 Prédiction", message: r.reason === "not_enough_rubis" ? "Pas assez de rubis." : "Mise refusée." } }));
+      }).catch(() => {});
+    },
+    onRealResolveWheel: () => {
+      if (!token) return;
+      void fetch(`${apiBase()}/me/bot/bot_wheel/draw`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    },
+    onRealResolvePredict: (_e, winner) => {
+      if (!token) return;
+      void fetch(`${apiBase()}/api/bot/predictions/resolve`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ streamerSlug: slug, winning: winner === "yes" ? 1 : 2 }),
+      }).catch(() => {});
     },
   });
   const isStreamerRole = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
 
   // Bouton GG! → envoie un message COHÉRENT avec le contexte de la carte.
   const GG_MESSAGES: Record<string, string[]> = {
-    boss: ["On l'a eu ! 🔥", "GG la team 💪", "Boss down 💀", "Quelle bataille ⚔️"],
-    sub: ["Merci pour le soutien 💜", "GG le sub ⭐", "Welcome to the club 🙌"],
-    follow: ["GG le follow 💙", "Bienvenue ! 👋", "+1 dans la famille 🎉"],
-    combo: ["Ça enchaîne 🔥", "Combo de fou !", "On lâche rien 💪"],
-    don: ["Merci pour le don 💚", "Généreux 🙏", "Respect 👏"],
-    level: ["GG le level up ⭐", "Bravo 🎉", "Ça monte 💪"],
-    raid: ["Bienvenue sur la chaîne ! 🔥", "Merci pour le raid 💜", "GG le raid 🙌", "Hello la commu 👋"],
+    boss: ["ON L'A EU ! 🔥", "GG la team, boss à terre 💀", "Quelle bataille ⚔️", "La commu est trop forte 💪", "Boss down, bien joué à tous 🏆"],
+    sub: ["Merci pour le sub, énorme 💜", "GG le sub, bienvenue au club ⭐", "Big up pour le soutien 🙌", "Un sub de plus, la famille grandit 🔥", "Respect pour le soutien 🙏"],
+    follow: ["Bienvenue sur la chaîne ! 👋", "GG le follow, content de t'avoir 💙", "+1 dans la famille 🎉", "Yo bienvenue à toi 🙌", "Un follow de plus, on monte 🚀"],
+    combo: ["Ça enchaîne, on lâche rien 🔥", "Combo de malade 💪", "La hype monte 🚀", "On est chauds là 🔥", "Enchaînement parfait 👏"],
+    don: ["Merci pour le don, énorme 💚", "Trop généreux, respect 🙏", "Merci beaucoup, ça fait plaisir 👏", "Big up pour le don 💚", "Générosité au top 🙌"],
+    level: ["GG le level up ⭐", "Bravo, ça grimpe 🎉", "Nouveau palier, bien joué 💪", "Ça monte fort 🚀", "Level up mérité 👏"],
+    raid: ["Bienvenue les raiders ! 🔥", "Merci pour le raid, énorme 💜", "Hello la commu, installez-vous 👋", "Trop stylé ce raid 🙌", "Bienvenue à tous, faites comme chez vous 🎉"],
   };
   function handleGg(who: string | null, kind: SpecialEventType) {
     const pool = GG_MESSAGES[kind] || GG_MESSAGES.follow;
@@ -2082,13 +2116,36 @@ export function ChatPanel({
       window.dispatchEvent(new CustomEvent("ui:toast", { detail: payload }));
     });
 
-    // État partagé rain (compteur + clôture) diffusé par le backend.
+    // État partagé (compteur / % / clôture / résultat) diffusé par le backend.
     socket.on("act:rain", (p: any) => {
       if (!p || p.round == null) return;
-      actEngine.patchByRound("rain", Number(p.round), {
+      actEngine.patchByRound("rain", p.round, {
         serverCount: p.count != null ? Number(p.count) : undefined,
         resolved: !!p.resolved,
       });
+    });
+    socket.on("act:chest", (p: any) => {
+      if (!p || p.round == null) return;
+      actEngine.patchByRound("chest", p.round, {
+        serverCount: p.count != null ? Number(p.count) : undefined,
+        resolved: !!p.resolved,
+      });
+    });
+    socket.on("act:predict", (p: any) => {
+      if (!p || p.round == null) return;
+      actEngine.patchByRound("predict", p.round, {
+        pctYes: p.pctYes != null ? Number(p.pctYes) : undefined,
+        resolved: !!p.resolved,
+      });
+    });
+    socket.on("act:wheel", (p: any) => {
+      if (!p) return;
+      // Tirage : même roue/gagnant chez tous. Sinon simple maj compteur.
+      if (Array.isArray(p.names) && p.winner) {
+        actEngine.applyWheelResult(p.round ?? null, p.names.map(String), String(p.winner));
+      } else if (p.count != null && p.round != null) {
+        actEngine.patchByRound("wheel", p.round, { serverCount: Number(p.count) });
+      }
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
