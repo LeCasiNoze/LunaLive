@@ -651,11 +651,23 @@ publicRouter.post(
 
     const io = req.app.locals.io;
     if (io) {
-      const msg = chatStore.addSystem(
-        String(hoster.slug),
-        `📺 ${String(hoster.displayName || hoster.slug)} host ${String(target.displayName || target.slug)} !`
-      );
-      emitChatAll(io, String(hoster.slug), "chat:message", msg);
+      // "Host" LunaLive = raid : le hoster envoie ses viewers vers la cible.
+      // Carte "raid" dans le chat de la chaîne RAIDÉE (là où débarquent les
+      // viewers) ET dans celui du hoster. Le nb de viewers = sockets présents
+      // dans la room chat du hoster (les viewers réellement amenés).
+      const hosterSlugLower = String(hoster.slug).toLowerCase();
+      const roomPub = io.sockets?.adapter?.rooms?.get(`chat:${hosterSlugLower}:public`);
+      const viewers = roomPub ? roomPub.size : 0;
+      const raidData = {
+        from: String(hoster.displayName || hoster.slug),
+        viewers,
+        raiderSlug: String(hoster.slug),
+        raiderName: String(hoster.displayName || hoster.slug),
+        raidedSlug: String(target.slug),
+        raidedName: String(target.displayName || target.slug),
+      };
+      emitSpecialCard(io, String(target.slug), "raid", raidData);
+      emitSpecialCard(io, String(hoster.slug), "raid", raidData);
     }
 
     return res.json({

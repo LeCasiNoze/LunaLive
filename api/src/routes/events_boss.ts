@@ -5,6 +5,7 @@ import { requireAuth, tryGetAuthUser } from "../auth.js";
 import { spendRubisTx } from "../wallet_engine.js";
 import { recomputeBurnBoss } from "../events/burn_boss.js";
 import { EVENT_REWARD_CONFIGS } from "../events/rewards.js";
+import { emitSpecialCard } from "../socket_emit.js";
 
 export const eventsBossRouter = Router();
 
@@ -57,6 +58,10 @@ eventsBossRouter.post(
     const event = await getLiveBossEvent();
     if (!event) return res.status(400).json({ ok: false, error: "no_active_boss_event" });
 
+    // Dégâts AVANT ce burn : sert à détecter le coup fatal (franchissement HP).
+    const hpBoss = bossHp();
+    const totalBefore = await totalDamageFor(Number(event.id));
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -92,6 +97,24 @@ eventsBossRouter.post(
     await recomputeBurnBoss(Number(event.id));
     const totalDamage = await totalDamageFor(Number(event.id));
     const hp = bossHp();
+
+    // Coup fatal : ce burn a fait franchir le seuil de HP → carte "boss vaincu"
+    // dans TOUS les chats des streamers en live (event boss = global). Ne se
+    // déclenche qu'une fois (totalDamage ne fait que croître).
+    if (hpBoss > 0 && totalBefore < hpBoss && totalDamage >= hpBoss) {
+      const io = req.app.locals.io;
+      if (io) {
+        try {
+          const live = await pool.query(`SELECT slug FROM streamers WHERE is_live = TRUE`);
+          const by = String(req.user?.username || "").trim();
+          for (const row of live.rows || []) {
+            emitSpecialCard(io, String(row.slug), "boss", by ? { by } : {});
+          }
+        } catch (e) {
+          console.error("[events/boss/burn] emit boss card failed", e);
+        }
+      }
+    }
 
     res.json({ ok: true, burned: amount, totalDamage, hp, killed: totalDamage >= hp });
   })
