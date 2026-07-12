@@ -192,6 +192,7 @@ if (typeof document !== "undefined" && !document.getElementById(STYLE_ID)) {
 }
 .lm-oauth-btn:hover:not(:disabled){background:rgba(124,92,252,.10);border-color:rgba(124,92,252,.32);transform:translateY(-1px);}
 .lm-oauth-btn:disabled{opacity:.40;cursor:not-allowed;}
+.lm-oauth-ic{flex-shrink:0;display:block;}
 .lm-oauth-sep{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(167,155,220,.40);}
 .lm-oauth-sep::before,.lm-oauth-sep::after{content:"";flex:1;height:1px;background:rgba(124,92,252,.16);}
 `;
@@ -207,14 +208,29 @@ const LmField = ({ label, children }: { label: string; children: React.ReactNode
   </div>
 );
 
+/* Logos officiels (SVG inline — pas de requête réseau) */
+const GoogleLogo = () => (
+  <svg className="lm-oauth-ic" viewBox="0 0 18 18" width="17" height="17" aria-hidden focusable="false">
+    <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/>
+    <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.02-3.7H.96v2.34A9 9 0 0 0 9 18z"/>
+    <path fill="#FBBC05" d="M3.98 10.72a5.4 5.4 0 0 1 0-3.44V4.94H.96a9 9 0 0 0 0 8.12l3.02-2.34z"/>
+    <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.46 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.02 2.34C4.68 5.16 6.66 3.58 9 3.58z"/>
+  </svg>
+);
+const DiscordLogo = () => (
+  <svg className="lm-oauth-ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden focusable="false">
+    <path fill="#5865F2" d="M20.32 4.37A19.8 19.8 0 0 0 15.45 2.9a.07.07 0 0 0-.08.04c-.21.37-.44.86-.6 1.24a18.3 18.3 0 0 0-5.5 0 12.6 12.6 0 0 0-.61-1.24.08.08 0 0 0-.08-.04A19.7 19.7 0 0 0 3.7 4.37a.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.05 19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.23-2a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.9.08.08 0 0 1-.01-.13l.37-.29a.07.07 0 0 1 .08-.01 14.2 14.2 0 0 0 12.06 0 .07.07 0 0 1 .08 0l.37.3a.08.08 0 0 1-.01.13c-.6.35-1.22.65-1.87.9a.08.08 0 0 0-.04.1c.36.7.78 1.37 1.23 2a.08.08 0 0 0 .08.04 19.8 19.8 0 0 0 6.01-3.04.08.08 0 0 0 .03-.05c.5-5.18-.84-9.67-3.54-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.15-1.08-2.15-2.42 0-1.33.95-2.42 2.15-2.42 1.22 0 2.18 1.1 2.16 2.42 0 1.34-.94 2.42-2.16 2.42z"/>
+  </svg>
+);
+
 const OAuthButtons = ({ disabled, onSelect }: { disabled: boolean; onSelect: (provider: "google" | "discord") => void }) => (
   <>
     <div className="lm-oauth-row">
       <button className="lm-oauth-btn" type="button" disabled={disabled} onClick={() => onSelect("google")}>
-        Continuer avec Google
+        <GoogleLogo /> Google
       </button>
       <button className="lm-oauth-btn" type="button" disabled={disabled} onClick={() => onSelect("discord")}>
-        Continuer avec Discord
+        <DiscordLogo /> Discord
       </button>
     </div>
     <div className="lm-oauth-sep">ou</div>
