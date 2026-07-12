@@ -7,6 +7,26 @@ import { getActivePrediction, addBet, resolvePrediction } from "./predictions.st
 import { createPredictionSafe, assertStreamerLive } from "./predictions.service.js";
 
 import { spendRubis } from "../wallet_engine.js";
+import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
+
+async function predSlug(streamerId: number): Promise<string> {
+  const r = await pool.query(`SELECT slug FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
+  return String(r.rows?.[0]?.slug || "");
+}
+// % de l'option 1 (0-100) à partir des mises réelles.
+async function predPctYes(predictionId: number): Promise<number> {
+  const r = await pool.query(
+    `SELECT choice, COALESCE(SUM(amount),0)::int AS total FROM prediction_bets WHERE prediction_id=$1 GROUP BY choice`,
+    [predictionId]
+  );
+  let a = 0, b = 0;
+  for (const row of r.rows || []) {
+    if (Number(row.choice) === 1) a = Number(row.total);
+    else if (Number(row.choice) === 2) b = Number(row.total);
+  }
+  const tot = a + b;
+  return tot > 0 ? Math.round((a / tot) * 100) : 50;
+}
 
 export const predictionsRouter = express.Router();
 
@@ -148,15 +168,30 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
       return res.status(400).json({ ok: false, reason: "invalid_params" });
     }
 
+    const dur = Math.max(30, Number(durationSec) || 180);
     const pred = await createPredictionSafe(
       pool,
       Number(streamerId),
       String(question).trim(),
       String(option1).trim(),
       String(option2).trim(),
-      Math.max(30, Number(durationSec) || 180),
+      dur,
       Math.max(10, Number(fixedStake) || 10)
     );
+
+    // Carte v2 "prédiction" dans le chat (vote réel, % live, résolution streamer).
+    try {
+      const io = (req as any).app?.locals?.io;
+      const slug = await predSlug(Number(streamerId));
+      emitSpecialCard(io, slug, "predict", {
+        round: (pred as any)?.id,
+        question: String(question).trim(),
+        option1: String(option1).trim(),
+        option2: String(option2).trim(),
+        durationSec: dur,
+        real: true,
+      });
+    } catch {}
 
     return res.json({ ok: true, prediction: pred });
   } catch (e: any) {
@@ -230,6 +265,14 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
 
     await setLastStake(userId, stake);
 
+    // % live partagé à tous.
+    try {
+      const io = (req as any).app?.locals?.io;
+      const slug = await predSlug(Number(streamerId));
+      const pctYes = await predPctYes(Number((pred as any).id));
+      emitChatAll(io, slug, "act:predict", { round: (pred as any).id, pctYes });
+    } catch {}
+
     return res.json({ ok: true, stake, allowed, level });
   } catch (e: any) {
     const msg = String(e?.message || "");
@@ -256,6 +299,15 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
     if (pred.status === "resolved") return res.status(400).json({ ok: false, reason: "already_resolved" });
 
     await resolvePrediction(pool, pred, winning as 1 | 2);
+
+    // Résolution partagée : carte fermée + gagnant annoncé.
+    try {
+      const io = (req as any).app?.locals?.io;
+      const slug = await predSlug(Number(streamerId));
+      const winnerLabel = winning === 1 ? String((pred as any).option1 || "Option 1") : String((pred as any).option2 || "Option 2");
+      emitChatAll(io, slug, "act:predict", { round: (pred as any).id, resolved: true, winner: winning === 1 ? "yes" : "no" });
+      emitChatLine(io, slug, "recap", `🔮 Résultat : <b>${winnerLabel}</b> l'emporte`);
+    } catch {}
 
     return res.json({ ok: true });
   } catch (e: any) {
