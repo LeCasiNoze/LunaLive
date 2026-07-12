@@ -76,6 +76,7 @@ import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
+import { LevelUpListener } from "./components/LevelUpListener";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
 // lazy : cette page importe AffiEditorPage (~3000 lignes) — en statique
@@ -233,6 +234,7 @@ function AppInner() {
             <DailyBonusToast />
             <AchievementsToast />
             <CallsToast />
+            <LevelUpListener />
           </>
         )}
 

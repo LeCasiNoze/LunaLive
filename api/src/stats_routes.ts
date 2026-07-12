@@ -3,6 +3,9 @@ import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
 import { requireAuth } from "./auth.js";
 import { getClientIp } from "./utils/client_ip.js";
+import { creditWatchMinute, getPendingRankUp, dismissRankUp } from "./rankup.js";
+import { emitSpecialCard } from "./socket_emit.js";
+import { getLevelInfo } from "./economy/xp.js";
 
 const TZ = "Europe/Oslo";
 const HEARTBEAT_TTL_SECONDS = 45;
@@ -277,14 +280,21 @@ export function registerStatsRoutes(app: Express) {
     );
 
     // ✅ minute-based watchtime (A) : 1 ligne max / viewer / minute
-    await pool.query(
+    const minIns = await pool.query(
         `INSERT INTO stream_viewer_minutes
         (live_session_id, streamer_id, bucket_ts, viewer_key, user_id, anon_id)
         VALUES
         ($1,$2,date_trunc('minute', NOW()),$3,$4,$5)
-        ON CONFLICT DO NOTHING`,
+        ON CONFLICT DO NOTHING
+        RETURNING 1`,
         [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId]
     );
+
+    // ✅ XP watchtime : uniquement sur une NOUVELLE minute (RETURNING) et pour
+    // un viewer connecté. Crédite au bon rythme + détecte le level-up (pop-up).
+    if ((minIns.rowCount ?? 0) > 0 && user) {
+        creditWatchMinute((req.app as any)?.locals?.io, Number(user.id)).catch(() => {});
+    }
 
     // l'échantillon minute est écrit par sampleViewersTick (cron stats)
     const viewersNow = await countActiveViewers(liveSessionId);
@@ -293,6 +303,38 @@ export function registerStatsRoutes(app: Express) {
     })
 
   );
+
+  // ─── Rank-up : prompt d'annonce dans le chat (fenêtre 10 min) ───────────
+  // Le viewer a monté de niveau quelque part → quand il ouvre un chat, on
+  // propose "annoncer ton rank-up ?". Oui → carte level dans le chat.
+  app.get("/me/rankup/pending", requireAuth, a(async (req: any, res) => {
+    const p = await getPendingRankUp(Number(req.user!.id));
+    res.json({ ok: true, pending: p });
+  }));
+
+  app.post("/me/rankup/announce", requireAuth, a(async (req: any, res) => {
+    const userId = Number(req.user!.id);
+    const slug = String(req.body?.slug || "").trim().toLowerCase();
+    const p = await getPendingRankUp(userId);
+    if (!p) return res.json({ ok: true, announced: false });
+    await dismissRankUp(userId, p.level);
+    if (slug) {
+      const u = await pool.query(`SELECT username, xp::bigint AS xp FROM users WHERE id=$1`, [userId]);
+      const username = String(u.rows?.[0]?.username || "");
+      const info = getLevelInfo(Number(u.rows?.[0]?.xp || 0));
+      emitSpecialCard((req.app as any)?.locals?.io, slug, "level", {
+        who: username, level: p.level, title: info.fullTitle,
+      });
+    }
+    res.json({ ok: true, announced: true });
+  }));
+
+  app.post("/me/rankup/dismiss", requireAuth, a(async (req: any, res) => {
+    const userId = Number(req.user!.id);
+    const p = await getPendingRankUp(userId);
+    if (p) await dismissRankUp(userId, p.level);
+    res.json({ ok: true });
+  }));
 
   /**
    * Streamer dashboard: summary stats (current period + prev period)

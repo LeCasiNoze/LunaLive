@@ -1746,6 +1746,33 @@ export function ChatPanel({
   });
   const isStreamerRole = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
 
+  // Prompt "annoncer ton rank-up ?" : si le viewer a monté de niveau ailleurs
+  // sur le site dans les 10 dernières minutes, on lui propose à l'ouverture du
+  // chat. Oui → carte level ; Non → on retire pour ce niveau (ne réapparaît plus).
+  const [rankupLevel, setRankupLevel] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!token) { setRankupLevel(null); return; }
+    let alive = true;
+    fetch(`${apiBase()}/me/rankup/pending`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((x) => x.json())
+      .then((r) => { if (alive && r?.ok && r.pending) setRankupLevel(Number(r.pending.level)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [token, slug]);
+  function announceRankup() {
+    setRankupLevel(null);
+    void fetch(`${apiBase()}/me/rankup/announce`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ slug }),
+    }).catch(() => {});
+  }
+  function dismissRankup() {
+    setRankupLevel(null);
+    void fetch(`${apiBase()}/me/rankup/dismiss`, {
+      method: "POST", headers: { Authorization: `Bearer ${token || ""}` },
+    }).catch(() => {});
+  }
+
   // Bouton GG! → envoie un message COHÉRENT avec le contexte de la carte.
   const GG_MESSAGES: Record<string, string[]> = {
     boss: ["ON L'A EU ! 🔥", "GG la team, boss à terre 💀", "Quelle bataille ⚔️", "La commu est trop forte 💪", "Boss down, bien joué à tous 🏆"],
@@ -2710,6 +2737,21 @@ function openChatPopup() {
         recap={pushRecap}
       />
       <ActionablePinnedBar engine={actEngine} isStreamer={isStreamerRole} />
+
+      {rankupLevel != null && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexShrink: 0,
+          background: "linear-gradient(90deg, rgba(124,92,252,.16), rgba(91,142,248,.10))",
+          borderBottom: "1px solid rgba(124,92,252,.22)", fontSize: 12.5, fontWeight: 700,
+          color: "rgba(235,232,255,.95)",
+        }}>
+          <span>⭐ Niveau {rankupLevel} atteint ! Annoncer ton rank-up ?</span>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <button onClick={announceRankup} style={{ border: "1px solid rgba(124,92,252,.4)", background: "rgba(124,92,252,.25)", color: "#fff", fontWeight: 800, fontSize: 12, padding: "5px 12px", borderRadius: 8, cursor: "pointer" }}>Oui</button>
+            <button onClick={dismissRankup} style={{ border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.05)", color: "rgba(235,232,255,.8)", fontWeight: 700, fontSize: 12, padding: "5px 12px", borderRadius: 8, cursor: "pointer" }}>Non</button>
+          </div>
+        </div>
+      )}
 
       {/* zone scroll + jump */}
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
