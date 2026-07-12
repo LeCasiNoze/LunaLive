@@ -15,6 +15,7 @@ const LivesPage = React.lazy(() => import("./pages/LivesPage"));
 const BrowsePage = React.lazy(() => import("./pages/BrowsePage"));
 const StreamerPage = React.lazy(() => import("./pages/StreamerPage"));
 const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
+const BecomeStreamerPage = React.lazy(() => import("./pages/BecomeStreamerPage"));
 const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ default: m.ShopPage })));
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
@@ -376,6 +377,7 @@ function AppInner() {
           <Route path="/dev/username-effects" element={<UsernameFxLabPage />} />
           <Route path="/skins-catalogue" element={<SkinsCataloguePage />} />
           <Route path="/participer" element={<ParticipatePage />} />
+          <Route path="/devenir-streamer" element={<BecomeStreamerPage />} />
           <Route path="/oauth/done" element={<LoadingFallback />} />
 
           {/* Debug routes */}
