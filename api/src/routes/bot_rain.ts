@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import normalizeAppearance from "../appearance.js";
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 import { earnRubisTx } from "../wallet_engine.js";
+import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
 import type { PoolClient } from "pg";
 
 export const botRainRouter = Router();
@@ -501,6 +502,15 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
         appearance: streamer.appearance,
       });
 
+      // Carte v2 "rain" dans le chat (état partagé côté front : bouton Récupérer
+      // → vrai join, compteur diffusé). round + durée pour synchroniser.
+      emitSpecialCard(req.app?.locals?.io, streamer.slug, "rain", {
+        pot: cfg.rubiesPerUser,
+        round: newRoundId,
+        durationSec: cfg.joinWindowSec,
+        real: true,
+      });
+
       return;
     }
 
@@ -571,6 +581,18 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
             : `✅ Rain terminée : aucun participant.`,
         appearance: streamer.appearance,
       });
+
+      // Carte v2 : clôture + recap partagés.
+      try {
+        const io = req.app?.locals?.io;
+        emitChatAll(io, streamer.slug, "act:rain", { round: curRound, resolved: true });
+        emitChatLine(
+          io, streamer.slug, "recap",
+          n > 0
+            ? `🌧️ Rain terminée — <b>${n}</b> ont partagé ${cfg.rubiesPerUser} rubis`
+            : `🌧️ Rain terminée — aucun participant`
+        );
+      } catch {}
 
       return;
     }
@@ -693,6 +715,19 @@ botRainRouter.post("/join", async (req: any, res: any) => {
       );
 
       await client.query("COMMIT");
+
+      // État partagé : diffuse le nouveau compteur (act:rain) + un message
+      // système "X a récupéré ses rubis" à TOUS les viewers.
+      try {
+        const io = req.app?.locals?.io;
+        const cntRes = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM bot_rain_joins WHERE streamer_id=$1 AND round_id=$2`,
+          [streamer.streamerId, roundId]
+        );
+        const count = Number(cntRes.rows?.[0]?.n ?? 0);
+        emitChatAll(io, streamer.slug, "act:rain", { round: roundId, count });
+        emitChatLine(io, streamer.slug, "sys", `💎 <b>${username}</b> a récupéré ses rubis`);
+      } catch {}
 
       return res.json({ ok: true, roundId });
     } catch (e: any) {

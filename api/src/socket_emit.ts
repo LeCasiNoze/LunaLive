@@ -30,6 +30,32 @@ export type SpecialType =
   | "raid" | "follow" | "combo" | "sub" | "don"
   | "chest" | "rain" | "wheel" | "predict" | "boss" | "level";
 
+// Ligne "système" (kind "sys") ou "recap" dans le flux du chat (ex.
+// "X a récupéré ses rubis", "Rain terminée — N ont partagé…"). Éphémère.
+let __sysSeq = 0;
+export function emitChatLine(
+  io: Server | null | undefined,
+  slug: string,
+  kind: "sys" | "recap",
+  html: string
+): boolean {
+  if (!io) return false;
+  const s = slugRoom(slug);
+  if (!s) return false;
+  __sysSeq = (__sysSeq + 1) % 100000;
+  const id = -(Date.now() * 100000 + 50000 + __sysSeq);
+  const msg = {
+    id, userId: 0, username: "LunaLive", body: "",
+    createdAt: new Date().toISOString(), type: kind, data: { html },
+  };
+  try {
+    io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let __specialSeq = 0;
 export function emitSpecialCard(
   io: Server | null | undefined,
