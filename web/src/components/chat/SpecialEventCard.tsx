@@ -64,9 +64,11 @@ export default function SpecialEventCard(props: {
   currentUsername: string | null;
   viewerFollows?: boolean;
   viewerSubbed?: boolean;
-  onGg: (who: string | null) => void;
-  onCombo: (nextMult: number) => void;
-  onFollowChannel: (slug: string) => void;
+  onGg: (who: string | null, kind: SpecialEventType) => void;
+  onCombo: (nextMult: number, kind: "follow" | "sub") => void;
+  // asFollowEvent : suivre la chaîne raidée déclenche EN PLUS une carte
+  // "follow" contexte pour le viewer (cf spec raid).
+  onFollowChannel: (slug: string, asFollowEvent?: boolean) => void;
   onSubscribe: () => void;
   onBossPage: () => void;
 }): React.JSX.Element {
@@ -76,22 +78,23 @@ export default function SpecialEventCard(props: {
   const [subClicked, setSubClicked] = React.useState(false);
 
   function handleGg() {
-    props.onGg(data?.who ?? data?.from ?? null);
+    props.onGg(data?.who ?? data?.from ?? null, type);
     setGgClicked(true);
   }
 
-  function handleCombo(currentMult: number) {
-    props.onCombo(currentMult + 1);
+  function handleCombo(currentMult: number, kind: "follow" | "sub") {
+    props.onCombo(currentMult + 1, kind);
     setAllDisabled(true);
   }
 
   const combo = type === "combo";
+  const comboKind: "follow" | "sub" = data?.kind === "sub" ? "sub" : "follow";
   const mult = Number(data?.mult ?? 1);
 
   let pfKind: string | null = null;
   switch (type) {
     case "raid": pfKind = "raid"; break;
-    case "combo": pfKind = "combo"; break;
+    case "combo": pfKind = comboKind === "sub" ? "sub" : "combo"; break;
     case "sub": pfKind = "sub"; break;
     case "don": pfKind = "don"; break;
     case "boss": pfKind = "boss"; break;
@@ -137,19 +140,15 @@ export default function SpecialEventCard(props: {
         </div>
       );
       title = <>Raid de <span className="lle-who">{from}</span></>;
-      sub = "débarque avec sa communauté";
+      sub = <>débarque sur <b>{data?.raidedName ?? "la chaîne"}</b> avec sa communauté</>;
       value = <>+{viewers}<small>viewers</small></>;
+      // Deux chaînes TOUJOURS : le raideur (à soutenir) + la raidée (à suivre —
+      // la suivre déclenche une carte follow contexte). + bienvenue en dessous.
       actions = (
         <div className="lle-raid-follows">
-          {data?.raiderSlug ? (
-            <FollowRow avatar={data?.raiderAvatar} name={data?.raiderName ?? from} slug={data.raiderSlug} label="Soutenir 🙌" onFollow={props.onFollowChannel} />
-          ) : null}
-          {data?.raidedSlug ? (
-            <FollowRow avatar={data?.raidedAvatar} name={data?.raidedName ?? null} slug={data.raidedSlug} label="Suivre 💜" onFollow={props.onFollowChannel} />
-          ) : null}
-          {!data?.raiderSlug && !data?.raidedSlug ? (
-            <button className="lle-btn" disabled={ggClicked} onClick={handleGg}>Souhaiter la bienvenue 👋</button>
-          ) : null}
+          <FollowRow avatar={data?.raiderAvatar} name={data?.raiderName ?? from} slug={data?.raiderSlug ?? ""} label="Soutenir 🙌" onFollow={(s) => props.onFollowChannel(s)} />
+          <FollowRow avatar={data?.raidedAvatar} name={data?.raidedName ?? null} slug={data?.raidedSlug ?? ""} label="Suivre 💜" onFollow={(s) => props.onFollowChannel(s, true)} />
+          <button className="lle-btn" disabled={ggClicked} onClick={handleGg}>Souhaiter la bienvenue 👋</button>
         </div>
       );
       break;
@@ -158,32 +157,36 @@ export default function SpecialEventCard(props: {
     case "follow":
     case "combo": {
       const who = data?.who ?? null;
-      icon = combo ? "🔥" : "💙";
+      const subCombo = combo && data?.kind === "sub";
+      icon = subCombo ? "⭐" : combo ? "🔥" : "💙";
       epic = combo;
       stage = (
         <>
           <div className="lle-hearts">
             {Array.from({ length: 6 }).map((_, i) => (
-              <i key={i} style={{ left: `${12 + i * 14}%`, animationDelay: `${i * .35}s` }}>{combo ? "⚡" : "💙"}</i>
+              <i key={i} style={{ left: `${12 + i * 14}%`, animationDelay: `${i * .35}s` }}>{subCombo ? "⭐" : combo ? "⚡" : "💙"}</i>
             ))}
           </div>
           {combo ? (
-            <div className="lle-combo-burst"><span className="lle-combo-x">COMBO {mult}x 🔥</span></div>
+            <div className="lle-combo-burst"><span className="lle-combo-x">COMBO {subCombo ? "SUB " : ""}{mult}x {subCombo ? "⭐" : "🔥"}</span></div>
           ) : null}
         </>
       );
-      title = combo ? `Combo follow ${mult}x` : "Nouveau follow";
-      sub = <><b>{who}</b> {combo ? "enchaîne le combo !" : "vient de suivre la chaîne"}</>;
-      actions = (
-        <>
-          <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
-          {!props.viewerFollows ? (
-            <button className="lle-btn" disabled={allDisabled} onClick={() => handleCombo(mult)}>
-              Combo {combo ? `${mult + 1}x` : ""} <span className="lle-k">tu follow aussi</span>
-            </button>
-          ) : null}
-        </>
-      );
+      title = combo ? `${subCombo ? "Combo sub" : "Combo follow"} ${mult}x` : "Nouveau follow";
+      sub = <><b>{who}</b> {combo ? (subCombo ? "enchaîne les abos !" : "enchaîne le combo !") : "vient de suivre la chaîne"}</>;
+      {
+        const gated = subCombo ? props.viewerSubbed : props.viewerFollows;
+        actions = (
+          <>
+            <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
+            {!gated ? (
+              <button className="lle-btn" disabled={allDisabled} onClick={() => handleCombo(mult, comboKind)}>
+                Combo {combo ? `${mult + 1}x` : ""} <span className="lle-k">{subCombo ? "tu t'abonnes aussi" : "tu follow aussi"}</span>
+              </button>
+            ) : null}
+          </>
+        );
+      }
       break;
     }
 
@@ -200,7 +203,7 @@ export default function SpecialEventCard(props: {
         <>
           <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
           {!props.viewerSubbed ? (
-            <button className="lle-btn" disabled={subClicked} onClick={() => { props.onSubscribe(); setSubClicked(true); }}>
+            <button className="lle-btn" disabled={subClicked} onClick={() => { props.onSubscribe(); handleCombo(mult, "sub"); setSubClicked(true); }}>
               S'abonner aussi ⭐
             </button>
           ) : null}
@@ -232,7 +235,9 @@ export default function SpecialEventCard(props: {
         </>
       );
       title = "Boss vaincu !";
-      sub = "La communauté a fait tomber le boss";
+      sub = data?.by
+        ? <>Coup fatal par <b>{data.by}</b> — la communauté a fait tomber le boss</>
+        : "La communauté a fait tomber le boss";
       value = <>×3<small>récompense</small></>;
       actions = (
         <>
@@ -260,7 +265,7 @@ export default function SpecialEventCard(props: {
   }
 
   return (
-    <div className={`lle-ev lle-ev--${type}`} data-tier={epic ? "epic" : undefined}>
+    <div className={`lle-ev lle-ev--${type}${combo && comboKind === "sub" ? " lle-ev--combosub" : ""}`} data-tier={epic ? "epic" : undefined}>
       {/* Animations (flash + particules + scène) confinées au stage (overflow:hidden). */}
       <div className="lle-ev__stage">
         {epic ? <div className="lle-flash" /> : null}

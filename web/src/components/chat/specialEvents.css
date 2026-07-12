@@ -18,7 +18,7 @@
 @keyframes lle-chipIn{from{opacity:0;transform:translateY(-10px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes lle-chipOut{to{opacity:0;transform:scale(.9);margin-left:-186px}}
 .lle-chip--rain{--c:#ff2d6b;--c2:#ff6b9d}.lle-chip--wheel{--c:#38bdf8;--c2:#a78bfa}
-.lle-chip--predict{--c:#818cf8;--c2:#a5b4fc}.lle-chip--chest{--c:#f59e0b;--c2:#fcd34d}.lle-chip--combo{--c:#ffd54a;--c2:#ff8a3d}
+.lle-chip--predict{--c:#818cf8;--c2:#a5b4fc}.lle-chip--chest{--c:#f59e0b;--c2:#fcd34d}.lle-chip--combo{--c:#ffd54a;--c2:#ff8a3d}.lle-chip--combosub{--c:#ffcf3f;--c2:#ffe89a}
 .lle-chip__row{display:flex;align-items:center;gap:8px}
 .lle-chip__ic{font-size:16px;flex:none;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--c) 60%,transparent))}
 .lle-chip__mid{flex:1;min-width:0}
@@ -104,6 +104,9 @@
 /* ===== FOLLOW / COMBO ===== */
 .lle-ev--follow{--c:#38bdf8;--c2:#7dd3fc}
 .lle-ev--combo{--c:#ffd54a;--c2:#ff8a3d}
+/* Sub-combo : palette dorée/couronne (distincte du follow-combo orange feu) */
+.lle-ev--combosub{--c:#ffcf3f;--c2:#ffe89a}
+.lle-ev--combosub .lle-combo-x{text-shadow:0 0 26px #ffcf3f, 0 0 8px #fff}
 .lle-hearts{position:absolute;inset:0;z-index:1}
 .lle-hearts i{position:absolute;bottom:-6px;font-style:normal;font-size:14px;animation:lle-floatUp 2.4s ease-in infinite;opacity:0}
 @keyframes lle-floatUp{0%{transform:translateY(0) scale(.6);opacity:0}20%{opacity:.95}100%{transform:translateY(-64px) scale(1);opacity:0}}
@@ -170,6 +173,50 @@
   background:conic-gradient(from var(--angle),#ff2d6b,#f59e0b,#ffd54a,#34d399,#38bdf8,#a78bfa,#ff2d6b);
   animation:lle-spinBorder 3s linear infinite, lle-riseUp 2.4s ease-in-out infinite;box-shadow:0 0 24px rgba(167,139,250,.65)}
 @keyframes lle-riseUp{0%,100%{transform:translateY(4px)}50%{transform:translateY(-4px)}}
+
+/* ===== ACTIONNABLES v2 (moteur partagé chat↔épinglé) ===== */
+/* Contrôles streamer (Liste / Ouvrir / choix vainqueur) */
+.lla-strm{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.lla-strm-btn{flex:none;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#e7dffb;cursor:pointer;font-family:inherit;font-weight:800;font-size:10.5px;padding:5px 9px;border-radius:7px}
+.lla-strm-btn:hover{background:rgba(255,255,255,.12)}
+.lla-strm-go{border-color:color-mix(in srgb,var(--c) 55%,transparent);background:linear-gradient(135deg,var(--c),var(--c2));color:#fff}
+.lla-win{border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.14);color:#c9ffe8}
+
+/* Barres prédiction partagées */
+.lla-pred{display:flex;flex-direction:column;gap:5px;margin-top:7px}
+.lla-pred .lle-pbar{height:28px;font-size:11.5px}
+.lla-pred--big .lle-pbar{height:34px;font-size:12.5px}
+.lle-pbar[disabled]{cursor:default}
+
+/* Carte actionnable dans le flux */
+.lla-card{--tier:epic}
+.lla-card--done{align-self:center;font-size:11.5px;font-weight:700;color:rgba(255,255,255,.45);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);padding:6px 13px;border-radius:999px}
+
+/* Roue partagée plein écran */
+.lla-overlay{position:fixed;inset:0;z-index:4000;display:grid;place-items:center;background:rgba(4,3,10,.82);backdrop-filter:blur(10px);animation:lle-evIn .25s both}
+.lla-wheelbox{position:relative;display:flex;flex-direction:column;align-items:center;gap:14px;padding:28px 34px;border-radius:22px;border:1px solid rgba(124,92,252,.3);background:rgba(15,10,24,.96);box-shadow:0 40px 100px rgba(0,0,0,.7)}
+.lla-wheel2-wrap{position:relative;width:230px;height:230px}
+.lla-wheel2{position:absolute;inset:0;border-radius:50%;border:4px solid rgba(255,255,255,.5);box-shadow:0 0 30px rgba(124,92,252,.5),inset 0 0 30px rgba(0,0,0,.4)}
+.lla-seg{position:absolute;inset:0;display:flex;justify-content:center;transform-origin:50% 50%;pointer-events:none}
+.lla-seg span{margin-top:11px;font-family:'Syne',system-ui,sans-serif;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);max-width:74px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lla-wheel2-hub{position:absolute;inset:0;margin:auto;width:26px;height:26px;border-radius:50%;background:#0d0916;border:3px solid rgba(255,255,255,.55);box-shadow:0 0 12px rgba(0,0,0,.6)}
+.lla-wheel-ptr{position:absolute;top:-6px;left:50%;transform:translateX(-50%);border-left:11px solid transparent;border-right:11px solid transparent;border-top:18px solid #fff;filter:drop-shadow(0 2px 3px #000);z-index:3}
+.lla-wheel-name{font-family:'Syne',system-ui,sans-serif;font-weight:900;font-size:26px;color:#fff;letter-spacing:-.5px;text-shadow:0 0 24px rgba(124,92,252,.7);min-height:32px}
+.lla-wheel-cap{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#a99fc0}
+
+/* Modale liste participants (streamer) */
+.lla-modal{position:fixed;inset:0;z-index:4100;display:grid;place-items:center;background:rgba(4,3,10,.7);backdrop-filter:blur(8px);animation:lle-evIn .2s both}
+.lla-modal-box{width:min(360px,92vw);border-radius:16px;border:1px solid rgba(124,92,252,.28);background:rgba(17,10,23,.98);box-shadow:0 30px 80px rgba(0,0,0,.6);overflow:hidden}
+.lla-modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08);font-size:13px}
+.lla-modal-x{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#cbb;cursor:pointer;width:26px;height:26px;border-radius:7px}
+.lla-modal-add{display:flex;gap:6px;padding:12px 14px}
+.lla-modal-add input{flex:1;height:34px;border-radius:9px;border:1px solid rgba(124,92,252,.2);background:rgba(0,0,0,.3);color:#eee;padding:0 10px;font-size:12.5px;outline:none}
+.lla-modal-add button{flex:none;border:0;border-radius:9px;padding:0 12px;font-weight:800;font-size:12px;color:#fff;cursor:pointer;background:linear-gradient(135deg,#7C4DFF,#b39cff)}
+.lla-modal-list{max-height:280px;overflow:auto;padding:4px 14px 14px;display:flex;flex-direction:column;gap:5px}
+.lla-modal-empty{opacity:.45;font-size:12px;padding:10px 0}
+.lla-modal-row{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);font-size:12.5px;font-weight:700;color:#eadffb}
+.lla-modal-rm{border:1px solid rgba(240,78,78,.35);background:rgba(240,78,78,.14);color:#ffb4b4;cursor:pointer;width:24px;height:24px;border-radius:7px;font-size:11px}
+.lla-modal-rm:hover{background:rgba(240,78,78,.28)}
 
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001s!important;animation-iteration-count:1!important}

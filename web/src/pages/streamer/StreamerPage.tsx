@@ -336,6 +336,14 @@ function StreamerPageDesktop() {
   const [subLoading, setSubLoading] = React.useState(false);
   const [subError, setSubError] = React.useState<string | null>(null);
 
+  // Ouverture de la SubModal depuis le chat (bouton "S'abonner aussi" d'une
+  // carte sub — voir ChatPanel.handleSubscribe → dispatch ui:open_sub).
+  React.useEffect(() => {
+    const onOpenSub = () => setSubOpen(true);
+    window.addEventListener("ui:open_sub", onOpenSub as any);
+    return () => window.removeEventListener("ui:open_sub", onOpenSub as any);
+  }, []);
+
   const [giftLoading, setGiftLoading] = React.useState(false);
   const [giftError, setGiftError] = React.useState<string | null>(null);
   const [giftStatus, setGiftStatus] = React.useState<GiftStatus | null>(null);
