@@ -8,7 +8,7 @@ import type { AuthUser } from "../auth.js";
 import { a } from "../utils/async.js";
 import { chatStore } from "../chat_store.js";
 import normalizeAppearance from "../appearance.js";
-import { emitChatAll, emitChatAndStream } from "../socket_emit.js";
+import { emitChatAll, emitChatAndStream, emitSpecialCard } from "../socket_emit.js";
 
 export const publicRouter = Router();
 const HEARTBEAT_TTL_SECONDS = 45;
@@ -710,20 +710,13 @@ publicRouter.post(
       });
     }
 
-    if ((ins.rowCount ?? 0) > 0) {
-      const tpl =
-        (streamer.appearance?.chat?.followMessageTemplate &&
-          String(streamer.appearance.chat.followMessageTemplate)) ||
-        "💜 {user} suit {streamer} !";
-
-      const body = tpl
-        .replaceAll("{user}", String(req.user!.username))
-        .replaceAll("{streamer}", String(streamer.displayName || streamer.slug));
-
-      if (io) {
-        const msg = chatStore.addSystem(String(streamer.slug), body);
-        emitChatAll(io, String(streamer.slug), "chat:message", msg);
-      }
+    // Nouveau follow LunaLive → carte "follow" contextuelle dans le chat
+    // (remplace l'ancien message texte). Émise seulement sur un VRAI nouveau
+    // follow (ON CONFLICT DO NOTHING → rowCount 0 si déjà abonné).
+    if ((ins.rowCount ?? 0) > 0 && io) {
+      emitSpecialCard(io, String(streamer.slug), "follow", {
+        who: String(req.user!.username),
+      });
     }
 
     const nf = await pool.query(
