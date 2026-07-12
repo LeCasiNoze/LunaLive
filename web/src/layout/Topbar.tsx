@@ -636,6 +636,9 @@ export function Topbar({
             <NavLink to="/shop" className={linkClass}>
               Shop
             </NavLink>
+            <NavLink to="/event" className={linkClass}>
+              Événements
+            </NavLink>
           </nav>
         )}
 
