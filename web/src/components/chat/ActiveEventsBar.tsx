@@ -292,10 +292,13 @@ function ComboChip({ id, data, onExpire, onComboAdvance, recap }: {
   id: string;
   data: any;
   onExpire: (id: string) => void;
-  onComboAdvance: (nextMult: number) => void;
+  onComboAdvance: (nextMult: number, kind: "follow" | "sub") => void;
   recap: (html: string) => void;
 }) {
   const mult = Number(data?.mult ?? 1);
+  const kind: "follow" | "sub" = data?.kind === "sub" ? "sub" : "follow";
+  const isSub = kind === "sub";
+  const ic = isSub ? "⭐" : "🔥";
   const [remaining, setRemaining] = React.useState(DUR.comboIdle);
   const expiredRef = React.useRef(false);
   const multRef = React.useRef(mult);
@@ -311,7 +314,7 @@ function ComboChip({ id, data, onExpire, onComboAdvance, recap }: {
           expiredRef.current = true;
           clearInterval(iv);
           onExpire(id);
-          recap(`🔥 Combo follow terminé à <b>x${multRef.current}</b>`);
+          recap(`${ic} Combo ${isSub ? "sub" : "follow"} terminé à <b>x${multRef.current}</b>`);
         }
         return next;
       });
@@ -321,14 +324,14 @@ function ComboChip({ id, data, onExpire, onComboAdvance, recap }: {
   }, [id, mult]);
 
   return (
-    <div className="lle-chip lle-chip--combo" data-id={id}>
+    <div className={`lle-chip ${isSub ? "lle-chip--combosub" : "lle-chip--combo"}`} data-id={id}>
       <div className="lle-chip__row">
-        <span className="lle-chip__ic">🔥</span>
+        <span className="lle-chip__ic">{ic}</span>
         <div className="lle-chip__mid">
-          <div className="lle-chip__t">Combo follow</div>
-          <div className="lle-chip__meta">x{mult} en cours 🔥</div>
+          <div className="lle-chip__t">Combo {isSub ? "sub" : "follow"}</div>
+          <div className="lle-chip__meta">x{mult} en cours {ic}</div>
         </div>
-        <button className="lle-chip__cta" onClick={() => onComboAdvance(mult + 1)}>Combo x{mult + 1}</button>
+        <button className="lle-chip__cta" onClick={() => onComboAdvance(mult + 1, kind)}>Combo x{mult + 1}</button>
       </div>
       <div className="lle-chip__prog"><i style={{ width: `${Math.max(0, remaining / DUR.comboIdle * 100)}%` }} /></div>
     </div>
@@ -343,7 +346,7 @@ export default function ActiveEventsBar(props: {
   onSpin: (id: string) => void;
   onVote: (id: string, opt: "yes" | "no") => void;
   onChestOpen: (id: string) => void;
-  onComboAdvance: (nextMult: number) => void;
+  onComboAdvance: (nextMult: number, kind: "follow" | "sub") => void;
   recap: (html: string) => void;
 }): React.JSX.Element | null {
   if (props.events.length === 0) return null;

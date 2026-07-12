@@ -9,6 +9,9 @@ import type { ChatCosmetics } from "../lib/cosmetics";
 import { BotMenu } from "../components/BotMenu";
 import SpecialEventCard, { type SpecialEventType } from "./chat/SpecialEventCard";
 import ActiveEventsBar, { type ActiveEvent } from "./chat/ActiveEventsBar";
+import {
+  useActionableEngine, ActionablePinnedBar, ActionableChatCard, WheelOverlay, ParticipantListModal,
+} from "./chat/ActionableEvents";
 
 // Types de messages spéciaux affichés en carte "célébration" dans le flux.
 const CELEBRATION_TYPES = new Set<string>(["raid", "follow", "combo", "sub", "don", "boss", "level"]);
@@ -20,6 +23,7 @@ import {
   normalizeAppearance,
   type StreamerAppearance,
 } from "../lib/appearance";
+import { followStreamer } from "../lib/api";
 
 /* =========================================================
    Debug flags
@@ -50,7 +54,9 @@ type ChatMsg = {
   rumble?: boolean;
   // Messages spéciaux (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level).
   // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
-  type?: SpecialEventType;
+  // "recap" = ligne centrée · "sys" = message système · "act" = carte
+  // actionnable (rain/roue/prédiction/coffre) pilotée par le moteur v2.
+  type?: SpecialEventType | "recap" | "sys" | "act";
   data?: any;
 };
 
@@ -1652,20 +1658,12 @@ export function ChatPanel({
     forceScrollBottomMultiPass();
   }
 
-  // Bouton GG! → envoie un message dans le chat (remerciement ou GG @pseudo).
-  const GG_THANKS = ["Merci pour le soutien 💜", "Bienvenue dans la famille !", "GG à toi 🔥", "Legend 🙌"];
-  function handleGg(who: string | null) {
-    const txt = who && Math.random() > 0.5 ? `GG ! @${who} 🔥` : GG_THANKS[Math.floor(Math.random() * GG_THANKS.length)];
-    void sendBody(txt);
-  }
-
-  // Bouton Combo → follow viral : spawn une carte combo dans le flux + met à jour le chip épinglé.
-  function handleCombo(nextMult: number) {
+  // Message système dans le flux ("X a récupéré ses rubis"…).
+  function pushSystem(html: string) {
     const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
-    const who = join?.me?.username ?? "Un viewer";
     const m: ChatMsg = {
       id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
-      type: "combo", data: { mult: nextMult, who },
+      type: "sys" as any, data: { html },
     };
     animatedMsgIdsRef.current.add(id);
     setMessages((prev) => {
@@ -1674,15 +1672,132 @@ export function ChatPanel({
       return next;
     });
     forceScrollBottomMultiPass();
+  }
+
+  // Carte actionnable (rain/roue/prédiction/coffre) dans le flux → référence
+  // l'event vivant du moteur par actId.
+  function pushActCard(actId: string) {
+    const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
+    const m: ChatMsg = {
+      id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+      type: "act" as any, data: { actId },
+    };
+    animatedMsgIdsRef.current.add(id);
+    setMessages((prev) => {
+      const next = [...prev, m];
+      if (next.length > 50) next.splice(0, next.length - 50);
+      return next;
+    });
+    forceScrollBottomMultiPass();
+  }
+
+  // Moteur d'events actionnables v2 (état partagé chat ↔ épinglé). En vrai
+  // chat : simulate=false (pas de faux participants ; le backend socket
+  // gérera la participation réelle partagée — phase 2).
+  const actEngine = useActionableEngine({
+    me: join?.me?.username ?? "Toi",
+    poolNames: [],
+    emitSystem: pushSystem,
+    emitRecap: pushRecap,
+    addChatCard: pushActCard,
+    simulate: false,
+  });
+  const isStreamerRole = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
+
+  // Bouton GG! → envoie un message COHÉRENT avec le contexte de la carte.
+  const GG_MESSAGES: Record<string, string[]> = {
+    boss: ["On l'a eu ! 🔥", "GG la team 💪", "Boss down 💀", "Quelle bataille ⚔️"],
+    sub: ["Merci pour le soutien 💜", "GG le sub ⭐", "Welcome to the club 🙌"],
+    follow: ["GG le follow 💙", "Bienvenue ! 👋", "+1 dans la famille 🎉"],
+    combo: ["Ça enchaîne 🔥", "Combo de fou !", "On lâche rien 💪"],
+    don: ["Merci pour le don 💚", "Généreux 🙏", "Respect 👏"],
+    level: ["GG le level up ⭐", "Bravo 🎉", "Ça monte 💪"],
+    raid: ["Bienvenue sur la chaîne ! 🔥", "Merci pour le raid 💜", "GG le raid 🙌", "Hello la commu 👋"],
+  };
+  function handleGg(who: string | null, kind: SpecialEventType) {
+    const pool = GG_MESSAGES[kind] || GG_MESSAGES.follow;
+    const base = pool[Math.floor(Math.random() * pool.length)];
+    const nameable = kind === "follow" || kind === "sub" || kind === "don" || kind === "level";
+    const txt = who && nameable && Math.random() > 0.5 ? `${base} @${who}` : base;
+    void sendBody(txt);
+  }
+
+  // Bouton Combo → spawn une carte combo dans le flux + met à jour le chip
+  // épinglé. Deux chaînes distinctes (follow / sub) via un id de chip par kind.
+  function handleCombo(nextMult: number, kind: "follow" | "sub") {
+    const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
+    const who = join?.me?.username ?? "Un viewer";
+    const m: ChatMsg = {
+      id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+      type: "combo", data: { mult: nextMult, who, kind },
+    };
+    animatedMsgIdsRef.current.add(id);
+    setMessages((prev) => {
+      const next = [...prev, m];
+      if (next.length > 50) next.splice(0, next.length - 50);
+      return next;
+    });
+    forceScrollBottomMultiPass();
+    const chipId = kind === "sub" ? "combo:sub" : "combo:follow";
     setActiveEvents((prev) => {
-      const others = prev.filter((e) => e.type !== "combo");
-      const comboChip: ActiveEvent = { id: "combo", type: "combo", data: { mult: nextMult } };
+      const others = prev.filter((e) => e.id !== chipId);
+      const comboChip: ActiveEvent = { id: chipId, type: "combo", data: { mult: nextMult, kind } };
       return [...others, comboChip].slice(-4);
     });
   }
 
   function removeActiveEvent(id: string) {
     setActiveEvents((prev) => prev.filter((e) => e.id !== id));
+  }
+
+  /* -------------------------
+     Messages spéciaux : actions des cartes (follow / sub / boss)
+     ------------------------- */
+  // Bouton "Suivre"/"Soutenir" (carte raid) → follow réel de la chaîne visée.
+  // asFollowEvent (chaîne raidée) → spawn en plus une carte "follow" contexte
+  // pour le viewer, comme un vrai follow apparaîtrait dans le chat.
+  function handleFollowChannel(chSlug: string, asFollowEvent?: boolean) {
+    if (!token) return onRequireLogin();
+    const s = String(chSlug || "").trim();
+    if (!s) return;
+    followStreamer(s, token)
+      .then(() =>
+        window.dispatchEvent(new CustomEvent("ui:toast", {
+          detail: { kind: "success", title: "💜 Suivi", message: `Tu suis désormais ${s}` },
+        }))
+      )
+      .catch(() =>
+        window.dispatchEvent(new CustomEvent("ui:toast", {
+          detail: { kind: "error", title: "Erreur", message: "Impossible de suivre cette chaîne." },
+        }))
+      );
+    if (asFollowEvent) {
+      const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
+      const who = join?.me?.username ?? "Un viewer";
+      const m: ChatMsg = {
+        id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
+        type: "follow", data: { who },
+      };
+      animatedMsgIdsRef.current.add(id);
+      setMessages((prev) => {
+        const next = [...prev, m];
+        if (next.length > 50) next.splice(0, next.length - 50);
+        return next;
+      });
+      forceScrollBottomMultiPass();
+    }
+  }
+
+  // Bouton "S'abonner aussi" (carte sub) → ouvre la SubModal de la page
+  // streamer (elle écoute cet event). Fallback : page streamer.
+  function handleSubscribe() {
+    if (!token) return onRequireLogin();
+    window.dispatchEvent(new CustomEvent("ui:open_sub", { detail: { slug } }));
+  }
+
+  // Bouton "Voir l'event" (carte boss) → page événements.
+  function handleBossPage() {
+    navigate("/event");
   }
 
   /* -------------------------
@@ -1935,10 +2050,10 @@ export function ChatPanel({
     });
 
     socket.on("chat:message", (msg: ChatMsg) => {
-      // Events actionnables (rain/roue/prédiction/coffre) → barre épinglée, pas dans le flux.
+      // Events actionnables (rain/roue/prédiction/coffre) → moteur v2 : carte
+      // dans le flux + chip épinglé synchronisés (actEngine.open est stable).
       if (msg && typeof msg.type === "string" && ACTIONABLE_TYPES.has(msg.type)) {
-        const id = `ev_${Math.abs(msg.id)}_${(specialSeqRef.current = (specialSeqRef.current + 1) % 100000)}`;
-        setActiveEvents((prev) => [...prev, { id, type: msg.type as ActiveEvent["type"], data: msg.data || {} }].slice(-4));
+        actEngine.open(msg.type as any, msg.data || {});
         return;
       }
       animatedMsgIdsRef.current.add(msg.id);
@@ -2495,6 +2610,7 @@ function openChatPopup() {
         onComboAdvance={handleCombo}
         recap={pushRecap}
       />
+      <ActionablePinnedBar engine={actEngine} isStreamer={isStreamerRole} />
 
       {/* zone scroll + jump */}
       <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
@@ -2539,6 +2655,39 @@ function openChatPopup() {
               );
             }
 
+            // Message système (participation actionnable : "X a récupéré…")
+            if ((m.type as any) === "sys") {
+              return (
+                <div
+                  key={m.id}
+                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
+                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
+                  style={{
+                    alignSelf: "stretch", fontSize: 11.5, fontWeight: 600,
+                    color: "rgba(180,170,220,0.82)", background: "rgba(124,92,252,0.07)",
+                    border: "1px solid rgba(124,92,252,0.14)", padding: "5px 12px", borderRadius: 9,
+                  }}
+                  dangerouslySetInnerHTML={{ __html: `<span style="opacity:.6">🔔</span> ${String(m.data?.html || "")}` }}
+                />
+              );
+            }
+
+            // Carte actionnable (rain / roue / prédiction / coffre) — pilotée
+            // par le moteur v2, synchronisée avec le chip épinglé.
+            if ((m.type as any) === "act") {
+              const ev = actEngine.events.find((x) => x.id === m.data?.actId) || null;
+              return (
+                <div
+                  key={m.id}
+                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
+                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
+                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? "0 auto" : undefined }}
+                >
+                  <ActionableChatCard event={ev} engine={actEngine} isStreamer={isStreamerRole} />
+                </div>
+              );
+            }
+
             // Carte "célébration" (raid / follow / combo / sub / don / boss / level)
             if (m.type && CELEBRATION_TYPES.has(m.type)) {
               return (
@@ -2554,6 +2703,9 @@ function openChatPopup() {
                     currentUsername={join?.me?.username ?? null}
                     onGg={handleGg}
                     onCombo={handleCombo}
+                    onFollowChannel={handleFollowChannel}
+                    onSubscribe={handleSubscribe}
+                    onBossPage={handleBossPage}
                   />
                 </div>
               );
@@ -2938,6 +3090,10 @@ function openChatPopup() {
           />
         </>
       ) : null}
+
+      {/* Roue partagée plein écran + modale liste participants (streamer) */}
+      <WheelOverlay overlay={actEngine.overlay} onClose={() => {}} />
+      <ParticipantListModal engine={actEngine} />
     </div>
   );
 }
