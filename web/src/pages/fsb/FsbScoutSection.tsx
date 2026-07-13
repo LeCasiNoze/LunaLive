@@ -191,8 +191,8 @@ export function FsbScoutSection() {
     }
   }, []);
 
-  // Envoie le DM Telegram via l'outil local (renvoie true si envoyé).
-  const sendTelegramDM = React.useCallback(async (r: TwitchScoutStreamer, opts?: { silent?: boolean }): Promise<{ ok: boolean; error?: string }> => {
+  // Envoie le DM Telegram via l'outil local. notDmable = canal/groupe (à basculer).
+  const sendTelegramDM = React.useCallback(async (r: TwitchScoutStreamer, opts?: { silent?: boolean }): Promise<{ ok: boolean; error?: string; notDmable?: boolean }> => {
     setBusyLogin(r.login);
     try {
       const res = await fetch(`${BRIDGE}/api/send`, {
@@ -206,6 +206,7 @@ export function FsbScoutSection() {
         setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "telegram" } : x)));
         return { ok: true };
       }
+      if (d.notDmable) return { ok: false, error: d.error, notDmable: true };
       if (!opts?.silent) window.alert(`Échec de l'envoi à ${r.name} : ${d.error || res.status}`);
       return { ok: false, error: d.error || String(res.status) };
     } catch {
@@ -239,6 +240,19 @@ export function FsbScoutSection() {
     markScoutContacted(r.login, "instagram", true).catch(() => {});
   }, []);
 
+  // Clic bouton Telegram : si le lien est un canal/groupe, bascule auto sur Mail puis Insta.
+  const handleDmClick = React.useCallback(async (r: TwitchScoutStreamer) => {
+    const res = await sendTelegramDM(r, { silent: true });
+    if (res.ok) return;
+    if (res.notDmable) {
+      if (r.email) return void sendMail(r);
+      if (r.instagram) return void sendInsta(r);
+      window.alert(`${r.name} : le Telegram est un canal/groupe et il n'a ni mail ni Insta — à écarter.`);
+      return;
+    }
+    window.alert(`Échec de l'envoi à ${r.name} : ${res.error}`);
+  }, [sendTelegramDM, sendMail, sendInsta]);
+
   // Envoi en série via le canal prioritaire (Telegram auto, sinon Mail/Insta ouverts).
   const [batch, setBatch] = React.useState<{ running: boolean; done: number; total: number }>({ running: false, done: 0, total: 0 });
   const stopBatch = React.useRef(false);
@@ -261,8 +275,16 @@ export function FsbScoutSection() {
       const t = targets[i];
       if (t.telegram) {
         const r = await sendTelegramDM(t, { silent: true });
-        if (!r.ok) { window.alert(`Séquence arrêtée sur ${t.name} : ${r.error}`); break; }
-        await new Promise((res) => setTimeout(res, 2500));
+        if (r.ok) {
+          await new Promise((res) => setTimeout(res, 2500));
+        } else if (r.notDmable) {
+          // Telegram = canal/groupe -> bascule sur mail puis insta, on continue
+          if (t.email) await sendMail(t);
+          else if (t.instagram) await sendInsta(t);
+          await new Promise((res) => setTimeout(res, 600));
+        } else {
+          window.alert(`Séquence arrêtée sur ${t.name} : ${r.error}`); break;
+        }
       } else if (t.email) {
         await sendMail(t);
         await new Promise((res) => setTimeout(res, 600));
@@ -449,7 +471,7 @@ export function FsbScoutSection() {
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {r.telegram ? (
-                          <button className="fsb-btn fsb-btn-primary" disabled={busyLogin === r.login} onClick={() => void sendTelegramDM(r)} title="Envoie le DM Telegram via l'outil local" style={{ padding: "6px 12px", fontSize: 12 }}>
+                          <button className="fsb-btn fsb-btn-primary" disabled={busyLogin === r.login} onClick={() => void handleDmClick(r)} title="Envoie le DM Telegram (bascule Mail/Insta si c'est un canal)" style={{ padding: "6px 12px", fontSize: 12 }}>
                             {busyLogin === r.login ? "envoi…" : "📨 DM Telegram"}
                           </button>
                         ) : null}

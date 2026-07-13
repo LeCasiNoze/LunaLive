@@ -46,6 +46,18 @@ function tgUsername(url) {
   return u.replace(/^@/, "");
 }
 
+// Classe un @pseudo Telegram via sa page publique t.me : "user" (DM-able),
+// "channel"/"group" (non DM-able), "unknown" (on laisse tenter).
+async function classifyTelegram(username) {
+  try {
+    const html = await fetch(`https://t.me/${username}`, { headers: { "user-agent": "Mozilla/5.0" } }).then((r) => r.text());
+    if (/\b[\d  ,.]+\s*subscribers\b/i.test(html) || /Preview channel/i.test(html)) return "channel";
+    if (/\b[\d  ,.]+\s*members\b/i.test(html)) return "group";
+    if (/Send Message/i.test(html)) return "user";
+    return "unknown";
+  } catch { return "unknown"; }
+}
+
 function firstName(name, login) {
   const n = (name || login || "").trim();
   // garde le premier mot "propre" (sinon le login)
@@ -148,7 +160,9 @@ const server = http.createServer(async (req, res) => {
       const items = await listCandidates();
       const it = items.find((x) => x.login === login);
       if (!it) return json(res, 404, { ok: false, error: "introuvable ou déjà contacté" });
-      if (!it.dmable) return json(res, 400, { ok: false, error: "lien Telegram = chaîne/invite, pas un compte DM-able" });
+      if (!it.dmable) return json(res, 200, { ok: false, notDmable: true, error: "lien Telegram = invite/lien privé, pas un compte" });
+      const cls = await classifyTelegram(it.username);
+      if (cls === "channel" || cls === "group") return json(res, 200, { ok: false, notDmable: true, error: `Telegram = ${cls === "channel" ? "canal" : "groupe"} (pas un compte perso)` });
       const text = (typeof message === "string" && message.trim()) ? message : it.message; // message édité côté UI
       const r = await sendViaTelegram(it.username, text);
       if (r.ok) { await markContacted(login, "telegram"); return json(res, 200, { ok: true }); }
