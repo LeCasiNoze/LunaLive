@@ -27,6 +27,9 @@ export type TwitchScoutStreamer = {
   firstSeen: string | null;
   lastSeen: string | null;
   seenCount: number;
+  contacted: boolean;
+  contactedAt: string | null;
+  contactedChannel: string | null;
 };
 
 export type TwitchScoutResponse = {
@@ -71,4 +74,12 @@ async function request<T>(path: string, init: RequestInit = {}) {
 
 export function getFsbTwitchScout() {
   return request<TwitchScoutResponse>(`/api/fsb/twitch-scout`);
+}
+
+export function markScoutContacted(login: string, channel: string, contacted: boolean) {
+  return request<{ ok: true }>(`/api/fsb/twitch-scout/contacted`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ login, channel, contacted }),
+  });
 }
