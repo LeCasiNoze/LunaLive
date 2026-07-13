@@ -22,6 +22,7 @@ import { canAccessFsbBoard } from "../lib/fsb_access";
 import { FsbAgencySection } from "./fsb/FsbAgencySection";
 import { OverlayDesignerSection } from "./fsb/OverlayDesignerSection";
 import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
+import { FsbScoutSection } from "./fsb/FsbScoutSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -40,7 +41,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   personnalise: "#f59e0b",
 };
 
-type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools" | "tiktok";
+type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools" | "tiktok" | "scout";
 type SortBy = "date" | "amount";
 type SortDirection = "asc" | "desc";
 type InstagramView = "week" | "month";
@@ -62,6 +63,7 @@ const SECTION_LABELS: Record<BoardSection, string> = {
   agency: "🏢 Agence",
   tools: "🛠 Outils",
   tiktok: "🎯 TikTok",
+  scout: "🎰 Scout",
 };
 
 const PAGE_CSS = `
@@ -357,7 +359,7 @@ const PAGE_CSS = `
 `;
 
 function normalizeSection(value: string | null): BoardSection {
-  if (value === "expenses" || value === "instagram" || value === "agency" || value === "tools" || value === "tiktok") return value;
+  if (value === "expenses" || value === "instagram" || value === "agency" || value === "tools" || value === "tiktok" || value === "scout") return value;
   return "home";
 }
 
@@ -1327,7 +1329,7 @@ export default function FsbBoardPage() {
       <div className="pageTitle">
         <h1>FSB Board</h1>
         <div className="fsb-nav">
-          {(["home", "expenses", "agency", "instagram", "tiktok", "tools"] as BoardSection[]).map((item) => (
+          {(["home", "expenses", "agency", "instagram", "tiktok", "scout", "tools"] as BoardSection[]).map((item) => (
             <button
               key={item}
               className={`fsb-navbtn ${section === item ? "fsb-navbtn-active" : ""}`}
@@ -1868,6 +1870,7 @@ export default function FsbBoardPage() {
         ) : null}
         {section === "agency" ? <FsbAgencySection /> : null}
         {section === "tiktok" ? <FsbTikTokOutreachSection /> : null}
+        {section === "scout" ? <FsbScoutSection /> : null}
         {section === "tools" ? (
           <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* Quick-access tool cards */}

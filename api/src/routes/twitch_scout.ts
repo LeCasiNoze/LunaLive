@@ -1,0 +1,71 @@
+// api/src/routes/twitch_scout.ts
+//
+// Lecture des résultats du scout casino Twitch (script local
+// scripts/twitch_casino_scout.mjs qui pousse dans twitch_scout_streamers).
+// Consommé par la section "Scout" du FSB Board.
+
+import { Router } from "express";
+import { pool } from "../db.js";
+import { requireAuth } from "../auth.js";
+import { a } from "../utils/async.js";
+import { requireFsbAccess } from "./fsb_guard.js";
+
+export const twitchScoutRouter = Router();
+
+twitchScoutRouter.use("/fsb/twitch-scout", requireAuth, requireFsbAccess);
+
+function mapRow(row: any) {
+  return {
+    login: row.login,
+    name: row.name,
+    country: row.country,
+    language: row.language,
+    partner: !!row.partner,
+    followers: Number(row.followers || 0),
+    live: !!row.live,
+    viewers: Number(row.viewers || 0),
+    viewersAvg: Number(row.viewers_avg || 0),
+    viewersPeak: Number(row.viewers_peak || 0),
+    viewersSamples: Number(row.viewers_samples || 0),
+    game: row.game,
+    title: row.title,
+    contactType: row.contact_type,
+    contactValue: row.contact_value,
+    telegram: row.telegram,
+    email: row.email,
+    discord: row.discord,
+    instagram: row.instagram,
+    hasContact: !!row.has_contact,
+    botStatus: row.bot_status,
+    verdictLabel: row.verdict_label,
+    verdictScore: row.verdict_score,
+    firstSeen: row.first_seen ? new Date(row.first_seen).toISOString() : null,
+    lastSeen: row.last_seen ? new Date(row.last_seen).toISOString() : null,
+    seenCount: Number(row.seen_count || 0),
+  };
+}
+
+twitchScoutRouter.get(
+  "/fsb/twitch-scout",
+  a(async (_req, res) => {
+    let rows: any[] = [];
+    let updatedAt: string | null = null;
+    try {
+      const r = await pool.query(
+        `SELECT * FROM twitch_scout_streamers
+         ORDER BY (live IS TRUE) DESC, COALESCE(viewers_avg, viewers, 0) DESC, followers DESC`
+      );
+      rows = r.rows;
+      const maxUpdated = await pool.query(`SELECT max(updated_at) AS u FROM twitch_scout_streamers`);
+      updatedAt = maxUpdated.rows[0]?.u ? new Date(maxUpdated.rows[0].u).toISOString() : null;
+    } catch (e: any) {
+      // 42P01 = table absente (scout jamais lancé) — on renvoie une liste vide
+      if (e?.code !== "42P01") throw e;
+    }
+    res.json({
+      ok: true,
+      updatedAt,
+      streamers: rows.map(mapRow),
+    });
+  })
+);
