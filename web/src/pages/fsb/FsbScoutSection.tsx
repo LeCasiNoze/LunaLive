@@ -64,6 +64,22 @@ function firstName(name: string | null, login: string): string {
   return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : login;
 }
 
+function igUsername(url: string | null): string | null {
+  if (!url) return null;
+  const m = url.match(/instagram\.com\/([^/?#\s]+)/i);
+  return m ? m[1].replace(/^@/, "") : null;
+}
+
+// message DM court pour Instagram (pas de pré-remplissage possible côté IG,
+// on le copie dans le presse-papier). Adapté prénom + langue.
+function buildInstaMessage(r: TwitchScoutStreamer): string {
+  const name = firstName(r.name, r.login);
+  if (r.country === "DE" || r.language === "DE") {
+    return `Hey ${name}! 👋 Ich komme von Celsius Casino — wir finden deinen Content stark und würden gern mit dir zusammenarbeiten. Falls du interessiert bist: bist du dabei, wie sehen deine Stream-Stats aus (Screenshot reicht), und welchen Deal möchtest du? Am schnellsten auf Telegram ${AURIX_TG} 🙌 ${CELSIUS_URL}`;
+  }
+  return `Hey ${name}! 👋 I'm from Celsius Casino — we love your content and would like to partner with you. If you're interested: are you keen, what do your stream stats look like (a screenshot's perfect), and what deal you'd want? Quickest to chat on Telegram ${AURIX_TG} 🙌 ${CELSIUS_URL}`;
+}
+
 // email d'approche Celsius, adapté prénom + langue. Renvoie {subject, body}.
 function buildEmail(r: TwitchScoutStreamer): { subject: string; body: string } {
   const name = firstName(r.name, r.login);
@@ -213,27 +229,51 @@ export function FsbScoutSection() {
     markScoutContacted(r.login, "email", true).catch(() => {});
   }, []);
 
-  // Envoi en série à tous les Telegram non contactés de la vue filtrée.
+  // Insta : copie le message, ouvre la DM Instagram (ig.me/m/pseudo), marque contacté.
+  const sendInsta = React.useCallback(async (r: TwitchScoutStreamer) => {
+    const user = igUsername(r.instagram);
+    if (!user) return;
+    try { await navigator.clipboard.writeText(buildInstaMessage(r)); } catch { /* best-effort */ }
+    window.open(`https://ig.me/m/${user}`, "_blank", "noopener");
+    setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "instagram" } : x)));
+    markScoutContacted(r.login, "instagram", true).catch(() => {});
+  }, []);
+
+  // Envoi en série via le canal prioritaire (Telegram auto, sinon Mail/Insta ouverts).
   const [batch, setBatch] = React.useState<{ running: boolean; done: number; total: number }>({ running: false, done: 0, total: 0 });
   const stopBatch = React.useRef(false);
+  // Contacte chacun par son canal prioritaire : Telegram auto (outil local),
+  // sinon Mail, sinon Insta (ces deux ouvrent un onglet — autoriser les pop-ups).
   const runBatch = React.useCallback(async (targets: TwitchScoutStreamer[]) => {
     if (!targets.length) return;
+    const tg = targets.filter((r) => r.telegram).length;
+    const openers = targets.length - tg;
     if (!window.confirm(
-      `Envoyer le DM à ${targets.length} streamers, l'un après l'autre ?\n\n` +
-      `• Garde un onglet Telegram Web ACTIF et ne touche ni souris ni clavier pendant toute la séquence (~${Math.ceil((targets.length * 6) / 60)} min).\n` +
-      `• Espace tes campagnes : trop de DM à froid d'affilée = risque de limite Telegram.`
+      `Contacter ${targets.length} streamers, l'un après l'autre ?\n\n` +
+      `• ${tg} via Telegram : envoi AUTO — garde un onglet Telegram Web actif et ne touche à rien pendant la séquence.\n` +
+      `• ${openers} via Mail/Insta : un onglet s'ouvre par personne (à envoyer à la main). Autorise les pop-ups pour ce site.\n` +
+      `• Espace tes campagnes pour éviter les limites.`
     )) return;
     stopBatch.current = false;
     setBatch({ running: true, done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       if (stopBatch.current) break;
-      const r = await sendTelegramDM(targets[i], { silent: true });
+      const t = targets[i];
+      if (t.telegram) {
+        const r = await sendTelegramDM(t, { silent: true });
+        if (!r.ok) { window.alert(`Séquence arrêtée sur ${t.name} : ${r.error}`); break; }
+        await new Promise((res) => setTimeout(res, 2500));
+      } else if (t.email) {
+        await sendMail(t);
+        await new Promise((res) => setTimeout(res, 600));
+      } else if (t.instagram) {
+        await sendInsta(t);
+        await new Promise((res) => setTimeout(res, 600));
+      }
       setBatch((b) => ({ ...b, done: i + 1 }));
-      if (!r.ok) { window.alert(`Séquence arrêtée sur ${targets[i].name} : ${r.error}`); break; }
-      await new Promise((res) => setTimeout(res, 2500)); // pacing entre envois
     }
     setBatch((b) => ({ ...b, running: false }));
-  }, [sendTelegramDM]);
+  }, [sendTelegramDM, sendMail, sendInsta]);
 
   const stats = React.useMemo(() => {
     const live = rows.filter((r) => r.live).length;
@@ -270,11 +310,10 @@ export function FsbScoutSection() {
             ) : (
               <button
                 className="fsb-btn fsb-btn-primary"
-                disabled={bridgeUp === false}
-                title={bridgeUp === false ? "Lance l'outil local d'abord" : "Envoie à tous les Telegram non contactés affichés"}
-                onClick={() => void runBatch(filtered.filter((r) => r.telegram && !r.contacted))}
+                title="Contacte chacun par son canal prioritaire (Telegram auto, sinon Mail/Insta en onglet)"
+                onClick={() => void runBatch(filtered.filter((r) => (r.telegram || r.email || r.instagram) && !r.contacted))}
               >
-                📨 Envoyer à tous ({filtered.filter((r) => r.telegram && !r.contacted).length})
+                📨 Contacter tout ({filtered.filter((r) => (r.telegram || r.email || r.instagram) && !r.contacted).length})
               </button>
             )}
             <button className="fsb-icon" title="Rafraîchir" onClick={() => void reload()}>↻</button>
@@ -417,6 +456,11 @@ export function FsbScoutSection() {
                         {r.email ? (
                           <button className="fsb-btn" onClick={() => void sendMail(r)} title="Ouvre la compose Gmail pré-remplie + copie le message" style={{ padding: "6px 12px", fontSize: 12, background: "rgba(240,192,122,.12)", borderColor: "rgba(240,192,122,.32)", color: "#f0c07a" }}>
                             ✉️ Mail
+                          </button>
+                        ) : null}
+                        {r.instagram && !r.telegram && !r.email ? (
+                          <button className="fsb-btn" onClick={() => void sendInsta(r)} title="Ouvre la DM Instagram + copie le message" style={{ padding: "6px 12px", fontSize: 12, background: "rgba(242,138,199,.12)", borderColor: "rgba(242,138,199,.32)", color: "#f28ac7" }}>
+                            📷 Insta
                           </button>
                         ) : null}
                         <button className="fsb-btn" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} style={{ padding: "5px 10px", fontSize: 11 }}>
