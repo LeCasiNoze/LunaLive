@@ -24,3 +24,13 @@ lecasinoze_*.mp4
 # Browser profile pour bot Rumble (cookies, NE PAS commit)
 scripts/.rumble-bot-profile/
 landaurax/dist
+
+# secret local scout Twitch (ne jamais committer)
+scripts/.twitch_auth
+
+# scout casino Twitch — données générées (regénérées à chaque run)
+scripts/twitch_casino_db.json
+scripts/twitch_casino_scout_out.json
+scripts/twitch_casino_streamers.csv
+scripts/twitch_casino_board.html
+scripts/twitch_scout.log
