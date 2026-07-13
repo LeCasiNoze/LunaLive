@@ -26,7 +26,7 @@ const PORT = 8747;
 const CELSIUS = "https://celsiuscasino.com/";
 // Telegram Web (onglet navigateur). Si ta version est la "A", remplace /k/ par /a/.
 const WEB_TG_BASE = "https://web.telegram.org/k/#@";
-const OPEN_WAIT_MS = 5000; // temps de chargement du chat avant collage
+const OPEN_WAIT_MS = 3200; // temps d'ouverture du chat (même onglet) avant collage
 
 // ---- DB ------------------------------------------------------------------
 const { default: pg } = await import(pathToFileURL(path.join(ROOT, "api", "node_modules", "pg", "lib", "index.js")).href);
@@ -94,20 +94,28 @@ function sendViaTelegram(username, message) {
     const safeUser = username.replace(/[^A-Za-z0-9_]/g, "");
     // presse-papier depuis fichier (gère emoji + retours ligne), ouverture de la
     // conversation, focus Telegram, collage + Entrée.
-    // Telegram Web : ouvre le chat dans le navigateur par défaut, attend le
-    // chargement, colle (Ctrl+V) puis Entrée. Le message est aussi laissé dans
-    // le presse-papier -> si l'envoi auto rate, un simple Ctrl+V + Entrée manuel suffit.
+    // Telegram Web, MÊME onglet : on focus la fenêtre du navigateur dont
+    // l'onglet actif est Telegram Web (titre contient "Telegram"), on renavigue
+    // cet onglet vers le chat via la barre d'adresse (Ctrl+L), puis collage +
+    // Entrée. Aucun nouvel onglet. Le message reste dans le presse-papier
+    // comme filet de sécurité si l'envoi auto rate (Ctrl+V + Entrée manuel).
     const ps = `
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms
 $msg = Get-Content -Raw -Encoding UTF8 '${msgFile.replace(/'/g, "''")}'
 Set-Clipboard -Value $msg
-Start-Process "${WEB_TG_BASE}${safeUser}"
+$sh = New-Object -ComObject WScript.Shell
+$p = Get-Process | Where-Object { $_.MainWindowTitle -like '*Telegram*' } | Select-Object -First 1
+if (-not $p) { Write-Output 'NO_TG_WINDOW'; exit 0 }
+$sh.AppActivate($p.Id) | Out-Null
+Start-Sleep -Milliseconds 500
+$sh.SendKeys('^l')
+Start-Sleep -Milliseconds 350
+$sh.SendKeys('${WEB_TG_BASE}${safeUser}~')
 Start-Sleep -Milliseconds ${OPEN_WAIT_MS}
-[System.Windows.Forms.SendKeys]::SendWait("^v")
+$sh.SendKeys('^v')
 Start-Sleep -Milliseconds 900
-[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-Write-Output "SENT"
+$sh.SendKeys('~')
+Write-Output 'SENT'
 `.trim();
     const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], { windowsHide: true });
     let out = "", err = "";
@@ -115,6 +123,7 @@ Write-Output "SENT"
     child.stderr.on("data", (d) => (err += d));
     child.on("close", (code) => {
       try { fs.unlinkSync(msgFile); } catch {}
+      if (/NO_TG_WINDOW/.test(out)) return resolve({ ok: false, code, err: "Onglet Telegram Web introuvable — ouvre web.telegram.org dans un onglet ACTIF (idéalement sa propre fenêtre)." });
       resolve({ ok: code === 0 && /SENT/.test(out), code, err: err.trim().slice(0, 300) });
     });
   });

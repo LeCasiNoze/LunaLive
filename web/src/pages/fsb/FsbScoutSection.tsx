@@ -130,8 +130,8 @@ export function FsbScoutSection() {
     }
   }, []);
 
-  // Envoie le DM Telegram via l'outil local (qui pilote Telegram Desktop).
-  const sendTelegramDM = React.useCallback(async (r: TwitchScoutStreamer) => {
+  // Envoie le DM Telegram via l'outil local (renvoie true si envoyé).
+  const sendTelegramDM = React.useCallback(async (r: TwitchScoutStreamer, opts?: { silent?: boolean }): Promise<{ ok: boolean; error?: string }> => {
     setBusyLogin(r.login);
     try {
       const res = await fetch(`${BRIDGE}/api/send`, {
@@ -143,16 +143,40 @@ export function FsbScoutSection() {
       if (res.ok && d.ok) {
         setBridgeUp(true);
         setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "telegram" } : x)));
-      } else {
-        window.alert(`Échec de l'envoi à ${r.name} : ${d.error || res.status}`);
+        return { ok: true };
       }
+      if (!opts?.silent) window.alert(`Échec de l'envoi à ${r.name} : ${d.error || res.status}`);
+      return { ok: false, error: d.error || String(res.status) };
     } catch {
       setBridgeUp(false);
-      window.alert("Outil d'envoi local non détecté.\n\nSur ton PC, lance et garde ouvert :\n  node scripts/telegram_outreach.mjs\n\n(Telegram Desktop doit aussi être ouvert et connecté.)");
+      if (!opts?.silent) window.alert("Outil d'envoi local non détecté.\n\nSur ton PC, lance et garde ouvert :\n  node scripts/telegram_outreach.mjs\n\n(+ un onglet Telegram Web actif.)");
+      return { ok: false, error: "outil local non détecté" };
     } finally {
       setBusyLogin(null);
     }
   }, []);
+
+  // Envoi en série à tous les Telegram non contactés de la vue filtrée.
+  const [batch, setBatch] = React.useState<{ running: boolean; done: number; total: number }>({ running: false, done: 0, total: 0 });
+  const stopBatch = React.useRef(false);
+  const runBatch = React.useCallback(async (targets: TwitchScoutStreamer[]) => {
+    if (!targets.length) return;
+    if (!window.confirm(
+      `Envoyer le DM à ${targets.length} streamers, l'un après l'autre ?\n\n` +
+      `• Garde un onglet Telegram Web ACTIF et ne touche ni souris ni clavier pendant toute la séquence (~${Math.ceil((targets.length * 6) / 60)} min).\n` +
+      `• Espace tes campagnes : trop de DM à froid d'affilée = risque de limite Telegram.`
+    )) return;
+    stopBatch.current = false;
+    setBatch({ running: true, done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      if (stopBatch.current) break;
+      const r = await sendTelegramDM(targets[i], { silent: true });
+      setBatch((b) => ({ ...b, done: i + 1 }));
+      if (!r.ok) { window.alert(`Séquence arrêtée sur ${targets[i].name} : ${r.error}`); break; }
+      await new Promise((res) => setTimeout(res, 2500)); // pacing entre envois
+    }
+    setBatch((b) => ({ ...b, running: false }));
+  }, [sendTelegramDM]);
 
   const stats = React.useMemo(() => {
     const live = rows.filter((r) => r.live).length;
@@ -182,6 +206,20 @@ export function FsbScoutSection() {
             </div>
           </div>
           <div className="fsb-actions">
+            {batch.running ? (
+              <button className="fsb-btn" onClick={() => { stopBatch.current = true; }}>
+                ⏹ Stop ({batch.done}/{batch.total})
+              </button>
+            ) : (
+              <button
+                className="fsb-btn fsb-btn-primary"
+                disabled={bridgeUp === false}
+                title={bridgeUp === false ? "Lance l'outil local d'abord" : "Envoie à tous les Telegram non contactés affichés"}
+                onClick={() => void runBatch(filtered.filter((r) => r.telegram && !r.contacted))}
+              >
+                📨 Envoyer à tous ({filtered.filter((r) => r.telegram && !r.contacted).length})
+              </button>
+            )}
             <button className="fsb-icon" title="Rafraîchir" onClick={() => void reload()}>↻</button>
           </div>
         </div>
