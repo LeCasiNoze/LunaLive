@@ -52,6 +52,45 @@ function verdictColor(score: string | null): string {
   return "var(--muted)";
 }
 
+const CELSIUS_URL = "https://celsiuscasino.com/";
+
+function firstName(name: string | null, login: string): string {
+  const n = (name || login || "").trim();
+  const w = n.split(/[\s_|.-]+/).find((x) => /^[A-Za-zÀ-ÿ]{2,}$/.test(x));
+  return w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : login;
+}
+
+// email d'approche Celsius, adapté prénom + langue. Renvoie {subject, body}.
+function buildEmail(r: TwitchScoutStreamer): { subject: string; body: string } {
+  const name = firstName(r.name, r.login);
+  if (r.country === "DE" || r.language === "DE") {
+    return {
+      subject: "Partnerschaft mit Celsius Casino?",
+      body:
+        `Hey ${name},\n\n` +
+        `ich melde mich von Celsius Casino — wir arbeiten mit Casino-Streamern und ich finde deinen Content richtig stark. Wir würden gern eine Partnerschaft mit dir aufbauen.\n\n` +
+        `Falls du interessiert bist, sag mir gern kurz:\n` +
+        `- ob du Lust hast,\n` +
+        `- wie deine Stream-Stats aussehen (ein Screenshot reicht),\n` +
+        `- und welchen Deal du dir vorstellst.\n\n` +
+        `Hier sind wir: ${CELSIUS_URL}\n\n` +
+        `Ich freue mich auf deine Antwort!`,
+    };
+  }
+  return {
+    subject: "Partnership with Celsius Casino?",
+    body:
+      `Hey ${name},\n\n` +
+      `I'm reaching out from Celsius Casino — we work with casino streamers and I really like your content. We'd love to explore a partnership with you.\n\n` +
+      `If you're interested, just let me know:\n` +
+      `- whether you're keen,\n` +
+      `- a quick look at your stream stats (a screenshot is perfect),\n` +
+      `- and the kind of deal you'd be looking for.\n\n` +
+      `You can check us out here: ${CELSIUS_URL}\n\n` +
+      `Looking forward to hearing from you!`,
+  };
+}
+
 export function FsbScoutSection() {
   const [rows, setRows] = React.useState<TwitchScoutStreamer[]>([]);
   const [updatedAt, setUpdatedAt] = React.useState<string | null>(null);
@@ -154,6 +193,18 @@ export function FsbScoutSection() {
     } finally {
       setBusyLogin(null);
     }
+  }, []);
+
+  // Mail : ouvre la compose Gmail pré-remplie (destinataire + objet + corps),
+  // copie le corps dans le presse-papier, marque contacté. Aucun outil local.
+  const sendMail = React.useCallback(async (r: TwitchScoutStreamer) => {
+    if (!r.email) return;
+    const { subject, body } = buildEmail(r);
+    try { await navigator.clipboard.writeText(body); } catch { /* clipboard best-effort */ }
+    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(url, "_blank", "noopener");
+    setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "email" } : x)));
+    markScoutContacted(r.login, "email", true).catch(() => {});
   }, []);
 
   // Envoi en série à tous les Telegram non contactés de la vue filtrée.
@@ -355,6 +406,11 @@ export function FsbScoutSection() {
                         {r.telegram ? (
                           <button className="fsb-btn fsb-btn-primary" disabled={busyLogin === r.login} onClick={() => void sendTelegramDM(r)} title="Envoie le DM Telegram via l'outil local" style={{ padding: "6px 12px", fontSize: 12 }}>
                             {busyLogin === r.login ? "envoi…" : "📨 DM Telegram"}
+                          </button>
+                        ) : null}
+                        {r.email ? (
+                          <button className="fsb-btn" onClick={() => void sendMail(r)} title="Ouvre la compose Gmail pré-remplie + copie le message" style={{ padding: "6px 12px", fontSize: 12, background: "rgba(240,192,122,.12)", borderColor: "rgba(240,192,122,.32)", color: "#f0c07a" }}>
+                            ✉️ Mail
                           </button>
                         ) : null}
                         <button className="fsb-btn" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} style={{ padding: "5px 10px", fontSize: 11 }}>
