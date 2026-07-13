@@ -218,17 +218,35 @@ export function FsbScoutSection() {
     }
   }, []);
 
-  // Mail : ouvre la compose Gmail pré-remplie (destinataire + objet + corps),
-  // copie le corps dans le presse-papier, marque contacté. Aucun outil local.
+  const markLocalContacted = React.useCallback((login: string, channel: string) => {
+    setRows((prev) => prev.map((x) => (x.login === login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: channel } : x)));
+  }, []);
+
+  // Mail : l'outil local ouvre la compose Gmail pré-remplie ET l'envoie
+  // (Ctrl+Entrée). Si l'outil est éteint, fallback : ouvre la compose pour
+  // envoi manuel + copie le corps dans le presse-papier.
   const sendMail = React.useCallback(async (r: TwitchScoutStreamer) => {
     if (!r.email) return;
     const { subject, body } = buildEmail(r);
-    try { await navigator.clipboard.writeText(body); } catch { /* clipboard best-effort */ }
-    const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(MAIL_FROM)}&view=cm&fs=1&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(url, "_blank", "noopener");
-    setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "email" } : x)));
-    markScoutContacted(r.login, "email", true).catch(() => {});
-  }, []);
+    try {
+      const res = await fetch(`${BRIDGE}/api/send-mail`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: r.login, to: r.email, subject, body }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) { setBridgeUp(true); markLocalContacted(r.login, "email"); return; }
+      window.alert(`Échec de l'envoi du mail à ${r.name} : ${d.error || res.status}`);
+    } catch {
+      // outil local absent -> fallback manuel
+      setBridgeUp(false);
+      try { await navigator.clipboard.writeText(body); } catch { /* best-effort */ }
+      const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(MAIL_FROM)}&view=cm&fs=1&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(url, "_blank", "noopener");
+      markLocalContacted(r.login, "email");
+      markScoutContacted(r.login, "email", true).catch(() => {});
+    }
+  }, [markLocalContacted]);
 
   // Insta : copie le message, ouvre la DM Instagram (ig.me/m/pseudo), marque contacté.
   const sendInsta = React.useCallback(async (r: TwitchScoutStreamer) => {

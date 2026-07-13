@@ -27,6 +27,8 @@ const CELSIUS = "https://celsiuscasino.com/";
 // Telegram Web (onglet navigateur). Si ta version est la "A", remplace /k/ par /a/.
 const WEB_TG_BASE = "https://web.telegram.org/k/#@";
 const OPEN_WAIT_MS = 3200; // temps d'ouverture du chat (même onglet) avant collage
+const MAIL_FROM = "aurixvip@gmail.com"; // compte Gmail expéditeur (connecté dans le navigateur)
+const MAIL_WAIT_MS = 4200; // temps de chargement de la compose Gmail avant Ctrl+Entrée
 
 // ---- DB ------------------------------------------------------------------
 const { default: pg } = await import(pathToFileURL(path.join(ROOT, "api", "node_modules", "pg", "lib", "index.js")).href);
@@ -141,6 +143,26 @@ Write-Output 'SENT'
   });
 }
 
+// ---- envoi mail (Gmail compose auto-envoyée via Ctrl+Entrée) -------------
+function sendGmail(to, subject, bodyText) {
+  return new Promise((resolve) => {
+    const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(MAIL_FROM)}&view=cm&fs=1&tf=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    const ps = `
+$ErrorActionPreference='Stop'
+$sh = New-Object -ComObject WScript.Shell
+Start-Process '${url.replace(/'/g, "''")}'
+Start-Sleep -Milliseconds ${MAIL_WAIT_MS}
+$sh.SendKeys('^{ENTER}')
+Write-Output 'SENT'
+`.trim();
+    const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps], { windowsHide: true });
+    let out = "", err = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.stderr.on("data", (d) => (err += d));
+    child.on("close", (code) => resolve({ ok: code === 0 && /SENT/.test(out), code, err: err.trim().slice(0, 300) }));
+  });
+}
+
 // ---- HTTP server ---------------------------------------------------------
 function json(res, code, obj) { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); }
 function body(req) { return new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { r(JSON.parse(b || "{}")); } catch { r({}); } }); }); }
@@ -166,6 +188,13 @@ const server = http.createServer(async (req, res) => {
       const text = (typeof message === "string" && message.trim()) ? message : it.message; // message édité côté UI
       const r = await sendViaTelegram(it.username, text);
       if (r.ok) { await markContacted(login, "telegram"); return json(res, 200, { ok: true }); }
+      return json(res, 500, { ok: false, error: r.err || `échec (code ${r.code})` });
+    }
+    if (req.url === "/api/send-mail" && req.method === "POST") {
+      const { login, to, subject, body: mailBody } = await body(req);
+      if (!to) return json(res, 400, { ok: false, error: "pas d'adresse mail" });
+      const r = await sendGmail(to, subject || "", mailBody || "");
+      if (r.ok) { if (login) await markContacted(login, "email"); return json(res, 200, { ok: true }); }
       return json(res, 500, { ok: false, error: r.err || `échec (code ${r.code})` });
     }
     if (req.url === "/api/skip" && req.method === "POST") {
