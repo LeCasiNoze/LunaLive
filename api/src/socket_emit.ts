@@ -1,8 +1,51 @@
 // api/src/socket_emit.ts
 import type { Server } from "socket.io";
+import { pool } from "./db.js";
 
 function slugRoom(slug: string) {
   return String(slug || "").trim().toLowerCase();
+}
+
+// Colonnes type/data ajoutées à chat_messages pour PERSISTER les cartes de
+// célébration (elles réapparaissent à l'ouverture du chat sur un autre
+// appareil). Idempotent, exécuté une fois.
+let __specialColsReady = false;
+async function ensureSpecialCols() {
+  if (__specialColsReady) return;
+  await pool.query(`ALTER TABLE chat_messages
+    ADD COLUMN IF NOT EXISTS type TEXT,
+    ADD COLUMN IF NOT EXISTS data JSONB;`);
+  __specialColsReady = true;
+}
+
+// Célébrations = persistées dans l'historique. Les actionnables (rain/roue/
+// prédiction/coffre) restent éphémères (live/interactifs, inutile en historique).
+const PERSISTED_TYPES = new Set<string>(["raid", "follow", "combo", "sub", "don", "boss", "level"]);
+
+async function persistAndBroadcastSpecial(io: Server, s: string, type: string, data: any, username: string) {
+  try {
+    await ensureSpecialCols();
+    const sr = await pool.query(`SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`, [s]);
+    const streamerId = Number(sr.rows?.[0]?.id || 0);
+    if (!streamerId) return;
+    const ins = await pool.query(
+      `INSERT INTO chat_messages (streamer_id, user_id, username, body, type, data)
+       VALUES ($1, 0, $2, '', $3, $4::jsonb)
+       RETURNING id, created_at`,
+      [streamerId, String(username || "LunaLive"), type, JSON.stringify(data || {})]
+    );
+    const row = ins.rows?.[0];
+    if (!row) return;
+    // broadcast avec le VRAI id → live et historique partagent le même id (pas
+    // de doublon quand un client reçoit le live puis recharge).
+    const msg = {
+      id: Number(row.id), userId: 0, username: String(username || "LunaLive"),
+      body: "", createdAt: new Date(row.created_at).toISOString(), type, data: data || {},
+    };
+    io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);
+  } catch (e) {
+    console.error("[emitSpecialCard persist] error", e);
+  }
 }
 
 export function emitChatAll(io: Server, slug: string, event: string, payload: any) {
@@ -67,13 +110,22 @@ export function emitSpecialCard(
   if (!io) return false;
   const s = slugRoom(slug);
   if (!s) return false;
+  const d = data && typeof data === "object" ? data : {};
+
+  // Célébrations : persistées (historique) + broadcast avec le vrai id.
+  if (PERSISTED_TYPES.has(type)) {
+    void persistAndBroadcastSpecial(io, s, type, d, String(username || "LunaLive"));
+    return true;
+  }
+
+  // Actionnables/live : éphémère, id synthétique négatif (jamais en collision
+  // avec les BIGSERIAL positifs).
   __specialSeq = (__specialSeq + 1) % 100000;
-  // id synthétique négatif : jamais en collision avec les BIGSERIAL positifs.
   const id = -(Date.now() * 100000 + __specialSeq);
   const msg = {
     id, userId: 0, username: String(username || "LunaLive"),
     body: "", createdAt: new Date().toISOString(),
-    type, data: data && typeof data === "object" ? data : {},
+    type, data: d,
   };
   try {
     io.to(`chat:${s}:public`).to(`chat:${s}:popup`).emit("chat:message", msg);

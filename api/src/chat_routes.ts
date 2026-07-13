@@ -46,7 +46,7 @@ export function registerChatRoutes(app: Express) {
       // (ce qui causait des doublons : même msg avec ID différent).
       const r = await pool.query(
         `SELECT id::bigint AS id, user_id AS "userId", username, body,
-                created_at AS "createdAt",
+                created_at AS "createdAt", type, data,
                 CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
          FROM chat_messages
          WHERE streamer_id=$1 AND deleted_at IS NULL
@@ -96,6 +96,9 @@ export function registerChatRoutes(app: Express) {
           cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
           role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
           rumble: m.source === "rumble",
+          // Cartes de célébration persistées (follow/sub/boss/raid/level/…) :
+          // réaffichées telles quelles à l'ouverture du chat sur un autre device.
+          ...(m.type ? { type: String(m.type), data: m.data ?? {} } : {}),
         };
       });
 
