@@ -42,6 +42,9 @@ function mapRow(row: any) {
     firstSeen: row.first_seen ? new Date(row.first_seen).toISOString() : null,
     lastSeen: row.last_seen ? new Date(row.last_seen).toISOString() : null,
     seenCount: Number(row.seen_count || 0),
+    contacted: !!row.contacted,
+    contactedAt: row.contacted_at ? new Date(row.contacted_at).toISOString() : null,
+    contactedChannel: row.contacted_channel || null,
   };
 }
 
@@ -67,5 +70,24 @@ twitchScoutRouter.get(
       updatedAt,
       streamers: rows.map(mapRow),
     });
+  })
+);
+
+// Marque un streamer comme contacté (ou annule). Le statut n'est jamais
+// réécrit par le scout horaire.
+twitchScoutRouter.post(
+  "/fsb/twitch-scout/contacted",
+  a(async (req, res) => {
+    const login = String((req as any).body?.login || "").trim().toLowerCase();
+    const channel = String((req as any).body?.channel || "telegram").trim() || "telegram";
+    const contacted = (req as any).body?.contacted !== false;
+    if (!login) return res.status(400).json({ ok: false, error: "login_required" });
+    await pool.query(
+      `UPDATE twitch_scout_streamers
+       SET contacted = $2, contacted_at = CASE WHEN $2 THEN now() ELSE NULL END, contacted_channel = CASE WHEN $2 THEN $3 ELSE NULL END
+       WHERE login = $1`,
+      [login, contacted, channel]
+    );
+    res.json({ ok: true });
   })
 );

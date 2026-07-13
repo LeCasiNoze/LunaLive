@@ -361,8 +361,14 @@ async function pushToPostgres(rows) {
       contact_type text, contact_value text, telegram text, email text, discord text, instagram text,
       has_contact boolean, bot_status text, verdict_label text, verdict_score text,
       first_seen timestamptz, last_seen timestamptz, seen_count integer,
-      updated_at timestamptz DEFAULT now()
+      updated_at timestamptz DEFAULT now(),
+      contacted boolean DEFAULT false, contacted_at timestamptz, contacted_channel text
     )`);
+    // colonnes outreach : ajoutées après coup si la table existait déjà. JAMAIS
+    // écrasées par l'upsert du scout (le statut contacté vient de l'outil DM).
+    await client.query(`ALTER TABLE twitch_scout_streamers ADD COLUMN IF NOT EXISTS contacted boolean DEFAULT false`);
+    await client.query(`ALTER TABLE twitch_scout_streamers ADD COLUMN IF NOT EXISTS contacted_at timestamptz`);
+    await client.query(`ALTER TABLE twitch_scout_streamers ADD COLUMN IF NOT EXISTS contacted_channel text`);
     for (const r of rows) {
       const c = r.contacts || {};
       await client.query(

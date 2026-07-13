@@ -1,10 +1,12 @@
 import * as React from "react";
 import {
   getFsbTwitchScout,
+  markScoutContacted,
   type TwitchScoutStreamer,
 } from "../../lib/api_fsb_twitch_scout";
 
 type CountryFilter = "all" | "UK" | "DE" | "EN?";
+type ContactFilter = "all" | "telegram" | "email" | "discord" | "instagram";
 type SortKey = "followers" | "viewersAvg" | "contact";
 
 const CONTACT_RANK: Record<string, number> = {
@@ -57,11 +59,14 @@ export function FsbScoutSection() {
   const [error, setError] = React.useState<string | null>(null);
 
   const [country, setCountry] = React.useState<CountryFilter>("all");
+  const [contactType, setContactType] = React.useState<ContactFilter>("all");
   const [onlyReal, setOnlyReal] = React.useState(true);
   const [onlyContact, setOnlyContact] = React.useState(true);
   const [onlyLive, setOnlyLive] = React.useState(false);
+  const [hideContacted, setHideContacted] = React.useState(true);
   const [sortKey, setSortKey] = React.useState<SortKey>("viewersAvg");
   const [search, setSearch] = React.useState("");
+  const [busyLogin, setBusyLogin] = React.useState<string | null>(null);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -85,9 +90,11 @@ export function FsbScoutSection() {
     const q = search.trim().toLowerCase();
     const list = rows.filter((r) => {
       if (country !== "all" && r.country !== country) return false;
+      if (contactType !== "all" && !r[contactType]) return false;
       if (onlyReal && r.botStatus === "bot") return false;
       if (onlyContact && !r.hasContact) return false;
       if (onlyLive && !r.live) return false;
+      if (hideContacted && r.contacted) return false;
       if (q && !(`${r.login} ${r.name} ${r.title || ""}`.toLowerCase().includes(q))) return false;
       return true;
     });
@@ -101,13 +108,28 @@ export function FsbScoutSection() {
       return b.followers - a.followers;
     });
     return list;
-  }, [rows, country, onlyReal, onlyContact, onlyLive, sortKey, search]);
+  }, [rows, country, contactType, onlyReal, onlyContact, onlyLive, hideContacted, sortKey, search]);
+
+  const toggleContacted = React.useCallback(async (r: TwitchScoutStreamer) => {
+    const next = !r.contacted;
+    setBusyLogin(r.login);
+    setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: next, contactedAt: next ? new Date().toISOString() : null } : x)));
+    try {
+      await markScoutContacted(r.login, r.contactType || "telegram", next);
+    } catch {
+      // rollback en cas d'échec
+      setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: !next } : x)));
+    } finally {
+      setBusyLogin(null);
+    }
+  }, []);
 
   const stats = React.useMemo(() => {
     const live = rows.filter((r) => r.live).length;
     const withContact = rows.filter((r) => r.hasContact).length;
     const bots = rows.filter((r) => r.botStatus === "bot").length;
-    return { total: rows.length, live, withContact, bots };
+    const contacted = rows.filter((r) => r.contacted).length;
+    return { total: rows.length, live, withContact, bots, contacted };
   }, [rows]);
 
   return (
@@ -133,6 +155,7 @@ export function FsbScoutSection() {
           <div className="fsb-mini-stat"><small>Live maintenant</small><strong style={{ color: "#fc8181" }}>{stats.live}</strong></div>
           <div className="fsb-mini-stat"><small>Avec contact</small><strong style={{ color: "#34d399" }}>{stats.withContact}</strong></div>
           <div className="fsb-mini-stat"><small>Viewers achetés</small><strong style={{ color: "#fbbf24" }}>{stats.bots}</strong></div>
+          <div className="fsb-mini-stat"><small>Contactés</small><strong style={{ color: "#a5b4fc" }}>{stats.contacted}</strong></div>
         </div>
       </section>
 
@@ -153,9 +176,15 @@ export function FsbScoutSection() {
               ))}
             </div>
             <div className="fsb-chips">
+              {([["all", "Tout contact"], ["telegram", "Telegram"], ["email", "Mail"], ["discord", "Discord"], ["instagram", "Insta"]] as Array<[ContactFilter, string]>).map(([v, l]) => (
+                <button key={v} type="button" className={`fsb-chip ${contactType === v ? "fsb-chip-active" : ""}`} onClick={() => setContactType(v)}>{l}</button>
+              ))}
+            </div>
+            <div className="fsb-chips">
               <button type="button" className={`fsb-chip ${onlyReal ? "fsb-chip-active" : ""}`} onClick={() => setOnlyReal((v) => !v)}>Sans viewers achetés</button>
               <button type="button" className={`fsb-chip ${onlyContact ? "fsb-chip-active" : ""}`} onClick={() => setOnlyContact((v) => !v)}>A un contact</button>
               <button type="button" className={`fsb-chip ${onlyLive ? "fsb-chip-active" : ""}`} onClick={() => setOnlyLive((v) => !v)}>Live</button>
+              <button type="button" className={`fsb-chip ${hideContacted ? "fsb-chip-active" : ""}`} onClick={() => setHideContacted((v) => !v)}>Masquer contactés</button>
             </div>
           </div>
           <div className="fsb-actions">
@@ -196,6 +225,7 @@ export function FsbScoutSection() {
                 <th style={{ width: 170 }}>Fiabilité</th>
                 <th style={{ width: 220 }}>Contact</th>
                 <th style={{ width: 130 }}>Vu</th>
+                <th style={{ width: 120 }}>Statut</th>
               </tr>
             </thead>
             <tbody>
@@ -242,6 +272,17 @@ export function FsbScoutSection() {
                     </div>
                   </td>
                   <td className="fsb-sub" style={{ whiteSpace: "nowrap" }}>{relDate(r.lastSeen)}<div className="fsb-sub">×{r.seenCount || 1}</div></td>
+                  <td>
+                    {r.contacted ? (
+                      <button className="fsb-tag fsb-tag-done" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} title="Cliquer pour annuler" style={{ cursor: "pointer" }}>
+                        ✓ Contacté
+                      </button>
+                    ) : (
+                      <button className="fsb-btn" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} style={{ padding: "6px 12px", fontSize: 12 }}>
+                        Marquer contacté
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
