@@ -67,6 +67,12 @@ export function FsbScoutSection() {
   const [sortKey, setSortKey] = React.useState<SortKey>("viewersAvg");
   const [search, setSearch] = React.useState("");
   const [busyLogin, setBusyLogin] = React.useState<string | null>(null);
+  // Outil d'envoi local (scripts/telegram_outreach.mjs) qui pilote Telegram Desktop.
+  const BRIDGE = "http://localhost:8747";
+  const [bridgeUp, setBridgeUp] = React.useState<boolean | null>(null);
+  React.useEffect(() => {
+    fetch(`${BRIDGE}/api/ping`).then((r) => setBridgeUp(r.ok)).catch(() => setBridgeUp(false));
+  }, []);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -124,6 +130,30 @@ export function FsbScoutSection() {
     }
   }, []);
 
+  // Envoie le DM Telegram via l'outil local (qui pilote Telegram Desktop).
+  const sendTelegramDM = React.useCallback(async (r: TwitchScoutStreamer) => {
+    setBusyLogin(r.login);
+    try {
+      const res = await fetch(`${BRIDGE}/api/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: r.login }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.ok) {
+        setBridgeUp(true);
+        setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "telegram" } : x)));
+      } else {
+        window.alert(`Échec de l'envoi à ${r.name} : ${d.error || res.status}`);
+      }
+    } catch {
+      setBridgeUp(false);
+      window.alert("Outil d'envoi local non détecté.\n\nSur ton PC, lance et garde ouvert :\n  node scripts/telegram_outreach.mjs\n\n(Telegram Desktop doit aussi être ouvert et connecté.)");
+    } finally {
+      setBusyLogin(null);
+    }
+  }, []);
+
   const stats = React.useMemo(() => {
     const live = rows.filter((r) => r.live).length;
     const withContact = rows.filter((r) => r.hasContact).length;
@@ -135,6 +165,11 @@ export function FsbScoutSection() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       {error ? <div className="fsb-alert">{error}</div> : null}
+      {bridgeUp === false ? (
+        <div className="fsb-alert" style={{ background: "rgba(245,158,11,.1)", borderColor: "rgba(245,158,11,.28)", color: "#fbbf24" }}>
+          Outil d'envoi Telegram non détecté. Pour activer les boutons « 📨 DM », lance sur ton PC et garde ouvert : <code>node scripts/telegram_outreach.mjs</code> (+ Telegram Desktop connecté), puis recharge.
+        </div>
+      ) : null}
 
       {/* En-tête + stats */}
       <section className="fsb-card">
@@ -275,12 +310,19 @@ export function FsbScoutSection() {
                   <td>
                     {r.contacted ? (
                       <button className="fsb-tag fsb-tag-done" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} title="Cliquer pour annuler" style={{ cursor: "pointer" }}>
-                        ✓ Contacté
+                        ✓ {r.contactedChannel === "skipped" ? "Ignoré" : "Contacté"}
                       </button>
                     ) : (
-                      <button className="fsb-btn" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} style={{ padding: "6px 12px", fontSize: 12 }}>
-                        Marquer contacté
-                      </button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {r.telegram ? (
+                          <button className="fsb-btn fsb-btn-primary" disabled={busyLogin === r.login} onClick={() => void sendTelegramDM(r)} title="Envoie le DM Telegram via l'outil local" style={{ padding: "6px 12px", fontSize: 12 }}>
+                            {busyLogin === r.login ? "envoi…" : "📨 DM Telegram"}
+                          </button>
+                        ) : null}
+                        <button className="fsb-btn" disabled={busyLogin === r.login} onClick={() => void toggleContacted(r)} style={{ padding: "5px 10px", fontSize: 11 }}>
+                          Marquer contacté
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

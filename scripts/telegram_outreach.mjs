@@ -121,8 +121,14 @@ function json(res, code, obj) { res.writeHead(code, { "Content-Type": "applicati
 function body(req) { return new Promise((r) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { try { r(JSON.parse(b || "{}")); } catch { r({}); } }); }); }
 
 const server = http.createServer(async (req, res) => {
+  // CORS : autorise le board (lunalive.win / localhost) à déclencher l'envoi
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
   try {
     if (req.url === "/" ) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(PAGE); }
+    if (req.url === "/api/ping") return json(res, 200, { ok: true, service: "telegram_outreach" });
     if (req.url === "/api/list") return json(res, 200, { ok: true, items: await listCandidates() });
     if (req.url === "/api/send" && req.method === "POST") {
       const { login, message } = await body(req);
