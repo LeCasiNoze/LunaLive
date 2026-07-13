@@ -24,6 +24,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8747;
 const CELSIUS = "https://celsiuscasino.com/";
+// Telegram Web (onglet navigateur). Si ta version est la "A", remplace /k/ par /a/.
+const WEB_TG_BASE = "https://web.telegram.org/k/#@";
+const OPEN_WAIT_MS = 5000; // temps de chargement du chat avant collage
 
 // ---- DB ------------------------------------------------------------------
 const { default: pg } = await import(pathToFileURL(path.join(ROOT, "api", "node_modules", "pg", "lib", "index.js")).href);
@@ -91,17 +94,18 @@ function sendViaTelegram(username, message) {
     const safeUser = username.replace(/[^A-Za-z0-9_]/g, "");
     // presse-papier depuis fichier (gère emoji + retours ligne), ouverture de la
     // conversation, focus Telegram, collage + Entrée.
+    // Telegram Web : ouvre le chat dans le navigateur par défaut, attend le
+    // chargement, colle (Ctrl+V) puis Entrée. Le message est aussi laissé dans
+    // le presse-papier -> si l'envoi auto rate, un simple Ctrl+V + Entrée manuel suffit.
     const ps = `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 $msg = Get-Content -Raw -Encoding UTF8 '${msgFile.replace(/'/g, "''")}'
 Set-Clipboard -Value $msg
-Start-Process "tg://resolve?domain=${safeUser}"
-Start-Sleep -Milliseconds 2800
-$p = Get-Process Telegram -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if ($p) { try { (New-Object -ComObject WScript.Shell).AppActivate($p.Id) | Out-Null } catch {} ; Start-Sleep -Milliseconds 600 }
+Start-Process "${WEB_TG_BASE}${safeUser}"
+Start-Sleep -Milliseconds ${OPEN_WAIT_MS}
 [System.Windows.Forms.SendKeys]::SendWait("^v")
-Start-Sleep -Milliseconds 800
+Start-Sleep -Milliseconds 900
 [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 Write-Output "SENT"
 `.trim();
@@ -171,7 +175,7 @@ button:disabled{opacity:.5;cursor:default}
 .nodm{background:#3a1820;border-color:#5b2734;color:#f28a9c}
 </style>
 <header><h1>📨 Outreach Telegram — Celsius</h1><div class=mut id=count>chargement…</div></header>
-<div class=warn>⚠ Pendant l'envoi (~4s), ne touche ni souris ni clavier — le collage part sur Telegram. Telegram Desktop doit être ouvert et connecté.</div>
+<div class=warn>⚠ Sois connecté à <b>Telegram Web</b> (web.telegram.org) dans ton navigateur. Pendant l'envoi (~5s), ne touche ni souris ni clavier — le collage part dans l'onglet Telegram qui vient de s'ouvrir. Si l'envoi auto rate, le message est dans le presse-papier : Ctrl+V + Entrée.</div>
 <div class=wrap id=list></div>
 <script>
 async function load(){
@@ -205,6 +209,7 @@ load();
 </script>`;
 
 server.listen(PORT, () => {
-  console.log(`\n📨 Console outreach Telegram : http://localhost:${PORT}`);
-  console.log(`   (Telegram Desktop doit être ouvert et connecté à ta session)\n`);
+  console.log(`\n📨 Pont outreach Telegram actif sur http://localhost:${PORT}`);
+  console.log(`   Prérequis : être connecté à Telegram Web (web.telegram.org) dans ton navigateur.`);
+  console.log(`   Tu peux piloter l'envoi depuis le board (bouton "📨 DM Telegram") ou via cette page.\n`);
 });
