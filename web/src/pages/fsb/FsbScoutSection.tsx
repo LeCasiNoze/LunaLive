@@ -53,6 +53,10 @@ function verdictColor(score: string | null): string {
 }
 
 const CELSIUS_URL = "https://celsiuscasino.com/";
+// compte Gmail expéditeur pour l'outreach (doit être connecté dans le navigateur)
+const MAIL_FROM = "aurixvip@gmail.com";
+// Telegram de contact à mettre dans les mails (réponse la plus rapide)
+const AURIX_TG = "@Aurix_VipManager";
 
 function firstName(name: string | null, login: string): string {
   const n = (name || login || "").trim();
@@ -73,6 +77,7 @@ function buildEmail(r: TwitchScoutStreamer): { subject: string; body: string } {
         `- ob du Lust hast,\n` +
         `- wie deine Stream-Stats aussehen (ein Screenshot reicht),\n` +
         `- und welchen Deal du dir vorstellst.\n\n` +
+        `Am schnellsten erreichst du mich direkt auf Telegram: ${AURIX_TG}\n\n` +
         `Hier sind wir: ${CELSIUS_URL}\n\n` +
         `Ich freue mich auf deine Antwort!`,
     };
@@ -86,6 +91,7 @@ function buildEmail(r: TwitchScoutStreamer): { subject: string; body: string } {
       `- whether you're keen,\n` +
       `- a quick look at your stream stats (a screenshot is perfect),\n` +
       `- and the kind of deal you'd be looking for.\n\n` +
+      `The quickest way to reach me is on Telegram: ${AURIX_TG}\n\n` +
       `You can check us out here: ${CELSIUS_URL}\n\n` +
       `Looking forward to hearing from you!`,
   };
@@ -201,7 +207,7 @@ export function FsbScoutSection() {
     if (!r.email) return;
     const { subject, body } = buildEmail(r);
     try { await navigator.clipboard.writeText(body); } catch { /* clipboard best-effort */ }
-    const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const url = `https://mail.google.com/mail/?authuser=${encodeURIComponent(MAIL_FROM)}&view=cm&fs=1&to=${encodeURIComponent(r.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, "_blank", "noopener");
     setRows((prev) => prev.map((x) => (x.login === r.login ? { ...x, contacted: true, contactedAt: new Date().toISOString(), contactedChannel: "email" } : x)));
     markScoutContacted(r.login, "email", true).catch(() => {});
