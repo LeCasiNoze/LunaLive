@@ -140,6 +140,7 @@ import { mig129_event_duo } from "./mig129_event_duo.js";
 import { mig130_event_wheel } from "./mig130_event_wheel.js";
 import { mig131_launch_lock } from "./mig131_launch_lock.js";
 import { mig132_chat_special_cols } from "./mig132_chat_special_cols.js";
+import { mig133_rumble_outreach } from "./mig133_rumble_outreach.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -299,6 +300,7 @@ export async function migrateAll(pool: Pool) {
   await mig130_event_wheel(pool);
   await mig131_launch_lock(pool);
   await mig132_chat_special_cols(pool);
+  await mig133_rumble_outreach(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
