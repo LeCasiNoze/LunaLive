@@ -385,6 +385,7 @@ async function getDliveDisplaynameForStreamer(streamerId: number): Promise<strin
 }
 
 async function safeInitDliveBridge(io: Server, streamerId: number, slug: string) {
+  if (String(process.env.ENABLE_DLIVE_CHAT_BRIDGE || "0") !== "1") return;
   try {
     const st = await readSettings(streamerId);
     if (!st?.dliveSyncPublic && !st?.dliveSyncPopup) return;

@@ -1,5 +1,6 @@
 // api/src/utils/mailer.ts
 import * as nodemailer from "nodemailer";
+import { renderLunaLiveEmail } from "./lunalive_email.js";
 
 type BrevoConf = {
   apiKey: string;
@@ -126,14 +127,16 @@ export async function sendMail(
 export async function sendVerifyCode(to: string, code: string, minutes = 15) {
   const subject = "Votre code de vérification LunaLive";
   const text = `Code : ${code} (valable ${minutes} minutes)`;
-  const html = `
-    <div style="font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial">
-      <h2>Vérification LunaLive</h2>
-      <p>Voici votre code (valable ${minutes} minutes) :</p>
-      <p style="font-size:28px;font-weight:800;letter-spacing:6px;margin:16px 0">${code}</p>
-      <p>Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.</p>
-    </div>
-  `;
+  const html = renderLunaLiveEmail({
+    preheader: `Ton code LunaLive est ${code}`,
+    eyebrow: "SÉCURITÉ DU COMPTE",
+    title: "Ton code de vérification",
+    paragraphs: [
+      `Voici le code demandé. Il reste valable pendant ${minutes} minutes.`,
+      "Si tu n’es pas à l’origine de cette demande, tu peux simplement ignorer cet email.",
+    ],
+    code,
+  });
 
   // ✅ Priorité Brevo API (évite les timeouts SMTP sur Render)
   if (readBrevo()) {

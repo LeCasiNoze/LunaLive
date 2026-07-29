@@ -99,6 +99,12 @@ export function updateRumbleOutreach(id: number, patch: RumbleOutreachPatch) {
   );
 }
 
+export function previewRumbleOutreachEmail(id: number) {
+  return request<{ ok: true; html: string }>(
+    `/api/fsb/rumble-outreach/${id}/email-preview`
+  );
+}
+
 export function logRumbleOutreachActivity(
   id: number,
   payload: { kind: "note" | "opened" | "copied" | "contacted" | "reply" | "follow_up"; channel?: RumbleOutreachChannel | null; detail?: string | null }

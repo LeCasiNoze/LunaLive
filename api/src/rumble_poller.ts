@@ -323,10 +323,17 @@ async function pollAll(io?: IOServer) {
 
   if (accounts.length === 0 && scraped.length === 0) return;
 
-  await Promise.all([
-    ...accounts.map((a) => pollOne(a.streamerId, a.slug, a.username, a.apiKey, io)),
-    ...scraped.map((s) => pollOneScraped(s.streamerId, s.slug, s.username, io)),
-  ]);
+  const jobs = [
+    ...accounts.map((account) => () => pollOne(account.streamerId, account.slug, account.username, account.apiKey, io)),
+    ...scraped.map((streamer) => () => pollOneScraped(streamer.streamerId, streamer.slug, streamer.username, io)),
+  ];
+  const rawConcurrency = Number(process.env.RUMBLE_POLL_CONCURRENCY || 6);
+  const concurrency = Number.isFinite(rawConcurrency)
+    ? Math.max(1, Math.min(12, Math.floor(rawConcurrency)))
+    : 6;
+  for (let index = 0; index < jobs.length; index += concurrency) {
+    await Promise.allSettled(jobs.slice(index, index + concurrency).map((job) => job()));
+  }
 
   // Rotation auto de la radio (id=32) : si le streamer actuellement assigné
   // n'est plus en live, on bascule sur un autre Rumble live (sticky-then-pick).
@@ -477,10 +484,24 @@ export function startRumblePoller(io?: IOServer) {
 
   console.log(`[rumble-poller] Starting polling for all assigned Rumble accounts every ${INTERVAL_MS}ms`);
 
-  pollAll(io).catch(e => console.error("[rumble-poller] first tick failed", e));
+  let tickRunning = false;
+  const tick = async () => {
+    if (tickRunning) {
+      console.warn("[rumble-poller] skipped overlapping tick");
+      return;
+    }
+    tickRunning = true;
+    try {
+      await pollAll(io);
+    } finally {
+      tickRunning = false;
+    }
+  };
+
+  tick().catch(e => console.error("[rumble-poller] first tick failed", e));
 
   const interval = setInterval(
-    () => pollAll(io).catch(e => console.error("[rumble-poller] tick failed", e)),
+    () => tick().catch(e => console.error("[rumble-poller] tick failed", e)),
     INTERVAL_MS
   );
 

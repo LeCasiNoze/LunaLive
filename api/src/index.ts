@@ -30,6 +30,7 @@ import { startAgencyFeeReminder } from "./agency_fee_reminder.js";
 import { startAgencyFeesBoard } from "./agency_fees_board.js";
 import { startInstagramAgendaBoard } from "./instagram_agenda_board.js";
 import { refreshAllAffiPageSnapshots } from "./routes/affi_pages.js";
+import { ensureRumbleOutreachSeeded } from "./routes/rumble_outreach.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -39,7 +40,7 @@ function startStatsCleanup() {
       `UPDATE viewer_sessions
        SET ended_at = last_heartbeat_at
        WHERE ended_at IS NULL
-         AND last_heartbeat_at < (NOW() - (45 * INTERVAL '1 second'))`
+         AND last_heartbeat_at < (NOW() - (75 * INTERVAL '1 second'))`
     );
 
     await pool.query(
@@ -108,6 +109,10 @@ async function bootstrapBackground() {
     console.log("[boot] migrate...");
     await migrate();
     console.log("[boot] migrate ok");
+
+    console.log("[boot] ensureRumbleOutreachSeeded...");
+    await ensureRumbleOutreachSeeded();
+    console.log("[boot] ensureRumbleOutreachSeeded ok");
 
     console.log("[boot] ensureBotClips...");
     await ensureBotClips();

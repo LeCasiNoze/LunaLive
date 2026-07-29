@@ -8,10 +8,10 @@ import { emitSpecialCard } from "./socket_emit.js";
 import { getLevelInfo } from "./economy/xp.js";
 
 const TZ = "Europe/Oslo";
-const HEARTBEAT_TTL_SECONDS = 45;
+const HEARTBEAT_TTL_SECONDS = 75;
 
 // ── Caches in-memory du chemin heartbeat ──────────────────────────────────
-// À 500 viewers, le heartbeat (15 s) faisait 6 requêtes DB par battement dont
+// À 500 viewers, le heartbeat historique (15 s) faisait 6 requêtes DB par battement dont
 // un UPSERT sur UNE ligne par streamer (stream_viewer_samples) → verrou de
 // ligne sérialisé entre tous les viewers d'un même stream. On cache
 // meta/session/compteur ici, et l'échantillon minute est écrit par le cron

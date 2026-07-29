@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   listRumbleOutreach,
   logRumbleOutreachActivity,
+  previewRumbleOutreachEmail,
   updateRumbleOutreach,
   type RumbleOutreachChannel,
   type RumbleOutreachContact,
@@ -81,8 +82,8 @@ function editorState(contact: RumbleOutreachContact): EditorState {
 
 function preferredChannel(contact: RumbleOutreachContact): RumbleOutreachChannel | null {
   if (contact.email) return "email";
-  if (contact.telegram) return "telegram";
   if (contact.instagram) return "instagram";
+  if (contact.telegram) return "telegram";
   if (contact.discord) return "discord";
   if (contact.twitter) return "twitter";
   return "rumble";
@@ -254,6 +255,24 @@ export function FsbRumbleOutreachSection() {
     void logRumbleOutreachActivity(contact.id, { kind: "opened", channel }).catch(() => {});
   }
 
+  async function previewEmail(contact: RumbleOutreachContact) {
+    const popup = window.open("", "_blank");
+    if (!popup) {
+      setError("Le navigateur a bloqué la fenêtre d’aperçu.");
+      return;
+    }
+    popup.document.write("<p style='font-family:system-ui;padding:24px'>Chargement de l’aperçu…</p>");
+    try {
+      const data = await previewRumbleOutreachEmail(contact.id);
+      popup.document.open();
+      popup.document.write(data.html);
+      popup.document.close();
+    } catch (err: any) {
+      popup.close();
+      setError(String(err?.message || "Aperçu impossible."));
+    }
+  }
+
   async function markContacted(contact: RumbleOutreachContact) {
     const channel = contact.preferredChannel || preferredChannel(contact) || "rumble";
     setBusyId(contact.id);
@@ -281,6 +300,9 @@ export function FsbRumbleOutreachSection() {
             <h2 className="fsb-sectiontitle" style={{ margin: 0 }}>Outreach streamers Rumble</h2>
             <p className="fsb-copy" style={{ margin: "7px 0 0" }}>
               Contacts publics vérifiés, brouillons éditables et suivi. Cette page ne déclenche aucun envoi automatique.
+            </p>
+            <p className="fsb-copy" style={{ margin: "7px 0 0" }}>
+              Priorité conseillée : email commercial explicite, Instagram, Telegram personnel, Discord, X, puis chat Rumble.
             </p>
           </div>
           <button className="fsb-btn" onClick={() => void reload()} disabled={loading}>↻ Actualiser</button>
@@ -376,6 +398,7 @@ export function FsbRumbleOutreachSection() {
                 <div className="fsb-actions" style={{ marginTop: "auto" }}>
                   <button className="fsb-btn fsb-btn-primary" onClick={() => openEditor(contact)}>Préparer</button>
                   <button className="fsb-btn" onClick={() => void copyDraft(contact)}>Copier</button>
+                  {contact.email ? <button className="fsb-btn" onClick={() => void previewEmail(contact)}>Aperçu email</button> : null}
                   <button className="fsb-btn" onClick={() => void openChannel(contact)}>Ouvrir {CHANNEL_LABELS[best]}</button>
                   <button className="fsb-btn" disabled={busyId === contact.id} onClick={() => void markContacted(contact)}>
                     {busyId === contact.id ? "Mise à jour…" : "Marquer contacté"}
