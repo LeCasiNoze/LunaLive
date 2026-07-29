@@ -40,7 +40,7 @@ function startStatsCleanup() {
       `UPDATE viewer_sessions
        SET ended_at = last_heartbeat_at
        WHERE ended_at IS NULL
-         AND last_heartbeat_at < (NOW() - (75 * INTERVAL '1 second'))`
+         AND last_heartbeat_at < (NOW() - (110 * INTERVAL '1 second'))`
     );
 
     await pool.query(

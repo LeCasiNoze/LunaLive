@@ -450,7 +450,7 @@ export default function StreamerPageMobile() {
       } catch {}
     };
     beat();
-    const t = window.setInterval(beat, 30_000);
+    const t = window.setInterval(beat, 45_000);
     const onVis = () => { if (document.visibilityState === "visible") beat(); };
     document.addEventListener("visibilitychange", onVis);
     return () => { stopped = true; window.clearInterval(t); document.removeEventListener("visibilitychange", onVis); };

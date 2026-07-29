@@ -481,7 +481,7 @@ function StreamerPageDesktop() {
       } catch {}
     };
     beat();
-    const t = window.setInterval(beat, 30_000);
+    const t = window.setInterval(beat, 45_000);
     let visTimer: number | null = null;
     const vis = () => {
       if (document.visibilityState !== "visible") return;

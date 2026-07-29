@@ -111,7 +111,7 @@ overlayApiRouter.get("/viewers", async (req, res) => {
   const slug = String(req.query?.slug || "").trim();
   if (!slug) return res.status(400).json({ ok: false, error: "bad_request" });
 
-  const HEARTBEAT_TTL = 45;
+  const HEARTBEAT_TTL = 110;
 
   const r = await pool.query(
     `SELECT

@@ -74,7 +74,7 @@ adminPlatformStatsRouter.get(
         SELECT COUNT(DISTINCT vs.viewer_key) AS count
         FROM viewer_sessions vs
         WHERE vs.ended_at IS NULL
-          AND vs.last_heartbeat_at >= NOW() - INTERVAL '45 seconds'
+          AND vs.last_heartbeat_at >= NOW() - INTERVAL '110 seconds'
       `),
 
       // ── Unique viewers ce mois ─────────────────────

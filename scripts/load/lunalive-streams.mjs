@@ -33,7 +33,7 @@ if (!databaseUrl) throw new Error("DATABASE_URL missing");
 
 const runId = `llstream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const slugPrefix = `__load_${runId.replace(/[^a-z0-9_]/gi, "")}_`;
-const heartbeatMs = 30_000;
+const heartbeatMs = 45_000;
 const pollMs = 30_000;
 const maxErrorRate = Math.max(0.001, Number(args.get("max-error-rate") || 0.01));
 const maxP95Ms = Math.max(100, Number(args.get("max-p95-ms") || 1_500));

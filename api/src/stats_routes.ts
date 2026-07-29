@@ -8,7 +8,7 @@ import { emitSpecialCard } from "./socket_emit.js";
 import { getLevelInfo } from "./economy/xp.js";
 
 const TZ = "Europe/Oslo";
-const HEARTBEAT_TTL_SECONDS = 75;
+const HEARTBEAT_TTL_SECONDS = 110;
 
 // ── Caches in-memory du chemin heartbeat ──────────────────────────────────
 // À 500 viewers, le heartbeat historique (15 s) faisait 6 requêtes DB par battement dont

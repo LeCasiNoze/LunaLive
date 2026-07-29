@@ -11,7 +11,7 @@ import normalizeAppearance from "../appearance.js";
 import { emitChatAll, emitChatAndStream, emitSpecialCard } from "../socket_emit.js";
 
 export const publicRouter = Router();
-const HEARTBEAT_TTL_SECONDS = 75;
+const HEARTBEAT_TTL_SECONDS = 110;
 
 // Cache in-memory des réponses publiques identiques pour tous les visiteurs.
 // La home repoll /lives toutes les 20 s par visiteur : sous charge, sans ce

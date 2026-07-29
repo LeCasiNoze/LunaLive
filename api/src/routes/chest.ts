@@ -8,7 +8,7 @@ import { weightBp } from "../economy.js";
 import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
 
 const MAX_OUT_WEIGHT_BP = 2000; // 0.20
-const HEARTBEAT_TTL_SECONDS = 45;
+const HEARTBEAT_TTL_SECONDS = 110;
 
 // Front: 2 min + min watch 5
 const DEFAULT_DURATION_SEC = 120;
