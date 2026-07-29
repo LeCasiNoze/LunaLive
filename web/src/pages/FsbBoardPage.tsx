@@ -361,7 +361,7 @@ const PAGE_CSS = `
 `;
 
 function normalizeSection(value: string | null): BoardSection {
-  if (value === "expenses" || value === "instagram" || value === "agency" || value === "tools" || value === "tiktok" || value === "scout") return value;
+  if (value === "expenses" || value === "instagram" || value === "agency" || value === "tools" || value === "tiktok" || value === "scout" || value === "outreach") return value;
   return "home";
 }
 
