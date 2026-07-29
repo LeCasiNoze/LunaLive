@@ -21,6 +21,7 @@ const slug = String(args.get("slug") || "test2");
 const stageSpec = String(args.get("stages") || "10:60");
 const runId = `llload_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const heartbeatMs = Math.max(5_000, Number(args.get("heartbeat-ms") || 30_000));
+const rampSeconds = Math.max(1, Number(args.get("ramp-seconds") || 10));
 const maxErrorRate = Math.max(0.001, Number(args.get("max-error-rate") || 0.01));
 const maxP95Ms = Math.max(100, Number(args.get("max-p95-ms") || 1_500));
 const databaseUrl = String(process.env.DATABASE_URL || "").trim();
@@ -297,7 +298,7 @@ function currentSummary(stage, baseline = null) {
 async function rampTo(target) {
   const missing = target - users.length;
   if (missing <= 0) return;
-  const delayMs = Math.max(15, Math.min(250, Math.floor(10_000 / missing)));
+  const delayMs = Math.max(15, Math.floor((rampSeconds * 1_000) / missing));
   for (let index = 0; index < missing; index += 1) {
     const viewer = createViewer(users.length + 1);
     users.push(viewer);
@@ -307,7 +308,7 @@ async function rampTo(target) {
 }
 
 async function main() {
-  console.log(JSON.stringify({ event: "start", runId, apiBase, slug, stages, heartbeatMs }));
+  console.log(JSON.stringify({ event: "start", runId, apiBase, slug, stages, heartbeatMs, rampSeconds }));
   await prepareFixture();
   try {
     for (const stage of stages) {

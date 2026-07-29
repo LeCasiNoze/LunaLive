@@ -4,6 +4,12 @@ import { pool } from "./db.js";
 import { chatStore } from "./chat_store.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 
+const HISTORY_TTL_MS = 2_000;
+const historyCache = new Map<string, { at: number; messages: any[] }>();
+const historyInflight = new Map<string, Promise<any[]>>();
+const streamerIdCache = new Map<string, { at: number; id: number }>();
+const streamerIdInflight = new Map<string, Promise<number>>();
+
 function clampAny(n: any, min: number, max: number) {
   const x = Number(n);
   if (!Number.isFinite(x)) return min;
@@ -11,17 +17,60 @@ function clampAny(n: any, min: number, max: number) {
 }
 
 async function resolveStreamerId(slug: string): Promise<number> {
-  const s = await pool.query(
-    `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
-    [slug]
-  );
-  return s.rows?.[0]?.id ? Number(s.rows[0].id) : 0;
+  const key = slug.toLowerCase();
+  const hit = streamerIdCache.get(key);
+  if (hit && Date.now() - hit.at < 5_000) return hit.id;
+  const running = streamerIdInflight.get(key);
+  if (running) return running;
+
+  const promise = pool.query(
+      `SELECT id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,
+      [slug]
+    )
+    .then((s) => {
+      const id = s.rows?.[0]?.id ? Number(s.rows[0].id) : 0;
+      streamerIdCache.set(key, { at: Date.now(), id });
+      return id;
+    })
+    .finally(() => streamerIdInflight.delete(key));
+
+  streamerIdInflight.set(key, promise);
+  return promise;
 }
 
 function getCosmeticsFromMapLike(mapLike: any, userId: number) {
   if (!mapLike) return null;
   if (mapLike instanceof Map) return mapLike.get(userId) ?? null;
   return mapLike[userId] ?? mapLike[String(userId)] ?? null;
+}
+
+async function getOrLoadHistory(
+  streamerId: number,
+  limit: number,
+  loader: () => Promise<any[]>
+) {
+  const key = `${streamerId}:${limit}`;
+  const hit = historyCache.get(key);
+  if (hit && Date.now() - hit.at < HISTORY_TTL_MS) return hit.messages;
+
+  const running = historyInflight.get(key);
+  if (running) return running;
+
+  const promise = loader()
+    .then((messages) => {
+      historyCache.set(key, { at: Date.now(), messages });
+      if (historyCache.size > 500) {
+        const cutoff = Date.now() - HISTORY_TTL_MS;
+        for (const [cacheKey, entry] of historyCache) {
+          if (entry.at < cutoff) historyCache.delete(cacheKey);
+        }
+      }
+      return messages;
+    })
+    .finally(() => historyInflight.delete(key));
+
+  historyInflight.set(key, promise);
+  return promise;
 }
 
 export function registerChatRoutes(app: Express) {
@@ -44,62 +93,64 @@ export function registerChatRoutes(app: Express) {
       // (mirror via rumble_chat_bridge avec external_source='rumble'). Une seule
       // source de vérité — pas besoin d'unionner avec rumble_chat_messages
       // (ce qui causait des doublons : même msg avec ID différent).
-      const r = await pool.query(
-        `SELECT id::bigint AS id, user_id AS "userId", username, body,
-                created_at AS "createdAt", type, data,
-                CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
-         FROM chat_messages
-         WHERE streamer_id=$1 AND deleted_at IS NULL
-         ORDER BY created_at DESC
-         LIMIT $2`,
-        [streamerId, limit]
-      );
-
-      // chronologique (ancien -> récent)
-      const rows = (r.rows || []).reverse();
-
-      // cosmetics bulk
-      const userIds = Array.from(
-        new Set(rows.map((m: any) => Number(m.userId)).filter((x: number) => x > 0))
-      );
-
-      const cosmeticsByUserId = userIds.length ? await getChatCosmeticsForUsers(userIds) : null;
-
-      // Rôle de chaque auteur pour l'icône de rôle (admin > streamer > mod > viewer)
-      let rolesByUserId: Map<number, string> | null = null;
-      if (userIds.length) {
-        const rr = await pool.query(
-          `SELECT u.id,
-                  CASE
-                    WHEN u.role = 'admin' THEN 'admin'
-                    WHEN s.user_id IS NOT NULL THEN 'streamer'
-                    WHEN sm.user_id IS NOT NULL THEN 'mod'
-                    ELSE 'viewer'
-                  END AS chat_role
-           FROM users u
-           LEFT JOIN streamers s ON s.user_id = u.id AND s.id = $1
-           LEFT JOIN streamer_mods sm ON sm.user_id = u.id AND sm.streamer_id = $1 AND sm.removed_at IS NULL
-           WHERE u.id = ANY($2::int[])`,
-          [streamerId, userIds]
+      const messages = await getOrLoadHistory(streamerId, limit, async () => {
+        const r = await pool.query(
+          `SELECT id::bigint AS id, user_id AS "userId", username, body,
+                  created_at AS "createdAt", type, data,
+                  CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
+           FROM chat_messages
+           WHERE streamer_id=$1 AND deleted_at IS NULL
+           ORDER BY created_at DESC
+           LIMIT $2`,
+          [streamerId, limit]
         );
-        rolesByUserId = new Map((rr.rows || []).map((x: any) => [Number(x.id), String(x.chat_role)]));
-      }
 
-      const messages = rows.map((m: any) => {
-        const uid = Number(m.userId);
-        return {
-          id: Number(m.id),
-          userId: uid,
-          username: String(m.username || ""),
-          body: String(m.body || ""),
-          createdAt: new Date(m.createdAt).toISOString(),
-          cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
-          role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
-          rumble: m.source === "rumble",
-          // Cartes de célébration persistées (follow/sub/boss/raid/level/…) :
-          // réaffichées telles quelles à l'ouverture du chat sur un autre device.
-          ...(m.type ? { type: String(m.type), data: m.data ?? {} } : {}),
-        };
+        // chronologique (ancien -> récent)
+        const rows = (r.rows || []).reverse();
+
+        // cosmetics bulk
+        const userIds = Array.from(
+          new Set(rows.map((m: any) => Number(m.userId)).filter((x: number) => x > 0))
+        );
+
+        const cosmeticsByUserId = userIds.length ? await getChatCosmeticsForUsers(userIds) : null;
+
+        // Rôle de chaque auteur pour l'icône de rôle (admin > streamer > mod > viewer)
+        let rolesByUserId: Map<number, string> | null = null;
+        if (userIds.length) {
+          const rr = await pool.query(
+            `SELECT u.id,
+                    CASE
+                      WHEN u.role = 'admin' THEN 'admin'
+                      WHEN s.user_id IS NOT NULL THEN 'streamer'
+                      WHEN sm.user_id IS NOT NULL THEN 'mod'
+                      ELSE 'viewer'
+                    END AS chat_role
+             FROM users u
+             LEFT JOIN streamers s ON s.user_id = u.id AND s.id = $1
+             LEFT JOIN streamer_mods sm ON sm.user_id = u.id AND sm.streamer_id = $1 AND sm.removed_at IS NULL
+             WHERE u.id = ANY($2::int[])`,
+            [streamerId, userIds]
+          );
+          rolesByUserId = new Map((rr.rows || []).map((x: any) => [Number(x.id), String(x.chat_role)]));
+        }
+
+        return rows.map((m: any) => {
+          const uid = Number(m.userId);
+          return {
+            id: Number(m.id),
+            userId: uid,
+            username: String(m.username || ""),
+            body: String(m.body || ""),
+            createdAt: new Date(m.createdAt).toISOString(),
+            cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
+            role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
+            rumble: m.source === "rumble",
+            // Cartes de célébration persistées (follow/sub/boss/raid/level/…) :
+            // réaffichées telles quelles à l'ouverture du chat sur un autre device.
+            ...(m.type ? { type: String(m.type), data: m.data ?? {} } : {}),
+          };
+        });
       });
 
       return res.json({ ok: true, messages });
