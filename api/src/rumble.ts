@@ -47,9 +47,9 @@ function isRumbleMasterPlaylistUrl(url: string): boolean {
 }
 
 /**
- * Suit la redirection de live-hls-dvr côté serveur pour obtenir l'URL CDN réelle (1a-1791.com).
- * Le Worker Cloudflare est bloqué par Rumble's Cloudflare WAF avant la redirection.
- * Render (AWS IPs) n'est pas bloqué → peut suivre le redirect et stocker l'URL CDN publique.
+ * Valide le master live-hls-dvr côté serveur et extrait une sous-playlist CDN
+ * pour la sonde ENDLIST. Le navigateur reçoit le master CORS afin que HLS.js
+ * conserve toutes les qualités adaptatives.
  */
 /**
  * Check définitif "stream encore live ou terminé (DVR replay) ?" :
@@ -79,7 +79,14 @@ async function isChunklistEnded(chunklistUrl: string): Promise<boolean> {
   }
 }
 
-async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | null> {
+type ResolvedLivePlaylist = {
+  /** URL chargée par HLS.js. On conserve le master pour laisser l'ABR choisir. */
+  playbackUrl: string;
+  /** Sous-playlist utilisée uniquement pour détecter #EXT-X-ENDLIST. */
+  probeUrl: string | null;
+};
+
+async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<ResolvedLivePlaylist | null> {
   try {
     const r = await fetch(liveHlsDvrUrl, {
       method: "GET",
@@ -102,7 +109,7 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
 
     // Si on a été redirigé vers le CDN (pas rumble.com), c'est notre URL
     if (finalUrl && !isRumbleMasterPlaylistUrl(finalUrl)) {
-      return finalUrl;
+      return { playbackUrl: finalUrl, probeUrl: finalUrl };
     }
 
     // Sinon, parser le m3u8 pour trouver les URLs CDN dans les sous-playlists
@@ -144,7 +151,10 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<string | nul
     if (chosen) {
       const kind = bestNonDvr ? "non-DVR" : "DVR";
       console.log(`[rumble][redirect] CDN chunklist (${kind}, bw=${chosen.bw}): ${chosen.url}`);
-      return chosen.url;
+      // Le master Rumble est CORS et ne pèse que quelques centaines d'octets.
+      // Le transmettre au navigateur rend enfin disponibles 360p/720p/1080p
+      // et évite de forcer la variante source la plus lourde à chaque viewer.
+      return { playbackUrl: finalUrl, probeUrl: chosen.url };
     }
 
     return null;
@@ -226,6 +236,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
     const videoId: string | null = rawId ? (rawId.startsWith("v") ? rawId : `v${rawId}`) : null;
 
     let hlsUrl: string | null = null;
+    let liveProbeUrl: string | null = null;
     let videoUrl: string | null = null;
     let videoIdNumeric: string | null = null;
     let thumbnailUrl: string | null = null;
@@ -240,21 +251,23 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       thumbnailUrl = thumb;
       const rawHls = embedHls || buildRumbleHlsUrl(rawId);
 
-      // 2. Si live-hls-dvr : suivre la redirection côté serveur (Render) pour obtenir l'URL CDN
-      //    Le Worker CF est bloqué par Cloudflare WAF sur rumble.com, Render (AWS) ne l'est pas
+      // 2. Valider le master côté serveur et conserver son URL pour l'ABR.
+      //    La sous-playlist CDN sert uniquement de sonde ENDLIST.
       if (isRumbleMasterPlaylistUrl(rawHls)) {
-        const cdnHls = await resolveRedirectToCdn(rawHls);
-        hlsUrl = cdnHls || rawHls;
+        const resolvedHls = await resolveRedirectToCdn(rawHls);
+        hlsUrl = resolvedHls?.playbackUrl || rawHls;
+        liveProbeUrl = resolvedHls?.probeUrl || null;
       } else {
         hlsUrl = rawHls;
+        liveProbeUrl = rawHls;
       }
 
       // 3. Check définitif via la chunklist : si #EXT-X-ENDLIST → stream
       //    finalisé (DVR replay), considérer offline. Rumble met parfois 5-10
       //    minutes à passer `live: 1` → `live: 0` côté API, mais la chunklist
       //    réagit immédiatement.
-      if (hlsUrl && hlsUrl.includes("1a-1791.com")) {
-        const ended = await isChunklistEnded(hlsUrl);
+      if (liveProbeUrl) {
+        const ended = await isChunklistEnded(liveProbeUrl);
         if (ended) {
           console.log(`[rumble] ${username}: ENDLIST détecté → stream terminé (DVR)`);
           isLiveFinal = false;
@@ -504,14 +517,16 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     }
 
     let finalHls: string | null = hlsCandidate;
+    let liveProbeUrl: string | null = hlsCandidate;
     if (finalHls && isRumbleMasterPlaylistUrl(finalHls)) {
-      const cdnHls = await resolveRedirectToCdn(finalHls);
-      finalHls = cdnHls || finalHls;
+      const resolvedHls = await resolveRedirectToCdn(finalHls);
+      finalHls = resolvedHls?.playbackUrl || finalHls;
+      liveProbeUrl = resolvedHls?.probeUrl || null;
     }
 
     // Check définitif via la chunklist : ENDLIST → stream finalisé (DVR replay)
-    if (finalHls && finalHls.includes("1a-1791.com")) {
-      const ended = await isChunklistEnded(finalHls);
+    if (liveProbeUrl) {
+      const ended = await isChunklistEnded(liveProbeUrl);
       if (ended) {
         console.log(`[rumble][pseudo-only] ${username}: ${vSlug} ENDLIST → stream terminé (DVR)`);
         return offline;

@@ -10,8 +10,13 @@ const HLS_BASE = (_envHls && _envHls.length > 0 ? _envHls : HLS_WORKER_URL).repl
 function toProxiedHls(url: string): string {
   // CDN Rumble (1a-1791.com legacy + *.cdn.rumble.cloud actuel) répond avec
   // Access-Control-Allow-Origin: * → fetch direct depuis le browser, zero proxy.
-  // Évite OOM Render quand le Worker CF est bloqué par la WAF Rumble.
-  if (url.includes("1a-1791.com") || url.includes("cdn.rumble.cloud")) return url;
+  // Les masters live-hls Rumble sont également CORS : les charger directement
+  // conserve toutes les qualités et évite le Worker CF bloqué par la WAF.
+  if (
+    url.includes("1a-1791.com") ||
+    url.includes("cdn.rumble.cloud") ||
+    /^https:\/\/rumble\.com\/live-hls(?:-dvr)?\//i.test(url)
+  ) return url;
   return `${HLS_BASE}/hls?u=${encodeURIComponent(url)}`;
 }
 
@@ -211,6 +216,7 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
       });
 
       const capIdx = pickBestCapIndex(levels, 1080);
+      const startupIdx = pickBestCapIndex(levels, 720);
       const autoLabel = "Auto";
       const opts: LevelOpt[] = [{ key: "auto", label: autoLabel }, ...lvls];
 
@@ -226,10 +232,10 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
 
       try {
         if (finalQ === "auto") {
-          // Force la meilleure variante autorisée pour la phase initiale,
-          // puis l'ABR pourra réajuster (mais avec abrBandWidthFactor=0.95
-          // il devrait rester sur le top niveau si le BW le permet).
-          if (capIdx >= 0) { hls.currentLevel = capIdx; }
+          // Démarre en 720p pour éviter un burst source à 10+ Mbit/s, puis
+          // laisse l'ABR monter vers 1080p si le réseau du viewer le permet.
+          hls.autoLevelCapping = capIdx >= 0 ? capIdx : -1;
+          if (startupIdx >= 0) { hls.currentLevel = startupIdx; }
           // Repasser en auto après quelques secondes pour adaptation dynamique
           setTimeout(() => { try { hls.currentLevel = -1; hls.autoLevelCapping = capIdx >= 0 ? capIdx : -1; } catch {} }, 6000);
         } else {
