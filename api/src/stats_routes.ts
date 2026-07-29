@@ -234,7 +234,7 @@ export function registerStatsRoutes(app: Express) {
     }
 
     // ✅ garantit une live_session ouverte (utile pour "heures streamées")
-    const liveSessionId = await ensureOpenLiveSession(meta.id);
+    let liveSessionId = await ensureOpenLiveSession(meta.id);
 
     // ✅ streamer lui-même non compté
     if (user) {
@@ -270,15 +270,28 @@ export function registerStatsRoutes(app: Express) {
     const ip = (getClientIp(req) || null) as any;
 
     // ✅ session active (TTL)
-    await pool.query(
-        `INSERT INTO viewer_sessions
-        (live_session_id, streamer_id, viewer_key, user_id, anon_id, started_at, last_heartbeat_at, ended_at, user_agent, ip)
-        VALUES
-        ($1,$2,$3,$4,$5,NOW(),NOW(),NULL,$6,$7)
-        ON CONFLICT (live_session_id, viewer_key)
-        DO UPDATE SET last_heartbeat_at=NOW(), ended_at=NULL`,
-        [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId, ua, ip]
-    );
+    const upsertViewerSession = (sessionId: number) =>
+      pool.query(
+          `INSERT INTO viewer_sessions
+          (live_session_id, streamer_id, viewer_key, user_id, anon_id, started_at, last_heartbeat_at, ended_at, user_agent, ip)
+          VALUES
+          ($1,$2,$3,$4,$5,NOW(),NOW(),NULL,$6,$7)
+          ON CONFLICT (live_session_id, viewer_key)
+          DO UPDATE SET last_heartbeat_at=NOW(), ended_at=NULL`,
+          [sessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId, ua, ip]
+      );
+
+    try {
+      await upsertViewerSession(liveSessionId);
+    } catch (error: any) {
+      // Une session peut être clôturée entre sa mise en cache et le heartbeat
+      // (redémarrage rapide d'un live, bascule du poller, déploiement). Recharge
+      // alors la session active et rejoue une seule fois l'UPSERT.
+      if (String(error?.code || "") !== "23503") throw error;
+      liveSessionCache.delete(meta.id);
+      liveSessionId = await ensureOpenLiveSession(meta.id);
+      await upsertViewerSession(liveSessionId);
+    }
 
     // ✅ minute-based watchtime (A) : 1 ligne max / viewer / minute
     const minuteBucket = Math.floor(Date.now() / 60_000);
