@@ -95,6 +95,7 @@ import { expensesRouter } from "./routes/expenses.js";
 import { fsbDashboardRouter } from "./routes/fsb_dashboard.js";
 import { fsbTodosRouter } from "./routes/fsb_todos.js";
 import { twitchScoutRouter } from "./routes/twitch_scout.js";
+import { rumbleOutreachRouter } from "./routes/rumble_outreach.js";
 import { tiktokOutreachRouter, handleInboundReply } from "./routes/tiktok_outreach.js";
 import { questsRouter } from "./routes/quests.js";
 import { seedAllPeriodsIfNeeded } from "./services/quests.js";
@@ -220,6 +221,7 @@ export function createApp() {
   app.use("/api", fsbDashboardRouter);
   app.use("/api", fsbTodosRouter);
   app.use("/api", twitchScoutRouter);
+  app.use("/api", rumbleOutreachRouter);
   app.use("/api", tiktokOutreachRouter);
   app.post("/api/inbound/tiktok-reply", handleInboundReply);
   app.use("/api", questsRouter);

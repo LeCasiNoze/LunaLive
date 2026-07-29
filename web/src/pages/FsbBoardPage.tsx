@@ -23,6 +23,7 @@ import { FsbAgencySection } from "./fsb/FsbAgencySection";
 import { OverlayDesignerSection } from "./fsb/OverlayDesignerSection";
 import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
 import { FsbScoutSection } from "./fsb/FsbScoutSection";
+import { FsbRumbleOutreachSection } from "./fsb/FsbRumbleOutreachSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -41,7 +42,7 @@ const CATEGORY_COLORS: Record<ExpenseCategory, string> = {
   personnalise: "#f59e0b",
 };
 
-type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools" | "tiktok" | "scout";
+type BoardSection = "home" | "expenses" | "instagram" | "agency" | "tools" | "tiktok" | "scout" | "outreach";
 type SortBy = "date" | "amount";
 type SortDirection = "asc" | "desc";
 type InstagramView = "week" | "month";
@@ -64,6 +65,7 @@ const SECTION_LABELS: Record<BoardSection, string> = {
   tools: "🛠 Outils",
   tiktok: "🎯 TikTok",
   scout: "🎰 Scout",
+  outreach: "📨 Outreach Rumble",
 };
 
 const PAGE_CSS = `
@@ -1329,7 +1331,7 @@ export default function FsbBoardPage() {
       <div className="pageTitle">
         <h1>FSB Board</h1>
         <div className="fsb-nav">
-          {(["home", "expenses", "agency", "instagram", "tiktok", "scout", "tools"] as BoardSection[]).map((item) => (
+          {(["home", "expenses", "agency", "instagram", "tiktok", "scout", "outreach", "tools"] as BoardSection[]).map((item) => (
             <button
               key={item}
               className={`fsb-navbtn ${section === item ? "fsb-navbtn-active" : ""}`}
@@ -1871,6 +1873,7 @@ export default function FsbBoardPage() {
         {section === "agency" ? <FsbAgencySection /> : null}
         {section === "tiktok" ? <FsbTikTokOutreachSection /> : null}
         {section === "scout" ? <FsbScoutSection /> : null}
+        {section === "outreach" ? <FsbRumbleOutreachSection /> : null}
         {section === "tools" ? (
           <section style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* Quick-access tool cards */}
