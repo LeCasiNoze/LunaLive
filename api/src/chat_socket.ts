@@ -94,32 +94,49 @@ async function getStreamerMetaBySlug(
   const s = String(slug || "").trim();
   if (!s) return null;
 
-  const r = await pool.query(
-    `SELECT
-        id,
-        slug,
-        user_id AS "ownerUserId",
-        appearance,
-        is_live AS "isLive",
-        viewers
-     FROM streamers
-     WHERE lower(slug)=lower($1)
-     LIMIT 1`,
-    [s]
-  );
+  const key = s.toLowerCase();
+  const hit = streamerMetaCache.get(key);
+  if (hit && Date.now() - hit.at < 5_000) return hit.meta;
+  const running = streamerMetaInflight.get(key);
+  if (running) return running;
 
-  const row = r.rows?.[0];
-  if (!row) return null;
-
-  return {
-    id: Number(row.id),
-    slug: String(row.slug),
-    ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
-    appearance: row.appearance ?? {},
-    isLive: !!row.isLive,
-    viewers: Number(row.viewers ?? 0),
-  };
+  const promise = pool.query(
+      `SELECT
+          id,
+          slug,
+          user_id AS "ownerUserId",
+          appearance,
+          is_live AS "isLive",
+          viewers
+       FROM streamers
+       WHERE lower(slug)=lower($1)
+       LIMIT 1`,
+      [s]
+    )
+    .then((r) => {
+      const row = r.rows?.[0];
+      const meta = row
+        ? {
+            id: Number(row.id),
+            slug: String(row.slug),
+            ownerUserId: row.ownerUserId != null ? Number(row.ownerUserId) : null,
+            appearance: row.appearance ?? {},
+            isLive: !!row.isLive,
+            viewers: Number(row.viewers ?? 0),
+          }
+        : null;
+      streamerMetaCache.set(key, { at: Date.now(), meta });
+      return meta;
+    })
+    .finally(() => {
+      streamerMetaInflight.delete(key);
+    });
+  streamerMetaInflight.set(key, promise);
+  return promise;
 }
+
+const streamerMetaCache = new Map<string, { at: number; meta: Awaited<ReturnType<typeof getStreamerMetaBySlug>> }>();
+const streamerMetaInflight = new Map<string, Promise<Awaited<ReturnType<typeof getStreamerMetaBySlug>>>>();
 
 async function isStreamerMod(streamerId: number, userId: number) {
   const r = await pool.query(
@@ -291,11 +308,18 @@ async function isActiveSub(streamerId: number, userId: number) {
 
 // tiny cache settings
 const settingsCache = new Map<number, { at: number; settings: ChatSettings }>();
+const settingsInflight = new Map<number, Promise<ChatSettings>>();
 async function readSettings(streamerId: number) {
   const now = Date.now();
   const hit = settingsCache.get(streamerId);
   if (hit && now - hit.at < 5000) return hit.settings;
-  const s = await getChatSettings(pool, streamerId);
+  const running = settingsInflight.get(streamerId);
+  if (running) return running;
+  const promise = getChatSettings(pool, streamerId).finally(() => {
+    settingsInflight.delete(streamerId);
+  });
+  settingsInflight.set(streamerId, promise);
+  const s = await promise;
   settingsCache.set(streamerId, { at: now, settings: s });
   return s;
 }

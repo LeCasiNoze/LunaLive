@@ -1957,6 +1957,7 @@ export function ChatPanel({
   const emoteMapRef = React.useRef<Map<string, { url: string; title?: string }>>(new Map());
 
   async function fetchEmotes() {
+    if (!token) return;
     try {
       const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(String(slug))}/emotes`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,

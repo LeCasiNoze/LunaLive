@@ -31,6 +31,7 @@ type StreamerMeta = {
 const streamerMetaCache = new Map<string, { meta: StreamerMeta | null; ts: number }>();
 const liveSessionCache = new Map<number, { id: number; ts: number }>();
 const viewersCountCache = new Map<number, { n: number; ts: number }>();
+const viewerMinuteCache = new Map<string, number>();
 
 type AuthUser = { id: number; username: string; role: string };
 
@@ -280,15 +281,26 @@ export function registerStatsRoutes(app: Express) {
     );
 
     // ✅ minute-based watchtime (A) : 1 ligne max / viewer / minute
-    const minIns = await pool.query(
-        `INSERT INTO stream_viewer_minutes
-        (live_session_id, streamer_id, bucket_ts, viewer_key, user_id, anon_id)
-        VALUES
-        ($1,$2,date_trunc('minute', NOW()),$3,$4,$5)
-        ON CONFLICT DO NOTHING
-        RETURNING 1`,
-        [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId]
-    );
+    const minuteBucket = Math.floor(Date.now() / 60_000);
+    const minuteCacheKey = `${liveSessionId}:${viewerKey}`;
+    const alreadyWritten = viewerMinuteCache.get(minuteCacheKey) === minuteBucket;
+    const minIns = alreadyWritten
+      ? { rowCount: 0 }
+      : await pool.query(
+          `INSERT INTO stream_viewer_minutes
+          (live_session_id, streamer_id, bucket_ts, viewer_key, user_id, anon_id)
+          VALUES
+          ($1,$2,date_trunc('minute', NOW()),$3,$4,$5)
+          ON CONFLICT DO NOTHING
+          RETURNING 1`,
+          [liveSessionId, meta.id, viewerKey, user ? user.id : null, user ? null : anonId]
+        );
+    viewerMinuteCache.set(minuteCacheKey, minuteBucket);
+    if (viewerMinuteCache.size > 50_000) {
+      for (const [key, bucket] of viewerMinuteCache) {
+        if (bucket < minuteBucket - 2) viewerMinuteCache.delete(key);
+      }
+    }
 
     // ✅ XP watchtime : uniquement sur une NOUVELLE minute (RETURNING) et pour
     // un viewer connecté. Crédite au bon rythme + détecte le level-up (pop-up).

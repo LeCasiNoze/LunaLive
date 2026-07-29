@@ -11,7 +11,7 @@ import normalizeAppearance from "../appearance.js";
 import { emitChatAll, emitChatAndStream, emitSpecialCard } from "../socket_emit.js";
 
 export const publicRouter = Router();
-const HEARTBEAT_TTL_SECONDS = 45;
+const HEARTBEAT_TTL_SECONDS = 75;
 
 // Cache in-memory des réponses publiques identiques pour tous les visiteurs.
 // La home repoll /lives toutes les 20 s par visiteur : sous charge, sans ce
@@ -19,11 +19,35 @@ const HEARTBEAT_TTL_SECONDS = 45;
 // sessions actives) → 1 requête DB toutes les 5 s au lieu de N/s.
 const PUBLIC_CACHE_TTL_MS = 5_000;
 const publicCache = new Map<string, { body: unknown; ts: number }>();
+const publicCacheInflight = new Map<string, Promise<unknown>>();
 
 function getPublicCache(key: string): unknown | null {
   const hit = publicCache.get(key);
   if (hit && Date.now() - hit.ts < PUBLIC_CACHE_TTL_MS) return hit.body;
   return null;
+}
+
+async function getOrLoadPublicCache<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>
+): Promise<T> {
+  const hit = publicCache.get(key);
+  if (hit && Date.now() - hit.ts < ttlMs) return hit.body as T;
+
+  const running = publicCacheInflight.get(key);
+  if (running) return running as Promise<T>;
+
+  const promise = loader()
+    .then((body) => {
+      publicCache.set(key, { body, ts: Date.now() });
+      return body;
+    })
+    .finally(() => {
+      publicCacheInflight.delete(key);
+    });
+  publicCacheInflight.set(key, promise);
+  return promise;
 }
 
 function tryGetAuthUser(req: Request): AuthUser | null {
@@ -270,7 +294,11 @@ publicRouter.get(
   a(async (req, res) => {
     const slug = String(req.params.slug || "");
 
-    const { rows } = await pool.query(
+    const baseRow = await getOrLoadPublicCache<any | null>(
+      `streamer-base:${slug.toLowerCase()}`,
+      5_000,
+      async () => {
+        const { rows } = await pool.query(
       `SELECT
         s.id::text AS id,
         s.slug,
@@ -367,30 +395,39 @@ publicRouter.get(
       LIMIT 1
       `,
       [slug]
+        );
+        return rows[0] || null;
+      }
     );
 
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "not_found" });
+    if (!baseRow) return res.status(404).json({ ok: false, error: "not_found" });
 
-    const row = rows[0];
+    const row = structuredClone(baseRow);
     row.appearance = normalizeAppearance(row.appearance || {});
 
     // ✅ viewers LunaLive (remplace s.viewers côté UI)
     let viewersNow = 0;
     if (row.isLive) {
-      const v = await pool.query(
-        `
-        SELECT COUNT(DISTINCT vs.viewer_key)::int AS n
-        FROM live_sessions ls
-        JOIN viewer_sessions vs
-          ON vs.live_session_id = ls.id
-        WHERE ls.streamer_id = $1
-          AND ls.ended_at IS NULL
-          AND vs.ended_at IS NULL
-          AND vs.last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))
-        `,
-        [Number(row.id), HEARTBEAT_TTL_SECONDS]
+      viewersNow = await getOrLoadPublicCache<number>(
+        `streamer-viewers:${row.id}`,
+        2_000,
+        async () => {
+          const v = await pool.query(
+            `
+            SELECT COUNT(DISTINCT vs.viewer_key)::int AS n
+            FROM live_sessions ls
+            JOIN viewer_sessions vs
+              ON vs.live_session_id = ls.id
+            WHERE ls.streamer_id = $1
+              AND ls.ended_at IS NULL
+              AND vs.ended_at IS NULL
+              AND vs.last_heartbeat_at >= (NOW() - ($2::int * INTERVAL '1 second'))
+            `,
+            [Number(row.id), HEARTBEAT_TTL_SECONDS]
+          );
+          return Number(v.rows?.[0]?.n ?? 0);
+        }
       );
-      viewersNow = Number(v.rows?.[0]?.n ?? 0);
     }
 
     row.viewers = viewersNow;
@@ -448,18 +485,23 @@ publicRouter.get(
       const slugLog = String(row.slug || "");
       const staticUrl = `https://rumble.com/user/${encodeURIComponent(rumbleUsername)}/live`;
 
-      const rumbleInfo = await pool.query(
-        `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
-         FROM streamer_rumble_info
-         WHERE streamer_id = $1
-         ORDER BY updated_at DESC
-         LIMIT 1`,
-        [Number(row.id)]
+      const rumble = await getOrLoadPublicCache<any | null>(
+        `streamer-rumble:${row.id}`,
+        5_000,
+        async () => {
+          const rumbleInfo = await pool.query(
+            `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
+             FROM streamer_rumble_info
+             WHERE streamer_id = $1
+             ORDER BY updated_at DESC
+             LIMIT 1`,
+            [Number(row.id)]
+          );
+          return rumbleInfo.rows[0] || null;
+        }
       );
 
-      if (rumbleInfo.rows[0]) {
-        const rumble = rumbleInfo.rows[0];
-
+      if (rumble) {
         row.isLive = !!rumble.is_live;
 
         (row as any).rumbleStaticVideoUrl = staticUrl;
@@ -485,10 +527,17 @@ publicRouter.get(
       }
     }
 
-    const c = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`, [
-      Number(row.id),
-    ]);
-    const followsCount = Number(c.rows?.[0]?.n ?? 0);
+    const followsCount = await getOrLoadPublicCache<number>(
+      `streamer-follows:${row.id}`,
+      5_000,
+      async () => {
+        const c = await pool.query(
+          `SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id = $1`,
+          [Number(row.id)]
+        );
+        return Number(c.rows?.[0]?.n ?? 0);
+      }
+    );
 
     const me = tryGetAuthUser(req);
     let isFollowing = false;
