@@ -86,8 +86,17 @@ async function nextCutoffUtc(): Promise<Date> {
   const { h, m } = await cutoffHM();
   let target = localToUtc(np.y, np.m, np.d, h, m, zone);
   if (target.getTime() <= Date.now()) {
-    const next = new Date(target.getTime() + 24 * 3600_000);
-    target = next;
+    // Increment the local calendar date so the configured hour remains stable
+    // when Europe/Paris enters or leaves daylight-saving time.
+    const nextLocalDay = new Date(Date.UTC(np.y, np.m - 1, np.d + 1));
+    target = localToUtc(
+      nextLocalDay.getUTCFullYear(),
+      nextLocalDay.getUTCMonth() + 1,
+      nextLocalDay.getUTCDate(),
+      h,
+      m,
+      zone
+    );
   }
   return target;
 }
@@ -362,16 +371,30 @@ async function refreshBatchMessage(client: Client, batch: Batch): Promise<void> 
   if (!ch || ch.type !== 0) return;
   const channel = ch as TextChannel;
   try {
-    const msg = await channel.messages.fetch(batch.message_id);
+    const msg = await withTimeout(channel.messages.fetch(batch.message_id), 5_000, "fetch message");
     const reqs = await getRequests(batch.id);
     const enriched: (Req & { email: string | null })[] = [];
     for (const r of reqs) {
       const acc = await getAccount(r.user_id);
       enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
     }
-    await msg.edit({ embeds: [buildBatchEmbed(batch, enriched)] });
-  } catch {
-    /* ignore */
+    await withTimeout(msg.edit({ embeds: [buildBatchEmbed(batch, enriched)] }), 5_000, "edit message");
+  } catch (e) {
+    log(`Refresh batch #${batch.id} ignore:`, e);
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -670,6 +693,7 @@ let cutoffTimer: NodeJS.Timeout | null = null;
 
 export function startCutoffTask(client: Client): void {
   if (cutoffTimer) return;
+  void tickCutoff(client).catch((e) => console.error("[aurix.refill] initial cutoff tick error", e));
   cutoffTimer = setInterval(() => {
     void tickCutoff(client).catch((e) => console.error("[aurix.refill] cutoff tick error", e));
   }, 30_000);
@@ -678,15 +702,25 @@ export function startCutoffTask(client: Client): void {
 
 async function tickCutoff(client: Client): Promise<void> {
   const batch = await getOpenBatch();
-  if (!batch) return;
+  if (!batch) {
+    const env = loadEnv();
+    const guild = (env.GUILD_ID ? client.guilds.cache.get(env.GUILD_ID) : undefined) ?? client.guilds.cache.first();
+    if (guild) await ensureOpenBatch(guild);
+    return;
+  }
   if (Date.now() < batch.cutoff_at.getTime()) return;
   await triggerCutoff(client, batch);
 }
 
 async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
-  await query("UPDATE aurix_refill_batches SET status='locked' WHERE id=$1", [batch.id]);
+  const claimed = await one<{ id: number }>(
+    "UPDATE aurix_refill_batches SET status='locked' WHERE id=$1 AND status='open' RETURNING id",
+    [batch.id]
+  );
+  if (!claimed) return;
   batch.status = "locked";
-  await refreshBatchMessage(client, batch);
+  // This Discord board update is cosmetic and must never delay Telegram.
+  void refreshBatchMessage(client, batch);
 
   const env = loadEnv();
   let guild: Guild | undefined;
@@ -705,7 +739,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     log(`Cutoff: batch #${batch.id} vide -> aucun message envoye.`);
     await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
     batch.status = "sent";
-    await refreshBatchMessage(client, batch);
+    void refreshBatchMessage(client, batch);
     await ensureOpenBatch(guild);
     return;
   }
@@ -748,11 +782,23 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
       .setColor(cfg.COLOR.WARNING)
       .setFooter({ text: `${cfg.BRAND.NAME} • Manager confirmera via /done sur Telegram` });
 
-    await (staffChat as TextChannel).send({
-      content: mentions.join(" ") || undefined,
-      embeds: [embed],
-      allowedMentions: { roles: mentions.length ? [roleDirectionId, roleModerateurId].filter((x): x is string => !!x) : [] },
-    });
+    try {
+      await withTimeout(
+        (staffChat as TextChannel).send({
+          content: mentions.join(" ") || undefined,
+          embeds: [embed],
+          allowedMentions: {
+            roles: mentions.length
+              ? [roleDirectionId, roleModerateurId].filter((x): x is string => !!x)
+              : [],
+          },
+        }),
+        5_000,
+        "staff message"
+      );
+    } catch (e) {
+      log(`Staff message batch #${batch.id} ignore:`, e);
+    }
 
     // Construit la liste enrichie avec displayName Discord (nickname > globalName > username).
     const guildForCutoff = guild;
@@ -762,7 +808,7 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
         const isAuto = Number(r.user_id) < 0;
         if (!isAuto) {
           try {
-            const m = await guildForCutoff.members.fetch(r.user_id);
+            const m = await withTimeout(guildForCutoff.members.fetch(r.user_id), 5_000, "member fetch");
             displayName = m.displayName || m.user.globalName || m.user.username;
           } catch {
             /* membre parti, on garde le username stocke */
@@ -801,8 +847,11 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
 
       if (res.ok) {
         // Le batch reste 'locked' jusqu'a ce que le manager tape /done sur Telegram.
-        // On notifie juste les streamers que leur demande est transmise.
-        await notifyRequestersTransmitted(guildForCutoff, batch.id, items);
+        // Open the next day immediately; ticket notifications are non-critical.
+        await ensureOpenBatch(guildForCutoff);
+        void notifyRequestersTransmitted(guildForCutoff, batch.id, items).catch((e) =>
+          log(`Notifications batch #${batch.id} ignore:`, e)
+        );
       } else {
         log(`Telegram send returned not ok: ${res.reason} — pas de notification ticket.`);
       }

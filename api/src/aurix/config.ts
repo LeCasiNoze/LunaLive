@@ -29,7 +29,7 @@ export const EMOJI = {
 } as const;
 
 export const DEFAULTS = {
-  REFILL_CUTOFF_HOUR: 14,
+  REFILL_CUTOFF_HOUR: 10,
   REFILL_CUTOFF_MINUTE: 0,
   REFILL_FIXED_AMOUNT: "500€",
 };
