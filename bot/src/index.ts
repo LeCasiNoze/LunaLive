@@ -7,6 +7,7 @@ import { Registry } from "./runtime/registry.js";
 import { logEvent } from "./log.js";
 import { YouTubeNotifier, type YouTubeNotifierConfig } from "./modules/notifications/youtube.js";
 import { InstagramNotifier, type InstagramNotifierConfig } from "./modules/notifications/instagram.js";
+import { startNivoraDiscordBot } from "./nivoranet/discord.js";
 import {
   activeWorkers,
   waitingWorkers,
@@ -269,6 +270,8 @@ async function main() {
   const registry = new Registry(pool, env);
   registry.start();
 
+  const stopNivoraDiscord = await startNivoraDiscordBot(env);
+
   const stopIpc = startLunaClipDbIpc(pool);
 
   // ✅ Démarrer le notificateur YouTube (plus besoin de variables d'environnement)
@@ -303,6 +306,7 @@ async function main() {
     console.log(`[bot] shutdown ${sig}`);
     try { stopIpc(); }               catch {}
     try { registry.stop(); }         catch {}
+    try { await stopNivoraDiscord(); } catch {}
     try { youtubeNotifier?.stop(); } catch {}
     try { instagramNotifier?.stop(); } catch {}
     try { await pool.end(); }        catch {}

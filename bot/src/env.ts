@@ -54,6 +54,10 @@ const EnvSchema = z.object({
   // health server (optionnel Render)
   PORT: z.coerce.number().int().min(1).max(65535).optional(),
 
+  // NivoraNet Discord : second client isolé dans le même worker Render.
+  NIVORA_DISCORD_BOT_TOKEN: z.string().min(1).optional(),
+  NIVORA_DISCORD_GUILD_ID: z.string().regex(/^\d{17,20}$/).optional(),
+
   // ✅ YouTube Notifications (optionnel, valeurs par défaut hardcodées)
   YOUTUBE_POLL_INTERVAL_MS: z.coerce.number().int().min(30000).optional(), // 3 minutes par défaut dans config.ts
 });
