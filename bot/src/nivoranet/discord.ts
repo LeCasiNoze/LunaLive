@@ -64,9 +64,13 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   if (!env.NIVORA_DISCORD_BOT_TOKEN && !env.NIVORA_DISCORD_GUILD_ID) return async () => {};
   if (!env.NIVORA_DISCORD_BOT_TOKEN || !env.NIVORA_DISCORD_GUILD_ID) throw new Error("Nivora Discord requires token and guild ID.");
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  const connectionWatchdog = setTimeout(() => {
+    if (!client.isReady()) console.error("[nivora-discord] gateway connection is still pending after 15 seconds");
+  }, 15_000);
   const command = new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status"));
   client.once(Events.ClientReady, async (ready) => {
     try {
+      clearTimeout(connectionWatchdog);
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set([command.toJSON()], guild.id);
       const applyChannel = guild.channels.cache.find((item) => item.name === "📝・apply" && item.type === ChannelType.GuildText);
@@ -95,5 +99,5 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     } catch (error) { console.error("[nivora-discord] interaction failed", error); if (interaction.isRepliable()) { const reply = { content: `Unable to complete this action: ${error instanceof Error ? error.message : "unknown error"}`, ephemeral: true }; if (interaction.deferred || interaction.replied) await interaction.editReply(reply); else await interaction.reply(reply); } }
   });
   void client.login(env.NIVORA_DISCORD_BOT_TOKEN).catch((error) => console.error("[nivora-discord] login failed", error));
-  return async () => client.destroy();
+  return async () => { clearTimeout(connectionWatchdog); client.destroy(); };
 }
