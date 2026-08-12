@@ -25,7 +25,7 @@ async function api<T>(env: BotEnv, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${env.NIVORA_API_BASE}/api/internal/discord`, {
     method: "POST", headers: { "content-type": "application/json", "x-nivora-bot-key": env.NIVORA_BOT_INTERNAL_KEY }, body: JSON.stringify(body),
   });
-  const data: { error?: string } = await response.json().catch(() => ({}));
+  const data = (await response.json().catch(() => ({}))) as { error?: string };
   if (!response.ok) throw new Error(data.error ?? "Nivora API error.");
   return data as T;
 }
