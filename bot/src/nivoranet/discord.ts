@@ -80,8 +80,14 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   });
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
-      if (interaction.isChatInputCommand() && interaction.commandName === "nivora") return void interaction.reply({ content: "NivoraNet is connected and ready.", ephemeral: true });
-      if (interaction.isButton() && interaction.customId === APPLY_BUTTON) return void interaction.showModal(applicationModal());
+      if (interaction.isChatInputCommand() && interaction.commandName === "nivora") {
+        await interaction.reply({ content: "NivoraNet is connected and ready.", ephemeral: true });
+        return;
+      }
+      if (interaction.isButton() && interaction.customId === APPLY_BUTTON) {
+        await interaction.showModal(applicationModal());
+        return;
+      }
       if (interaction.isModalSubmit() && interaction.customId === "nivora:application") {
         await interaction.deferReply({ ephemeral: true });
         const result = await api<{ profileId: string; username: string; twitchUrl: string; language: string }>(env, { action: "apply", discordUserId: interaction.user.id, discordUsername: interaction.user.username, username: interaction.fields.getTextInputValue("username"), email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"), twitchUrl: interaction.fields.getTextInputValue("twitch"), language: interaction.fields.getTextInputValue("language") });
