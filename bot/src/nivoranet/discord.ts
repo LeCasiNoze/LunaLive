@@ -19,10 +19,15 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     .setDescription("Outils NivoraNet")
     .addSubcommand((subcommand) => subcommand.setName("status").setDescription("Vérifie que le bot est prêt"));
 
+  console.log("[nivora-discord] starting connection");
   client.once(Events.ClientReady, async (readyClient) => {
-    const guild = await readyClient.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
-    await readyClient.application?.commands.set([command.toJSON()], guild.id);
-    console.log(`[nivora-discord] connected as ${readyClient.user.tag} on ${guild.name} (${guild.id})`);
+    try {
+      const guild = await readyClient.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
+      await readyClient.application?.commands.set([command.toJSON()], guild.id);
+      console.log(`[nivora-discord] connected as ${readyClient.user.tag} on ${guild.name} (${guild.id})`);
+    } catch (error) {
+      console.error("[nivora-discord] command registration failed", error);
+    }
   });
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand() || interaction.commandName !== "nivora") return;
@@ -31,6 +36,8 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     }
   });
   client.on(Events.Error, (error) => console.error("[nivora-discord] client error", error));
-  await client.login(env.NIVORA_DISCORD_BOT_TOKEN);
+  void client.login(env.NIVORA_DISCORD_BOT_TOKEN).catch((error) => {
+    console.error("[nivora-discord] login failed", error);
+  });
   return async () => client.destroy();
 }
