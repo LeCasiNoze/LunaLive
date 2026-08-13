@@ -64,13 +64,30 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   if (!env.NIVORA_DISCORD_BOT_TOKEN && !env.NIVORA_DISCORD_GUILD_ID) return async () => {};
   if (!env.NIVORA_DISCORD_BOT_TOKEN || !env.NIVORA_DISCORD_GUILD_ID) throw new Error("Nivora Discord requires token and guild ID.");
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-  const connectionWatchdog = setTimeout(() => {
-    if (!client.isReady()) console.error("[nivora-discord] gateway connection is still pending after 15 seconds");
-  }, 15_000);
+  let stopped = false;
+  let connecting = false;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleReconnect = () => {
+    if (stopped || reconnectTimer) return;
+    reconnectTimer = setTimeout(() => { reconnectTimer = null; void connect(); }, 5_000);
+  };
+  const connect = async () => {
+    if (stopped || connecting || client.isReady()) return;
+    connecting = true;
+    try {
+      await Promise.race([
+        client.login(env.NIVORA_DISCORD_BOT_TOKEN),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Gateway timeout after 25 seconds")), 25_000)),
+      ]);
+    } catch (error) {
+      console.error("[nivora-discord] login failed", error);
+      client.destroy();
+      scheduleReconnect();
+    } finally { connecting = false; }
+  };
   const command = new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status"));
   client.once(Events.ClientReady, async (ready) => {
     try {
-      clearTimeout(connectionWatchdog);
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set([command.toJSON()], guild.id);
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
@@ -102,6 +119,12 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. The refusal workflow will be added with the operational panel.", ephemeral: true });
     } catch (error) { console.error("[nivora-discord] interaction failed", error); if (interaction.isRepliable()) { const reply = { content: `Unable to complete this action: ${error instanceof Error ? error.message : "unknown error"}`, ephemeral: true }; if (interaction.deferred || interaction.replied) await interaction.editReply(reply); else await interaction.reply(reply); } }
   });
-  void client.login(env.NIVORA_DISCORD_BOT_TOKEN).catch((error) => console.error("[nivora-discord] login failed", error));
-  return async () => { clearTimeout(connectionWatchdog); client.destroy(); };
+  client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
+  client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
+  void connect();
+  return async () => {
+    stopped = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    client.destroy();
+  };
 }
