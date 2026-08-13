@@ -127,6 +127,20 @@ function refillBatchMessage(batch: RefillBatch) {
     byBrand.set(name, [...(byBrand.get(name) ?? []), request]);
   }
   const total = batch.requests.reduce((sum, request) => sum + Number(request.amount), 0);
+  const compactGroups = [...byBrand.entries()].map(([brand, requests]) => {
+    const lines = requests.map((request, index) =>
+      `${index + 1}. ${request.casino_username} - ${request.casino_email} - $${Number(request.amount).toFixed(2)}`,
+    );
+    return `${brand}\n${lines.join("\n")}`;
+  });
+  return [
+    "Hello Sam,",
+    `Here is today's refill list - ${date}:`,
+    `${batch.requests.length} request${batch.requests.length === 1 ? "" : "s"} - total refill: $${total.toFixed(2)}`,
+    compactGroups.join("\n\n"),
+    "Thank you in advance for processing these refills.\nOnce completed, please let us know.\n\nHave a great day!",
+  ].join("\n\n");
+
   const groups = [...byBrand.entries()].map(([brand, requests]) => {
     const lines = requests.map((request, index) => {
       const wager = request.wager?.trim() ? request.wager.trim() : "no wager";
