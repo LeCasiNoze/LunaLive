@@ -79,12 +79,20 @@ async function publishApplicationEntry(client: Client, env: NivoraDiscordEnv, da
   await channel.send({ embeds: [embed], components: [buttons] });
 }
 
-async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profileId: string, discordUserId: string) {
+function ticketChannelName(username: string, fallback: string) {
+  const safe = username
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `ticket-${safe || fallback}`;
+}
+
+async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profileId: string, discordUserId: string, username: string) {
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   const category = guild.channels.cache.find((item) => item.name === "━━ PRIVATE TICKETS ━━" && item.type === ChannelType.GuildCategory);
   if (!category) throw new Error("Ticket category not found.");
   const channel = await guild.channels.create({
-    name: `💎・${discordUserId}`, type: ChannelType.GuildText, parent: category.id,
+    name: ticketChannelName(username, discordUserId), type: ChannelType.GuildText, parent: category.id,
     permissionOverwrites: [
       { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
       { id: discordUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
@@ -92,6 +100,17 @@ async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profil
   });
   await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Welcome to NivoraNet").setDescription("This is your permanent private ticket for support, refills and performance alerts.\n\nUseful commands:\n`/refill` - request your daily refill\n`/notifications` - choose performance alerts\n`/stats` - view the current month, from the 1st to today\n`/help` - view this guide again\n\nYour dashboard uses the email and password from your application.")] });
   await api(env, { action: "set-ticket", profileId, ticketChannelId: channel.id });
+}
+
+async function syncTicketNames(client: Client, env: NivoraDiscordEnv) {
+  const result = await api<{ tickets: Array<{ channelId: string; username: string }> }>(env, { action: "ticket-links" });
+  for (const ticket of result.tickets ?? []) {
+    const channel = await client.channels.fetch(ticket.channelId).catch(() => null);
+    if (channel?.isTextBased() && "setName" in channel) {
+      const name = ticketChannelName(ticket.username, ticket.channelId);
+      if (channel.name !== name) await channel.setName(name, "Use the NivoraNet affiliate username").catch(() => {});
+    }
+  }
 }
 
 function hasRefillDetails(brand: RefillBrand) {
@@ -176,7 +195,7 @@ async function sendStats(interaction: any, env: NivoraDiscordEnv, targetDiscordU
   const month = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", month: "long", year: "numeric" }).format(new Date(stats.monthStart));
   const fields = stats.brands.map((brand) => ({
     name: brand.brandName,
-    value: `Clicks: **${brand.clicks}** | Registrations: **${brand.registrations}** | FTDs: **${brand.ftd}**\nDeposits: **${brand.deposits}** | Volume: **${currency(brand.depositVolume)}** | Earnings: **${currency(brand.earnings)}**`,
+    value: `Clicks: **${brand.clicks}** | Registrations: **${brand.registrations}** | FTDs: **${brand.ftd}**\nDeposits: **${brand.deposits}** | Volume: **${currency(brand.depositVolume)}** | RS: **${currency(brand.rs)}** | Earnings: **${currency(brand.earnings)}**`,
   }));
   await interaction.reply({
     embeds: [new EmbedBuilder().setColor(GOLD).setTitle(`Current month statistics - ${stats.profileName}`).setDescription(`From 1 ${month} to now.`).addFields(fields.length ? fields : [{ name: "No active brands", value: "No deal is currently assigned." }])],
@@ -387,6 +406,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
     try {
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set(commands.map((command) => command.toJSON()), guild.id);
+      await syncTicketNames(client, env);
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
     } catch (error) { console.error("[nivora-discord] startup failed", error); }
   });
@@ -455,7 +475,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         const member = await guild.members.fetch(interaction.user.id);
         const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate");
         if (affiliateRole) await member.roles.add(affiliateRole);
-        await createPrivateTicket(client, env, result.profileId, interaction.user.id);
+        await createPrivateTicket(client, env, result.profileId, interaction.user.id, result.username);
         return void interaction.editReply(`Your **${result.username}** account is linked. Your private ticket is ready.`);
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("nivora:refill-account:")) {
@@ -475,7 +495,8 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
         await interaction.deferUpdate(); const profileId = interaction.customId.split(":")[2]; const result = await api<{ discordUserId: string }>(env, { action: "approve", profileId });
         const guild = interaction.guild!; const member = await guild.members.fetch(result.discordUserId); const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate"); if (affiliateRole) await member.roles.add(affiliateRole);
-        await createPrivateTicket(client, env, profileId, result.discordUserId);
+        const account = await api<{ profileName: string }>(env, { action: "affiliate-stats", discordUserId: result.discordUserId });
+        await createPrivateTicket(client, env, profileId, result.discordUserId, account.profileName);
         return void interaction.editReply({ components: [], embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x35D6B5).setTitle("Application approved")] });
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. The refusal workflow will be added with the operational panel.", ephemeral: true });
