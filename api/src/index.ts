@@ -1,6 +1,8 @@
 // api/src/index.ts
 import http from "http";
 import path from "path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import { Server as IOServer } from "socket.io";
 
@@ -33,6 +35,39 @@ import { refreshAllAffiPageSnapshots } from "./routes/affi_pages.js";
 import { ensureRumbleOutreachSeeded } from "./routes/rumble_outreach.js";
 
 const port = Number(process.env.PORT || 3001);
+
+/**
+ * Runs NivoraNet's Discord gateway beside the already-paid LunaLive API.
+ * The bot itself remains isolated: a Discord failure cannot take down the API,
+ * and exits are restarted with a small delay.
+ */
+function startNivoraDiscordGateway(): () => void {
+  if (process.env.NIVORA_DISCORD_HOST !== "api") return () => {};
+
+  let child: ChildProcess | null = null;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let stopping = false;
+  const entrypoint = fileURLToPath(new URL("../../bot/dist/nivoranet/standalone.js", import.meta.url));
+
+  const launch = () => {
+    if (stopping || child) return;
+    console.log("[nivora] starting Discord gateway alongside LunaLive API");
+    child = spawn(process.execPath, [entrypoint], { env: process.env, stdio: "inherit" });
+    child.once("exit", (code, signal) => {
+      console.warn(`[nivora] Discord gateway exited (code=${code ?? "none"}, signal=${signal ?? "none"})`);
+      child = null;
+      if (!stopping) retry = setTimeout(launch, 10_000);
+    });
+    child.once("error", (error) => console.error("[nivora] Discord gateway spawn failed", error));
+  };
+
+  launch();
+  return () => {
+    stopping = true;
+    if (retry) clearTimeout(retry);
+    try { child?.kill("SIGTERM"); } catch {}
+  };
+}
 
 function startStatsCleanup() {
   const run = async () => {
@@ -136,11 +171,12 @@ async function bootstrapBackground() {
   }
 }
 
-function setupGracefulShutdown(server: http.Server) {
+function setupGracefulShutdown(server: http.Server, stopNivoraDiscordGateway: () => void) {
   const shutdown = (signal: string) => {
     console.log(`[shutdown] ${signal} received, closing...`);
     server.close(() => {
       console.log("[shutdown] http server closed");
+      stopNivoraDiscordGateway();
       pool.end().catch(() => {});
       process.exit(0);
     });
@@ -192,6 +228,7 @@ function setupProcessCrashGuards() {
 
   // ✅ Démarre le serveur TOUT DE SUITE (Render sera content)
   server.listen(port, () => console.log(`[api] listening on :${port}`));
+  const stopNivoraDiscordGateway = startNivoraDiscordGateway();
 
   // ✅ Démarre les pollers (ils utilisent la DB, donc si DB down ça loguera, mais ne bloque pas le deploy)
   startStatsCleanup();
@@ -228,5 +265,5 @@ function setupProcessCrashGuards() {
   bootstrapBackground().catch(() => {});
 
   // ✅ Pour que Render puisse arrêter proprement (évite deploys qui traînent)
-  setupGracefulShutdown(server);
+  setupGracefulShutdown(server, stopNivoraDiscordGateway);
 })();
