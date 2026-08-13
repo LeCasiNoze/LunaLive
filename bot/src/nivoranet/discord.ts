@@ -15,6 +15,8 @@ type RefillBatch = {
   requests: Array<{ amount: number | string; wager: string | null; casino_email: string; casino_username: string; brand: { name: string } | null; profile: { username: string } | null }>;
 };
 type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string }> };
+type NotificationSettings = { ticket_channel_id: string | null; notify_registration: boolean; notify_ftd: boolean; notify_deposit: boolean };
+type PerformanceNotification = { id: string; type: "registration" | "ftd" | "deposit"; amount: number; depositNumber: number | null; playerTotal: number | null; brandName: string; discordUserId: string | null; ticketChannelId: string | null; enabled: boolean };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -120,6 +122,32 @@ async function beginRefill(interaction: any, env: BotEnv, brandId?: string) {
   await queueRefill(interaction, env, brand.id);
 }
 
+function notificationPanel(settings: NotificationSettings) {
+  const selected = new Set([
+    settings.notify_registration ? "registration" : null,
+    settings.notify_ftd ? "ftd" : null,
+    settings.notify_deposit ? "deposit" : null,
+  ]);
+  const menu = new StringSelectMenuBuilder().setCustomId("nivora:notification-settings").setPlaceholder("Choose your performance alerts").setMinValues(0).setMaxValues(3).addOptions(
+    { label: "Registrations", value: "registration", description: "New casino registrations", default: selected.has("registration") },
+    { label: "FTDs", value: "ftd", description: "First-time deposits", default: selected.has("ftd") },
+    { label: "Deposits", value: "deposit", description: "Later player deposits", default: selected.has("deposit") },
+  );
+  return {
+    content: "Performance alerts\nSelect every alert you want to receive in this private ticket. Leave all choices empty to turn alerts off.",
+    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+  };
+}
+
+async function openNotificationSettings(interaction: any, env: BotEnv) {
+  const settings = await api<NotificationSettings>(env, { action: "notification-settings", discordUserId: interaction.user.id });
+  if (!settings.ticket_channel_id || interaction.channelId !== settings.ticket_channel_id) {
+    await interaction.reply({ content: "Use `/notifications` in your private NivoraNet ticket.", ephemeral: true });
+    return;
+  }
+  await interaction.reply({ ...notificationPanel(settings), ephemeral: true });
+}
+
 function refillBatchMessage(batch: RefillBatch) {
   const date = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date(batch.batch.cutoff_at));
   const byBrand = new Map<string, RefillBatch["requests"]>();
@@ -219,6 +247,40 @@ function startTelegramDoneListener(client: Client, env: BotEnv) {
   return () => clearInterval(timer);
 }
 
+function performanceMessage(notification: PerformanceNotification) {
+  if (notification.type === "registration") return { title: "New registration", description: `A new registration has been detected for ${notification.brandName}.` };
+  if (notification.type === "ftd") return { title: "New FTD", description: `A first-time deposit of $${notification.amount.toFixed(2)} has been detected for ${notification.brandName}.` };
+  if (notification.depositNumber && notification.playerTotal !== null) {
+    return { title: "New deposit", description: `A player made their ${notification.depositNumber}${notification.depositNumber === 1 ? "st" : notification.depositNumber === 2 ? "nd" : notification.depositNumber === 3 ? "rd" : "th"} deposit: $${notification.amount.toFixed(2)} / Total: $${notification.playerTotal.toFixed(2)}.` };
+  }
+  return { title: "New deposit", description: `A player made a deposit of $${notification.amount.toFixed(2)} for ${notification.brandName}.` };
+}
+
+function startPerformanceNotifier(client: Client, env: BotEnv) {
+  let running = false;
+  const flush = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const result = await api<{ notifications: PerformanceNotification[] }>(env, { action: "pending-discord-notifications" });
+      const sentIds: string[] = [];
+      for (const notification of result.notifications ?? []) {
+        if (!notification.enabled) { sentIds.push(notification.id); continue; }
+        const channel = await client.channels.fetch(notification.ticketChannelId!).catch(() => null);
+        if (!channel?.isSendable()) continue;
+        const message = performanceMessage(notification);
+        await channel.send({ embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle(message.title).setDescription(`<@${notification.discordUserId}> ${message.description}`)] });
+        sentIds.push(notification.id);
+      }
+      if (sentIds.length) await api(env, { action: "mark-discord-notifications-sent", ids: sentIds });
+    } catch (error) { console.error("[nivora-discord] performance notifier failed", error); }
+    finally { running = false; }
+  };
+  void flush();
+  const timer = setInterval(() => { void flush(); }, 5_000);
+  return () => clearInterval(timer);
+}
+
 export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
   console.log("[nivora-discord] configuration", {
     hasToken: Boolean(env.NIVORA_DISCORD_BOT_TOKEN),
@@ -257,6 +319,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status")),
     new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
     new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram"),
+    new SlashCommandBuilder().setName("notifications").setDescription("Choose your performance alerts"),
   ];
   client.once(Events.ClientReady, async (ready) => {
     try {
@@ -273,6 +336,16 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "refill") {
         await beginRefill(interaction, env);
+        return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "notifications") {
+        await openNotificationSettings(interaction, env);
+        return;
+      }
+      if (interaction.isStringSelectMenu() && interaction.customId === "nivora:notification-settings") {
+        await api(env, { action: "update-notification-settings", discordUserId: interaction.user.id, values: interaction.values });
+        const settings = await api<NotificationSettings>(env, { action: "notification-settings", discordUserId: interaction.user.id });
+        await interaction.update(notificationPanel(settings));
         return;
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "refill-batch") {
@@ -321,6 +394,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
   client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
   const stopTelegramDoneListener = startTelegramDoneListener(client, env);
+  const stopPerformanceNotifier = startPerformanceNotifier(client, env);
   const refillTimer = setInterval(() => {
     void dispatchRefillBatch(env).then((result) => {
       if (!result.empty) console.log(`[nivora-discord] dispatched ${result.count} refill request(s)`);
@@ -332,6 +406,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     if (reconnectTimer) clearTimeout(reconnectTimer);
     clearInterval(refillTimer);
     stopTelegramDoneListener();
+    stopPerformanceNotifier();
     client.destroy();
   };
 }
