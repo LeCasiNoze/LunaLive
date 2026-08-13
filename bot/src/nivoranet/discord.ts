@@ -14,6 +14,7 @@ type RefillBatch = {
   batch: { id: string; cutoff_at: string };
   requests: Array<{ amount: number | string; wager: string | null; casino_email: string; casino_username: string; brand: { name: string } | null; profile: { username: string } | null }>;
 };
+type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string }> };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -138,7 +139,7 @@ function refillBatchMessage(batch: RefillBatch) {
     `Here is today's refill list - ${date}:`,
     `${batch.requests.length} request${batch.requests.length === 1 ? "" : "s"} - total refill: $${total.toFixed(2)}`,
     compactGroups.join("\n\n"),
-    "Thank you in advance for processing these refills.\nOnce completed, please let us know.\n\nHave a great day!",
+    "Thank you in advance for processing these refills.\nWhen every refill is completed, reply with /done.\n\nHave a great day!",
   ].join("\n\n");
 
   const groups = [...byBrand.entries()].map(([brand, requests]) => {
@@ -169,6 +170,53 @@ async function dispatchRefillBatch(env: BotEnv, includeFuture = false) {
   if (!response.ok || !telegram.ok) throw new Error(telegram.description ?? "Telegram delivery failed.");
   await api(env, { action: "mark-refill-batch-sent", batchId: result.batch.id });
   return { empty: false, count: result.requests.length };
+}
+
+async function completeRefillBatch(client: Client, env: BotEnv) {
+  const result = await api<RefillCompletion>(env, { action: "complete-refill-batch" });
+  if (result.empty) return { empty: true, count: 0 };
+  let count = 0;
+  for (const notification of result.notifications ?? []) {
+    const channel = await client.channels.fetch(notification.ticketChannelId).catch(() => null);
+    if (!channel?.isSendable()) continue;
+    await channel.send({
+      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`<@${notification.discordUserId}> Your ${notification.brandName} refill of $${notification.amount.toFixed(2)} has been completed.`)],
+    });
+    count += 1;
+  }
+  return { empty: false, count };
+}
+
+function startTelegramDoneListener(client: Client, env: BotEnv) {
+  if (!env.NIVORA_TELEGRAM_BOT_TOKEN || !env.NIVORA_TELEGRAM_REFILL_CHAT_ID) return () => {};
+  let offset = 0;
+  let polling = false;
+  const poll = async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${env.NIVORA_TELEGRAM_BOT_TOKEN}/getUpdates?offset=${offset}&timeout=0`);
+      const body = await response.json() as { ok?: boolean; result?: Array<{ update_id: number; message?: { chat?: { id?: number }; text?: string } }> };
+      if (!body.ok) throw new Error("Telegram update polling failed.");
+      for (const update of body.result ?? []) {
+        offset = Math.max(offset, update.update_id + 1);
+        const message = update.message;
+        if (String(message?.chat?.id) !== env.NIVORA_TELEGRAM_REFILL_CHAT_ID || message?.text?.trim().toLowerCase() !== "/done") continue;
+        const result = await completeRefillBatch(client, env);
+        const confirmation = result.empty
+          ? "There is no sent refill batch awaiting confirmation."
+          : `Done. ${result.count} affiliate ticket${result.count === 1 ? " was" : "s were"} notified.`;
+        await fetch(`https://api.telegram.org/bot${env.NIVORA_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: env.NIVORA_TELEGRAM_REFILL_CHAT_ID, text: confirmation }),
+        });
+      }
+    } catch (error) { console.error("[nivora-discord] Telegram /done listener failed", error); }
+    finally { polling = false; }
+  };
+  void poll();
+  const timer = setInterval(() => { void poll(); }, 10_000);
+  return () => clearInterval(timer);
 }
 
 export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
@@ -272,6 +320,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   });
   client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
   client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
+  const stopTelegramDoneListener = startTelegramDoneListener(client, env);
   const refillTimer = setInterval(() => {
     void dispatchRefillBatch(env).then((result) => {
       if (!result.empty) console.log(`[nivora-discord] dispatched ${result.count} refill request(s)`);
@@ -282,6 +331,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     stopped = true;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     clearInterval(refillTimer);
+    stopTelegramDoneListener();
     client.destroy();
   };
 }
