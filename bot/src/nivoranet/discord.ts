@@ -8,6 +8,11 @@ import type { BotEnv } from "../env.js";
 const GOLD = 0xDDB65A;
 const APPLY_BUTTON = "nivora:apply";
 
+export type NivoraDiscordEnv = Pick<BotEnv,
+  "NIVORA_DISCORD_BOT_TOKEN" | "NIVORA_DISCORD_GUILD_ID" | "NIVORA_API_BASE" |
+  "NIVORA_BOT_INTERNAL_KEY" | "NIVORA_TELEGRAM_BOT_TOKEN" | "NIVORA_TELEGRAM_REFILL_CHAT_ID"
+>;
+
 type RefillBrand = { id: string; name: string; account: { casino_email: string | null; casino_username: string | null; refill_amount: number | string | null } | null };
 type RefillContext = { profileId: string; ticketChannelId: string | null; brands: RefillBrand[] };
 type RefillBatch = {
@@ -40,7 +45,7 @@ function refillAccountModal(brandId: string, brandName: string) {
   );
 }
 
-async function api<T>(env: BotEnv, body: Record<string, unknown>): Promise<T> {
+async function api<T>(env: NivoraDiscordEnv, body: Record<string, unknown>): Promise<T> {
   if (!env.NIVORA_API_BASE || !env.NIVORA_BOT_INTERNAL_KEY) throw new Error("Nivora API configuration missing.");
   const response = await fetch(`${env.NIVORA_API_BASE}/api/internal/discord`, {
     method: "POST", headers: { "content-type": "application/json", "x-nivora-bot-key": env.NIVORA_BOT_INTERNAL_KEY }, body: JSON.stringify(body),
@@ -50,7 +55,7 @@ async function api<T>(env: BotEnv, body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-async function publishApplicationEntry(client: Client, env: BotEnv, data: { profileId: string; username: string; twitchUrl: string; language: string; discordUsername: string }) {
+async function publishApplicationEntry(client: Client, env: NivoraDiscordEnv, data: { profileId: string; username: string; twitchUrl: string; language: string; discordUsername: string }) {
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   const channel = guild.channels.cache.find((item) => item.name === "📥・applications" && item.type === ChannelType.GuildText);
   if (!channel?.isTextBased()) throw new Error("Applications channel not found.");
@@ -65,7 +70,7 @@ async function publishApplicationEntry(client: Client, env: BotEnv, data: { prof
   await channel.send({ embeds: [embed], components: [buttons] });
 }
 
-async function createPrivateTicket(client: Client, env: BotEnv, profileId: string, discordUserId: string) {
+async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profileId: string, discordUserId: string) {
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   const category = guild.channels.cache.find((item) => item.name === "━━ PRIVATE TICKETS ━━" && item.type === ChannelType.GuildCategory);
   if (!category) throw new Error("Ticket category not found.");
@@ -84,7 +89,7 @@ function hasRefillDetails(brand: RefillBrand) {
   return Boolean(brand.account?.casino_email && brand.account?.casino_username);
 }
 
-async function queueRefill(interaction: any, env: BotEnv, brandId: string) {
+async function queueRefill(interaction: any, env: NivoraDiscordEnv, brandId: string) {
   await interaction.deferReply({ ephemeral: true });
   const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, {
     action: "request-refill", discordUserId: interaction.user.id, brandId,
@@ -97,7 +102,7 @@ async function queueRefill(interaction: any, env: BotEnv, brandId: string) {
   await interaction.editReply("Your refill request has been added to the next batch.");
 }
 
-async function beginRefill(interaction: any, env: BotEnv, brandId?: string) {
+async function beginRefill(interaction: any, env: NivoraDiscordEnv, brandId?: string) {
   const context = await api<RefillContext>(env, { action: "refill-context", discordUserId: interaction.user.id });
   if (!context.ticketChannelId || interaction.channelId !== context.ticketChannelId) {
     await interaction.reply({ content: "Use `/refill` in your private NivoraNet ticket.", ephemeral: true });
@@ -140,7 +145,7 @@ function notificationPanel(settings: NotificationSettings) {
   };
 }
 
-async function openNotificationSettings(interaction: any, env: BotEnv) {
+async function openNotificationSettings(interaction: any, env: NivoraDiscordEnv) {
   const settings = await api<NotificationSettings>(env, { action: "notification-settings", discordUserId: interaction.user.id });
   if (!settings.ticket_channel_id || interaction.channelId !== settings.ticket_channel_id) {
     await interaction.reply({ content: "Use `/notifications` in your private NivoraNet ticket.", ephemeral: true });
@@ -151,7 +156,7 @@ async function openNotificationSettings(interaction: any, env: BotEnv) {
 
 function currency(value: number) { return `$${value.toFixed(2)}`; }
 
-async function sendStats(interaction: any, env: BotEnv, targetDiscordUserId?: string) {
+async function sendStats(interaction: any, env: NivoraDiscordEnv, targetDiscordUserId?: string) {
   const target = targetDiscordUserId ?? interaction.user.id;
   const stats = await api<AffiliateStats>(env, { action: "affiliate-stats", discordUserId: interaction.user.id, targetDiscordUserId: target });
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
@@ -218,7 +223,7 @@ function refillBatchMessage(batch: RefillBatch) {
   ].join("\n\n");
 }
 
-async function dispatchRefillBatch(env: BotEnv, includeFuture = false) {
+async function dispatchRefillBatch(env: NivoraDiscordEnv, includeFuture = false) {
   if (!env.NIVORA_TELEGRAM_BOT_TOKEN || !env.NIVORA_TELEGRAM_REFILL_CHAT_ID) throw new Error("Telegram refill destination is not configured.");
   const result = await api<RefillBatch & { empty?: boolean }>(env, { action: "refill-batch", includeFuture });
   if (result.empty || !result.requests?.length) return { empty: true };
@@ -232,7 +237,7 @@ async function dispatchRefillBatch(env: BotEnv, includeFuture = false) {
   return { empty: false, count: result.requests.length };
 }
 
-async function completeRefillBatch(client: Client, env: BotEnv) {
+async function completeRefillBatch(client: Client, env: NivoraDiscordEnv) {
   const result = await api<RefillCompletion>(env, { action: "complete-refill-batch" });
   if (result.empty) return { empty: true, count: 0 };
   let count = 0;
@@ -248,7 +253,7 @@ async function completeRefillBatch(client: Client, env: BotEnv) {
   return { empty: false, count };
 }
 
-function startTelegramDoneListener(client: Client, env: BotEnv) {
+function startTelegramDoneListener(client: Client, env: NivoraDiscordEnv) {
   if (!env.NIVORA_TELEGRAM_BOT_TOKEN || !env.NIVORA_TELEGRAM_REFILL_CHAT_ID) return () => {};
   let offset = 0;
   let polling = false;
@@ -289,7 +294,7 @@ function performanceMessage(notification: PerformanceNotification) {
   return { title: "New deposit", description: `A player made a deposit of $${notification.amount.toFixed(2)} for ${notification.brandName}.` };
 }
 
-function startPerformanceNotifier(client: Client, env: BotEnv) {
+function startPerformanceNotifier(client: Client, env: NivoraDiscordEnv) {
   let running = false;
   const flush = async () => {
     if (running) return;
@@ -317,7 +322,7 @@ function startPerformanceNotifier(client: Client, env: BotEnv) {
   return () => clearInterval(timer);
 }
 
-export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
+export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() => Promise<void>> {
   console.log("[nivora-discord] configuration", {
     hasToken: Boolean(env.NIVORA_DISCORD_BOT_TOKEN),
     hasGuildId: Boolean(env.NIVORA_DISCORD_GUILD_ID),
