@@ -73,8 +73,6 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       clearTimeout(connectionWatchdog);
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set([command.toJSON()], guild.id);
-      const applyChannel = guild.channels.cache.find((item) => item.name === "📝・apply" && item.type === ChannelType.GuildText);
-      if (applyChannel?.isTextBased()) await applyChannel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Ready to join NivoraNet?").setDescription("Click below to submit your application. Your information is sent privately to the NivoraNet team.")], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(APPLY_BUTTON).setLabel("Start application").setStyle(ButtonStyle.Primary))] });
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
     } catch (error) { console.error("[nivora-discord] startup failed", error); }
   });
