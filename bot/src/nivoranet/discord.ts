@@ -61,7 +61,16 @@ async function createPrivateTicket(client: Client, env: BotEnv, profileId: strin
 }
 
 export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
-  if (!env.NIVORA_DISCORD_BOT_TOKEN && !env.NIVORA_DISCORD_GUILD_ID) return async () => {};
+  console.log("[nivora-discord] configuration", {
+    hasToken: Boolean(env.NIVORA_DISCORD_BOT_TOKEN),
+    hasGuildId: Boolean(env.NIVORA_DISCORD_GUILD_ID),
+    hasApiBase: Boolean(env.NIVORA_API_BASE),
+    hasInternalKey: Boolean(env.NIVORA_BOT_INTERNAL_KEY),
+  });
+  if (!env.NIVORA_DISCORD_BOT_TOKEN && !env.NIVORA_DISCORD_GUILD_ID) {
+    console.warn("[nivora-discord] disabled: missing token and guild ID");
+    return async () => {};
+  }
   if (!env.NIVORA_DISCORD_BOT_TOKEN || !env.NIVORA_DISCORD_GUILD_ID) throw new Error("Nivora Discord requires token and guild ID.");
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   let stopped = false;
