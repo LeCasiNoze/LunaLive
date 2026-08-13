@@ -208,7 +208,8 @@ async function completeRefillBatch(client: Client, env: BotEnv) {
     const channel = await client.channels.fetch(notification.ticketChannelId).catch(() => null);
     if (!channel?.isSendable()) continue;
     await channel.send({
-      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`<@${notification.discordUserId}> Your ${notification.brandName} refill of $${notification.amount.toFixed(2)} has been completed.`)],
+      content: `<@${notification.discordUserId}>`,
+      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`Your ${notification.brandName} refill of $${notification.amount.toFixed(2)} has been completed.`)],
     });
     count += 1;
   }
@@ -269,7 +270,10 @@ function startPerformanceNotifier(client: Client, env: BotEnv) {
         const channel = await client.channels.fetch(notification.ticketChannelId!).catch(() => null);
         if (!channel?.isSendable()) continue;
         const message = performanceMessage(notification);
-        await channel.send({ embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle(message.title).setDescription(`<@${notification.discordUserId}> ${message.description}`)] });
+        await channel.send({
+          content: `<@${notification.discordUserId}>`,
+          embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle(message.title).setDescription(message.description)],
+        });
         sentIds.push(notification.id);
       }
       if (sentIds.length) await api(env, { action: "mark-discord-notifications-sent", ids: sentIds });
