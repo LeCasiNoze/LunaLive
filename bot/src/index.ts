@@ -268,9 +268,10 @@ async function main() {
   });
 
   const registry = new Registry(pool, env);
-  registry.start();
-
+  // Discord uses a persistent gateway socket. Give it a clear start before the
+  // legacy registry launches its many stream workers in this same process.
   const stopNivoraDiscord = await startNivoraDiscordBot(env);
+  registry.start();
 
   const stopIpc = startLunaClipDbIpc(pool);
 

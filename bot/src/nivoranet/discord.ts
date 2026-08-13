@@ -341,10 +341,19 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     if (stopped || connecting || client.isReady()) return;
     connecting = true;
     try {
-      await Promise.race([
-        client.login(env.NIVORA_DISCORD_BOT_TOKEN),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Gateway timeout after 25 seconds")), 25_000)),
-      ]);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => fail(new Error("Gateway did not become ready after 90 seconds")), 90_000);
+        const cleanup = () => {
+          clearTimeout(timeout);
+          client.off(Events.ClientReady, ready);
+          client.off(Events.Error, fail);
+        };
+        const ready = () => { cleanup(); resolve(); };
+        const fail = (error: Error) => { cleanup(); reject(error); };
+        client.once(Events.ClientReady, ready);
+        client.once(Events.Error, fail);
+        void client.login(env.NIVORA_DISCORD_BOT_TOKEN).catch(fail);
+      });
     } catch (error) {
       console.error("[nivora-discord] login failed", error);
       client.destroy();
