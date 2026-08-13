@@ -36,6 +36,15 @@ function applicationModal() {
   );
 }
 
+function linkExistingModal() {
+  const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
+    .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);
+  return new ModalBuilder().setCustomId("nivora:link-existing").setTitle("Link existing NivoraNet account").addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "NivoraNet account email", "you@example.com")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "NivoraNet account password", "Your password")),
+  );
+}
+
 function refillAccountModal(brandId: string, brandName: string) {
   const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
     .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);
@@ -367,6 +376,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   };
   const commands = [
     new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status")),
+    new SlashCommandBuilder().setName("link").setDescription("Link an existing NivoraNet account"),
     new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
     new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram"),
     new SlashCommandBuilder().setName("notifications").setDescription("Choose your performance alerts"),
@@ -384,6 +394,10 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
     try {
       if (interaction.isChatInputCommand() && interaction.commandName === "nivora") {
         await interaction.reply({ content: "NivoraNet is connected and ready.", ephemeral: true });
+        return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "link") {
+        await interaction.showModal(linkExistingModal());
         return;
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "refill") {
@@ -429,6 +443,20 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         const result = await api<{ profileId: string; username: string; twitchUrl: string; language: string }>(env, { action: "apply", discordUserId: interaction.user.id, discordUsername: interaction.user.username, username: interaction.fields.getTextInputValue("username"), email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"), twitchUrl: interaction.fields.getTextInputValue("twitch"), language: interaction.fields.getTextInputValue("language") });
         await publishApplicationEntry(client, env, { ...result, discordUsername: interaction.user.username });
         return void interaction.editReply("Your application has been received. You will be notified here once it has been reviewed.");
+      }
+      if (interaction.isModalSubmit() && interaction.customId === "nivora:link-existing") {
+        await interaction.deferReply({ ephemeral: true });
+        const result = await api<{ profileId: string; username: string; status: string }>(env, {
+          action: "link-existing", discordUserId: interaction.user.id, discordUsername: interaction.user.username,
+          email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"),
+        });
+        if (result.status !== "approved") return void interaction.editReply("Your NivoraNet account is linked. It is still awaiting admin approval.");
+        const guild = interaction.guild!;
+        const member = await guild.members.fetch(interaction.user.id);
+        const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate");
+        if (affiliateRole) await member.roles.add(affiliateRole);
+        await createPrivateTicket(client, env, result.profileId, interaction.user.id);
+        return void interaction.editReply(`Your **${result.username}** account is linked. Your private ticket is ready.`);
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("nivora:refill-account:")) {
         await interaction.deferReply({ ephemeral: true });
