@@ -17,6 +17,7 @@ type RefillBatch = {
 type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string }> };
 type NotificationSettings = { ticket_channel_id: string | null; notify_registration: boolean; notify_ftd: boolean; notify_deposit: boolean };
 type PerformanceNotification = { id: string; type: "registration" | "ftd" | "deposit"; amount: number; depositNumber: number | null; playerTotal: number | null; brandName: string; discordUserId: string | null; ticketChannelId: string | null; enabled: boolean };
+type AffiliateStats = { profileName: string; ticketChannelId: string | null; monthStart: string; brands: Array<{ brandName: string; clicks: number; registrations: number; ftd: number; deposits: number; depositVolume: number; rs: number; earnings: number }> };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -75,7 +76,7 @@ async function createPrivateTicket(client: Client, env: BotEnv, profileId: strin
       { id: discordUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     ],
   });
-  await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Welcome to NivoraNet").setDescription("This is your permanent private ticket. Use it for support and refill operations.\n\nYour NivoraNet dashboard is ready with the email and password used during your application.")] });
+  await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Welcome to NivoraNet").setDescription("This is your permanent private ticket for support, refills and performance alerts.\n\nUseful commands:\n`/refill` - request your daily refill\n`/notifications` - choose performance alerts\n`/stats` - view the current month, from the 1st to today\n`/help` - view this guide again\n\nYour dashboard uses the email and password from your application.")] });
   await api(env, { action: "set-ticket", profileId, ticketChannelId: channel.id });
 }
 
@@ -146,6 +147,37 @@ async function openNotificationSettings(interaction: any, env: BotEnv) {
     return;
   }
   await interaction.reply({ ...notificationPanel(settings), ephemeral: true });
+}
+
+function currency(value: number) { return `$${value.toFixed(2)}`; }
+
+async function sendStats(interaction: any, env: BotEnv, targetDiscordUserId?: string) {
+  const target = targetDiscordUserId ?? interaction.user.id;
+  const stats = await api<AffiliateStats>(env, { action: "affiliate-stats", discordUserId: interaction.user.id, targetDiscordUserId: target });
+  const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
+  if (!isAdmin && (!stats.ticketChannelId || interaction.channelId !== stats.ticketChannelId)) {
+    await interaction.reply({ content: "Use `/stats` in your private NivoraNet ticket.", ephemeral: true });
+    return;
+  }
+  const month = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", month: "long", year: "numeric" }).format(new Date(stats.monthStart));
+  const fields = stats.brands.map((brand) => ({
+    name: brand.brandName,
+    value: `Clicks: **${brand.clicks}** | Registrations: **${brand.registrations}** | FTDs: **${brand.ftd}**\nDeposits: **${brand.deposits}** | Volume: **${currency(brand.depositVolume)}** | Earnings: **${currency(brand.earnings)}**`,
+  }));
+  await interaction.reply({
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle(`Current month statistics - ${stats.profileName}`).setDescription(`From 1 ${month} to now.`).addFields(fields.length ? fields : [{ name: "No active brands", value: "No deal is currently assigned." }])],
+    ephemeral: !isAdmin,
+  });
+}
+
+async function sendHelp(interaction: any) {
+  await interaction.reply({
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle("NivoraNet commands").setDescription("Use these commands in your permanent private ticket.").addFields(
+      { name: "/refill", value: "Request your daily fake balance for each eligible brand." },
+      { name: "/notifications", value: "Choose registration, FTD and deposit alerts." },
+      { name: "/stats", value: "View your performance from the 1st of the current month until today." },
+    )], ephemeral: true,
+  });
 }
 
 function refillBatchMessage(batch: RefillBatch) {
@@ -324,6 +356,8 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
     new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram"),
     new SlashCommandBuilder().setName("notifications").setDescription("Choose your performance alerts"),
+    new SlashCommandBuilder().setName("stats").setDescription("View current month performance").addUserOption((option) => option.setName("affiliate").setDescription("Affiliate to view (admin only)").setRequired(false)),
+    new SlashCommandBuilder().setName("help").setDescription("View NivoraNet commands"),
   ];
   client.once(Events.ClientReady, async (ready) => {
     try {
@@ -344,6 +378,16 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "notifications") {
         await openNotificationSettings(interaction, env);
+        return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "stats") {
+        const target = interaction.options.getUser("affiliate");
+        if (target && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
+        await sendStats(interaction, env, target?.id);
+        return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "help") {
+        await sendHelp(interaction);
         return;
       }
       if (interaction.isStringSelectMenu() && interaction.customId === "nivora:notification-settings") {
