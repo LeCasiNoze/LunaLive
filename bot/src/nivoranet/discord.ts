@@ -10,6 +10,10 @@ const APPLY_BUTTON = "nivora:apply";
 
 type RefillBrand = { id: string; name: string; account: { casino_email: string | null; casino_username: string | null; refill_amount: number | string | null } | null };
 type RefillContext = { profileId: string; ticketChannelId: string | null; brands: RefillBrand[] };
+type RefillBatch = {
+  batch: { id: string; cutoff_at: string };
+  requests: Array<{ amount: number | string; wager: string | null; casino_email: string; casino_username: string; brand: { name: string } | null; profile: { username: string } | null }>;
+};
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -115,6 +119,44 @@ async function beginRefill(interaction: any, env: BotEnv, brandId?: string) {
   await queueRefill(interaction, env, brand.id);
 }
 
+function refillBatchMessage(batch: RefillBatch) {
+  const date = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(new Date(batch.batch.cutoff_at));
+  const byBrand = new Map<string, RefillBatch["requests"]>();
+  for (const request of batch.requests) {
+    const name = request.brand?.name ?? "Unknown brand";
+    byBrand.set(name, [...(byBrand.get(name) ?? []), request]);
+  }
+  const total = batch.requests.reduce((sum, request) => sum + Number(request.amount), 0);
+  const groups = [...byBrand.entries()].map(([brand, requests]) => {
+    const lines = requests.map((request, index) => {
+      const wager = request.wager?.trim() ? request.wager.trim() : "no wager";
+      return `${index + 1}. ${request.profile?.username ?? "Affiliate"} · ${request.casino_email} — $${Number(request.amount).toFixed(2)} (${wager})\n   Casino username: ${request.casino_username}`;
+    });
+    return `🎰 ${brand}\n${lines.join("\n")}`;
+  });
+  return [
+    "Hello Sam 👋",
+    `Here is today's refill list — ${date}:`,
+    `💰 ${batch.requests.length} request${batch.requests.length === 1 ? "" : "s"} — total refill: $${total.toFixed(2)}`,
+    groups.join("\n\n"),
+    "Thank you in advance for processing these refills.\nOnce completed, please let us know.\n\nHave a great day! ☀️",
+  ].join("\n\n");
+}
+
+async function dispatchRefillBatch(env: BotEnv, includeFuture = false) {
+  if (!env.NIVORA_TELEGRAM_BOT_TOKEN || !env.NIVORA_TELEGRAM_REFILL_CHAT_ID) throw new Error("Telegram refill destination is not configured.");
+  const result = await api<RefillBatch & { empty?: boolean }>(env, { action: "refill-batch", includeFuture });
+  if (result.empty || !result.requests?.length) return { empty: true };
+  const response = await fetch(`https://api.telegram.org/bot${env.NIVORA_TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: env.NIVORA_TELEGRAM_REFILL_CHAT_ID, text: refillBatchMessage(result) }),
+  });
+  const telegram = await response.json().catch(() => ({})) as { ok?: boolean; description?: string };
+  if (!response.ok || !telegram.ok) throw new Error(telegram.description ?? "Telegram delivery failed.");
+  await api(env, { action: "mark-refill-batch-sent", batchId: result.batch.id });
+  return { empty: false, count: result.requests.length };
+}
+
 export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
   console.log("[nivora-discord] configuration", {
     hasToken: Boolean(env.NIVORA_DISCORD_BOT_TOKEN),
@@ -152,6 +194,7 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   const commands = [
     new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status")),
     new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
+    new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram"),
   ];
   client.once(Events.ClientReady, async (ready) => {
     try {
@@ -169,6 +212,12 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       if (interaction.isChatInputCommand() && interaction.commandName === "refill") {
         await beginRefill(interaction, env);
         return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "refill-batch") {
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
+        await interaction.deferReply({ ephemeral: true });
+        const result = await dispatchRefillBatch(env, true);
+        return void interaction.editReply(result.empty ? "There is no open refill batch to send." : `Sent ${result.count} refill request${result.count === 1 ? "" : "s"} to Telegram.`);
       }
       if (interaction.isStringSelectMenu() && interaction.customId === "nivora:refill-brand") {
         await beginRefill(interaction, env, interaction.values[0]);
@@ -209,10 +258,16 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
   });
   client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
   client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
+  const refillTimer = setInterval(() => {
+    void dispatchRefillBatch(env).then((result) => {
+      if (!result.empty) console.log(`[nivora-discord] dispatched ${result.count} refill request(s)`);
+    }).catch((error) => console.error("[nivora-discord] automatic refill dispatch failed", error));
+  }, 60_000);
   void connect();
   return async () => {
     stopped = true;
     if (reconnectTimer) clearTimeout(reconnectTimer);
+    clearInterval(refillTimer);
     client.destroy();
   };
 }
