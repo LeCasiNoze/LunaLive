@@ -1,12 +1,15 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, EmbedBuilder,
-  Events, GatewayIntentBits, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder,
+  Events, GatewayIntentBits, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
   TextInputBuilder, TextInputStyle,
 } from "discord.js";
 import type { BotEnv } from "../env.js";
 
 const GOLD = 0xDDB65A;
 const APPLY_BUTTON = "nivora:apply";
+
+type RefillBrand = { id: string; name: string; account: { casino_email: string | null; casino_username: string | null; refill_amount: number | string | null } | null };
+type RefillContext = { profileId: string; ticketChannelId: string | null; brands: RefillBrand[] };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -17,6 +20,15 @@ function applicationModal() {
     new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "Password for your NivoraNet account", TextInputStyle.Short, true)),
     new ActionRowBuilder<TextInputBuilder>().addComponents(field("twitch", "Twitch channel link", TextInputStyle.Short, true, "https://twitch.tv/...")),
     new ActionRowBuilder<TextInputBuilder>().addComponents(field("language", "Preferred language", TextInputStyle.Short, true, "English / French / German")),
+  );
+}
+
+function refillAccountModal(brandId: string, brandName: string) {
+  const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
+    .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);
+  return new ModalBuilder().setCustomId(`nivora:refill-account:${brandId}`).setTitle(`Refill details · ${brandName}`).addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_email", "Casino account email", "email@example.com")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_username", "Casino account username", "Your casino username")),
   );
 }
 
@@ -60,6 +72,49 @@ async function createPrivateTicket(client: Client, env: BotEnv, profileId: strin
   await api(env, { action: "set-ticket", profileId, ticketChannelId: channel.id });
 }
 
+function hasRefillDetails(brand: RefillBrand) {
+  return Boolean(brand.account?.casino_email && brand.account?.casino_username);
+}
+
+async function queueRefill(interaction: any, env: BotEnv, brandId: string) {
+  await interaction.deferReply({ ephemeral: true });
+  const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, {
+    action: "request-refill", discordUserId: interaction.user.id, brandId,
+  });
+  const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
+  const channel = interaction.channel;
+  if (channel?.isTextBased()) await channel.send({
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **$${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })],
+  });
+  await interaction.editReply("Your refill request has been added to the next batch.");
+}
+
+async function beginRefill(interaction: any, env: BotEnv, brandId?: string) {
+  const context = await api<RefillContext>(env, { action: "refill-context", discordUserId: interaction.user.id });
+  if (!context.ticketChannelId || interaction.channelId !== context.ticketChannelId) {
+    await interaction.reply({ content: "Use `/refill` in your private NivoraNet ticket.", ephemeral: true });
+    return;
+  }
+  if (!context.brands.length) {
+    await interaction.reply({ content: "No active brand is assigned to your account yet.", ephemeral: true });
+    return;
+  }
+  if (!brandId && context.brands.length > 1) {
+    const menu = new StringSelectMenuBuilder().setCustomId("nivora:refill-brand").setPlaceholder("Choose the brand for this refill").addOptions(
+      context.brands.map((brand) => ({ label: brand.name, value: brand.id, description: hasRefillDetails(brand) ? "Request your daily refill" : "Account details required first" })),
+    );
+    await interaction.reply({ content: "Choose the brand you want to refill.", components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)], ephemeral: true });
+    return;
+  }
+  const brand = context.brands.find((item) => item.id === (brandId ?? context.brands[0].id));
+  if (!brand) throw new Error("Brand not found.");
+  if (!hasRefillDetails(brand)) {
+    await interaction.showModal(refillAccountModal(brand.id, brand.name));
+    return;
+  }
+  await queueRefill(interaction, env, brand.id);
+}
+
 export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<void>> {
   console.log("[nivora-discord] configuration", {
     hasToken: Boolean(env.NIVORA_DISCORD_BOT_TOKEN),
@@ -94,11 +149,14 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
       scheduleReconnect();
     } finally { connecting = false; }
   };
-  const command = new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status"));
+  const commands = [
+    new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status")),
+    new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
+  ];
   client.once(Events.ClientReady, async (ready) => {
     try {
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
-      await ready.application?.commands.set([command.toJSON()], guild.id);
+      await ready.application?.commands.set(commands.map((command) => command.toJSON()), guild.id);
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
     } catch (error) { console.error("[nivora-discord] startup failed", error); }
   });
@@ -106,6 +164,14 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
     try {
       if (interaction.isChatInputCommand() && interaction.commandName === "nivora") {
         await interaction.reply({ content: "NivoraNet is connected and ready.", ephemeral: true });
+        return;
+      }
+      if (interaction.isChatInputCommand() && interaction.commandName === "refill") {
+        await beginRefill(interaction, env);
+        return;
+      }
+      if (interaction.isStringSelectMenu() && interaction.customId === "nivora:refill-brand") {
+        await beginRefill(interaction, env, interaction.values[0]);
         return;
       }
       if (interaction.isButton() && interaction.customId === APPLY_BUTTON) {
@@ -117,6 +183,19 @@ export async function startNivoraDiscordBot(env: BotEnv): Promise<() => Promise<
         const result = await api<{ profileId: string; username: string; twitchUrl: string; language: string }>(env, { action: "apply", discordUserId: interaction.user.id, discordUsername: interaction.user.username, username: interaction.fields.getTextInputValue("username"), email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"), twitchUrl: interaction.fields.getTextInputValue("twitch"), language: interaction.fields.getTextInputValue("language") });
         await publishApplicationEntry(client, env, { ...result, discordUsername: interaction.user.username });
         return void interaction.editReply("Your application has been received. You will be notified here once it has been reviewed.");
+      }
+      if (interaction.isModalSubmit() && interaction.customId.startsWith("nivora:refill-account:")) {
+        await interaction.deferReply({ ephemeral: true });
+        const brandId = interaction.customId.split(":")[2];
+        await api(env, {
+          action: "save-refill-account", discordUserId: interaction.user.id, brandId,
+          casinoEmail: interaction.fields.getTextInputValue("casino_email"), casinoUsername: interaction.fields.getTextInputValue("casino_username"),
+        });
+        const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, { action: "request-refill", discordUserId: interaction.user.id, brandId });
+        const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
+        const channel = interaction.channel;
+        if (channel?.isSendable()) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **$${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })] });
+        return void interaction.editReply("Your casino details were saved and your refill request was added to the next batch.");
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:approve:")) {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
