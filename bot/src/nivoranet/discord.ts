@@ -13,6 +13,8 @@ export type NivoraDiscordEnv = Pick<BotEnv,
   "NIVORA_BOT_INTERNAL_KEY" | "NIVORA_TELEGRAM_BOT_TOKEN" | "NIVORA_TELEGRAM_REFILL_CHAT_ID"
 >;
 
+const refillsViaAurix = process.env.NIVORA_REFILLS_VIA_AURIX === "1";
+
 type RefillBrand = { id: string; name: string; account: { casino_email: string | null; casino_username: string | null; refill_amount: number | string | null } | null };
 type RefillContext = { profileId: string; ticketChannelId: string | null; brands: RefillBrand[] };
 type RefillBatch = {
@@ -444,9 +446,10 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         await interaction.update(notificationPanel(settings));
         return;
       }
-      if (interaction.isChatInputCommand() && interaction.commandName === "refill-batch") {
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
-        await interaction.deferReply({ ephemeral: true });
+        if (interaction.isChatInputCommand() && interaction.commandName === "refill-batch") {
+          if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
+          if (refillsViaAurix) return void interaction.reply({ content: "NivoraNet refills are included in the shared Aurix batch sent at 10:00 Paris time.", ephemeral: true });
+          await interaction.deferReply({ ephemeral: true });
         const result = await dispatchRefillBatch(env, true);
         return void interaction.editReply(result.empty ? "There is no open refill batch to send." : `Sent ${result.count} refill request${result.count === 1 ? "" : "s"} to Telegram.`);
       }
@@ -504,9 +507,9 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   });
   client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
   client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
-  const stopTelegramDoneListener = startTelegramDoneListener(client, env);
-  const stopPerformanceNotifier = startPerformanceNotifier(client, env);
-  const refillTimer = setInterval(() => {
+    const stopTelegramDoneListener = refillsViaAurix ? () => {} : startTelegramDoneListener(client, env);
+    const stopPerformanceNotifier = startPerformanceNotifier(client, env);
+    const refillTimer = refillsViaAurix ? null : setInterval(() => {
     void dispatchRefillBatch(env).then((result) => {
       if (!result.empty) console.log(`[nivora-discord] dispatched ${result.count} refill request(s)`);
     }).catch((error) => console.error("[nivora-discord] automatic refill dispatch failed", error));
@@ -515,7 +518,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   return async () => {
     stopped = true;
     if (reconnectTimer) clearTimeout(reconnectTimer);
-    clearInterval(refillTimer);
+      if (refillTimer) clearInterval(refillTimer);
     stopTelegramDoneListener();
     stopPerformanceNotifier();
     client.destroy();

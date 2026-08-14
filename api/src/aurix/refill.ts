@@ -17,6 +17,11 @@ import * as cfg from "./config.js";
 import { all, kvGet, kvGetInt, one, query } from "./db.js";
 import { loadEnv } from "./env.js";
 import { logEvent } from "./tickets.js";
+import {
+  completeNivoraBatchAndNotify,
+  markNivoraBatchSent,
+  pendingNivoraRefills,
+} from "./nivora_refills.js";
 
 const log = (...a: unknown[]) => console.log("[aurix.refill]", ...a);
 
@@ -735,7 +740,13 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
   // ni Telegram). On auto-mark 'sent' pour pas laisser le batch en
   // 'locked' eternel.
   const reqsCount = await getRequests(batch.id);
-  if (reqsCount.length === 0) {
+  let nivoraBatch = null;
+  try {
+    nivoraBatch = await pendingNivoraRefills();
+  } catch (error) {
+    log("Nivora refill bridge unavailable; continuing with Aurix requests only.", error);
+  }
+  if (reqsCount.length === 0 && !nivoraBatch) {
     log(`Cutoff: batch #${batch.id} vide -> aucun message envoye.`);
     await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
     batch.status = "sent";
@@ -830,22 +841,36 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     try {
       const { sendRefillBatchToTelegram } = await import("./telegram.js");
       const dayDateFr = fmtDayDateFr(batch.cutoff_at, tz());
+      const nivoraItems = (nivoraBatch?.requests ?? []).map((request) => ({
+        displayName: request.casino_username,
+        casinoUsername: request.casino_username,
+        email: request.casino_email,
+        amount: `EUR ${Number(request.amount).toFixed(2)}`,
+        wager: request.wager,
+      }));
       const res = await sendRefillBatchToTelegram({
         batchId: batch.id,
         dayDateFr,
         managerMention,
         fixedAmount: cfg.DEFAULTS.REFILL_FIXED_AMOUNT,
-        count: reqs.length,
-        items: items.map((it) => ({
+        count: reqs.length + nivoraItems.length,
+        items: [...items.map((it) => ({
           displayName: it.displayName,
           casinoUsername: it.casinoUsername,
           email: it.email,
           amount: it.amount,
           wager: it.wager,
-        })),
+        })), ...nivoraItems],
       });
 
       if (res.ok) {
+        if (nivoraBatch) {
+          try {
+            await markNivoraBatchSent(nivoraBatch.id);
+          } catch (error) {
+            log("Nivora refill batch was sent to Telegram but could not be marked sent.", error);
+          }
+        }
         // Le batch reste 'locked' jusqu'a ce que le manager tape /done sur Telegram.
         // Open the next day immediately; ticket notifications are non-critical.
         await ensureOpenBatch(guildForCutoff);
@@ -928,10 +953,18 @@ async function processRefillDone(client: Client): Promise<void> {
   const batch = await one<Batch>(
     "SELECT * FROM aurix_refill_batches WHERE status='locked' ORDER BY id DESC LIMIT 1"
   );
-  if (!batch) {
+  const nivora = await completeNivoraBatchAndNotify().catch((error) => {
+    log("Nivora refill completion skipped.", error);
+    return { completed: false, notified: 0 };
+  });
+  if (!batch && !nivora.completed) {
     await sendTelegramText(
       "⚠️ Aucun batch en attente côté Aurix. Rien à marquer comme effectué."
     );
+    return;
+  }
+  if (!batch) {
+    await sendTelegramText(`Done - NivoraNet: ${nivora.notified} affiliate(s) notified.`);
     return;
   }
 
