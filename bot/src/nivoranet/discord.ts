@@ -422,9 +422,15 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   let stopped = false;
   let connecting = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let reconnectAttempts = 0;
   const scheduleReconnect = () => {
     if (stopped || reconnectTimer) return;
-    reconnectTimer = setTimeout(() => { reconnectTimer = null; void connect(); }, 5_000);
+    // A 429/1015 from Discord's edge is an IP-level temporary block. Retrying
+    // every few seconds only extends it, so back off from one minute to 15 min.
+    const delay = Math.min(15 * 60_000, 60_000 * 2 ** Math.min(reconnectAttempts, 4));
+    reconnectAttempts += 1;
+    console.warn(`[nivora-discord] next gateway attempt in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})`);
+    reconnectTimer = setTimeout(() => { reconnectTimer = null; void connect(); }, delay);
   };
   const connect = async () => {
     if (stopped || connecting || client.isReady()) return;
@@ -437,7 +443,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
           client.off(Events.ClientReady, ready);
           client.off(Events.Error, fail);
         };
-        const ready = () => { cleanup(); resolve(); };
+        const ready = () => { reconnectAttempts = 0; cleanup(); resolve(); };
         const fail = (error: Error) => { cleanup(); reject(error); };
         client.once(Events.ClientReady, ready);
         client.once(Events.Error, fail);
