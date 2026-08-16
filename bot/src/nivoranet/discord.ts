@@ -405,6 +405,20 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   }
   if (!env.NIVORA_DISCORD_BOT_TOKEN || !env.NIVORA_DISCORD_GUILD_ID) throw new Error("Nivora Discord requires token and guild ID.");
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  // These handlers must exist before login: otherwise a disconnect before the
+  // READY payload gets flattened into an unhelpful 90-second timeout.
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    console.warn(`[nivora-discord] gateway disconnected (shard=${shardId}, code=${event.code}, reason=${event.reason || "none"})`);
+  });
+  client.on(Events.ShardReconnecting, (shardId) => {
+    console.warn(`[nivora-discord] gateway reconnecting (shard=${shardId})`);
+  });
+  client.on(Events.ShardError, (error, shardId) => {
+    console.error(`[nivora-discord] gateway error (shard=${shardId})`, error);
+  });
+  client.on(Events.Debug, (message) => {
+    if (/gateway|identif|ready|invalid|disconnect/i.test(message)) console.log(`[nivora-discord] ${message}`);
+  });
   let stopped = false;
   let connecting = false;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -550,8 +564,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. The refusal workflow will be added with the operational panel.", ephemeral: true });
     } catch (error) { console.error("[nivora-discord] interaction failed", error); if (interaction.isRepliable()) { const reply = { content: `Unable to complete this action: ${error instanceof Error ? error.message : "unknown error"}`, ephemeral: true }; if (interaction.deferred || interaction.replied) await interaction.editReply(reply); else await interaction.reply(reply); } }
   });
-  client.on("shardDisconnect", () => { console.warn("[nivora-discord] gateway disconnected"); scheduleReconnect(); });
-  client.on("shardError", (error) => console.error("[nivora-discord] gateway error", error));
+  client.on(Events.ShardDisconnect, () => scheduleReconnect());
     const stopTelegramDoneListener = refillsViaAurix ? () => {} : startTelegramDoneListener(client, env);
     const stopPerformanceNotifier = startPerformanceNotifier(client, env);
     const refillTimer = refillsViaAurix ? null : setInterval(() => {
