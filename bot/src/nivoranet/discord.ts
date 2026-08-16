@@ -1,5 +1,5 @@
 import {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, EmbedBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, Client, EmbedBuilder, Guild,
   Events, GatewayIntentBits, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
   TextInputBuilder, TextInputStyle,
 } from "discord.js";
@@ -73,7 +73,7 @@ function publicEmbed(title: string, description: string, key: string) {
 function publicPanels() {
   return [
     {
-      key: "welcome", channel: "🎉・bienvenue", embed: publicEmbed("Welcome to NivoraNet", [
+      key: "welcome", aliases: ["welcome", "bienvenue"], embed: publicEmbed("Welcome to NivoraNet", [
         "**EN** — Creator management, deals, tracking and daily support in one place.",
         "**FR** — Gestion créateur, deals, tracking et support quotidien au même endroit.",
         "**DE** — Creator-Management, Deals, Tracking und täglicher Support an einem Ort.",
@@ -81,14 +81,14 @@ function publicPanels() {
       ].join("\n"), "welcome"),
     },
     {
-      key: "rules", channel: "📌・règlement", embed: publicEmbed("Rules · Règlement · Regeln", [
+      key: "rules", aliases: ["rules", "reglement", "regel"], embed: publicEmbed("Rules · Règlement · Regeln", [
         "**EN** — One Discord account and one NivoraNet account per creator. Keep your credentials and casino links private. Follow each platform and casino’s rules. No fake traffic, misleading promotion or harassment.",
         "", "**FR** — Un compte Discord et un compte NivoraNet par créateur. Garde tes identifiants et liens casino privés. Respecte les règles de chaque plateforme et casino. Pas de faux trafic, promotion trompeuse ou harcèlement.",
         "", "**DE** — Ein Discord- und ein NivoraNet-Konto pro Creator. Halte Zugangsdaten und Casino-Links privat. Beachte die Regeln jeder Plattform und jedes Casinos. Kein Fake-Traffic, keine irreführende Werbung und kein Belästigen.",
       ].join("\n"), "rules"),
     },
     {
-      key: "read", channel: "📖・à-lire", embed: publicEmbed("How it works · Comment ça marche · So funktioniert es", [
+      key: "read", aliases: ["a-lire", "alire", "read", "help", "guide"], embed: publicEmbed("How it works · Comment ça marche · So funktioniert es", [
         "**1. New creator:** open `#📝・apply`, submit the form, then wait for approval.",
         "**2. Existing creator:** use **Link existing account** in `#📝・apply`.",
         "**3. After approval:** your private ticket is created. Your deal and tracking link are configured by the team.",
@@ -97,6 +97,18 @@ function publicPanels() {
       ].join("\n"), "read"),
     },
   ];
+}
+
+function normalizedChannelName(value: string) {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function findPublicChannel(guild: Guild, aliases: string[]) {
+  return guild.channels.cache.find((item) => {
+    if (item.type !== ChannelType.GuildText) return false;
+    const name = normalizedChannelName(item.name);
+    return aliases.some((alias) => name === alias || name.includes(alias));
+  });
 }
 
 function refillAccountModal(brandId: string, brandName: string, language?: string | null) {
@@ -196,9 +208,9 @@ async function syncApplyPanel(client: Client, env: NivoraDiscordEnv) {
 async function syncPublicPanels(client: Client, env: NivoraDiscordEnv) {
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   for (const panel of publicPanels()) {
-    const channel = guild.channels.cache.find((item) => item.name === panel.channel && item.type === ChannelType.GuildText);
+    const channel = findPublicChannel(guild, panel.aliases);
     if (!channel?.isTextBased() || !("messages" in channel) || !client.user) {
-      console.warn(`[nivora-discord] public channel not found: ${panel.channel}`);
+      console.warn(`[nivora-discord] public channel not found for: ${panel.aliases.join(", ")}`);
       continue;
     }
     const messages = await channel.messages.fetch({ limit: 100 });
