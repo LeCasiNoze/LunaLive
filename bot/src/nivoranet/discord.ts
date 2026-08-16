@@ -7,6 +7,7 @@ import type { BotEnv } from "../env.js";
 
 const GOLD = 0xDDB65A;
 const APPLY_BUTTON = "nivora:apply";
+const LINK_EXISTING_BUTTON = "nivora:link-existing-button";
 
 export type NivoraDiscordEnv = Pick<BotEnv,
   "NIVORA_DISCORD_BOT_TOKEN" | "NIVORA_DISCORD_GUILD_ID" | "NIVORA_API_BASE" |
@@ -45,6 +46,22 @@ function linkExistingModal() {
     new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "NivoraNet account email", "you@example.com")),
     new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "NivoraNet account password", "Your password")),
   );
+}
+
+function applyPanel() {
+  return {
+    embeds: [new EmbedBuilder()
+      .setColor(GOLD)
+      .setTitle("Join NivoraNet")
+      .setDescription(
+        "**New to NivoraNet?** Submit your application and the team will review it.\n\n" +
+        "**Already have a NivoraNet account?** Link it to Discord to access your private ticket, refills, alerts and statistics."
+      )],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(APPLY_BUTTON).setLabel("Start application").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(LINK_EXISTING_BUTTON).setLabel("Link existing account").setStyle(ButtonStyle.Secondary),
+    )],
+  };
 }
 
 function refillAccountModal(brandId: string, brandName: string) {
@@ -113,6 +130,29 @@ async function syncTicketNames(client: Client, env: NivoraDiscordEnv) {
       if (channel.name !== name) await channel.setName(name, "Use the NivoraNet affiliate username").catch(() => {});
     }
   }
+}
+
+/** Updates the single persistent #apply message instead of posting duplicates on deploy. */
+async function syncApplyPanel(client: Client, env: NivoraDiscordEnv) {
+  const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
+  const channel = guild.channels.cache.find((item) => item.name === "📝・apply" && item.type === ChannelType.GuildText);
+  if (!channel?.isTextBased() || !("messages" in channel) || !client.user) {
+    console.warn("[nivora-discord] apply channel or bot user not available for panel sync");
+    return;
+  }
+  const messages = await channel.messages.fetch({ limit: 100 });
+  const panel = messages.find((message) =>
+    message.author.id === client.user!.id &&
+    message.components.some((row) =>
+      (row as { components?: Array<{ customId?: string }> }).components?.some((component) => component.customId === APPLY_BUTTON)
+    )
+  );
+  if (!panel) {
+    console.warn("[nivora-discord] existing apply panel not found; no duplicate was created");
+    return;
+  }
+  await panel.edit(applyPanel());
+  console.log("[nivora-discord] apply panel synchronized");
 }
 
 function hasRefillDetails(brand: RefillBrand) {
@@ -409,6 +449,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set(commands.map((command) => command.toJSON()), guild.id);
       await syncTicketNames(client, env);
+      await syncApplyPanel(client, env);
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
     } catch (error) { console.error("[nivora-discord] startup failed", error); }
   });
@@ -459,6 +500,10 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       }
       if (interaction.isButton() && interaction.customId === APPLY_BUTTON) {
         await interaction.showModal(applicationModal());
+        return;
+      }
+      if (interaction.isButton() && interaction.customId === LINK_EXISTING_BUTTON) {
+        await interaction.showModal(linkExistingModal());
         return;
       }
       if (interaction.isModalSubmit() && interaction.customId === "nivora:application") {
