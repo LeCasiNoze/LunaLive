@@ -284,11 +284,15 @@ async function main() {
       if (!shuttingDown) nivoraRestart = setTimeout(startNivoraChild, 10_000);
     });
   };
-  // NivoraNet is hosted by the already-paid LunaLive API service. Keeping the
-  // gateway out of this worker prevents two processes from competing for the
-  // same Discord session during deploys.
-  if (process.env.NIVORA_DISCORD_HOST !== "api") startNivoraChild();
-  else console.log("[bot] Nivora Discord is hosted by LunaLive API");
+  // The Nivora gateway belongs to this existing bot service. The API image does
+  // not ship bot/dist, so delegating it to the API leaves Discord online only
+  // when a legacy worker happens to be connected, without interaction handlers.
+  // Keep one owner: this supervised child process.
+  if (process.env.NIVORA_DISCORD_HOST === "disabled") {
+    console.log("[bot] Nivora Discord gateway explicitly disabled");
+  } else {
+    startNivoraChild();
+  }
   registry.start();
 
   const stopIpc = startLunaClipDbIpc(pool);
