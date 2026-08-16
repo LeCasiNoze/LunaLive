@@ -4,6 +4,7 @@ import {
   TextInputBuilder, TextInputStyle,
 } from "discord.js";
 import type { BotEnv } from "../env.js";
+import { nivoraLanguage, t, ticketGuide } from "./i18n.js";
 
 const GOLD = 0xDDB65A;
 const APPLY_BUTTON = "nivora:apply";
@@ -23,9 +24,9 @@ type RefillBatch = {
   requests: Array<{ amount: number | string; wager: string | null; casino_email: string; casino_username: string; brand: { name: string } | null; profile: { username: string } | null }>;
 };
 type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string }> };
-type NotificationSettings = { ticket_channel_id: string | null; notify_registration: boolean; notify_ftd: boolean; notify_deposit: boolean };
+type NotificationSettings = { ticket_channel_id: string | null; notify_registration: boolean; notify_ftd: boolean; notify_deposit: boolean; language?: string | null };
 type PerformanceNotification = { id: string; type: "registration" | "ftd" | "deposit"; amount: number; depositNumber: number | null; playerTotal: number | null; brandName: string; discordUserId: string | null; ticketChannelId: string | null; enabled: boolean };
-type AffiliateStats = { profileName: string; ticketChannelId: string | null; monthStart: string; brands: Array<{ brandName: string; clicks: number; registrations: number; ftd: number; deposits: number; depositVolume: number; rs: number; earnings: number }> };
+type AffiliateStats = { profileName: string; ticketChannelId: string | null; monthStart: string; language?: string | null; brands: Array<{ brandName: string; clicks: number; registrations: number; ftd: number; deposits: number; depositVolume: number; rs: number; earnings: number }> };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
@@ -54,14 +55,48 @@ function applyPanel() {
       .setColor(GOLD)
       .setTitle("Join NivoraNet")
       .setDescription(
-        "**New to NivoraNet?** Submit your application and the team will review it.\n\n" +
-        "**Already have a NivoraNet account?** Link it to Discord to access your private ticket, refills, alerts and statistics."
+        "**EN — New here?** Submit your application and the team will review it. Already have an account? Link it to access your private ticket, refills, alerts and statistics.\n\n" +
+        "**FR — Nouveau ?** Envoie ta candidature : l’équipe la vérifiera. Tu as déjà un compte ? Lie-le à Discord pour accéder à ton ticket privé, tes refills, alertes et statistiques.\n\n" +
+        "**DE — Neu hier?** Reiche deine Bewerbung ein; das Team prüft sie. Du hast bereits ein Konto? Verknüpfe es mit Discord für dein privates Ticket, Refills, Benachrichtigungen und Statistiken."
       )],
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(APPLY_BUTTON).setLabel("Start application").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(LINK_EXISTING_BUTTON).setLabel("Link existing account").setStyle(ButtonStyle.Secondary),
     )],
   };
+}
+
+function publicEmbed(title: string, description: string, key: string) {
+  return new EmbedBuilder().setColor(GOLD).setTitle(title).setDescription(description).setFooter({ text: `NIVORA:panel:${key}` });
+}
+
+function publicPanels() {
+  return [
+    {
+      key: "welcome", channel: "🎉・bienvenue", embed: publicEmbed("Welcome to NivoraNet", [
+        "**EN** — Creator management, deals, tracking and daily support in one place.",
+        "**FR** — Gestion créateur, deals, tracking et support quotidien au même endroit.",
+        "**DE** — Creator-Management, Deals, Tracking und täglicher Support an einem Ort.",
+        "", "1. Read `#📌・règlement` · 2. Read `#📖・à-lire` · 3. Open `#📝・apply`.",
+      ].join("\n"), "welcome"),
+    },
+    {
+      key: "rules", channel: "📌・règlement", embed: publicEmbed("Rules · Règlement · Regeln", [
+        "**EN** — One Discord account and one NivoraNet account per creator. Keep your credentials and casino links private. Follow each platform and casino’s rules. No fake traffic, misleading promotion or harassment.",
+        "", "**FR** — Un compte Discord et un compte NivoraNet par créateur. Garde tes identifiants et liens casino privés. Respecte les règles de chaque plateforme et casino. Pas de faux trafic, promotion trompeuse ou harcèlement.",
+        "", "**DE** — Ein Discord- und ein NivoraNet-Konto pro Creator. Halte Zugangsdaten und Casino-Links privat. Beachte die Regeln jeder Plattform und jedes Casinos. Kein Fake-Traffic, keine irreführende Werbung und kein Belästigen.",
+      ].join("\n"), "rules"),
+    },
+    {
+      key: "read", channel: "📖・à-lire", embed: publicEmbed("How it works · Comment ça marche · So funktioniert es", [
+        "**1. New creator:** open `#📝・apply`, submit the form, then wait for approval.",
+        "**2. Existing creator:** use **Link existing account** in `#📝・apply`.",
+        "**3. After approval:** your private ticket is created. Your deal and tracking link are configured by the team.",
+        "**4. In your ticket:** `/refill` for your daily fake balance, `/notifications` for alerts, `/stats` for the current month.",
+        "", "**FR / DE:** Le même parcours s’applique : candidature ou liaison du compte, validation, ticket privé, puis commandes. / Derselbe Ablauf gilt: Bewerbung oder Kontoverknüpfung, Freigabe, privates Ticket, dann Befehle.",
+      ].join("\n"), "read"),
+    },
+  ];
 }
 
 function refillAccountModal(brandId: string, brandName: string) {
@@ -106,7 +141,7 @@ function ticketChannelName(username: string, fallback: string) {
   return `ticket-${safe || fallback}`;
 }
 
-async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profileId: string, discordUserId: string, username: string) {
+async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profileId: string, discordUserId: string, username: string, language?: string | null) {
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   const category = guild.channels.cache.find((item) => item.name === "━━ PRIVATE TICKETS ━━" && item.type === ChannelType.GuildCategory);
   if (!category) throw new Error("Ticket category not found.");
@@ -117,7 +152,8 @@ async function createPrivateTicket(client: Client, env: NivoraDiscordEnv, profil
       { id: discordUserId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
     ],
   });
-  await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Welcome to NivoraNet").setDescription("This is your permanent private ticket for support, refills and performance alerts.\n\nUseful commands:\n`/refill` - request your daily refill\n`/notifications` - choose performance alerts\n`/stats` - view the current month, from the 1st to today\n`/help` - view this guide again\n\nYour dashboard uses the email and password from your application.")] });
+  const text = t(language);
+  await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.ticketTitle).setDescription(ticketGuide(nivoraLanguage(language)))] });
   await api(env, { action: "set-ticket", profileId, ticketChannelId: channel.id });
 }
 
@@ -153,6 +189,27 @@ async function syncApplyPanel(client: Client, env: NivoraDiscordEnv) {
   }
   await panel.edit(applyPanel());
   console.log("[nivora-discord] apply panel synchronized");
+}
+
+/** Keep one editable, bot-owned information message per public channel. */
+async function syncPublicPanels(client: Client, env: NivoraDiscordEnv) {
+  const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
+  for (const panel of publicPanels()) {
+    const channel = guild.channels.cache.find((item) => item.name === panel.channel && item.type === ChannelType.GuildText);
+    if (!channel?.isTextBased() || !("messages" in channel) || !client.user) {
+      console.warn(`[nivora-discord] public channel not found: ${panel.channel}`);
+      continue;
+    }
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const existing = messages.find((message) => message.author.id === client.user!.id && message.embeds.some((embed) => embed.footer?.text === `NIVORA:panel:${panel.key}`))
+      // These are dedicated information channels. Adopting the existing bot
+      // post once prevents a second panel appearing after this upgrade.
+      ?? messages.find((message) => message.author.id === client.user!.id && message.components.length === 0);
+    if (existing) await existing.edit({ embeds: [panel.embed] });
+    else await channel.send({ embeds: [panel.embed] });
+  }
+  await syncApplyPanel(client, env);
+  console.log("[nivora-discord] public information panels synchronized");
 }
 
 function hasRefillDetails(brand: RefillBrand) {
@@ -199,18 +256,24 @@ async function beginRefill(interaction: any, env: NivoraDiscordEnv, brandId?: st
 }
 
 function notificationPanel(settings: NotificationSettings) {
+  const language = nivoraLanguage(settings.language);
+  const labels = language === "fr"
+    ? { title: "Alertes de performances", intro: "Sélectionne les alertes que tu souhaites recevoir dans ce ticket privé. Laisse tout vide pour les désactiver.", registrations: "Inscriptions", registrationHint: "Nouvelles inscriptions casino", ftd: "FTD", ftdHint: "Premiers dépôts", deposits: "Dépôts", depositHint: "Dépôts suivants" }
+    : language === "de"
+      ? { title: "Performance-Benachrichtigungen", intro: "Wähle alle Benachrichtigungen, die du in diesem privaten Ticket erhalten möchtest. Lasse alles leer, um sie zu deaktivieren.", registrations: "Registrierungen", registrationHint: "Neue Casino-Registrierungen", ftd: "FTDs", ftdHint: "Ersteinzahlungen", deposits: "Einzahlungen", depositHint: "Weitere Einzahlungen" }
+      : { title: "Performance alerts", intro: "Select every alert you want to receive in this private ticket. Leave all choices empty to turn alerts off.", registrations: "Registrations", registrationHint: "New casino registrations", ftd: "FTDs", ftdHint: "First-time deposits", deposits: "Deposits", depositHint: "Later player deposits" };
   const selected = new Set([
     settings.notify_registration ? "registration" : null,
     settings.notify_ftd ? "ftd" : null,
     settings.notify_deposit ? "deposit" : null,
   ]);
-  const menu = new StringSelectMenuBuilder().setCustomId("nivora:notification-settings").setPlaceholder("Choose your performance alerts").setMinValues(0).setMaxValues(3).addOptions(
-    { label: "Registrations", value: "registration", description: "New casino registrations", default: selected.has("registration") },
-    { label: "FTDs", value: "ftd", description: "First-time deposits", default: selected.has("ftd") },
-    { label: "Deposits", value: "deposit", description: "Later player deposits", default: selected.has("deposit") },
+  const menu = new StringSelectMenuBuilder().setCustomId("nivora:notification-settings").setPlaceholder(labels.title).setMinValues(0).setMaxValues(3).addOptions(
+    { label: labels.registrations, value: "registration", description: labels.registrationHint, default: selected.has("registration") },
+    { label: labels.ftd, value: "ftd", description: labels.ftdHint, default: selected.has("ftd") },
+    { label: labels.deposits, value: "deposit", description: labels.depositHint, default: selected.has("deposit") },
   );
   return {
-    content: "Performance alerts\nSelect every alert you want to receive in this private ticket. Leave all choices empty to turn alerts off.",
+    content: `${labels.title}\n${labels.intro}`,
     components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
   };
 }
@@ -224,7 +287,7 @@ async function openNotificationSettings(interaction: any, env: NivoraDiscordEnv)
   await interaction.reply({ ...notificationPanel(settings), ephemeral: true });
 }
 
-function currency(value: number) { return `$${value.toFixed(2)}`; }
+function currency(value: number) { return `€${value.toFixed(2)}`; }
 
 async function sendStats(interaction: any, env: NivoraDiscordEnv, targetDiscordUserId?: string) {
   const target = targetDiscordUserId ?? interaction.user.id;
@@ -234,23 +297,31 @@ async function sendStats(interaction: any, env: NivoraDiscordEnv, targetDiscordU
     await interaction.reply({ content: "Use `/stats` in your private NivoraNet ticket.", ephemeral: true });
     return;
   }
-  const month = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", month: "long", year: "numeric" }).format(new Date(stats.monthStart));
+  const language = nivoraLanguage(stats.language);
+  const month = new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : language === "de" ? "de-DE" : "en-GB", { timeZone: "Europe/Paris", month: "long", year: "numeric" }).format(new Date(stats.monthStart));
+  const labels = language === "fr"
+    ? { title: "Statistiques du mois en cours", period: "Du 1", to: "à aujourd’hui.", clicks: "Clics", registrations: "Inscriptions", ftd: "FTD", deposits: "Dépôts", volume: "Volume", rs: "RS", earnings: "Gains", empty: "Aucune marque active", emptyText: "Aucun deal n’est attribué actuellement." }
+    : language === "de"
+      ? { title: "Statistiken des aktuellen Monats", period: "Vom 1.", to: "bis heute.", clicks: "Klicks", registrations: "Registrierungen", ftd: "FTDs", deposits: "Einzahlungen", volume: "Volumen", rs: "RS", earnings: "Einnahmen", empty: "Keine aktive Marke", emptyText: "Derzeit ist kein Deal zugewiesen." }
+      : { title: "Current month statistics", period: "From 1", to: "to now.", clicks: "Clicks", registrations: "Registrations", ftd: "FTDs", deposits: "Deposits", volume: "Volume", rs: "RS", earnings: "Earnings", empty: "No active brands", emptyText: "No deal is currently assigned." };
   const fields = stats.brands.map((brand) => ({
     name: brand.brandName,
-    value: `Clicks: **${brand.clicks}** | Registrations: **${brand.registrations}** | FTDs: **${brand.ftd}**\nDeposits: **${brand.deposits}** | Volume: **${currency(brand.depositVolume)}** | RS: **${currency(brand.rs)}** | Earnings: **${currency(brand.earnings)}**`,
+    value: `${labels.clicks}: **${brand.clicks}** | ${labels.registrations}: **${brand.registrations}** | ${labels.ftd}: **${brand.ftd}**\n${labels.deposits}: **${brand.deposits}** | ${labels.volume}: **${currency(brand.depositVolume)}** | ${labels.rs}: **${currency(brand.rs)}** | ${labels.earnings}: **${currency(brand.earnings)}**`,
   }));
   await interaction.reply({
-    embeds: [new EmbedBuilder().setColor(GOLD).setTitle(`Current month statistics - ${stats.profileName}`).setDescription(`From 1 ${month} to now.`).addFields(fields.length ? fields : [{ name: "No active brands", value: "No deal is currently assigned." }])],
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle(`${labels.title} - ${stats.profileName}`).setDescription(`${labels.period} ${month} ${labels.to}`).addFields(fields.length ? fields : [{ name: labels.empty, value: labels.emptyText }])],
     ephemeral: !isAdmin,
   });
 }
 
-async function sendHelp(interaction: any) {
+async function sendHelp(interaction: any, env: NivoraDiscordEnv) {
+  const context = await api<AffiliateStats>(env, { action: "affiliate-stats", discordUserId: interaction.user.id });
+  const text = t(context.language);
   await interaction.reply({
-    embeds: [new EmbedBuilder().setColor(GOLD).setTitle("NivoraNet commands").setDescription("Use these commands in your permanent private ticket.").addFields(
-      { name: "/refill", value: "Request your daily fake balance for each eligible brand." },
-      { name: "/notifications", value: "Choose registration, FTD and deposit alerts." },
-      { name: "/stats", value: "View your performance from the 1st of the current month until today." },
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.helpTitle).setDescription(text.helpIntro).addFields(
+      { name: "/refill", value: text.refill },
+      { name: "/notifications", value: text.notifications },
+      { name: "/stats", value: text.stats },
     )], ephemeral: true,
   });
 }
@@ -265,14 +336,14 @@ function refillBatchMessage(batch: RefillBatch) {
   const total = batch.requests.reduce((sum, request) => sum + Number(request.amount), 0);
   const compactGroups = [...byBrand.entries()].map(([brand, requests]) => {
     const lines = requests.map((request, index) =>
-      `${index + 1}. ${request.casino_username} - ${request.casino_email} - $${Number(request.amount).toFixed(2)}`,
+      `${index + 1}. ${request.casino_username} - ${request.casino_email} - €${Number(request.amount).toFixed(2)}`,
     );
     return `${brand}\n${lines.join("\n")}`;
   });
   return [
     "Hello Sam,",
     `Here is today's refill list - ${date}:`,
-    `${batch.requests.length} request${batch.requests.length === 1 ? "" : "s"} - total refill: $${total.toFixed(2)}`,
+    `${batch.requests.length} request${batch.requests.length === 1 ? "" : "s"} - total refill: €${total.toFixed(2)}`,
     compactGroups.join("\n\n"),
     "Thank you in advance for processing these refills.\nWhen every refill is completed, reply with /done.\n\nHave a great day!",
   ].join("\n\n");
@@ -316,7 +387,7 @@ async function completeRefillBatch(client: Client, env: NivoraDiscordEnv) {
     if (!channel?.isSendable()) continue;
     await channel.send({
       content: `<@${notification.discordUserId}>`,
-      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`Your ${notification.brandName} refill of $${notification.amount.toFixed(2)} has been completed.`)],
+      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`Your ${notification.brandName} refill of €${notification.amount.toFixed(2)} has been completed.`)],
     });
     count += 1;
   }
@@ -468,8 +539,10 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
     try {
       const guild = await ready.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
       await ready.application?.commands.set(commands.map((command) => command.toJSON()), guild.id);
-      await syncTicketNames(client, env);
-      await syncApplyPanel(client, env);
+      // Public information must remain available even if the internal API is
+      // temporarily unavailable during a deploy or a key rotation.
+      await syncPublicPanels(client, env).catch((error) => console.error("[nivora-discord] public panel sync failed", error));
+      await syncTicketNames(client, env).catch((error) => console.error("[nivora-discord] ticket name sync failed", error));
       console.log(`[nivora-discord] connected as ${ready.user.tag} on ${guild.name}`);
     } catch (error) { console.error("[nivora-discord] startup failed", error); }
   });
@@ -498,7 +571,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         return;
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "help") {
-        await sendHelp(interaction);
+        await sendHelp(interaction, env);
         return;
       }
       if (interaction.isStringSelectMenu() && interaction.customId === "nivora:notification-settings") {
@@ -534,7 +607,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       }
       if (interaction.isModalSubmit() && interaction.customId === "nivora:link-existing") {
         await interaction.deferReply({ ephemeral: true });
-        const result = await api<{ profileId: string; username: string; status: string }>(env, {
+        const result = await api<{ profileId: string; username: string; status: string; language?: string }>(env, {
           action: "link-existing", discordUserId: interaction.user.id, discordUsername: interaction.user.username,
           email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"),
         });
@@ -543,7 +616,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         const member = await guild.members.fetch(interaction.user.id);
         const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate");
         if (affiliateRole) await member.roles.add(affiliateRole);
-        await createPrivateTicket(client, env, result.profileId, interaction.user.id, result.username);
+        await createPrivateTicket(client, env, result.profileId, interaction.user.id, result.username, result.language);
         return void interaction.editReply(`Your **${result.username}** account is linked. Your private ticket is ready.`);
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("nivora:refill-account:")) {
@@ -556,15 +629,15 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, { action: "request-refill", discordUserId: interaction.user.id, brandId });
         const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
         const channel = interaction.channel;
-        if (channel?.isSendable()) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **$${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })] });
+        if (channel?.isSendable()) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **€${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })] });
         return void interaction.editReply("Your casino details were saved and your refill request was added to the next batch.");
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:approve:")) {
         if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
-        await interaction.deferUpdate(); const profileId = interaction.customId.split(":")[2]; const result = await api<{ discordUserId: string }>(env, { action: "approve", profileId });
+        await interaction.deferUpdate(); const profileId = interaction.customId.split(":")[2]; const result = await api<{ discordUserId: string; language?: string }>(env, { action: "approve", profileId });
         const guild = interaction.guild!; const member = await guild.members.fetch(result.discordUserId); const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate"); if (affiliateRole) await member.roles.add(affiliateRole);
-        const account = await api<{ profileName: string }>(env, { action: "affiliate-stats", discordUserId: result.discordUserId });
-        await createPrivateTicket(client, env, profileId, result.discordUserId, account.profileName);
+        const account = await api<{ profileName: string; language?: string }>(env, { action: "affiliate-stats", discordUserId: result.discordUserId });
+        await createPrivateTicket(client, env, profileId, result.discordUserId, account.profileName, result.language ?? account.language);
         return void interaction.editReply({ components: [], embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x35D6B5).setTitle("Application approved")] });
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. The refusal workflow will be added with the operational panel.", ephemeral: true });
