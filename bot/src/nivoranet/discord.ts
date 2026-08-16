@@ -18,34 +18,34 @@ export type NivoraDiscordEnv = Pick<BotEnv,
 const refillsViaAurix = process.env.NIVORA_REFILLS_VIA_AURIX === "1";
 
 type RefillBrand = { id: string; name: string; account: { casino_email: string | null; casino_username: string | null; refill_amount: number | string | null } | null };
-type RefillContext = { profileId: string; ticketChannelId: string | null; brands: RefillBrand[] };
+type RefillContext = { profileId: string; ticketChannelId: string | null; language?: string | null; brands: RefillBrand[] };
 type RefillBatch = {
   batch: { id: string; cutoff_at: string };
   requests: Array<{ amount: number | string; wager: string | null; casino_email: string; casino_username: string; brand: { name: string } | null; profile: { username: string } | null }>;
 };
-type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string }> };
+type RefillCompletion = { empty: boolean; notifications?: Array<{ brandName: string; amount: number; discordUserId: string; ticketChannelId: string; language?: string | null }> };
 type NotificationSettings = { ticket_channel_id: string | null; notify_registration: boolean; notify_ftd: boolean; notify_deposit: boolean; language?: string | null };
-type PerformanceNotification = { id: string; type: "registration" | "ftd" | "deposit"; amount: number; depositNumber: number | null; playerTotal: number | null; brandName: string; discordUserId: string | null; ticketChannelId: string | null; enabled: boolean };
+type PerformanceNotification = { id: string; type: "registration" | "ftd" | "deposit"; amount: number; depositNumber: number | null; playerTotal: number | null; brandName: string; discordUserId: string | null; ticketChannelId: string | null; language?: string | null; enabled: boolean };
 type AffiliateStats = { profileName: string; ticketChannelId: string | null; monthStart: string; language?: string | null; brands: Array<{ brandName: string; clicks: number; registrations: number; ftd: number; deposits: number; depositVolume: number; rs: number; earnings: number }> };
 
 function applicationModal() {
   const field = (id: string, label: string, style: TextInputStyle, required = true, placeholder?: string) =>
     new TextInputBuilder().setCustomId(id).setLabel(label).setStyle(style).setRequired(required).setPlaceholder(placeholder ?? "");
-  return new ModalBuilder().setCustomId("nivora:application").setTitle("Apply to NivoraNet").addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("username", "Username / Creator name", TextInputStyle.Short)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "Email", TextInputStyle.Short, true, "you@example.com")),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "Password for your NivoraNet account", TextInputStyle.Short, true)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("twitch", "Twitch channel link", TextInputStyle.Short, true, "https://twitch.tv/...")),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("language", "Preferred language", TextInputStyle.Short, true, "English / French / German")),
+  return new ModalBuilder().setCustomId("nivora:application").setTitle("NivoraNet application · Candidature · Bewerbung").addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("username", "Creator name / Nom / Creator-Name", TextInputStyle.Short)),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "Email / E-mail", TextInputStyle.Short, true, "you@example.com")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "Account password / Mot de passe / Passwort", TextInputStyle.Short, true)),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("twitch", "Twitch channel link / Lien Twitch", TextInputStyle.Short, true, "https://twitch.tv/...")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("language", "Language / Langue / Sprache", TextInputStyle.Short, true, "English / Français / Deutsch")),
   );
 }
 
 function linkExistingModal() {
   const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
     .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);
-  return new ModalBuilder().setCustomId("nivora:link-existing").setTitle("Link existing NivoraNet account").addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "NivoraNet account email", "you@example.com")),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "NivoraNet account password", "Your password")),
+  return new ModalBuilder().setCustomId("nivora:link-existing").setTitle("Link account · Lier un compte · Konto verknüpfen").addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("email", "NivoraNet account email / E-mail", "you@example.com")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("password", "Password / Mot de passe / Passwort", "Your password")),
   );
 }
 
@@ -60,8 +60,8 @@ function applyPanel() {
         "**DE — Neu hier?** Reiche deine Bewerbung ein; das Team prüft sie. Du hast bereits ein Konto? Verknüpfe es mit Discord für dein privates Ticket, Refills, Benachrichtigungen und Statistiken."
       )],
     components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(APPLY_BUTTON).setLabel("Start application").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(LINK_EXISTING_BUTTON).setLabel("Link existing account").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(APPLY_BUTTON).setLabel("Apply · Candidater · Bewerben").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(LINK_EXISTING_BUTTON).setLabel("Link account · Lier · Verknüpfen").setStyle(ButtonStyle.Secondary),
     )],
   };
 }
@@ -99,12 +99,13 @@ function publicPanels() {
   ];
 }
 
-function refillAccountModal(brandId: string, brandName: string) {
+function refillAccountModal(brandId: string, brandName: string, language?: string | null) {
   const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
     .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);
-  return new ModalBuilder().setCustomId(`nivora:refill-account:${brandId}`).setTitle(`Refill details · ${brandName}`).addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_email", "Casino account email", "email@example.com")),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_username", "Casino account username", "Your casino username")),
+  const label = nivoraLanguage(language) === "fr" ? "Informations refill" : nivoraLanguage(language) === "de" ? "Refill-Daten" : "Refill details";
+  return new ModalBuilder().setCustomId(`nivora:refill-account:${brandId}`).setTitle(`${label} · ${brandName}`).addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_email", "Casino email / E-mail casino", "email@example.com")),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(field("casino_username", "Casino username / Pseudo casino", "Casino username")),
   );
 }
 
@@ -122,13 +123,13 @@ async function publishApplicationEntry(client: Client, env: NivoraDiscordEnv, da
   const guild = await client.guilds.fetch(env.NIVORA_DISCORD_GUILD_ID!);
   const channel = guild.channels.cache.find((item) => item.name === "📥・applications" && item.type === ChannelType.GuildText);
   if (!channel?.isTextBased()) throw new Error("Applications channel not found.");
-  const embed = new EmbedBuilder().setColor(GOLD).setTitle("New affiliate application").addFields(
-    { name: "Creator", value: data.username, inline: true }, { name: "Language", value: data.language, inline: true },
+  const embed = new EmbedBuilder().setColor(GOLD).setTitle("New affiliate application · Nouvelle candidature · Neue Bewerbung").addFields(
+    { name: "Creator · Créateur", value: data.username, inline: true }, { name: "Language · Langue · Sprache", value: data.language, inline: true },
     { name: "Discord", value: data.discordUsername, inline: true }, { name: "Twitch", value: data.twitchUrl },
   ).setFooter({ text: `Profile ${data.profileId}` });
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`nivora:approve:${data.profileId}`).setLabel("Approve").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`nivora:reject:${data.profileId}`).setLabel("Reject").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`nivora:approve:${data.profileId}`).setLabel("Approve · Valider · Genehmigen").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`nivora:reject:${data.profileId}`).setLabel("Reject · Refuser · Ablehnen").setStyle(ButtonStyle.Danger),
   );
   await channel.send({ embeds: [embed], components: [buttons] });
 }
@@ -218,38 +219,42 @@ function hasRefillDetails(brand: RefillBrand) {
 
 async function queueRefill(interaction: any, env: NivoraDiscordEnv, brandId: string) {
   await interaction.deferReply({ ephemeral: true });
+  const context = await api<RefillContext>(env, { action: "refill-context", discordUserId: interaction.user.id });
+  const text = t(context.language);
   const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, {
     action: "request-refill", discordUserId: interaction.user.id, brandId,
   });
-  const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
+  const language = nivoraLanguage(context.language);
+  const when = new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : language === "de" ? "de-DE" : "en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
   const channel = interaction.channel;
   if (channel?.isTextBased()) await channel.send({
-    embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **$${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })],
+    embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.refillRequested).setDescription(`**${result.brandName}** · **${currency(result.amount)}**\n${text.queued}: **${when} (Paris)**.`).setFooter({ text: text.dailyLimit })],
   });
-  await interaction.editReply("Your refill request has been added to the next batch.");
+  await interaction.editReply(text.refillAdded);
 }
 
 async function beginRefill(interaction: any, env: NivoraDiscordEnv, brandId?: string) {
   const context = await api<RefillContext>(env, { action: "refill-context", discordUserId: interaction.user.id });
+  const text = t(context.language);
   if (!context.ticketChannelId || interaction.channelId !== context.ticketChannelId) {
-    await interaction.reply({ content: "Use `/refill` in your private NivoraNet ticket.", ephemeral: true });
+    await interaction.reply({ content: ["/refill", "—", text.privateOnly].join(" "), ephemeral: true });
     return;
   }
   if (!context.brands.length) {
-    await interaction.reply({ content: "No active brand is assigned to your account yet.", ephemeral: true });
+    await interaction.reply({ content: text.noBrand, ephemeral: true });
     return;
   }
   if (!brandId && context.brands.length > 1) {
-    const menu = new StringSelectMenuBuilder().setCustomId("nivora:refill-brand").setPlaceholder("Choose the brand for this refill").addOptions(
-      context.brands.map((brand) => ({ label: brand.name, value: brand.id, description: hasRefillDetails(brand) ? "Request your daily refill" : "Account details required first" })),
+    const menu = new StringSelectMenuBuilder().setCustomId("nivora:refill-brand").setPlaceholder(text.selectBrand).addOptions(
+      context.brands.map((brand) => ({ label: brand.name, value: brand.id, description: hasRefillDetails(brand) ? text.requestDailyRefill : text.accountDetailsRequired })),
     );
-    await interaction.reply({ content: "Choose the brand you want to refill.", components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)], ephemeral: true });
+    await interaction.reply({ content: text.selectBrand, components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)], ephemeral: true });
     return;
   }
   const brand = context.brands.find((item) => item.id === (brandId ?? context.brands[0].id));
   if (!brand) throw new Error("Brand not found.");
   if (!hasRefillDetails(brand)) {
-    await interaction.showModal(refillAccountModal(brand.id, brand.name));
+    await interaction.showModal(refillAccountModal(brand.id, brand.name, context.language));
     return;
   }
   await queueRefill(interaction, env, brand.id);
@@ -281,7 +286,7 @@ function notificationPanel(settings: NotificationSettings) {
 async function openNotificationSettings(interaction: any, env: NivoraDiscordEnv) {
   const settings = await api<NotificationSettings>(env, { action: "notification-settings", discordUserId: interaction.user.id });
   if (!settings.ticket_channel_id || interaction.channelId !== settings.ticket_channel_id) {
-    await interaction.reply({ content: "Use `/notifications` in your private NivoraNet ticket.", ephemeral: true });
+    await interaction.reply({ content: ["/notifications", "—", t(settings.language).privateOnly].join(" "), ephemeral: true });
     return;
   }
   await interaction.reply({ ...notificationPanel(settings), ephemeral: true });
@@ -294,7 +299,7 @@ async function sendStats(interaction: any, env: NivoraDiscordEnv, targetDiscordU
   const stats = await api<AffiliateStats>(env, { action: "affiliate-stats", discordUserId: interaction.user.id, targetDiscordUserId: target });
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator);
   if (!isAdmin && (!stats.ticketChannelId || interaction.channelId !== stats.ticketChannelId)) {
-    await interaction.reply({ content: "Use `/stats` in your private NivoraNet ticket.", ephemeral: true });
+    await interaction.reply({ content: ["/stats", "—", t(stats.language).privateOnly].join(" "), ephemeral: true });
     return;
   }
   const language = nivoraLanguage(stats.language);
@@ -387,7 +392,7 @@ async function completeRefillBatch(client: Client, env: NivoraDiscordEnv) {
     if (!channel?.isSendable()) continue;
     await channel.send({
       content: `<@${notification.discordUserId}>`,
-      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle("Refill completed").setDescription(`Your ${notification.brandName} refill of €${notification.amount.toFixed(2)} has been completed.`)],
+      embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle(t(notification.language).refillCompleted).setDescription(t(notification.language).refillCompletedText(notification.brandName, currency(notification.amount)))],
     });
     count += 1;
   }
@@ -427,12 +432,13 @@ function startTelegramDoneListener(client: Client, env: NivoraDiscordEnv) {
 }
 
 function performanceMessage(notification: PerformanceNotification) {
-  if (notification.type === "registration") return { title: "New registration", description: `A new registration has been detected for ${notification.brandName}.` };
-  if (notification.type === "ftd") return { title: "New FTD", description: `A first-time deposit of $${notification.amount.toFixed(2)} has been detected for ${notification.brandName}.` };
+  const text = t(notification.language);
+  if (notification.type === "registration") return { title: text.registration, description: text.registrationText(notification.brandName) };
+  if (notification.type === "ftd") return { title: text.ftd, description: text.ftdText(currency(notification.amount), notification.brandName) };
   if (notification.depositNumber && notification.playerTotal !== null) {
-    return { title: "New deposit", description: `A player made their ${notification.depositNumber}${notification.depositNumber === 1 ? "st" : notification.depositNumber === 2 ? "nd" : notification.depositNumber === 3 ? "rd" : "th"} deposit: $${notification.amount.toFixed(2)} / Total: $${notification.playerTotal.toFixed(2)}.` };
+    return { title: text.deposit, description: text.depositText(notification.depositNumber, currency(notification.amount), currency(notification.playerTotal)) };
   }
-  return { title: "New deposit", description: `A player made a deposit of $${notification.amount.toFixed(2)} for ${notification.brandName}.` };
+  return { title: text.deposit, description: text.depositSimple(currency(notification.amount), notification.brandName) };
 }
 
 function startPerformanceNotifier(client: Client, env: NivoraDiscordEnv) {
@@ -527,13 +533,13 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
     } finally { connecting = false; }
   };
   const commands = [
-    new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").addSubcommand((s) => s.setName("status").setDescription("Check bot status")),
-    new SlashCommandBuilder().setName("link").setDescription("Link an existing NivoraNet account"),
-    new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill"),
-    new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram"),
-    new SlashCommandBuilder().setName("notifications").setDescription("Choose your performance alerts"),
-    new SlashCommandBuilder().setName("stats").setDescription("View current month performance").addUserOption((option) => option.setName("affiliate").setDescription("Affiliate to view (admin only)").setRequired(false)),
-    new SlashCommandBuilder().setName("help").setDescription("View NivoraNet commands"),
+    new SlashCommandBuilder().setName("nivora").setDescription("NivoraNet tools").setDescriptionLocalizations({ fr: "Outils NivoraNet", de: "NivoraNet-Tools" }).addSubcommand((s) => s.setName("status").setDescription("Check bot status").setDescriptionLocalizations({ fr: "Vérifier le statut du bot", de: "Bot-Status prüfen" })),
+    new SlashCommandBuilder().setName("link").setDescription("Link an existing NivoraNet account").setDescriptionLocalizations({ fr: "Lier un compte NivoraNet existant", de: "Bestehendes NivoraNet-Konto verknüpfen" }),
+    new SlashCommandBuilder().setName("refill").setDescription("Request your daily casino refill").setDescriptionLocalizations({ fr: "Demander ton refill casino quotidien", de: "Täglichen Casino-Refill anfordern" }),
+    new SlashCommandBuilder().setName("refill-batch").setDescription("Send the current refill batch to Telegram").setDescriptionLocalizations({ fr: "Envoyer le batch actuel vers Telegram", de: "Aktuellen Refill-Batch an Telegram senden" }),
+    new SlashCommandBuilder().setName("notifications").setDescription("Choose your performance alerts").setDescriptionLocalizations({ fr: "Choisir les alertes de performance", de: "Performance-Benachrichtigungen wählen" }),
+    new SlashCommandBuilder().setName("stats").setDescription("View current month performance").setDescriptionLocalizations({ fr: "Voir les performances du mois", de: "Performance dieses Monats ansehen" }).addUserOption((option) => option.setName("affiliate").setDescription("Affiliate to view (admin only)").setDescriptionLocalizations({ fr: "Affilié à consulter (admin)", de: "Affiliate anzeigen (Admin)" }).setRequired(false)),
+    new SlashCommandBuilder().setName("help").setDescription("View NivoraNet commands").setDescriptionLocalizations({ fr: "Voir les commandes NivoraNet", de: "NivoraNet-Befehle ansehen" }),
   ];
   client.once(Events.ClientReady, async (ready) => {
     try {
@@ -549,7 +555,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
   client.on(Events.InteractionCreate, async (interaction) => {
     try {
       if (interaction.isChatInputCommand() && interaction.commandName === "nivora") {
-        await interaction.reply({ content: "NivoraNet is connected and ready.", ephemeral: true });
+        await interaction.reply({ content: "NivoraNet is connected and ready.\nNivoraNet est connecté et prêt.\nNivoraNet ist verbunden und bereit.", ephemeral: true });
         return;
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "link") {
@@ -566,7 +572,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       }
       if (interaction.isChatInputCommand() && interaction.commandName === "stats") {
         const target = interaction.options.getUser("affiliate");
-        if (target && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
+        if (target && !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only. / Réservé aux administrateurs. / Nur für Administratoren.", ephemeral: true });
         await sendStats(interaction, env, target?.id);
         return;
       }
@@ -581,8 +587,8 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         return;
       }
         if (interaction.isChatInputCommand() && interaction.commandName === "refill-batch") {
-          if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
-          if (refillsViaAurix) return void interaction.reply({ content: "NivoraNet refills are included in the shared Aurix batch sent at 10:00 Paris time.", ephemeral: true });
+          if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only. / Réservé aux administrateurs. / Nur für Administratoren.", ephemeral: true });
+          if (refillsViaAurix) return void interaction.reply({ content: "NivoraNet refills are included in the shared Aurix batch sent at 10:00 Paris time.\nLes refills NivoraNet sont inclus dans le batch Aurix partagé envoyé à 10h, heure de Paris.\nNivoraNet-Refills sind im gemeinsamen Aurix-Batch um 10:00 Uhr (Paris) enthalten.", ephemeral: true });
           await interaction.deferReply({ ephemeral: true });
         const result = await dispatchRefillBatch(env, true);
         return void interaction.editReply(result.empty ? "There is no open refill batch to send." : `Sent ${result.count} refill request${result.count === 1 ? "" : "s"} to Telegram.`);
@@ -601,9 +607,10 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
       }
       if (interaction.isModalSubmit() && interaction.customId === "nivora:application") {
         await interaction.deferReply({ ephemeral: true });
-        const result = await api<{ profileId: string; username: string; twitchUrl: string; language: string }>(env, { action: "apply", discordUserId: interaction.user.id, discordUsername: interaction.user.username, username: interaction.fields.getTextInputValue("username"), email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"), twitchUrl: interaction.fields.getTextInputValue("twitch"), language: interaction.fields.getTextInputValue("language") });
+        const submittedLanguage = interaction.fields.getTextInputValue("language");
+        const result = await api<{ profileId: string; username: string; twitchUrl: string; language: string }>(env, { action: "apply", discordUserId: interaction.user.id, discordUsername: interaction.user.username, username: interaction.fields.getTextInputValue("username"), email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"), twitchUrl: interaction.fields.getTextInputValue("twitch"), language: submittedLanguage });
         await publishApplicationEntry(client, env, { ...result, discordUsername: interaction.user.username });
-        return void interaction.editReply("Your application has been received. You will be notified here once it has been reviewed.");
+        return void interaction.editReply(t(submittedLanguage).applicationReceived);
       }
       if (interaction.isModalSubmit() && interaction.customId === "nivora:link-existing") {
         await interaction.deferReply({ ephemeral: true });
@@ -611,13 +618,13 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
           action: "link-existing", discordUserId: interaction.user.id, discordUsername: interaction.user.username,
           email: interaction.fields.getTextInputValue("email"), password: interaction.fields.getTextInputValue("password"),
         });
-        if (result.status !== "approved") return void interaction.editReply("Your NivoraNet account is linked. It is still awaiting admin approval.");
+        if (result.status !== "approved") return void interaction.editReply(t(result.language).linkedPending);
         const guild = interaction.guild!;
         const member = await guild.members.fetch(interaction.user.id);
         const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate");
         if (affiliateRole) await member.roles.add(affiliateRole);
         await createPrivateTicket(client, env, result.profileId, interaction.user.id, result.username, result.language);
-        return void interaction.editReply(`Your **${result.username}** account is linked. Your private ticket is ready.`);
+        return void interaction.editReply(t(result.language).linkedReady(result.username));
       }
       if (interaction.isModalSubmit() && interaction.customId.startsWith("nivora:refill-account:")) {
         await interaction.deferReply({ ephemeral: true });
@@ -627,21 +634,30 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
           casinoEmail: interaction.fields.getTextInputValue("casino_email"), casinoUsername: interaction.fields.getTextInputValue("casino_username"),
         });
         const result = await api<{ brandName: string; amount: number; cutoffAt: string }>(env, { action: "request-refill", discordUserId: interaction.user.id, brandId });
-        const when = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
+        const context = await api<RefillContext>(env, { action: "refill-context", discordUserId: interaction.user.id });
+        const text = t(context.language);
+        const language = nivoraLanguage(context.language);
+        const when = new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : language === "de" ? "de-DE" : "en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
         const channel = interaction.channel;
-        if (channel?.isSendable()) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle("Refill requested").setDescription(`**${result.brandName}** · **€${result.amount.toFixed(2)}**\nQueued for the next refill batch: **${when} (Paris)**.`).setFooter({ text: "One refill per brand per day" })] });
-        return void interaction.editReply("Your casino details were saved and your refill request was added to the next batch.");
+        if (channel?.isSendable()) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.refillRequested).setDescription(`**${result.brandName}** · **${currency(result.amount)}**\n${text.queued}: **${when} (Paris)**.`).setFooter({ text: text.dailyLimit })] });
+        return void interaction.editReply(text.refillSaved);
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:approve:")) {
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only.", ephemeral: true });
+        if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void interaction.reply({ content: "Admin only. / Réservé aux administrateurs. / Nur für Administratoren.", ephemeral: true });
         await interaction.deferUpdate(); const profileId = interaction.customId.split(":")[2]; const result = await api<{ discordUserId: string; language?: string }>(env, { action: "approve", profileId });
         const guild = interaction.guild!; const member = await guild.members.fetch(result.discordUserId); const affiliateRole = guild.roles.cache.find((role) => role.name === "Affiliate"); if (affiliateRole) await member.roles.add(affiliateRole);
         const account = await api<{ profileName: string; language?: string }>(env, { action: "affiliate-stats", discordUserId: result.discordUserId });
         await createPrivateTicket(client, env, profileId, result.discordUserId, account.profileName, result.language ?? account.language);
-        return void interaction.editReply({ components: [], embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x35D6B5).setTitle("Application approved")] });
+        return void interaction.editReply({ components: [], embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x35D6B5).setTitle("Application approved · Candidature validée · Bewerbung genehmigt")] });
       }
-      if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. The refusal workflow will be added with the operational panel.", ephemeral: true });
-    } catch (error) { console.error("[nivora-discord] interaction failed", error); if (interaction.isRepliable()) { const reply = { content: `Unable to complete this action: ${error instanceof Error ? error.message : "unknown error"}`, ephemeral: true }; if (interaction.deferred || interaction.replied) await interaction.editReply(reply); else await interaction.reply(reply); } }
+      if (interaction.isButton() && interaction.customId.startsWith("nivora:reject:")) return void interaction.reply({ content: "Application rejected. / Candidature refusée. / Bewerbung abgelehnt.", ephemeral: true });
+    } catch (error) {
+      console.error("[nivora-discord] interaction failed", error);
+      if (interaction.isRepliable()) {
+        const reply = { content: "Unable to complete this action. Please try again or ask the team in your ticket.\nImpossible d’effectuer cette action. Réessaie ou contacte l’équipe dans ton ticket.\nAktion konnte nicht abgeschlossen werden. Bitte versuche es erneut oder frage das Team in deinem Ticket.", ephemeral: true };
+        if (interaction.deferred || interaction.replied) await interaction.editReply(reply); else await interaction.reply(reply);
+      }
+    }
   });
   client.on(Events.ShardDisconnect, () => scheduleReconnect());
     const stopTelegramDoneListener = refillsViaAurix ? () => {} : startTelegramDoneListener(client, env);
