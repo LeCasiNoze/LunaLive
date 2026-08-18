@@ -3,11 +3,8 @@ import {
   Events, GatewayIntentBits, ModalBuilder, PermissionFlagsBits, SlashCommandBuilder, StringSelectMenuBuilder,
   TextInputBuilder, TextInputStyle,
 } from "discord.js";
-import { setDefaultResultOrder } from "node:dns";
 import type { BotEnv } from "../env.js";
 import { nivoraLanguage, t, ticketGuide } from "./i18n.js";
-
-setDefaultResultOrder("ipv4first");
 
 const GOLD = 0xDDB65A;
 const APPLY_BUTTON = "nivora:apply";
@@ -528,20 +525,6 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
     if (stopped || connecting || client.isReady()) return;
     connecting = true;
     try {
-      const discovery = await fetch("https://discord.com/api/v10/gateway/bot", {
-        headers: { authorization: `Bot ${env.NIVORA_DISCORD_BOT_TOKEN}` },
-        signal: AbortSignal.timeout(12_000),
-      });
-      const gateway = await discovery.json().catch(() => ({})) as {
-        session_start_limit?: { remaining?: number; reset_after?: number; max_concurrency?: number };
-      };
-      console.log("[nivora-discord] gateway discovery", {
-        status: discovery.status,
-        remaining: gateway.session_start_limit?.remaining,
-        resetAfterMs: gateway.session_start_limit?.reset_after,
-        maxConcurrency: gateway.session_start_limit?.max_concurrency,
-      });
-      if (!discovery.ok) throw new Error(`Discord gateway discovery failed (${discovery.status})`);
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => fail(new Error("Gateway did not become ready after 90 seconds")), 90_000);
         const cleanup = () => {
