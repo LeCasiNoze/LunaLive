@@ -92,16 +92,53 @@ function parseRumbleCategoryLives(html: string): RumbleCategoryPage {
 
 async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage> {
   const url = page === 1 ? RUMBLE_GAMBLING_CATEGORY_URL : `${RUMBLE_GAMBLING_CATEGORY_URL}?page=${page}`;
-  const response = await fetch(url, {
-    signal: AbortSignal.timeout(15_000),
-    headers: {
-      accept: "text/html,application/xhtml+xml",
-      "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    },
-  });
-  if (!response.ok) throw new Error(`rumble_category_http_${response.status}`);
-  return parseRumbleCategoryLives(await response.text());
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15_000),
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+    });
+    if (!response.ok) throw new Error(`rumble_category_http_${response.status}`);
+    return parseRumbleCategoryLives(await response.text());
+  } catch (directError) {
+    const base = String(process.env.NIVORA_API_BASE || "").replace(/\/$/, "");
+    const key = String(process.env.NIVORA_BOT_INTERNAL_KEY || "");
+    if (!base || !key) throw directError;
+    const response = await fetch(`${base}/api/internal/recruitment/rumble?page=${page}`, {
+      signal: AbortSignal.timeout(20_000),
+      headers: { accept: "application/json", "x-nivora-bot-key": key },
+    });
+    if (!response.ok) throw new Error(`rumble_category_relay_http_${response.status}`);
+    const payload = await response.json() as { ok?: unknown; lives?: unknown; itemCount?: unknown; limit?: unknown };
+    if (payload.ok !== true || !Array.isArray(payload.lives)) throw new Error("rumble_category_relay_invalid");
+    const lives = new Map<string, RumbleCategoryLive>();
+    for (const raw of payload.lives as any[]) {
+      const username = String(raw?.username || "");
+      const videoId = String(raw?.videoId || "").toLowerCase();
+      if (!/^[A-Za-z0-9_-]{1,64}$/.test(username) || !/^v[a-z0-9]{5,}$/i.test(videoId)) continue;
+      lives.set(username.toLowerCase(), {
+        username,
+        videoId,
+        videoIdNumeric: typeof raw?.videoIdNumeric === "string" ? raw.videoIdNumeric : null,
+        viewersCount: Math.max(0, Math.round(Number(raw?.viewersCount) || 0)),
+        title: typeof raw?.title === "string" ? raw.title : null,
+        thumbnailUrl: typeof raw?.thumbnailUrl === "string" ? raw.thumbnailUrl : null,
+        videoUrl: typeof raw?.videoUrl === "string" ? raw.videoUrl : `https://rumble.com/${videoId}.html`,
+        profileUrl: typeof raw?.profileUrl === "string" ? raw.profileUrl : `https://rumble.com/user/${username}`,
+        followers: Math.max(0, Math.round(Number(raw?.followers) || 0)),
+        createdAt: typeof raw?.createdAt === "string" ? raw.createdAt : null,
+      });
+    }
+    const itemCount = Number(payload.itemCount);
+    const limit = Number(payload.limit);
+    if (!Number.isInteger(itemCount) || itemCount < 0 || !Number.isInteger(limit) || limit < 1) {
+      throw new Error("rumble_category_relay_counts_invalid");
+    }
+    return { lives, itemCount, limit };
+  }
 }
 
 /**
