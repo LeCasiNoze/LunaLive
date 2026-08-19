@@ -15,6 +15,135 @@ export interface RumbleLiveInfo {
   createdAt: string | null;
 }
 
+export type RumbleCategoryLive = {
+  username: string;
+  videoId: string;
+  videoIdNumeric: string | null;
+  viewersCount: number;
+  title: string | null;
+  thumbnailUrl: string | null;
+  videoUrl: string;
+  profileUrl: string;
+  followers: number;
+  createdAt: string | null;
+};
+
+export type RumbleCategorySnapshot = {
+  lives: Map<string, RumbleCategoryLive>;
+  fetchedAt: number;
+  complete: boolean;
+};
+
+const RUMBLE_GAMBLING_CATEGORY_URL = "https://rumble.com/category/gambling-slots";
+const CATEGORY_CACHE_MS = 20_000;
+const CATEGORY_MAX_PAGES = 5;
+let categoryCache: { expiresAt: number; snapshot: RumbleCategorySnapshot } | null = null;
+let categoryRequest: Promise<RumbleCategorySnapshot | null> | null = null;
+
+type RumbleCategoryPage = {
+  lives: Map<string, RumbleCategoryLive>;
+  itemCount: number;
+  limit: number;
+};
+
+function parseRumbleCategoryLives(html: string): RumbleCategoryPage {
+  const gridStart = html.indexOf("<rum-videos-grid");
+  if (gridStart < 0) throw new Error("rumble_category_grid_missing");
+  const gridEnd = html.indexOf(">", gridStart);
+  if (gridEnd < 0) throw new Error("rumble_category_grid_unclosed");
+  const gridTag = html.slice(gridStart, gridEnd + 1).replaceAll("&amp;", "&");
+  if (!/collection=["']category\.videos["']/i.test(gridTag) ||
+      !/filter=["'][^"']*category=gambling-slots[^"']*video_type=live/i.test(gridTag)) {
+    throw new Error("rumble_category_grid_unexpected");
+  }
+  const limit = Math.max(1, Math.min(100, Number(gridTag.match(/\blimit=["'](\d+)["']/i)?.[1] || 24)));
+  const scriptStart = html.indexOf('<script type="application/json">', gridStart);
+  if (scriptStart < 0) throw new Error("rumble_category_json_missing");
+  const jsonStart = html.indexOf(">", scriptStart) + 1;
+  const jsonEnd = html.indexOf("</script>", jsonStart);
+  if (jsonEnd < 0) throw new Error("rumble_category_json_unclosed");
+  const payload = JSON.parse(html.slice(jsonStart, jsonEnd)) as { items?: unknown };
+  if (!Array.isArray(payload.items)) throw new Error("rumble_category_items_missing");
+  const items = payload.items as any[];
+  const lives = new Map<string, RumbleCategoryLive>();
+  for (const item of items) {
+    if (item?.object_type !== "video" || item?.live !== true) continue;
+    const profilePath = String(item?.by?.relative_url || "");
+    const username = profilePath.split("/").filter(Boolean).at(-1) || String(item?.by?.name || "");
+    const videoId = String(item?.permalink_id || "").toLowerCase();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(username) || !/^v[a-z0-9]{5,}$/i.test(videoId)) continue;
+    const viewers = Number(item?.watching_now);
+    const followers = Number(item?.by?.followers);
+    lives.set(username.toLowerCase(), {
+      username,
+      videoId,
+      videoIdNumeric: Number.isFinite(Number(item?.id)) ? String(item.id) : null,
+      viewersCount: Number.isFinite(viewers) ? Math.max(0, Math.round(viewers)) : 0,
+      title: typeof item?.title === "string" ? item.title : null,
+      thumbnailUrl: typeof item?.thumb === "string" ? item.thumb : null,
+      videoUrl: typeof item?.url === "string" ? item.url : `https://rumble.com/${videoId}.html`,
+      profileUrl: typeof item?.by?.url === "string" ? item.by.url : `https://rumble.com/user/${username}`,
+      followers: Number.isFinite(followers) ? Math.max(0, Math.round(followers)) : 0,
+      createdAt: typeof item?.live_streamed_on === "string" ? item.live_streamed_on : null,
+    });
+  }
+  return { lives, itemCount: items.length, limit };
+}
+
+async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage> {
+  const url = page === 1 ? RUMBLE_GAMBLING_CATEGORY_URL : `${RUMBLE_GAMBLING_CATEGORY_URL}?page=${page}`;
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(15_000),
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+      "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) throw new Error(`rumble_category_http_${response.status}`);
+  return parseRumbleCategoryLives(await response.text());
+}
+
+/**
+ * One lightweight request discovers every current Gambling & Slots live.
+ * Unlike profile pages, this category index is accessible from Render.
+ */
+export async function fetchRumbleGamblingCategoryLives(): Promise<RumbleCategorySnapshot | null> {
+  if (categoryCache && categoryCache.expiresAt > Date.now()) return categoryCache.snapshot;
+  if (categoryRequest) return categoryRequest;
+  categoryRequest = (async () => {
+    try {
+      const lives = new Map<string, RumbleCategoryLive>();
+      let complete = false;
+      for (let page = 1; page <= CATEGORY_MAX_PAGES; page += 1) {
+        let parsed: RumbleCategoryPage;
+        try {
+          parsed = await fetchRumbleCategoryPage(page);
+        } catch (error: any) {
+          if (page === 1) throw error;
+          console.warn(`[rumble][category] page ${page} unavailable; keeping a partial snapshot`, error?.message || error);
+          break;
+        }
+        for (const [username, live] of parsed.lives) lives.set(username, live);
+        if (parsed.itemCount < parsed.limit) {
+          complete = true;
+          break;
+        }
+      }
+      const snapshot: RumbleCategorySnapshot = { lives, fetchedAt: Date.now(), complete };
+      categoryCache = { expiresAt: Date.now() + CATEGORY_CACHE_MS, snapshot };
+      console.log(`[rumble][category] ${snapshot.lives.size} live(s), complete=${snapshot.complete}`);
+      return snapshot;
+    } catch (error: any) {
+      console.warn("[rumble][category] fetch failed", error?.message || error);
+      return null;
+    } finally {
+      categoryRequest = null;
+    }
+  })();
+  return categoryRequest;
+}
+
 const RUMBLE_API_BASE = "https://rumble.com/-livestream-api/get-data";
 
 

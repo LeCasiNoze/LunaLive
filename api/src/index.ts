@@ -116,6 +116,9 @@ async function bootstrapBackground() {
     await ensureRumbleOutreachSeeded();
     console.log("[boot] ensureRumbleOutreachSeeded ok");
 
+    startRumbleRecruitmentMonitor();
+    startRumbleRecruitmentSync();
+
     console.log("[boot] ensureBotClips...");
     await ensureBotClips();
     console.log("[boot] ensureBotClips ok");
@@ -199,8 +202,6 @@ function setupProcessCrashGuards() {
   startEventsEnginePoller(60_000);
   // startDlivePoller(io); // DLive shut down — poller desactive (DNS/CDN morts)
   startRumblePoller(io);
-  startRumbleRecruitmentMonitor();
-  startRumbleRecruitmentSync();
   startRumbleYtRedirectPoller();
   startChestJobs(io);
   startAgendaNotifPoller(30_000);

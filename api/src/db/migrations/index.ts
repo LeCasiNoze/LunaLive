@@ -142,6 +142,7 @@ import { mig131_launch_lock } from "./mig131_launch_lock.js";
 import { mig132_chat_special_cols } from "./mig132_chat_special_cols.js";
 import { mig133_rumble_outreach } from "./mig133_rumble_outreach.js";
 import { mig134_rumble_recruitment_monitoring } from "./mig134_rumble_recruitment_monitoring.js";
+import { mig135_rumble_recruitment_chat_activity } from "./mig135_rumble_recruitment_chat_activity.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -303,6 +304,7 @@ export async function migrateAll(pool: Pool) {
   await mig132_chat_special_cols(pool);
   await mig133_rumble_outreach(pool);
   await mig134_rumble_recruitment_monitoring(pool);
+  await mig135_rumble_recruitment_chat_activity(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
