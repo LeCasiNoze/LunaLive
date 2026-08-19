@@ -111,6 +111,43 @@ export async function restoreOpenSupportTicketPermissions(guild: Guild, ctx: Bot
   ctx.log(`[support] restored permissions for ${restored}/${result.rowCount || 0} open ticket(s)`);
 }
 
+export async function restoreOpenSupportTicketPermissionsRest(token: string, ctx: BotCtx) {
+  const result = await pool.query(
+    `SELECT channel_id, discord_user_id
+     FROM support_tickets
+     WHERE status IN ('open', 'escalated')`
+  );
+  const allow = (
+    PermissionFlagsBits.ViewChannel |
+    PermissionFlagsBits.SendMessages |
+    PermissionFlagsBits.ReadMessageHistory
+  ).toString();
+  let restored = 0;
+  for (const ticket of result.rows) {
+    try {
+      const response = await fetch(
+        `https://discord.com/api/v10/channels/${encodeURIComponent(String(ticket.channel_id))}/permissions/${encodeURIComponent(String(ticket.discord_user_id))}`,
+        {
+          method: "PUT",
+          headers: {
+            authorization: `Bot ${token}`,
+            "content-type": "application/json",
+            "x-audit-log-reason": encodeURIComponent("Restore open LunaLive support ticket access"),
+          },
+          body: JSON.stringify({ type: 1, allow, deny: "0" }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(`Discord returned ${response.status}: ${(await response.text()).slice(0, 200)}`);
+      }
+      restored += 1;
+    } catch (error: any) {
+      ctx.log(`[support] REST permission restore failed channel=${ticket.channel_id}: ${error?.message || error}`);
+    }
+  }
+  ctx.log(`[support] REST restored permissions for ${restored}/${result.rowCount || 0} open ticket(s)`);
+}
+
 async function insertTicket(discordUserId: string, channelId: string) {
   // Récupère le compte LunaLive lié si disponible
   const link = await pool.query(

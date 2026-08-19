@@ -22,6 +22,7 @@ import { startClipsMp4Renderer, startClipsMp4Cleanup } from "./clips/clip_mp4_wo
 import { startAgendaNotifPoller } from "./agenda_notif_poller.js";
 import { sampleViewersTick } from "./stats_routes.js";
 import { startDiscordBot } from "./discord/bot.js";
+import { restoreOpenSupportTicketPermissionsRest } from "./discord/support.js";
 import { startAurixBot } from "./aurix/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
@@ -213,6 +214,12 @@ function setupProcessCrashGuards() {
   // startAgencyFeeReminder(); // désactivé : le board #frais est suffisant
   startAgencyFeesBoard();
   startInstagramAgendaBoard();
+
+  if (process.env.DISCORD_BOT_TOKEN) {
+    restoreOpenSupportTicketPermissionsRest(process.env.DISCORD_BOT_TOKEN, {
+      log: (msg) => console.log(msg),
+    }).catch((e) => console.error("[support] startup permission restore failed", e));
+  }
 
   if (process.env.RUN_DISCORD_BOT === "1") {
     startDiscordBot({
