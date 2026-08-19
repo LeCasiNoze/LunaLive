@@ -150,6 +150,47 @@ function findPublicChannel(guild: Guild, aliases: string[]) {
   });
 }
 
+export async function syncNivoraRulesPanelViaRest(env: NivoraDiscordEnv) {
+  if (!env.NIVORA_DISCORD_BOT_TOKEN || !env.NIVORA_DISCORD_GUILD_ID) {
+    throw new Error("Nivora Discord token or guild ID missing");
+  }
+  const request = async (path: string, init?: RequestInit) => {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+      ...init,
+      headers: {
+        authorization: `Bot ${env.NIVORA_DISCORD_BOT_TOKEN}`,
+        ...(init?.body ? { "content-type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+    if (!response.ok) throw new Error(`Discord ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    return response.status === 204 ? null : response.json();
+  };
+  const [botUser, channels] = await Promise.all([
+    request("/users/@me") as Promise<{ id: string }>,
+    request(`/guilds/${env.NIVORA_DISCORD_GUILD_ID}/channels`) as Promise<Array<{ id: string; name: string; type: number }>>,
+  ]);
+  const channel = channels.find((item) => {
+    if (item.type !== 0) return false;
+    const name = normalizedChannelName(item.name);
+    return ["rules", "reglement", "regel"].some((alias) => name === alias || name.includes(alias));
+  });
+  if (!channel) throw new Error("Nivora rules channel not found");
+  const messages = await request(`/channels/${channel.id}/messages?limit=100`) as Array<{
+    id: string; author?: { id?: string }; embeds?: Array<{ footer?: { text?: string } }>; components?: unknown[];
+  }>;
+  const existing = messages.find((message) =>
+    message.author?.id === botUser.id && message.embeds?.some((embed) => embed.footer?.text === "NIVORA:panel:rules")
+  ) ?? messages.find((message) => message.author?.id === botUser.id && (message.components?.length || 0) === 0);
+  const payload = JSON.stringify({ embeds: [rulesEmbed().toJSON()] });
+  if (existing) {
+    await request(`/channels/${channel.id}/messages/${existing.id}`, { method: "PATCH", body: payload });
+  } else {
+    await request(`/channels/${channel.id}/messages`, { method: "POST", body: payload });
+  }
+  console.log(`[nivora-discord] rules panel synchronized via REST (channel=${channel.id})`);
+}
+
 function refillAccountModal(brandId: string, brandName: string, language?: string | null) {
   const field = (id: string, label: string, placeholder: string) => new TextInputBuilder()
     .setCustomId(id).setLabel(label).setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder(placeholder);

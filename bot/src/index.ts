@@ -3,6 +3,7 @@ import http from "node:http";
 import fs from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { syncNivoraRulesPanelViaRest } from "./nivoranet/discord.js";
 import { loadEnv } from "./env.js";
 import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
@@ -290,6 +291,9 @@ async function main() {
   // Keep one owner: this supervised child process.
   if (process.env.NIVORA_DISCORD_HOST === "disabled") {
     console.log("[bot] Nivora Discord gateway explicitly disabled");
+    void syncNivoraRulesPanelViaRest(env).catch((error) => {
+      console.error("[nivora-discord] REST rules sync failed", error);
+    });
   } else {
     startNivoraChild();
   }
