@@ -8,7 +8,7 @@ function config() {
   return base && key ? { base, key } : null;
 }
 
-async function sync() {
+async function sync(recentOnly = false) {
   const cfg = config();
   if (!cfg || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
   const result = await pool.query(
@@ -19,7 +19,9 @@ async function sync() {
             last_stream_started_at, last_stream_ended_at, monitoring_updated_at
      FROM rumble_outreach_contacts
      WHERE monitoring_updated_at IS NOT NULL AND status NOT IN ('do_not_contact', 'skipped')
-     ORDER BY monitoring_updated_at DESC LIMIT 500`
+       AND ($1::boolean = FALSE OR is_live = TRUE OR last_stream_ended_at > NOW() - INTERVAL '2 minutes')
+     ORDER BY monitoring_updated_at DESC LIMIT 500`,
+    [recentOnly]
   );
   const candidates = result.rows.map((row) => ({
     slug: row.slug, displayName: row.display_name, rumbleUrl: row.rumble_url, followers: Number(row.followers || 0),
@@ -40,11 +42,12 @@ async function sync() {
     body: JSON.stringify({ candidates }),
   });
   if (!response.ok) throw new Error(`Nivora returned ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  log(`synced ${candidates.length} candidates`);
+  log(`synced ${candidates.length} ${recentOnly ? "live/recent" : "total"} candidates`);
 }
 
 export function startRumbleRecruitmentSync() {
   if (!config() || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
-  setTimeout(() => void sync().catch((error) => log("initial sync failed", error)), 90_000);
+  setTimeout(() => void sync().catch((error) => log("initial sync failed", error)), 20_000);
+  setInterval(() => void sync(true).catch((error) => log("live sync failed", error)), 30_000);
   setInterval(() => void sync().catch((error) => log("sync failed", error)), 5 * 60_000);
 }
