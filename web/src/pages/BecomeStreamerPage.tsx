@@ -1,6 +1,6 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Bot, Check, ChevronDown, Clapperboard, Instagram, Radio, Rocket, ShieldCheck } from "lucide-react";
+import { Bot, Check, ChevronDown, Clapperboard, Instagram, MessageCircle, Radio, Rocket, ShieldCheck } from "lucide-react";
 import { applyStreamer } from "../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { LoginModal } from "../components/LoginModal";
@@ -8,6 +8,7 @@ import "./become-streamer.css";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 const INSTAGRAM_URL = "https://www.instagram.com/lunalive_tv/";
+const DISCORD_URL = "https://discord.gg/93BFrsBWWB";
 
 // Vrais streamers de la plateforme (avatars servis par /avatars/u/:userId).
 const FEATURED = [
@@ -199,6 +200,12 @@ export default function BecomeStreamerPage() {
             <li><Check size={16} /> Aucun engagement</li>
             <li><Check size={16} /> Accompagnement humain</li>
           </ul>
+          <div className="bs-discord-help">
+            <p>Une question avant de te lancer ? Viens directement en parler avec nous.</p>
+            <a className="bs-btn bs-discord-btn" href={DISCORD_URL} target="_blank" rel="noreferrer">
+              <MessageCircle size={18} /> Poser une question sur Discord
+            </a>
+          </div>
         </Reveal>
         <div className="bs-formcard">
           {done ? (

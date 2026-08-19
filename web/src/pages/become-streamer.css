@@ -157,6 +157,10 @@
 .bs-apply ul{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:9px}
 .bs-apply li{display:flex;gap:10px;align-items:center;font-size:15px;font-family:"DM Sans",sans-serif}
 .bs-apply li svg{color:var(--green);flex:none}
+.bs-discord-help{margin-top:22px;padding:17px 18px;border:1px solid rgba(88,101,242,.45);border-radius:15px;background:linear-gradient(135deg,rgba(88,101,242,.16),rgba(168,85,247,.08));box-shadow:0 0 28px rgba(88,101,242,.12)}
+.bs-discord-help p{margin-bottom:12px;color:#dddaf8;font-size:14px;font-family:"DM Sans",sans-serif}
+.bs-discord-btn{width:fit-content;max-width:100%;padding:12px 18px;background:#5865f2;color:#fff;font-size:17px;text-align:center;box-shadow:0 8px 24px rgba(88,101,242,.32)}
+.bs-discord-btn:hover{background:#6873f4;box-shadow:0 10px 30px rgba(88,101,242,.45)}
 .bs-formcard{padding:24px;border-radius:20px;background:linear-gradient(180deg,rgba(168,85,247,.12),transparent),var(--glass);border:1px solid rgba(168,85,247,.4);box-shadow:0 0 40px rgba(168,85,247,.15)}
 .bs-formhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .bs-formhead span{font-family:"Bebas Neue",sans-serif;letter-spacing:.14em;font-size:15px;color:var(--violet-l)}
