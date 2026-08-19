@@ -10,7 +10,7 @@ function config() {
 
 async function sync() {
   const cfg = config();
-  if (!cfg || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED !== "1") return;
+  if (!cfg || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
   const result = await pool.query(
     `SELECT slug, display_name, rumble_url, followers, instagram_handle, telegram_handle, telegram_url,
             email, discord_url, is_live, viewers_current, viewers_avg, viewers_peak,
@@ -44,7 +44,7 @@ async function sync() {
 }
 
 export function startRumbleRecruitmentSync() {
-  if (!config() || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED !== "1") return;
+  if (!config() || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
   setTimeout(() => void sync().catch((error) => log("initial sync failed", error)), 90_000);
   setInterval(() => void sync().catch((error) => log("sync failed", error)), 5 * 60_000);
 }

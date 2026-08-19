@@ -22,7 +22,7 @@ let lockClient: PoolClient | null = null;
 let running = false;
 
 function enabled() {
-  return process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "1";
+  return process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED !== "0";
 }
 
 async function acquireSingletonLock() {
