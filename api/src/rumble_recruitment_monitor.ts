@@ -238,15 +238,15 @@ async function markLive(contact: Contact, info: RumbleLiveInfo) {
     await client.query(
     `INSERT INTO rumble_outreach_streams
        (contact_id, video_id, video_id_numeric, started_at, viewers_sum, viewers_samples, viewers_avg, viewers_peak, unique_chatters, chat_messages)
-     VALUES ($1,$2,$3,COALESCE($4::timestamptz,NOW()),$5,$6,$5,$5,$7,$8)
+     VALUES ($1,$2,$3,COALESCE($4::timestamptz,NOW()),$5::int,$6,$5::int,$5::int,$7,$8)
      ON CONFLICT (contact_id, video_id) DO UPDATE SET
        video_id_numeric=COALESCE(EXCLUDED.video_id_numeric, rumble_outreach_streams.video_id_numeric),
-       viewers_sum=rumble_outreach_streams.viewers_sum + $5,
+       viewers_sum=rumble_outreach_streams.viewers_sum + $5::int,
        viewers_samples=rumble_outreach_streams.viewers_samples + $6,
        viewers_avg=CASE WHEN rumble_outreach_streams.viewers_samples + $6 > 0
-         THEN ROUND((rumble_outreach_streams.viewers_sum + $5)::numeric / (rumble_outreach_streams.viewers_samples + $6))::int
+         THEN ROUND((rumble_outreach_streams.viewers_sum + $5::int)::numeric / (rumble_outreach_streams.viewers_samples + $6))::int
          ELSE rumble_outreach_streams.viewers_avg END,
-       viewers_peak=GREATEST(rumble_outreach_streams.viewers_peak,$5),
+       viewers_peak=GREATEST(rumble_outreach_streams.viewers_peak,$5::int),
        unique_chatters=GREATEST(rumble_outreach_streams.unique_chatters,$7),
        chat_messages=GREATEST(rumble_outreach_streams.chat_messages,$8),
        ended_at=NULL,
