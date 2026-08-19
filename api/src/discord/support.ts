@@ -82,6 +82,35 @@ export async function getTicketByChannel(channelId: string) {
   return r.rows[0] ?? null;
 }
 
+/**
+ * Répare les overwrites utilisateur des tickets encore ouverts.
+ * La base reste la source de vérité si un overwrite Discord a été supprimé
+ * manuellement ou perdu lors d'un déplacement de catégorie.
+ */
+export async function restoreOpenSupportTicketPermissions(guild: Guild, ctx: BotCtx) {
+  const result = await pool.query(
+    `SELECT channel_id, discord_user_id
+     FROM support_tickets
+     WHERE status IN ('open', 'escalated')`
+  );
+  let restored = 0;
+  for (const ticket of result.rows) {
+    const channel = await guild.channels.fetch(String(ticket.channel_id)).catch(() => null);
+    if (!channel || channel.type !== ChannelType.GuildText) continue;
+    try {
+      await channel.permissionOverwrites.edit(String(ticket.discord_user_id), {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      }, { reason: "Restore open LunaLive support ticket access" });
+      restored += 1;
+    } catch (error: any) {
+      ctx.log(`[support] permission restore failed channel=${ticket.channel_id}: ${error?.message || error}`);
+    }
+  }
+  ctx.log(`[support] restored permissions for ${restored}/${result.rowCount || 0} open ticket(s)`);
+}
+
 async function insertTicket(discordUserId: string, channelId: string) {
   // Récupère le compte LunaLive lié si disponible
   const link = await pool.query(

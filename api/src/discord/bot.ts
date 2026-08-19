@@ -76,6 +76,7 @@ import {
   handleSupportEscalate,
   handleSupportMessage,
   handleSupportRate,
+  restoreOpenSupportTicketPermissions,
 } from "./support.js";
 import { isRestricted, isVerified, syncUserEverywhere } from "./sync.js";
 import { ensureTicketPanel, autoCloseExpiredTickets, checkInactiveTickets, handleFabioTicketType, handleFabioOfferSelect, handleFabioTicketModal, handleFabioTicketMessage, handleFabioApprove, handleFabioReimburseSelect, handleFabioReject, handleFabioRejectModal, handleFabioAppeal, handleFabioAppealAck, handleFabioVirement } from "./casino_tickets.js";
@@ -317,6 +318,7 @@ export async function startDiscordBot(ctx: BotCtx) {
     if (g) await ensureReactionRolesMessage(g, ctx, client);
     if (g) await ensureApplyMessage(g, ctx);
     if (g) await ensureSupportMessage(g, ctx);
+    if (g) await restoreOpenSupportTicketPermissions(g, ctx);
 
     // ── Fabiozsis guild
     await ensureTicketPanel(client, ctx);
