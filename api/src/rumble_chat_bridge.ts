@@ -166,7 +166,7 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
  * Appelle `onMessage` pour chaque nouveau message (init + messages incrémentaux).
  * Retourne une fonction `stop` ou null si la connexion échoue immédiatement.
  */
-async function connectChatSse(
+export async function connectRumbleChatSse(
   videoIdNumeric: string,
   onMessage: (m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; requestId: string | null }) => void,
   onClose: (noChatAvailable?: boolean) => void
@@ -470,7 +470,7 @@ export function ensureRumbleBridge(opts: {
       return;
     }
 
-    stopStream = await connectChatSse(
+    stopStream = await connectRumbleChatSse(
       videoIdNumeric,
       (m) => { consecutiveFailures = 0; broadcast(m); },
       (noChatAvailable) => {

@@ -508,6 +508,8 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
 
     const hlsCandidate = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
     const vidNumeric = d?.vid != null ? String(d.vid) : null;
+    const rawViewers = d?.watching_now ?? d?.watching ?? d?.viewer_count ?? d?.viewers ?? null;
+    const viewersCount = Number.isFinite(Number(rawViewers)) ? Math.max(0, Math.round(Number(rawViewers))) : null;
     const thumbnailUrl = d?.i ? String(d.i) : null;
 
     // Pas de HLS = pas de live (probablement placeholder/recommended video)
@@ -540,7 +542,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     return {
       username,
       isLive: true,
-      viewersCount: null,
+      viewersCount,
       title,
       thumbnailUrl,
       videoUrl: `https://rumble.com/user/${username}/live`,

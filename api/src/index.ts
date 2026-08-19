@@ -31,6 +31,8 @@ import { startAgencyFeesBoard } from "./agency_fees_board.js";
 import { startInstagramAgendaBoard } from "./instagram_agenda_board.js";
 import { refreshAllAffiPageSnapshots } from "./routes/affi_pages.js";
 import { ensureRumbleOutreachSeeded } from "./routes/rumble_outreach.js";
+import { startRumbleRecruitmentMonitor } from "./rumble_recruitment_monitor.js";
+import { startRumbleRecruitmentSync } from "./rumble_recruitment_sync.js";
 
 const port = Number(process.env.PORT || 3001);
 
@@ -197,6 +199,8 @@ function setupProcessCrashGuards() {
   startEventsEnginePoller(60_000);
   // startDlivePoller(io); // DLive shut down — poller desactive (DNS/CDN morts)
   startRumblePoller(io);
+  startRumbleRecruitmentMonitor();
+  startRumbleRecruitmentSync();
   startRumbleYtRedirectPoller();
   startChestJobs(io);
   startAgendaNotifPoller(30_000);
