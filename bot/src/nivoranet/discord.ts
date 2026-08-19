@@ -70,6 +70,49 @@ function publicEmbed(title: string, description: string, key: string) {
   return new EmbedBuilder().setColor(GOLD).setTitle(title).setDescription(description).setFooter({ text: `NIVORA:panel:${key}` });
 }
 
+function rulesEmbed() {
+  return new EmbedBuilder()
+    .setColor(GOLD)
+    .setTitle("Affiliate Rules · Règlement affilié · Affiliate-Regeln")
+    .setDescription(
+      "These rules protect creators, players, casino partners and the long-term stability of every deal.\n" +
+      "Ces règles protègent les créateurs, les joueurs, nos partenaires et la stabilité de chaque collaboration."
+    )
+    .addFields(
+      {
+        name: "🇬🇧 English",
+        value: [
+          "• One Discord and one NivoraNet account per creator. Keep credentials, private tickets, tracking links and deal terms confidential.",
+          "• Follow all platform, advertising and casino rules. Fake traffic, self-referrals, multi-accounting, misleading promotion and harassment are prohibited.",
+          "• A stable, long-term deal requires sufficient **average deposits per player** and genuine player value—not FTD volume alone.",
+          "• Repeated minimum-threshold deposits, artificial deposit splitting or abnormal patterns intended only to validate FTDs will be treated as suspected fraud.",
+          "• Fraud, manipulated statistics or deliberately unprofitable traffic may result in immediate suspension and termination of the partnership.",
+        ].join("\n"),
+      },
+      {
+        name: "🇫🇷 Français",
+        value: [
+          "• Un compte Discord et un compte NivoraNet par créateur. Les identifiants, tickets privés, liens de tracking et conditions du deal restent confidentiels.",
+          "• Les règles des plateformes, de la publicité et des casinos doivent être respectées. Faux trafic, auto-affiliation, multi-comptes, promotion trompeuse et harcèlement sont interdits.",
+          "• Un deal stable et durable exige un **dépôt moyen par joueur suffisant** et des joueurs de qualité, pas uniquement du volume de FTD.",
+          "• Des dépôts répétés au seuil minimum, un fractionnement artificiel ou des schémas anormaux visant uniquement à valider des FTD seront considérés comme une suspicion de fraude.",
+          "• Toute fraude, statistique manipulée ou trafic volontairement non rentable peut entraîner la suspension immédiate et la rupture du contrat.",
+        ].join("\n"),
+      },
+      {
+        name: "🇩🇪 Deutsch",
+        value: [
+          "• Pro Creator sind ein Discord- und ein NivoraNet-Konto erlaubt. Zugangsdaten, private Tickets, Tracking-Links und Deal-Konditionen bleiben vertraulich.",
+          "• Plattform-, Werbe- und Casino-Regeln sind einzuhalten. Fake-Traffic, Eigenwerbung über den eigenen Affiliate-Link, Multi-Accounts, irreführende Werbung und Belästigung sind verboten.",
+          "• Ein stabiler, langfristiger Deal setzt einen ausreichenden **durchschnittlichen Einzahlungsbetrag pro Spieler** und echten Spielerwert voraus, nicht nur FTD-Volumen.",
+          "• Wiederholte Mindesteinzahlungen, künstliche Aufteilung oder auffällige Muster nur zur FTD-Validierung gelten als Betrugsverdacht.",
+          "• Betrug, manipulierte Statistiken oder absichtlich unrentabler Traffic können zur sofortigen Sperrung und Beendigung der Zusammenarbeit führen.",
+        ].join("\n"),
+      }
+    )
+    .setFooter({ text: "NIVORA:panel:rules" });
+}
+
 function publicPanels() {
   return [
     {
@@ -81,11 +124,7 @@ function publicPanels() {
       ].join("\n"), "welcome"),
     },
     {
-      key: "rules", aliases: ["rules", "reglement", "regel"], embed: publicEmbed("Rules · Règlement · Regeln", [
-        "**EN** — One Discord account and one NivoraNet account per creator. Keep your credentials and casino links private. Follow each platform and casino’s rules. No fake traffic, misleading promotion or harassment.",
-        "", "**FR** — Un compte Discord et un compte NivoraNet par créateur. Garde tes identifiants et liens casino privés. Respecte les règles de chaque plateforme et casino. Pas de faux trafic, promotion trompeuse ou harcèlement.",
-        "", "**DE** — Ein Discord- und ein NivoraNet-Konto pro Creator. Halte Zugangsdaten und Casino-Links privat. Beachte die Regeln jeder Plattform und jedes Casinos. Kein Fake-Traffic, keine irreführende Werbung und kein Belästigen.",
-      ].join("\n"), "rules"),
+      key: "rules", aliases: ["rules", "reglement", "regel"], embed: rulesEmbed(),
     },
     {
       key: "read", aliases: ["a-lire", "alire", "read", "help", "guide"], embed: publicEmbed("How it works · Comment ça marche · So funktioniert es", [
