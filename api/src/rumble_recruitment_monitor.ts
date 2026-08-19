@@ -403,7 +403,16 @@ async function tick() {
     const contacts = await dueContacts();
     // Two concurrent probes keep request pressure low and avoid long serial batches.
     for (let index = 0; index < contacts.length; index += 2) {
-      await Promise.allSettled(contacts.slice(index, index + 2).map((contact) => monitorOne(contact, categoryLives)));
+      const batch = contacts.slice(index, index + 2);
+      const results = await Promise.allSettled(batch.map((contact) => monitorOne(contact, categoryLives)));
+      results.forEach((result, resultIndex) => {
+        if (result.status === "rejected") {
+          console.warn(
+            `[rumble-recruitment] monitor failed for ${batch[resultIndex]?.display_name || "unknown"}`,
+            result.reason?.message || result.reason
+          );
+        }
+      });
     }
   } catch (error: any) {
     console.warn("[rumble-recruitment] tick failed", error?.message || error);
