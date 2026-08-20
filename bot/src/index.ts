@@ -1,9 +1,6 @@
 // bot/src/index.ts
 import http from "node:http";
 import fs from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { syncNivoraRulesPanelViaRest } from "./nivoranet/discord.js";
 import { loadEnv } from "./env.js";
 import { createPool } from "./db.js";
 import { Registry } from "./runtime/registry.js";
@@ -270,33 +267,9 @@ async function main() {
   });
 
   const registry = new Registry(pool, env);
-  // Isolated process: no additional Render service, but the Discord gateway
-  // keeps its own event loop and is supervised independently of LunaLive.
-  let nivoraChild: ChildProcess | null = null;
-  let nivoraRestart: ReturnType<typeof setTimeout> | null = null;
-  let shuttingDown = false;
-  const startNivoraChild = () => {
-    if (shuttingDown || nivoraChild) return;
-    const standalonePath = fileURLToPath(new URL("./nivoranet/standalone.js", import.meta.url));
-    nivoraChild = spawn(process.execPath, [standalonePath], { env: process.env, stdio: "inherit" });
-    nivoraChild.once("exit", (code, signal) => {
-      console.warn(`[bot] Nivora Discord process exited (code=${code ?? "none"}, signal=${signal ?? "none"})`);
-      nivoraChild = null;
-      if (!shuttingDown) nivoraRestart = setTimeout(startNivoraChild, 10_000);
-    });
-  };
-  // The Nivora gateway belongs to this existing bot service. The API image does
-  // not ship bot/dist, so delegating it to the API leaves Discord online only
-  // when a legacy worker happens to be connected, without interaction handlers.
-  // Keep one owner: this supervised child process.
-  if (process.env.NIVORA_DISCORD_HOST === "disabled") {
-    console.log("[bot] Nivora Discord gateway explicitly disabled");
-    void syncNivoraRulesPanelViaRest(env).catch((error) => {
-      console.error("[nivora-discord] REST rules sync failed", error);
-    });
-  } else {
-    startNivoraChild();
-  }
+  // Nivora Discord is owned exclusively by the Nivora Render service.
+  // LunaLive must never connect to that gateway or mutate its public panels.
+  console.log("[bot] Nivora Discord is hosted exclusively by the Nivora service");
   registry.start();
 
   const stopIpc = startLunaClipDbIpc(pool);
@@ -333,9 +306,6 @@ async function main() {
     console.log(`[bot] shutdown ${sig}`);
     try { stopIpc(); }               catch {}
     try { registry.stop(); }         catch {}
-    shuttingDown = true;
-    if (nivoraRestart) clearTimeout(nivoraRestart);
-    try { nivoraChild?.kill("SIGTERM"); } catch {}
     try { youtubeNotifier?.stop(); } catch {}
     try { instagramNotifier?.stop(); } catch {}
     try { await pool.end(); }        catch {}
