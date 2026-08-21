@@ -169,9 +169,9 @@ function pickActiveSlug(infos: Array<{ slug: string; isLive: boolean }>): string
   return live?.slug ?? STREAM_CONTROL_SLUGS[0];
 }
 
-function useStreamInfo(): StreamInfo & { activeSlug: string } {
-  const [state, setState] = React.useState<StreamInfo & { activeSlug: string }>(
-    { ...EMPTY_STREAM, activeSlug: STREAM_CONTROL_SLUGS[0] }
+function useStreamInfo(): StreamInfo & { activeSlug: string; liveMap: Record<string, boolean> } {
+  const [state, setState] = React.useState<StreamInfo & { activeSlug: string; liveMap: Record<string, boolean> }>(
+    { ...EMPTY_STREAM, activeSlug: STREAM_CONTROL_SLUGS[0], liveMap: {} }
   );
 
   React.useEffect(() => {
@@ -188,6 +188,11 @@ function useStreamInfo(): StreamInfo & { activeSlug: string } {
         );
         const valid = responses.filter((x): x is { slug: string; data: any; isLive: boolean } => !!x);
         if (valid.length === 0) return;
+
+        const liveMap: Record<string, boolean> = {};
+        for (const item of valid) {
+          liveMap[item.slug] = item.isLive;
+        }
 
         const activeSlug = pickActiveSlug(valid);
         const j = valid.find((x) => x.slug === activeSlug)!.data;
@@ -210,6 +215,7 @@ function useStreamInfo(): StreamInfo & { activeSlug: string } {
           title: j.title ?? null,
           viewers: j.viewers ?? 0,
           activeSlug,
+          liveMap,
         });
       } catch (e) {
         console.error("[StreamInfo] fetch error:", e);
@@ -1654,8 +1660,18 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const [myCamActive, setMyCamActive] = React.useState(false);
   const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
   const [myFilters, setMyFilters] = React.useState<CamFilters>({ ...DEFAULT_FILTERS });
-  const [camError, setCamError] = React.useState<string | null>(null);
   const [msgCount, setMsgCount] = React.useState(0);
+
+  // ─── Chat Channel Selection (Auto / Fabiozsis / LeCasiNoze) ───────────────
+  const CHAT_SLUG_KEY = "lunalive-streamcontrol-chat-slug";
+  const [selectedChatSlug, setSelectedChatSlug] = React.useState<string>(() => {
+    try { return localStorage.getItem(CHAT_SLUG_KEY) || "auto"; } catch { return "auto"; }
+  });
+  const handleSelectChatSlug = (slug: string) => {
+    setSelectedChatSlug(slug);
+    try { localStorage.setItem(CHAT_SLUG_KEY, slug); } catch {}
+  };
+  const effectiveChatSlug = selectedChatSlug === "auto" ? streamInfo.activeSlug : selectedChatSlug;
 
   // ─── Camera device selection ───────────────────────────────────────────────
   // Certains users ont OBS Virtual Camera en défaut → pas de frames
@@ -2048,19 +2064,110 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
           </div>
         </div>
 
-        {/* Chat — hauteur fixée par bottomRow, scroll interne */}
+        {/* Chat — hauteur fixée par bottomRow, scroll interne avec sélecteur de chaîne */}
         <div style={{ ...S.card, flex: "1 1 0", minWidth: 0, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column", height: "100%" }}>
-          <ChatPanel
-            slug={streamInfo.activeSlug}
-            key={streamInfo.activeSlug}
-            compact={false}
-            autoFocus={false}
-            visualMode="popup"
-            botMenuVariant="dock"
-            botMenuDockWidth={420}
-            onRequireLogin={() => {}}
-            streamControl
-          />
+          {/* Header de sélection de chaîne de chat */}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 12px",
+            background: "rgba(11, 18, 38, 0.75)",
+            borderBottom: "1px solid rgba(99, 102, 241, 0.15)",
+            flexShrink: 0,
+            gap: 8,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 13 }}>💬</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: ".05em" }}>
+                Chat de contrôle
+              </span>
+            </div>
+
+            {/* Sélecteur de chaîne (Auto / Fabiozsis / LeCasiNoze) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(0,0,0,0.35)", padding: "2px 4px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                type="button"
+                onClick={() => handleSelectChatSlug("auto")}
+                title={`Mode automatique (suit la chaîne active : ${streamInfo.activeSlug})`}
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  border: "none",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  background: selectedChatSlug === "auto" ? "rgba(99, 102, 241, 0.3)" : "transparent",
+                  color: selectedChatSlug === "auto" ? "#c7d2fe" : "#64748b",
+                  boxShadow: selectedChatSlug === "auto" ? "0 0 0 1px rgba(99, 102, 241, 0.45)" : "none",
+                  transition: "all 0.15s",
+                }}
+              >
+                <span>⚡ Auto</span>
+                <span style={{ fontSize: 9, opacity: 0.75 }}>({streamInfo.activeSlug})</span>
+              </button>
+
+              {STREAM_CONTROL_SLUGS.map((slug) => {
+                const isSelected = selectedChatSlug === slug;
+                const isLive = streamInfo.liveMap?.[slug] ?? false;
+                const label = slug === "lecasinoze" ? "LeCasiNoze" : "Fabiozsis";
+                return (
+                  <button
+                    key={slug}
+                    type="button"
+                    onClick={() => handleSelectChatSlug(slug)}
+                    title={`Connecter au chat de ${label}`}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      border: "none",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      background: isSelected ? "rgba(99, 102, 241, 0.3)" : "transparent",
+                      color: isSelected ? "#c7d2fe" : "#64748b",
+                      boxShadow: isSelected ? "0 0 0 1px rgba(99, 102, 241, 0.45)" : "none",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {isLive && (
+                      <span style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "#ef4444",
+                        boxShadow: "0 0 6px #ef4444",
+                        display: "inline-block",
+                      }} />
+                    )}
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ flex: "1 1 0", minHeight: 0, position: "relative", display: "flex", flexDirection: "column" }}>
+            <ChatPanel
+              slug={effectiveChatSlug}
+              key={effectiveChatSlug}
+              compact={false}
+              autoFocus={false}
+              visualMode="popup"
+              botMenuVariant="dock"
+              botMenuDockWidth={420}
+              onRequireLogin={() => {}}
+              streamControl
+            />
+          </div>
         </div>
       </div>
     </div>

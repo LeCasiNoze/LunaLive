@@ -1591,6 +1591,16 @@ function SponsorPanel({
   activeId: string | null; setActiveId: (id: string | null) => void;
 }) {
   const [msgDraft, setMsgDraft] = React.useState(sponsor.messages.join("\n"));
+  // ✅ Sync du draft quand les messages changent depuis l'extérieur (chargement DB / socket)
+  const prevMsgsRef = React.useRef(sponsor.messages);
+  React.useEffect(() => {
+    const cur = sponsor.messages.join("\n");
+    const prev = prevMsgsRef.current.join("\n");
+    if (cur !== prev) {
+      prevMsgsRef.current = sponsor.messages;
+      setMsgDraft(cur);
+    }
+  }, [sponsor.messages]);
 
   return (
     <Panel id="sponsor" activeId={activeId} setActiveId={setActiveId}

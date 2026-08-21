@@ -1,6 +1,6 @@
 <!-- web/public/overlay/obs/chat.html -->
 <!doctype html>
-<html lang="fr">
+<html lang="fr" style="background:transparent!important;background-color:transparent!important">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -10,7 +10,9 @@
 
   <style>
     :root{
-      /* color-scheme retiré — cause un fond système opaque dans OBS browser source iframe */
+      /* ✅ color-scheme: dark évite le fond blanc système sans forcer OBS opaque
+         (la valeur "dark" dit au navigateur/CEF de ne PAS injecter de fond blanc) */
+      color-scheme: dark;
 
       /* Fallbacks (remplacés par streamer appearance) */
       --chat-name-color: #7c4dff;
@@ -29,8 +31,10 @@
     html, body{
       margin:0; padding:0;
       width:100%; height:100%;
+      /* ✅ Triple-couche de transparence pour OBS browser source + iframe React */
       background: transparent !important;
       background-color: transparent !important;
+      -webkit-background: transparent !important;
       overflow:hidden;
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
       /* ✅ Lissage de polices haute qualité — sans ça, après compression
@@ -41,6 +45,11 @@
       text-rendering: geometricPrecision;
       font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
       font-kerning: normal;
+    }
+    /* ✅ Force le fond transparent même sur #root — OBS hérite parfois du fond body via le root */
+    #root {
+      background: transparent !important;
+      background-color: transparent !important;
     }
     /* ✅ Avatars / images en haute qualité — l'option "high-quality" force
        un resampling Lanczos plutôt que l'upscale au plus proche pixel qui
@@ -381,6 +390,365 @@
         radial-gradient(220px 120px at 90% 10%, rgba(190,240,255,0.10), transparent 60%);
       pointer-events:none;
       opacity: 0.9;
+    }
+
+    /* ── Frames Event ─────────────────────────────────────────── */
+    /* frame_wheel_roulette — rouge casino */
+    .chatFrame--wheelRoulette{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(239,68,68,0.55),rgba(250,204,21,0.40)) border-box;
+      box-shadow:0 0 0 1px rgba(239,68,68,0.10),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--wheelRoulette::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(239,68,68,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(250,204,21,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* frame_chest_vault — ambre/or */
+    .chatFrame--chestVault{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(245,158,11,0.55),rgba(217,119,6,0.40)) border-box;
+      box-shadow:0 0 0 1px rgba(245,158,11,0.12),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--chestVault::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(245,158,11,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(217,119,6,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* frame_boss_flames — orange feu */
+    .chatFrame--bossFlames{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(249,115,22,0.60),rgba(239,68,68,0.38)) border-box;
+      box-shadow:0 0 0 1px rgba(249,115,22,0.14),0 18px 50px rgba(0,0,0,0.40);
+    }
+    .chatFrame--bossFlames::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(249,115,22,0.18),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(239,68,68,0.14),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* frame_viewer_hearts — rose vif */
+    .chatFrame--viewerHearts{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(244,63,94,0.55),rgba(251,113,133,0.32)) border-box;
+      box-shadow:0 0 0 1px rgba(244,63,94,0.10),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--viewerHearts::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(244,63,94,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(251,113,133,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_neon_rainbow */
+    @keyframes neonRainbowBorder {
+      0%   { background-position: 0%   50%; }
+      100% { background-position: 300% 50%; }
+    }
+    .chatFrame--neonRainbow{
+      position:relative; border:2px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(90deg,#ff4d6d,#ffd54a,#2de2a6,#3F56CB,#7E4CB3,#ff4d6d) border-box;
+      background-size:300% 100%;
+      animation:neonRainbowBorder 3s linear infinite;
+      box-shadow:0 0 8px rgba(255,255,255,0.08),0 18px 50px rgba(0,0,0,0.40);
+    }
+    /* mframe_glitch */
+    @keyframes glitchShift{
+      0%,94%,100%{transform:none}
+      95%{transform:translateX(2px)}
+      97%{transform:translateX(-2px)}
+      99%{transform:translateX(1px)}
+    }
+    .chatFrame--glitch{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(0,255,200,0.45),rgba(180,0,255,0.40)) border-box;
+      box-shadow:0 0 0 1px rgba(0,255,200,0.12),0 18px 50px rgba(0,0,0,0.40);
+      animation:glitchShift 5s ease-in-out infinite;
+    }
+    .chatFrame--glitch::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(0,255,200,0.12),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(180,0,255,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_diamond */
+    .chatFrame--diamond{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(190,240,255,0.55),rgba(147,197,253,0.35)) border-box;
+      box-shadow:0 0 0 2px rgba(190,240,255,0.08),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--diamond::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(190,240,255,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(147,197,253,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_phoenix — orange‑rose phoenix */
+    .chatFrame--phoenix{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(251,146,60,0.55),rgba(244,63,94,0.38)) border-box;
+      box-shadow:0 0 0 1px rgba(251,146,60,0.12),0 18px 50px rgba(0,0,0,0.40);
+    }
+    .chatFrame--phoenix::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(251,146,60,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(244,63,94,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_void */
+    .chatFrame--void{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(5,3,10,0.97),rgba(5,3,10,0.97)) padding-box,
+        linear-gradient(135deg,rgba(91,33,182,0.55),rgba(15,3,30,0.80)) border-box;
+      box-shadow:0 0 0 1px rgba(91,33,182,0.18),0 18px 50px rgba(0,0,0,0.55);
+    }
+    .chatFrame--void::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(91,33,182,0.16),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(30,5,60,0.12),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_galaxy */
+    .chatFrame--galaxy{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(16,185,129,0.40),rgba(59,52,115,0.60)) border-box;
+      box-shadow:0 0 0 1px rgba(16,185,129,0.10),0 18px 50px rgba(0,0,0,0.40);
+    }
+    .chatFrame--galaxy::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(16,185,129,0.10),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(59,52,115,0.12),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_blood */
+    .chatFrame--blood{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,4,4,0.96),rgba(10,4,4,0.96)) padding-box,
+        linear-gradient(135deg,rgba(185,28,28,0.60),rgba(107,15,15,0.50)) border-box;
+      box-shadow:0 0 0 1px rgba(185,28,28,0.14),0 18px 50px rgba(0,0,0,0.50);
+    }
+    .chatFrame--blood::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(185,28,28,0.16),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(107,15,15,0.12),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_royal */
+    .chatFrame--royal{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(30,64,175,0.55),rgba(124,58,237,0.38)) border-box;
+      box-shadow:0 0 0 1px rgba(30,64,175,0.12),0 18px 50px rgba(0,0,0,0.40);
+    }
+    .chatFrame--royal::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(30,64,175,0.12),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(124,58,237,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_ice */
+    .chatFrame--ice{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(147,197,253,0.50),rgba(186,230,253,0.32)) border-box;
+      box-shadow:0 0 0 1px rgba(147,197,253,0.12),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--ice::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(147,197,253,0.14),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(186,230,253,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_fest_eclair */
+    @keyframes eclairFlash{
+      0%,90%,100%{opacity:0.9}
+      93%{opacity:0.4}
+      96%{opacity:0.9}
+    }
+    .chatFrame--festEclair{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(250,204,21,0.60),rgba(234,179,8,0.42)) border-box;
+      box-shadow:0 0 0 1px rgba(250,204,21,0.14),0 18px 50px rgba(0,0,0,0.40);
+      animation:eclairFlash 4s ease-in-out infinite;
+    }
+    .chatFrame--festEclair::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(250,204,21,0.16),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(234,179,8,0.12),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_aurora */
+    .chatFrame--aurora{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(52,211,153,0.45),rgba(34,211,238,0.32)) border-box;
+      box-shadow:0 0 0 1px rgba(52,211,153,0.10),0 18px 50px rgba(0,0,0,0.35);
+    }
+    .chatFrame--aurora::after{
+      content:"";position:absolute;inset:0;border-radius:14px;
+      background:radial-gradient(220px 120px at 15% 0%,rgba(52,211,153,0.12),transparent 65%),
+        radial-gradient(220px 120px at 90% 10%,rgba(34,211,238,0.10),transparent 60%);
+      pointer-events:none;opacity:0.9;
+    }
+    /* mframe_neon_pink */
+    .chatFrame--neonPink{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(244,63,94,0.55),rgba(251,113,133,0.38)) border-box;
+      box-shadow:0 0 4px rgba(244,63,94,0.18),0 18px 50px rgba(0,0,0,0.40);
+    }
+    /* mframe_neon_cyan */
+    .chatFrame--neonCyan{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(34,211,238,0.55),rgba(6,182,212,0.38)) border-box;
+      box-shadow:0 0 4px rgba(34,211,238,0.18),0 18px 50px rgba(0,0,0,0.35);
+    }
+    /* mframe_emerald */
+    .chatFrame--emerald{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(16,185,129,0.55),rgba(5,150,105,0.38)) border-box;
+      box-shadow:0 0 0 1px rgba(16,185,129,0.10),0 18px 50px rgba(0,0,0,0.35);
+    }
+    /* mframe_sakura */
+    .chatFrame--sakura{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(251,207,232,0.45),rgba(244,63,94,0.28)) border-box;
+      box-shadow:0 0 0 1px rgba(251,207,232,0.10),0 18px 50px rgba(0,0,0,0.35);
+    }
+    /* mframe_carbon */
+    .chatFrame--carbon{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(75,85,99,0.55),rgba(55,65,81,0.45)) border-box;
+      box-shadow:0 0 0 1px rgba(75,85,99,0.12),0 18px 50px rgba(0,0,0,0.40);
+    }
+    /* mframe_paper */
+    .chatFrame--paper{
+      position:relative; border:1px solid transparent;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(156,163,175,0.40),rgba(209,213,219,0.28)) border-box;
+      box-shadow:0 0 0 1px rgba(156,163,175,0.10),0 18px 50px rgba(0,0,0,0.30);
+    }
+
+    /* ── Effets pseudo CSS — noms alignes sur cosmetics.ts ── */
+    /* Les classes ci-dessous sont identiques a celles produites par le site React
+       => coherence garantie entre le preview web et le rendu OBS. */
+
+    /* gold / ufx-gold */
+    .username--gold{
+      color: transparent;
+      background-image: linear-gradient(90deg,#4b3516 0%,#caa25a 30%,#fff2d2 52%,#e4c784 70%,#4b3516 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-stroke: 0.3px rgba(255,226,160,0.22);
+    }
+    /* silver / ufx-silver */
+    .username--silver{
+      color: transparent;
+      background-image: linear-gradient(90deg,#9ca3af 0%,#e5e7eb 40%,#f9fafb 52%,#d1d5db 70%,#9ca3af 100%);
+      background-size: 180% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* purple / ufx-purple */
+    .username--purple{
+      color: transparent;
+      background-image: linear-gradient(90deg,#7c3aed 0%,#a78bfa 40%,#ddd6fe 52%,#a78bfa 70%,#7c3aed 100%);
+      background-size: 180% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* crimson / ufx-crimson */
+    .username--crimson{
+      color: transparent;
+      background-image: linear-gradient(90deg,#991b1b 0%,#ef4444 40%,#fca5a5 52%,#ef4444 70%,#991b1b 100%);
+      background-size: 180% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* galaxy / ufx-galaxy */
+    .username--galaxy{
+      color: transparent;
+      background-image: linear-gradient(90deg,#6ee7b7 0%,#a78bfa 30%,#f9a8d4 52%,#a78bfa 70%,#6ee7b7 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+      animation: unameRainbowMove 4s linear infinite;
+    }
+    /* ice / ufx-ice */
+    .username--ice{
+      color: transparent;
+      background-image: linear-gradient(90deg,#bfdbfe 0%,#e0f2fe 40%,#ffffff 52%,#bae6fd 70%,#7dd3fc 100%);
+      background-size: 180% 100%;
+      -webkit-background-clip: text; background-clip: text;
+      text-shadow: 0 0 8px rgba(186,230,253,0.25);
+    }
+    /* glitch / ufx-glitch */
+    @keyframes chatGlitch{
+      0%,92%,100%{transform:none;color:inherit}
+      94%{transform:translateX(2px);color:#0ff}
+      96%{transform:translateX(-2px);color:#f0f}
+      98%{transform:translateX(1px);color:inherit}
+    }
+    .username--glitch{ animation:chatGlitch 5s steps(1) infinite; }
+    /* fire / ufx-fire + ember (alias) */
+    @keyframes chatFirePulse{ 0%,100%{color:#f97316;text-shadow:0 0 4px rgba(249,115,22,0.7)} 50%{color:#fb923c;text-shadow:0 0 10px rgba(249,115,22,1)} }
+    .username--fire, .username--ember{ animation:chatFirePulse 0.9s ease-in-out infinite; }
+    /* pulse-red / ufx-pulse-red */
+    @keyframes chatPulseRed{ 0%,100%{color:#f87171;text-shadow:0 0 3px rgba(239,68,68,0.6)} 50%{color:#fca5a5;text-shadow:0 0 8px rgba(239,68,68,0.9)} }
+    .username--pulseRed{ animation:chatPulseRed 1.4s ease-in-out infinite; }
+    /* pulse-blue / ufx-pulse-blue */
+    @keyframes chatPulseBlue{ 0%,100%{color:#60a5fa;text-shadow:0 0 3px rgba(59,130,246,0.6)} 50%{color:#93c5fd;text-shadow:0 0 8px rgba(59,130,246,0.9)} }
+    .username--pulseBlue{ animation:chatPulseBlue 1.4s ease-in-out infinite; }
+    /* sunset / uanim_gradient_sunset */
+    .username--sunset{
+      color: transparent;
+      background-image: linear-gradient(90deg,#f97316 0%,#ec4899 40%,#a855f7 70%,#ec4899 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* ocean / uanim_ocean */
+    .username--ocean{
+      color: transparent;
+      background-image: linear-gradient(90deg,#0ea5e9 0%,#22d3ee 40%,#6ee7b7 70%,#22d3ee 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* mint / uanim_mint */
+    .username--mint{
+      color: transparent;
+      background-image: linear-gradient(90deg,#4ade80 0%,#a7f3d0 40%,#d1fae5 52%,#a7f3d0 70%,#4ade80 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* amber / uanim_amber */
+    .username--amber{
+      color: transparent;
+      background-image: linear-gradient(90deg,#f59e0b 0%,#fcd34d 40%,#fef3c7 52%,#fcd34d 70%,#f59e0b 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* steel / uanim_steel */
+    .username--steel{
+      color: transparent;
+      background-image: linear-gradient(90deg,#64748b 0%,#94a3b8 40%,#e2e8f0 52%,#94a3b8 70%,#64748b 100%);
+      background-size: 200% 100%;
+      -webkit-background-clip: text; background-clip: text;
+    }
+    /* frost / uanim_frost */
+    .username--frost{
+      color: #e0f2fe;
+      text-shadow: 0 0 6px rgba(186,230,253,0.35), 0 0 12px rgba(147,197,253,0.20);
     }
 
     /* reduced motion */
@@ -971,12 +1339,15 @@
     });
     let viewerSkinsLevel = 1;
 
-    // cosmetics cache
+    // cosmetics cache (persistent — survit aux pushMsg successifs)
     const COSMETICS = {}; // usernameLower -> cosmetics
 
     // emotes cache: "e:nov_ptn" / "g:party"
     const EMOTES_MAP = new Map(); // key -> url
     const EMOTES_LOADED_AT = { t: 0 };
+
+    // ✅ reapOld throttle — évite de stresser le DOM à chaque tick
+    let _reapScheduled = false;
 
     function emoteKey(kind, name){
       return `${String(kind||"e").toLowerCase()}:${String(name||"").toLowerCase()}`;
@@ -1185,15 +1556,55 @@
       const e = String(effect || "").trim().toLowerCase();
       if (!e || e === "none" || e === "default") return "";
 
-      // compat codes catalog (site)
+      // ── Effets CSS classiques (codes natifs cosmetics.ts) ──
+      // Note : ces codes arrivent directement depuis la DB (champ username.effect)
       if (e === "rainbow" || e === "rainbow_scroll" || e === "uanim_rainbow_scroll") return "username--rainbow";
-      if (e === "neon_underline" || e === "uanim_neon_underline") return "username--neon";
-      if (e === "chroma" || e === "uanim_chroma_toggle") return "username--chroma";
-      if (e === "gold" || e === "uanim_gold_toggle") return "username--gold";
+      if (e === "neon_underline" || e === "uanim_neon_underline")                   return "username--neon";
+      if (e === "chroma"         || e === "uanim_chroma_toggle")                    return "username--chroma";
 
-      // compat extra (si jamais)
-      if (e === "rainbow-scrolling" || e === "scrolling-rainbow") return "username--rainbow";
-      if (e === "chroma_scroll" || e === "chroma-scrolling") return "username--chroma";
+      // ── Codes "court" (alias DB) -> classe cosmetics.ts ──
+      if (e === "gold"           || e === "uanim_gold_toggle")   return "username--gold";
+      if (e === "silver"         || e === "uanim_silver_toggle") return "username--silver";
+      if (e === "purple"         || e === "uanim_purple_toggle") return "username--purple";
+      if (e === "crimson"        || e === "uanim_crimson")       return "username--crimson";
+      if (e === "galaxy"         || e === "uanim_galaxy")        return "username--galaxy";
+      if (e === "ice"            || e === "uanim_ice")           return "username--ice";
+      if (e === "glitch"         || e === "uanim_glitch")        return "username--glitch";
+      if (e === "fire"           || e === "uanim_fire")          return "username--fire";
+      if (e === "ember"          || e === "uanim_ember")         return "username--ember";
+      if (e === "pulse_red"      || e === "uanim_pulse_red")     return "username--pulseRed";
+      if (e === "pulse_blue"     || e === "uanim_pulse_blue")    return "username--pulseBlue";
+      if (e === "sunset"         || e === "uanim_gradient_sunset") return "username--sunset";
+      if (e === "ocean"          || e === "uanim_ocean")         return "username--ocean";
+      if (e === "mint"           || e === "uanim_mint")          return "username--mint";
+      if (e === "amber"          || e === "uanim_amber")         return "username--amber";
+      if (e === "steel"          || e === "uanim_steel")         return "username--steel";
+      if (e === "frost"          || e === "uanim_frost")         return "username--frost";
+
+      // ── Codes moteur ufx-* -> fallback CSS (pas de canvas Pixi en OBS) ──
+      if (e === "ufx-gold")       return "username--gold";
+      if (e === "ufx-rainbow")    return "username--rainbow";
+      if (e === "ufx-chroma")     return "username--chroma";
+      if (e === "ufx-neon")       return "username--neon";
+      if (e === "ufx-silver")     return "username--silver";
+      if (e === "ufx-purple")     return "username--purple";
+      if (e === "ufx-crimson")    return "username--crimson";
+      if (e === "ufx-pulse-red")  return "username--pulseRed";
+      if (e === "ufx-pulse-blue") return "username--pulseBlue";
+      if (e === "ufx-fire")       return "username--fire";
+      if (e === "ufx-ice")        return "username--ice";
+      if (e === "ufx-glitch")     return "username--glitch";
+      if (e === "ufx-galaxy")     return "username--galaxy";
+
+      // ── Codes moteur legendaires / mythiques -> fallback chroma (shimmer violet) ──
+      // Les effets Pixi (particles, canvas WebGL) ne peuvent pas tourner en OBS.
+      // On garde un rendu visuel agreeable sans crasher le renderer.
+      const MYTHIC_LEGENDARY = new Set([
+        "garden-of-ashes","jackpot-divin","leviathan-abyssal","forge-celeste",
+        "nuee-obsidienne","sablier-eternite","coeur-du-reacteur",
+        "eveil-lunaire","orage-interieur","spectre","cristallisation",
+      ]);
+      if (MYTHIC_LEGENDARY.has(e)) return "username--chroma";
 
       return "";
     }
@@ -1202,12 +1613,40 @@
       const raw = String(frameId || "").trim();
       if (!raw || raw === "none") return "";
 
-      const k = raw.toLowerCase().startsWith("frame_") ? raw.slice(6).toLowerCase() : raw.toLowerCase();
+      const k = raw.toLowerCase().startsWith("frame_") ? raw.slice(6).toLowerCase()
+              : raw.toLowerCase().startsWith("mframe_") ? raw.slice(7).toLowerCase()
+              : raw.toLowerCase();
 
-      if (k === "luna_petals") return "chatFrame--lunaPetals";
-      if (k === "gold" || k === "gold_shop") return "chatFrame--gold";
-      if (k === "eclipse" || k === "eclipse_master") return "chatFrame--eclipse";
+      // Frames classiques
+      if (k === "luna_petals")                        return "chatFrame--lunaPetals";
+      if (k === "gold" || k === "gold_shop")          return "chatFrame--gold";
+      if (k === "eclipse" || k === "eclipse_master")  return "chatFrame--eclipse";
       if (k === "lotus_crown" || k === "lotus_event") return "chatFrame--lotusCrown";
+
+      // Frames event
+      if (k === "wheel_roulette") return "chatFrame--wheelRoulette";
+      if (k === "chest_vault")    return "chatFrame--chestVault";
+      if (k === "boss_flames")    return "chatFrame--bossFlames";
+      if (k === "viewer_hearts")  return "chatFrame--viewerHearts";
+
+      // mframes
+      if (k === "neon_rainbow")  return "chatFrame--neonRainbow";
+      if (k === "glitch")        return "chatFrame--glitch";
+      if (k === "diamond")       return "chatFrame--diamond";
+      if (k === "phoenix")       return "chatFrame--phoenix";
+      if (k === "void")          return "chatFrame--void";
+      if (k === "galaxy")        return "chatFrame--galaxy";
+      if (k === "blood")         return "chatFrame--blood";
+      if (k === "royal")         return "chatFrame--royal";
+      if (k === "ice")           return "chatFrame--ice";
+      if (k === "fest_eclair")   return "chatFrame--festEclair";
+      if (k === "aurora")        return "chatFrame--aurora";
+      if (k === "neon_pink")     return "chatFrame--neonPink";
+      if (k === "neon_cyan")     return "chatFrame--neonCyan";
+      if (k === "emerald")       return "chatFrame--emerald";
+      if (k === "sakura")        return "chatFrame--sakura";
+      if (k === "carbon")        return "chatFrame--carbon";
+      if (k === "paper")         return "chatFrame--paper";
 
       return "";
     }
@@ -1226,30 +1665,46 @@
       return (
         avatar?.hatEmoji ||
         (hatIdNorm ? ({
-          luna_cap: "🧢",
-          carton_crown: "👑",
-          demon_horn: "😈",
-          eclipse_halo: "⭕",
-          astral_helmet: "🪖",
-          lotus_aureole: "🪷",
+          luna_cap:       "🧢",
+          carton_crown:   "👑",
+          demon_horn:     "😈",
+          eclipse_halo:   "⭕",
+          astral_helmet:  "🪖",
+          lotus_aureole:  "🪷",
+          top_hat:        "🎩",
+          santa:          "🎅",
+          witch:          "🧙",
+          propeller:      "🌀",
+          pirate:         "🏴‍☠️",
+          viking:         "⚔️",
         }[hatIdNorm] || null) : null)
       );
     }
 
     function clampStack(){
-      while (stack.children.length > MAX) stack.removeChild(stack.firstElementChild);
+      // ✅ Utilise un fragment virtuel si besoin de retirer beaucoup d'éléments
+      const excess = stack.children.length - MAX;
+      for (let i = 0; i < excess; i++) {
+        if (stack.firstElementChild) stack.removeChild(stack.firstElementChild);
+      }
     }
 
     function reapOld(){
       if (!LIFE || LIFE <= 0) return;
-      const now = Date.now();
-      const ttlMs = LIFE * 1000;
-      while (stack.firstElementChild) {
-        const el = stack.firstElementChild;
-        const ts = Number(el?.dataset?.ts || 0);
-        if (!ts || now - ts <= ttlMs) break;
-        stack.removeChild(el);
-      }
+      // ✅ throttle: si déjà schedulé, pas de double-boucle
+      if (_reapScheduled) return;
+      _reapScheduled = true;
+      requestAnimationFrame(() => {
+        _reapScheduled = false;
+        const now = Date.now();
+        const ttlMs = LIFE * 1000;
+        while (stack.firstElementChild) {
+          const el = stack.firstElementChild;
+          const ts = Number(el?.dataset?.ts || 0);
+          if (!ts || now - ts <= ttlMs) break;
+          stack.removeChild(el);
+        }
+      });
     }
 
     function mkRow(m){
@@ -1437,9 +1892,12 @@
 
     function pushMsg(m){
       const row = mkRow(m);
+      // ✅ requestAnimationFrame pour grouper les inserts DOM et éviter les reflows multiples
       stack.appendChild(row);
       clampStack();
       reapOld();
+      // ✅ Scroll vers le bas (dernier message) sans forcer un reflow synchrone
+      requestAnimationFrame(() => { stack.scrollTop = stack.scrollHeight; });
     }
 
     function normalizeIncoming(payload){
@@ -1576,11 +2034,16 @@
     // init
     loadStreamerAppearance();
     loadEmotesCatalog();              // ✅ initial
-    setInterval(loadEmotesCatalog, 60_000); // ✅ refresh
+    // ✅ refresh emotes toutes les 2 min (60s était trop fréquent pour OBS qui tourne 4h+)
+    setInterval(loadEmotesCatalog, 120_000);
     connectSocket();
 
     if (LIFE > 0) {
-      window.setInterval(() => reapOld(), 1000);
+      // ✅ reapOld via requestAnimationFrame — pas de setInterval à 1s qui réveille le thread
+      (function scheduleReap(){
+        reapOld();
+        setTimeout(scheduleReap, 2000);
+      })();
     }
 
     // si pas de slug => sample
