@@ -156,6 +156,17 @@ function useMessageCycle(messages: string[], intervalSecs: number, rawConfigStyl
     if (configStyle !== "random") resolvedRef.current = configStyle as RealAnimStyle;
   }, [configStyle]);
 
+  // ✅ Reset du cycle quand le CONTENU des messages change (push depuis FSB board / socket)
+  const msgKeyRef = React.useRef(messages.join("|"));
+  React.useEffect(() => {
+    const key = messages.join("|");
+    if (key !== msgKeyRef.current) {
+      msgKeyRef.current = key;
+      setIdx(0);
+      setPhase("enter");
+    }
+  }, [messages]);
+
   React.useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
     if (phase === "enter") {
@@ -173,7 +184,9 @@ function useMessageCycle(messages: string[], intervalSecs: number, rawConfigStyl
     return () => clearTimeout(t);
   }, [phase, intervalSecs, messages.length, configStyle]);
 
-  return { idx, text: messages[idx], phase, resolvedAnimStyle: resolvedRef.current };
+  // ✅ Clamp idx si messages raccourcit après un push
+  const safeIdx = Math.min(idx, Math.max(0, messages.length - 1));
+  return { idx: safeIdx, text: messages[safeIdx] ?? "", phase, resolvedAnimStyle: resolvedRef.current };
 }
 
 // ─── Animated text ────────────────────────────────────────────────────────────
