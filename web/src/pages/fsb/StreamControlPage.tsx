@@ -1660,6 +1660,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
   const [myCamActive, setMyCamActive] = React.useState(false);
   const [localStream, setLocalStream] = React.useState<MediaStream | null>(null);
   const [myFilters, setMyFilters] = React.useState<CamFilters>({ ...DEFAULT_FILTERS });
+  const [camError, setCamError] = React.useState<string | null>(null);
   const [msgCount, setMsgCount] = React.useState(0);
 
   // ─── Chat Channel Selection (Auto / Fabiozsis / LeCasiNoze) ───────────────
