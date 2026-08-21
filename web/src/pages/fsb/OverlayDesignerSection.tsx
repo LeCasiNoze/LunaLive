@@ -1921,6 +1921,18 @@ export function OverlayDesignerSection() {
     setActivePanel(null);
   }
 
+  function resetCurrentMode() {
+    const defaultCfg = defaultConfig(config.mode);
+    // Préserver le chatUrl s'il existe
+    if (config.chat?.chatUrl) {
+      defaultCfg.chat.chatUrl = config.chat.chatUrl;
+    }
+    setConfig(defaultCfg);
+    byModeRef.current = { ...byModeRef.current, [config.mode]: defaultCfg };
+    saveByModeToStorage(byModeRef.current);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultCfg)); } catch {}
+  }
+
   function updateCam(index: number, patch: Partial<CamZoneConfig>) {
     setConfig((c) => {
       const cams = c.cams.map((cam, i) => i === index ? { ...cam, ...patch } : cam);
@@ -2006,26 +2018,50 @@ export function OverlayDesignerSection() {
             Configure ton overlay OBS. Chaque zone est positionnee en % du canvas 1920×1080.
           </p>
         </div>
-        {/* Mode selector */}
-        <div style={{ display: "flex", gap: 5, background: "rgba(14,29,56,.8)", border: "1px solid rgba(60,95,175,.2)", borderRadius: 12, padding: 4 }}>
-          {MODES.map((m) => (
-            <button
-              key={m.value}
-              onClick={() => changeMode(m.value)}
-              style={{
-                borderRadius: 9, border: "1px solid transparent", font: "inherit", fontSize: 13,
-                fontWeight: 700, cursor: "pointer", padding: "7px 14px", display: "inline-flex",
-                alignItems: "center", gap: 6, transition: "all .15s",
-                background: config.mode === m.value
-                  ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
-                  : "transparent",
-                color: config.mode === m.value ? "#fff" : "rgba(148,178,232,.7)",
-                boxShadow: config.mode === m.value ? "0 4px 16px rgba(99,102,241,.35)" : "none",
-              }}
-            >
-              {m.icon} {m.label}
-            </button>
-          ))}
+        {/* Mode selector + Reset */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", gap: 5, background: "rgba(14,29,56,.8)", border: "1px solid rgba(60,95,175,.2)", borderRadius: 12, padding: 4 }}>
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => changeMode(m.value)}
+                style={{
+                  borderRadius: 9, border: "1px solid transparent", font: "inherit", fontSize: 13,
+                  fontWeight: 700, cursor: "pointer", padding: "7px 14px", display: "inline-flex",
+                  alignItems: "center", gap: 6, transition: "all .15s",
+                  background: config.mode === m.value
+                    ? "linear-gradient(135deg,#6366f1,#8b5cf6)"
+                    : "transparent",
+                  color: config.mode === m.value ? "#fff" : "rgba(148,178,232,.7)",
+                  boxShadow: config.mode === m.value ? "0 4px 16px rgba(99,102,241,.35)" : "none",
+                }}
+              >
+                {m.icon} {m.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={resetCurrentMode}
+            title={`Réinitialiser le mode ${config.mode} aux positions par défaut`}
+            style={{
+              borderRadius: 10,
+              border: "1px solid rgba(255,255,255,.08)",
+              background: "rgba(255,255,255,.03)",
+              color: "rgba(148,178,232,.65)",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              padding: "8px 12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              transition: "all .15s",
+            }}
+          >
+            ↺ Réinitialiser {config.mode}
+          </button>
         </div>
       </div>
 
