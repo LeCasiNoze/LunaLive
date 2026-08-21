@@ -107,23 +107,55 @@
     .chatScroll::-webkit-scrollbar{ width: 0; height: 0; }
 
     .chatMsgRow{
-      border-radius: 14px;
+      border-radius: 16px;
       border: 1px solid rgba(255,255,255,calc(var(--msg-bg-opacity) * 0.11));
       background: rgba(17, 10, 23, var(--msg-bg-opacity));
       box-shadow: 0 10px 40px rgba(0,0,0,calc(var(--msg-bg-opacity) * 0.27));
-      padding: 10px 12px;
+      padding: 11px 13px;
       overflow: hidden;
       will-change: transform, opacity;
+      position: relative;
     }
     .chatMsgInner{
       display:flex;
-      gap: 10px;
+      gap: 12px;
       align-items:flex-start;
+    }
+    .chatMsgInner--slim{ display: block; }
+
+    /* ── Colonne gauche : avatar + badges empilés dessous ── */
+    .chatColLeft{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      min-width: 46px;
+    }
+    .chatColBadges{
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      max-width: 52px;
+    }
+    .chatColBadges .chatBadge{
+      box-sizing: border-box;
+      padding: 2px 6px;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      border-radius: 7px;
+      gap: 3px;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .chatAvatarBorder{
-      width: 44px;
-      height: 44px;
+      width: 46px;
+      height: 46px;
       border-radius: 999px;
       border: 1px solid rgba(255,255,255,0.14);
       background: rgba(255,255,255,0.06);
@@ -135,8 +167,8 @@
     }
 
     .chatAvatarCircle{
-      width: 38px;
-      height: 38px;
+      width: 40px;
+      height: 40px;
       border-radius: 999px;
       display: grid;
       place-items: center;
@@ -154,7 +186,16 @@
       display: block;
     }
 
-    /* ✅ hat identique chat (centré, pas de travers) */
+    /* ✅ Chapeau image & emoji */
+    .chatHatImg{
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      height: auto;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5));
+      z-index: 3;
+      pointer-events: none;
+    }
     .chatHatEmoji{
       position: absolute;
       top: -10px;
@@ -181,41 +222,77 @@
 
     .chatMsgContent{ min-width: 0; flex: 1; }
 
+    /* Rôle (chip icone à gauche du pseudo) */
+    .chatRoleChip{
+      display: inline-grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      font-size: 12px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+    }
+    .chatRoleChip--viewer{ border-color: rgba(167,139,250,0.35); background: rgba(124,92,252,0.14); }
+    .chatRoleChip--mod{ border-color: rgba(80,200,255,0.45); background: rgba(80,200,255,0.14); }
+    .chatRoleChip--streamer{ border-color: rgba(253,230,138,0.5); background: rgba(253,230,138,0.14); box-shadow: 0 0 8px rgba(253,230,138,0.18); }
+    .chatRoleChip--admin{ border-color: rgba(244,114,182,0.5); background: rgba(244,114,182,0.14); box-shadow: 0 0 8px rgba(244,114,182,0.2); }
+    .chatRoleChip--bot{ border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.12); }
+
+    /* Corps du message dans sa propre bulle */
+    .chatBodyBubble{
+      margin-top: 8px;
+      padding: 9px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      background: rgba(255,255,255,0.045);
+    }
+    .chatBodyBubble .chatBodyText{
+      margin-top: 0;
+      font-size: 13.5px;
+      line-height: 1.45;
+      font-weight: 700;
+      color: var(--chat-msg-color, rgba(235,232,255,0.92));
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
     .chatMsgTop{
       display:flex;
       justify-content: space-between;
-      gap: 10px;
-      align-items:flex-start;
+      gap: 8px;
+      align-items:center;
     }
     .chatMsgTopLeft{
       min-width: 0;
       display:flex;
-      gap: 8px;
+      gap: 6px;
       align-items:center;
       flex-wrap: wrap;
     }
     .chatTimestamp{
       color: rgba(255,255,255,0.55);
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       flex: 0 0 auto;
       white-space: nowrap;
     }
 
-    .chatBadges{ display:flex; gap: 6px; flex-wrap: wrap; }
+    /* Badges */
+    .chatBadges{ display:flex; gap: 4px; flex-wrap: wrap; }
     .chatBadge{
       display:inline-flex;
       align-items:center;
-      gap: 6px;
-      padding: 4px 8px;
+      gap: 4px;
+      padding: 2px 7px;
       border-radius: 999px;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 950;
       border: 1px solid rgba(255,255,255,0.14);
       background: rgba(255,255,255,0.06);
       color: rgba(255,255,255,0.92);
       white-space: nowrap;
-      line-height: 1.6;
     }
     .chatBadgeIcon{ opacity: 0.9; }
 
@@ -223,6 +300,113 @@
     .badge--silver{ border-color: rgba(180,140,255,0.40); }
     .badge--gold{ border-color: rgba(255,210,120,0.40); }
     .badge--master{ border-color: rgba(190,240,255,0.45); box-shadow: 0 0 0 1px rgba(190,240,255,0.10); }
+
+    /* ─── BADGES FX (bfx--) ─── */
+    .bfx--badge_rich, .bfx--badge_chef, .bfx--badge_og, .bfx--badge_777 {
+      position: relative;
+      overflow: hidden;
+    }
+    .bfx--badge_luna {
+      border-color: rgba(167, 139, 250, 0.45);
+      box-shadow: 0 0 6px rgba(167, 139, 250, 0.35);
+    }
+    .bfx--badge_heart {
+      border-color: rgba(244, 114, 182, 0.45);
+      color: #f472b6;
+    }
+    .bfx--badge_star {
+      border-color: rgba(251, 191, 36, 0.45);
+      color: #fbbf24;
+    }
+    .bfx--badge_chef {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: linear-gradient(135deg, rgba(69, 26, 3, 0.6), rgba(120, 53, 15, 0.35));
+    }
+    .bfx--badge_lightning {
+      border-color: rgba(103, 232, 249, 0.5);
+      color: #67e8f9;
+      box-shadow: 0 0 6px rgba(103, 232, 249, 0.4);
+    }
+    .bfx--badge_discord {
+      border-color: rgba(114, 137, 218, 0.55);
+      background: rgba(88, 101, 242, 0.14);
+    }
+    .bfx--badge_skull {
+      border-color: rgba(239, 68, 68, 0.5);
+      background: linear-gradient(180deg, rgba(28, 6, 6, 0.7), rgba(69, 10, 10, 0.45));
+      color: #fca5a5;
+    }
+    .bfx--badge_rich {
+      border-color: rgba(251, 191, 36, 0.55);
+      background: linear-gradient(135deg, rgba(120, 53, 15, 0.5), rgba(180, 83, 9, 0.3));
+      color: #fde68a;
+      text-shadow: 0 0 6px rgba(251, 191, 36, 0.4);
+    }
+    .bfx--badge_777 {
+      border-color: rgba(251, 191, 36, 0.6);
+      background: #141018;
+      color: #fde68a;
+      box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+    }
+    .bfx--badge_og {
+      border-color: rgba(255, 255, 255, 0.35);
+      background: linear-gradient(115deg, #7c3aed, #db2777 25%, #f59e0b 50%, #06b6d4 75%, #7c3aed 100%);
+      background-size: 200% 100%;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+      animation: unameRainbowMove 6s linear infinite;
+    }
+
+    /* ─── TITLE PILLS (.tp) ─── */
+    @keyframes tp-shimmer {
+      0%   { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+    .tp-container {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 3px;
+    }
+    .tp {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.4;
+      white-space: nowrap;
+      background-size: 200% 100%;
+      user-select: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tp-icon { font-size: 0.9em; flex-shrink: 0; }
+    .tp-label { line-height: 1.25; overflow: hidden; text-overflow: ellipsis; }
+
+    .tp-rarity-common      { background: linear-gradient(135deg, #94a3b8, #cbd5e1, #94a3b8); color: #0f172a; }
+    .tp-rarity-uncommon    { background: linear-gradient(135deg, #34d399, #6ee7b7, #34d399); color: #064e3b; }
+    .tp-rarity-rare        { background: linear-gradient(135deg, #60a5fa, #93c5fd, #60a5fa); color: #1e3a8a; }
+    .tp-rarity-epic        { background: linear-gradient(135deg, #c084fc, #d8b4fe, #c084fc); color: #4c1d95; }
+    .tp-rarity-legendary   {
+      background: linear-gradient(135deg, #171207, #2b2110, #171207);
+      color: #fbbf24;
+      border-color: rgba(251, 191, 36, 0.45);
+      text-shadow: 0 0 4px rgba(251, 191, 36, 0.25);
+    }
+    .tp-rarity-mythic      {
+      background: linear-gradient(135deg, #f472b6, #fbbf24, #22d3ee, #c084fc, #f472b6);
+      background-size: 300% 100%;
+      color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+      border-color: rgba(255,255,255,0.25);
+      animation: tp-shimmer 6s linear infinite;
+    }
 
     .msg-emote--ll{
       width: 1.45em;
@@ -232,14 +416,14 @@
 
     .chatUsername{
       font-weight: 950;
-      font-size: 14px; /* overridden in OBS section */
+      font-size: 14.5px;
       color: var(--uname-color, var(--chat-name-color, #ffd54a));
       max-width: 100%;
       overflow:hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       position: relative;
-      display: inline-block; /* ✅ nécessaire pour le neon glow */
+      display: inline-block;
     }
 
     .chatTitle{
@@ -248,6 +432,7 @@
       overflow:hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+
     }
 
     .title--bronze{ opacity: 0.9; }
@@ -1681,6 +1866,47 @@
       );
     }
 
+    const HAT_ASSETS = {
+      luna_cap: { w: 46, top: -17 },
+      carton_crown: { w: 44, top: -19 },
+      demon_horn: { w: 48, top: -15 },
+      eclipse_halo: { w: 46, top: -19 },
+      astral_helmet: { w: 48, top: -15 },
+      lotus_aureole: { w: 42, top: -17 },
+      top_hat: { w: 44, top: -23 },
+      santa: { w: 46, top: -19 },
+      witch: { w: 48, top: -23 },
+      pirate: { w: 50, top: -19 },
+      viking: { w: 48, top: -15 },
+      propeller: { w: 44, top: -19 },
+    };
+
+    const ROLE_META = {
+      viewer: { icon: "⚡", label: "Viewer" },
+      mod: { icon: "🛡️", label: "Modérateur" },
+      streamer: { icon: "🎙️", label: "Streamer" },
+      admin: { icon: "👑", label: "Admin LunaLive" },
+      bot: { icon: "🤖", label: "Bot" },
+    };
+
+    function createTitlePillNode(entry) {
+      if (!entry) return null;
+      const sp = document.createElement("span");
+      sp.className = `tp tp-rarity-${entry.rarity || "common"}`;
+      
+      const icon = document.createElement("span");
+      icon.className = "tp-icon";
+      icon.textContent = entry.source === "achievement" ? "🏆" : (entry.source === "level" ? "⭐" : "🏷️");
+      sp.appendChild(icon);
+
+      const label = document.createElement("span");
+      label.className = "tp-label";
+      label.textContent = entry.label || entry.code || "";
+      sp.appendChild(label);
+
+      return sp;
+    }
+
     function clampStack(){
       // ✅ Utilise un fragment virtuel si besoin de retirer beaucoup d'éléments
       const excess = stack.children.length - MAX;
@@ -1734,17 +1960,14 @@
       inner.className = "chatMsgInner";
       row.appendChild(inner);
 
-      // avatar
+      // avatar core
       const avaBorder = document.createElement("div");
       avaBorder.className = "chatAvatarBorder";
 
       const avatar = cosmetics?.avatar || {};
       const borderId = avatar?.borderId || cosmetics?.avatarBorderId || null;
-
       const bc = avatarBorderClass(borderId);
       if (bc) avaBorder.classList.add(bc);
-
-      // allow explicit overrides
       if (avatar?.borderColor) avaBorder.style.borderColor = String(avatar.borderColor);
 
       const circle = document.createElement("div");
@@ -1771,15 +1994,71 @@
         circle.textContent = getInitials(m.username);
       }
 
-      const hatEmoji = hatEmojiFromAvatar(avatar);
-      if (hatEmoji) {
-        const hat = document.createElement("div");
-        hat.className = "chatHatEmoji";
-        hat.textContent = hatEmoji;
-        avaBorder.appendChild(hat);
+      // Hat : Image prioritaire avec fallback emoji
+      const hatIdNorm = avatar?.hatId ? String(avatar.hatId).replace(/^hat_/, "") : null;
+      const hatAsset = hatIdNorm ? HAT_ASSETS[hatIdNorm] : null;
+      if (hatAsset) {
+        const hImg = document.createElement("img");
+        hImg.className = "chatHatImg";
+        hImg.src = `/Hats/hat_${hatIdNorm}.png`;
+        hImg.style.width = `${hatAsset.w}px`;
+        hImg.style.top = `${hatAsset.top}px`;
+        if (hatAsset.dx) hImg.style.marginLeft = `${hatAsset.dx}px`;
+        hImg.onerror = () => {
+          hImg.remove();
+          const hatEmoji = hatEmojiFromAvatar(avatar);
+          if (hatEmoji) {
+            const hDiv = document.createElement("div");
+            hDiv.className = "chatHatEmoji";
+            hDiv.textContent = hatEmoji;
+            avaBorder.appendChild(hDiv);
+          }
+        };
+        avaBorder.appendChild(hImg);
+      } else {
+        const hatEmoji = hatEmojiFromAvatar(avatar);
+        if (hatEmoji) {
+          const hat = document.createElement("div");
+          hat.className = "chatHatEmoji";
+          hat.textContent = hatEmoji;
+          avaBorder.appendChild(hat);
+        }
       }
 
-      inner.appendChild(avaBorder);
+      // Badges
+      const badges = Array.isArray(cosmetics?.badges) ? cosmetics.badges : [];
+      const slim = badges.length === 0;
+
+      if (!slim) {
+        const colLeft = document.createElement("div");
+        colLeft.className = "chatColLeft chatAvatarSlot";
+        colLeft.appendChild(avaBorder);
+
+        const badgesEl = document.createElement("div");
+        badgesEl.className = "chatColBadges";
+        badges.slice(0, 2).forEach((b) => {
+          const sp = document.createElement("span");
+          const bId = String(b?.id || "").replace(/[^a-z0-9_-]/gi, "");
+          sp.className = `chatBadge badge--${String(b?.tier || "silver").toLowerCase()} bfx--${bId}`;
+          if (b?.borderColor) sp.style.borderColor = b.borderColor;
+          if (b?.textColor) sp.style.color = b.textColor;
+          if (b?.backgroundColor) sp.style.backgroundColor = b.backgroundColor;
+
+          if (b?.icon) {
+            const ic = document.createElement("span");
+            ic.className = "chatBadgeIcon";
+            ic.textContent = String(b.icon);
+            sp.appendChild(ic);
+          }
+          sp.appendChild(document.createTextNode(badgeLabel(b)));
+          badgesEl.appendChild(sp);
+        });
+        colLeft.appendChild(badgesEl);
+        inner.appendChild(colLeft);
+      } else {
+        inner.classList.add("chatMsgInner--slim");
+        inner.appendChild(avaBorder);
+      }
 
       // content
       const content = document.createElement("div");
@@ -1794,30 +2073,16 @@
       topLeft.className = "chatMsgTopLeft";
       top.appendChild(topLeft);
 
-      // badges
-      const badges = Array.isArray(cosmetics?.badges) ? cosmetics.badges : [];
-      if (badges.length) {
-        const badgesEl = document.createElement("div");
-        badgesEl.className = "chatBadges";
-        badges.forEach((b) => {
-          const sp = document.createElement("span");
-          sp.className = "chatBadge";
-          if (b?.tier) sp.classList.add(`badge--${String(b.tier).toLowerCase()}`);
-          if (b?.borderColor) sp.style.borderColor = b.borderColor;
-          if (b?.textColor) sp.style.color = b.textColor;
-          if (b?.backgroundColor) sp.style.backgroundColor = b.backgroundColor;
+      // Role chip
+      const isBot = !!m.isBot || m.username === "LunaBot";
+      const roleKey = isBot ? "bot" : String(m.role || "viewer");
+      const roleMeta = ROLE_META[roleKey] ?? ROLE_META.viewer;
 
-          if (b?.icon) {
-            const ic = document.createElement("span");
-            ic.className = "chatBadgeIcon";
-            ic.textContent = String(b.icon);
-            sp.appendChild(ic);
-          }
-          sp.appendChild(document.createTextNode(badgeLabel(b)));
-          badgesEl.appendChild(sp);
-        });
-        topLeft.appendChild(badgesEl);
-      }
+      const roleChip = document.createElement("span");
+      roleChip.className = `chatRoleChip chatRoleChip--${roleKey}`;
+      roleChip.title = roleMeta.label;
+      roleChip.textContent = roleMeta.icon;
+      topLeft.appendChild(roleChip);
 
       // username + effect + color rules (viewerSkinsLevel)
       const uname = document.createElement("div");
@@ -1849,46 +2114,62 @@
 
       // bot rouge (compat)
       const lower = String(m.username).toLowerCase();
-      if (lower === "nozebot" || lower === "nosebot") {
+      if (lower === "nozebot" || lower === "nosebot" || isBot) {
         uname.style.setProperty("--uname-color", "red");
         uname.style.color = "red";
       }
 
       topLeft.appendChild(uname);
 
-      const ts = document.createElement("div");
-      ts.className = "chatTimestamp";
-      ts.textContent = formatHHMM(m.createdAt);
-      top.appendChild(ts);
-
-      // title under username
-      const titleInfo = normalizeTitle(cosmetics?.title ?? null);
-      if (titleInfo) {
-        const t = document.createElement("div");
-        t.className = "chatTitle";
-        if (titleInfo.tier) {
-          const tc = titleTierClass(titleInfo.tier);
-          if (tc) t.classList.add(tc);
+      // Titles (Multi-slots Sprint 3.5b ou fallback legacy)
+      const multiTitles = cosmetics?.titles;
+      if (multiTitles && (multiTitles.achievement || multiTitles.level)) {
+        const tpContainer = document.createElement("div");
+        tpContainer.className = "tp-container";
+        if (multiTitles.achievement) {
+          const p1 = createTitlePillNode(multiTitles.achievement);
+          if (p1) tpContainer.appendChild(p1);
         }
-        if (titleInfo.effect) {
-          const fx = titleEffectClass(titleInfo.effect);
-          if (fx) t.classList.add(fx);
+        if (multiTitles.level) {
+          const p2 = createTitlePillNode(multiTitles.level);
+          if (p2) tpContainer.appendChild(p2);
         }
-        t.dataset.titleCode = titleInfo.code;
-        t.title = titleInfo.code;
-        t.textContent = titleInfo.text;
-        content.appendChild(t);
+        content.appendChild(tpContainer);
+      } else {
+        const titleInfo = normalizeTitle(cosmetics?.title ?? null);
+        if (titleInfo) {
+          const t = document.createElement("div");
+          t.className = "chatTitle";
+          if (titleInfo.tier) {
+            const tc = titleTierClass(titleInfo.tier);
+            if (tc) t.classList.add(tc);
+          }
+          if (titleInfo.effect) {
+            const fx = titleEffectClass(titleInfo.effect);
+            if (fx) t.classList.add(fx);
+          }
+          t.dataset.titleCode = titleInfo.code;
+          t.title = titleInfo.code;
+          t.textContent = titleInfo.text;
+          content.appendChild(t);
+        }
       }
 
-      // body
+      // Body dans sa bulle structurée (chatBodyBubble)
+      const bodyBubble = document.createElement("div");
+      bodyBubble.className = "chatBodyBubble";
+
       const body = document.createElement("div");
       const emotesOnly = isEmotesOnly(m.body || "");
       body.className = "chatBodyText" + (emotesOnly ? " emotes-only" : "");
       body.innerHTML = renderEmotesSafe(m.body || "");
-      content.appendChild(body);
+      bodyBubble.appendChild(body);
+
+      content.appendChild(bodyBubble);
 
       return row;
     }
+
 
     function pushMsg(m){
       const row = mkRow(m);
@@ -1946,6 +2227,8 @@
         p.id ?? p.messageId ?? p.mid ?? `${createdAt}-${userId}-${String(username)}`;
 
       const cosmetics = p.cosmetics ?? p.user?.cosmetics ?? null;
+      const role = p.role ?? p.user?.role ?? null;
+      const isBot = !!(p.isBot ?? p.user?.isBot ?? (String(username).toLowerCase() === "lunabot"));
 
       const out = {
         id,
@@ -1954,7 +2237,9 @@
         body: String(body ?? ""),
         createdAt: String(createdAt),
         avatarUrl: avatarUrl ? String(avatarUrl) : null,
-        cosmetics: cosmetics || null
+        cosmetics: cosmetics || null,
+        role: role,
+        isBot: isBot,
       };
 
       const key = String(out.username).toLowerCase();
