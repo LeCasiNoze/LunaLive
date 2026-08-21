@@ -833,108 +833,244 @@
     /* Les classes ci-dessous sont identiques a celles produites par le site React
        => coherence garantie entre le preview web et le rendu OBS. */
 
-    /* gold / ufx-gold */
-    .username--gold{
-      color: transparent;
-      background-image: linear-gradient(90deg,#4b3516 0%,#caa25a 30%,#fff2d2 52%,#e4c784 70%,#4b3516 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
-      -webkit-text-stroke: 0.3px rgba(255,226,160,0.22);
+    /* ─── CADRANS / FRAMES STYLING ─── */
+    .chatMsgRow.chatFrame--lunaPetals{
+      border: 1px solid transparent !important;
+      background:
+        linear-gradient(rgba(10, 8, 14, 0.94), rgba(10, 8, 14, 0.94)) padding-box,
+        linear-gradient(135deg, rgba(126,76,179,0.75), rgba(63,86,203,0.55)) border-box !important;
+      box-shadow: 0 0 16px rgba(126,76,179,0.35), 0 18px 50px rgba(0,0,0,0.45) !important;
     }
-    /* silver / ufx-silver */
-    .username--silver{
-      color: transparent;
-      background-image: linear-gradient(90deg,#9ca3af 0%,#e5e7eb 40%,#f9fafb 52%,#d1d5db 70%,#9ca3af 100%);
-      background-size: 180% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--gold{
+      border: 1px solid transparent !important;
+      background:
+        linear-gradient(150deg, rgb(22, 15, 4), rgb(13, 9, 3) 55%, rgb(19, 13, 3)) padding-box,
+        linear-gradient(135deg, #fde68a, #a16207 30%, #ffd85e 52%, #7c5806 72%, #fbbf24) border-box !important;
+      box-shadow: 0 0 18px rgba(251,191,36,0.35), 0 18px 50px rgba(0,0,0,0.45) !important;
     }
-    /* purple / ufx-purple */
-    .username--purple{
-      color: transparent;
-      background-image: linear-gradient(90deg,#7c3aed 0%,#a78bfa 40%,#ddd6fe 52%,#a78bfa 70%,#7c3aed 100%);
-      background-size: 180% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--eclipse{
+      border: 1px solid transparent !important;
+      background:
+        linear-gradient(150deg, rgb(26, 20, 34), rgb(30, 24, 16) 60%, rgb(20, 16, 30)) padding-box,
+        linear-gradient(135deg, rgba(168,85,247,0.75), rgba(99,102,241,0.65), rgba(236,72,153,0.45)) border-box !important;
+      box-shadow: 0 0 20px rgba(168,85,247,0.4), inset 0 0 12px rgba(168,85,247,0.15) !important;
     }
-    /* crimson / ufx-crimson */
-    .username--crimson{
-      color: transparent;
-      background-image: linear-gradient(90deg,#991b1b 0%,#ef4444 40%,#fca5a5 52%,#ef4444 70%,#991b1b 100%);
-      background-size: 180% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--lotusCrown{
+      border: 1px solid transparent !important;
+      background:
+        linear-gradient(150deg, rgb(8, 12, 22), rgb(13, 9, 22) 55%, rgb(7, 11, 19)) padding-box,
+        linear-gradient(135deg, rgba(125,211,252,0.6), rgba(249,168,212,0.5) 50%, rgba(110,231,183,0.4)) border-box !important;
+      box-shadow: 0 0 16px rgba(125,211,252,0.35) !important;
     }
-    /* galaxy / ufx-galaxy */
-    .username--galaxy{
-      color: transparent;
-      background-image: linear-gradient(90deg,#6ee7b7 0%,#a78bfa 30%,#f9a8d4 52%,#a78bfa 70%,#6ee7b7 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
-      animation: unameRainbowMove 4s linear infinite;
+    .chatMsgRow.chatFrame--wheelRoulette{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(239,68,68,0.75),rgba(250,204,21,0.60)) border-box !important;
+      box-shadow:0 0 16px rgba(239,68,68,0.35) !important;
     }
-    /* ice / ufx-ice */
-    .username--ice{
-      color: transparent;
-      background-image: linear-gradient(90deg,#bfdbfe 0%,#e0f2fe 40%,#ffffff 52%,#bae6fd 70%,#7dd3fc 100%);
-      background-size: 180% 100%;
-      -webkit-background-clip: text; background-clip: text;
-      text-shadow: 0 0 8px rgba(186,230,253,0.25);
+    .chatMsgRow.chatFrame--chestVault{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(245,158,11,0.75),rgba(217,119,6,0.60)) border-box !important;
+      box-shadow:0 0 16px rgba(245,158,11,0.35) !important;
     }
-    /* glitch / ufx-glitch */
-    @keyframes chatGlitch{
-      0%,92%,100%{transform:none;color:inherit}
-      94%{transform:translateX(2px);color:#0ff}
-      96%{transform:translateX(-2px);color:#f0f}
-      98%{transform:translateX(1px);color:inherit}
+    .chatMsgRow.chatFrame--bossFlames{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(15,5,5,0.95),rgba(10,4,4,0.95)) padding-box,
+        linear-gradient(135deg,rgba(239,68,68,0.85),rgba(249,115,22,0.70)) border-box !important;
+      box-shadow:0 0 20px rgba(239,68,68,0.45) !important;
     }
-    .username--glitch{ animation:chatGlitch 5s steps(1) infinite; }
-    /* fire / ufx-fire + ember (alias) */
-    @keyframes chatFirePulse{ 0%,100%{color:#f97316;text-shadow:0 0 4px rgba(249,115,22,0.7)} 50%{color:#fb923c;text-shadow:0 0 10px rgba(249,115,22,1)} }
-    .username--fire, .username--ember{ animation:chatFirePulse 0.9s ease-in-out infinite; }
-    /* pulse-red / ufx-pulse-red */
-    @keyframes chatPulseRed{ 0%,100%{color:#f87171;text-shadow:0 0 3px rgba(239,68,68,0.6)} 50%{color:#fca5a5;text-shadow:0 0 8px rgba(239,68,68,0.9)} }
-    .username--pulseRed{ animation:chatPulseRed 1.4s ease-in-out infinite; }
-    /* pulse-blue / ufx-pulse-blue */
-    @keyframes chatPulseBlue{ 0%,100%{color:#60a5fa;text-shadow:0 0 3px rgba(59,130,246,0.6)} 50%{color:#93c5fd;text-shadow:0 0 8px rgba(59,130,246,0.9)} }
-    .username--pulseBlue{ animation:chatPulseBlue 1.4s ease-in-out infinite; }
-    /* sunset / uanim_gradient_sunset */
-    .username--sunset{
-      color: transparent;
-      background-image: linear-gradient(90deg,#f97316 0%,#ec4899 40%,#a855f7 70%,#ec4899 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--viewerHearts{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(18,8,15,0.95),rgba(12,5,10,0.95)) padding-box,
+        linear-gradient(135deg,rgba(244,114,182,0.75),rgba(239,68,68,0.55)) border-box !important;
+      box-shadow:0 0 16px rgba(244,114,182,0.35) !important;
     }
-    /* ocean / uanim_ocean */
-    .username--ocean{
-      color: transparent;
-      background-image: linear-gradient(90deg,#0ea5e9 0%,#22d3ee 40%,#6ee7b7 70%,#22d3ee 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--neonRainbow{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,#ff4d6d,#ff9f1c,#ffd54a,#2de2a6,#5b8ef8,#a78bfa) border-box !important;
+      box-shadow:0 0 18px rgba(167,139,250,0.4) !important;
     }
-    /* mint / uanim_mint */
-    .username--mint{
-      color: transparent;
-      background-image: linear-gradient(90deg,#4ade80 0%,#a7f3d0 40%,#d1fae5 52%,#a7f3d0 70%,#4ade80 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--glitch{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(0,255,200,0.65),rgba(180,0,255,0.60)) border-box !important;
+      box-shadow:0 0 16px rgba(0,255,200,0.35) !important;
     }
-    /* amber / uanim_amber */
-    .username--amber{
-      color: transparent;
-      background-image: linear-gradient(90deg,#f59e0b 0%,#fcd34d 40%,#fef3c7 52%,#fcd34d 70%,#f59e0b 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--diamond{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(190,240,255,0.75),rgba(147,197,253,0.55)) border-box !important;
+      box-shadow:0 0 18px rgba(190,240,255,0.4) !important;
     }
-    /* steel / uanim_steel */
-    .username--steel{
-      color: transparent;
-      background-image: linear-gradient(90deg,#64748b 0%,#94a3b8 40%,#e2e8f0 52%,#94a3b8 70%,#64748b 100%);
-      background-size: 200% 100%;
-      -webkit-background-clip: text; background-clip: text;
+    .chatMsgRow.chatFrame--phoenix{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(251,146,60,0.75),rgba(244,63,94,0.60)) border-box !important;
+      box-shadow:0 0 18px rgba(251,146,60,0.4) !important;
     }
-    /* frost / uanim_frost */
-    .username--frost{
-      color: #e0f2fe;
-      text-shadow: 0 0 6px rgba(186,230,253,0.35), 0 0 12px rgba(147,197,253,0.20);
+    .chatMsgRow.chatFrame--void{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(5,3,10,0.97),rgba(5,3,10,0.97)) padding-box,
+        linear-gradient(135deg,rgba(139,92,246,0.75),rgba(76,29,149,0.85)) border-box !important;
+      box-shadow:0 0 20px rgba(139,92,246,0.45) !important;
     }
+    .chatMsgRow.chatFrame--galaxy{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(16,185,129,0.60),rgba(147,51,234,0.70)) border-box !important;
+      box-shadow:0 0 18px rgba(147,51,234,0.4) !important;
+    }
+    .chatMsgRow.chatFrame--blood{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,4,4,0.96),rgba(10,4,4,0.96)) padding-box,
+        linear-gradient(135deg,rgba(220,38,38,0.80),rgba(127,29,29,0.70)) border-box !important;
+      box-shadow:0 0 20px rgba(220,38,38,0.45) !important;
+    }
+    .chatMsgRow.chatFrame--royal{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(59,130,246,0.75),rgba(147,51,234,0.65)) border-box !important;
+      box-shadow:0 0 18px rgba(59,130,246,0.4) !important;
+    }
+    .chatMsgRow.chatFrame--ice{
+      border: 1px solid transparent !important;
+      background: linear-gradient(rgba(10,8,14,0.94),rgba(10,8,14,0.94)) padding-box,
+        linear-gradient(135deg,rgba(186,230,253,0.75),rgba(56,189,248,0.55)) border-box !important;
+      box-shadow:0 0 18px rgba(56,189,248,0.4) !important;
+    }
+
+    /* ─── EFFETS PSEUDO MYTHIQUES & LÉGENDAIRES ─── */
+    /* Garden of ashes — Vert cendre mystique animé */
+    @keyframes gardenGlow {
+      0%, 100% { text-shadow: 0 0 8px rgba(74,222,128,0.85), 0 0 18px rgba(34,197,94,0.55); }
+      50% { text-shadow: 0 0 14px rgba(167,243,208,0.95), 0 0 24px rgba(74,222,128,0.75); }
+    }
+    .username--garden-of-ashes {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #4ade80 0%, #a7f3d0 30%, #22c55e 55%, #86efac 75%, #4ade80 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      animation: unameRainbowMove 3.5s linear infinite, gardenGlow 2.5s ease-in-out infinite !important;
+      font-weight: 950 !important;
+    }
+
+    /* Sablier d'éternité — Or cosmique & violet */
+    @keyframes sablierGlow {
+      0%, 100% { text-shadow: 0 0 8px rgba(251,191,36,0.8), 0 0 16px rgba(168,85,247,0.5); }
+      50% { text-shadow: 0 0 14px rgba(253,230,138,0.95), 0 0 22px rgba(192,132,252,0.75); }
+    }
+    .username--sablier-eternite {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #fbbf24 0%, #fde68a 25%, #c084fc 50%, #fde68a 75%, #fbbf24 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      animation: unameRainbowMove 4s linear infinite, sablierGlow 3s ease-in-out infinite !important;
+      font-weight: 950 !important;
+    }
+
+    /* Leviathan abyssal — Cyan & bleu bioluminescent */
+    .username--leviathan-abyssal {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #06b6d4 0%, #67e8f9 30%, #3b82f6 60%, #67e8f9 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 10px rgba(6,182,212,0.8), 0 0 20px rgba(59,130,246,0.5) !important;
+      animation: unameRainbowMove 4s linear infinite !important;
+    }
+
+    /* Forge céleste — Solaire flamboyant */
+    .username--forge-celeste {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #f97316 0%, #fbbf24 35%, #ef4444 65%, #fbbf24 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 10px rgba(249,115,22,0.85), 0 0 20px rgba(239,68,68,0.5) !important;
+      animation: unameRainbowMove 3s linear infinite !important;
+    }
+
+    /* Éveil lunaire — Nacre & violet */
+    .username--eveil-lunaire {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #e9d5ff 0%, #c084fc 35%, #f472b6 65%, #e9d5ff 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 10px rgba(192,132,252,0.8) !important;
+      animation: unameRainbowMove 4s linear infinite !important;
+    }
+
+    /* Orage intérieur — Foudre cyan */
+    .username--orage-interieur {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #38bdf8 0%, #e0f2fe 35%, #a855f7 65%, #38bdf8 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 12px rgba(56,189,248,0.9) !important;
+      animation: unameRainbowMove 2.5s linear infinite !important;
+    }
+
+    /* Jackpot divin */
+    .username--jackpot-divin {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #ffd700 0%, #fff3c4 30%, #ef4444 60%, #ffd700 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 12px rgba(255,215,0,0.9) !important;
+      animation: unameRainbowMove 3s linear infinite !important;
+    }
+
+    /* Nuée obsidienne */
+    .username--nuee-obsidienne {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #a855f7 0%, #3b0764 40%, #c084fc 70%, #a855f7 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 10px rgba(168,85,247,0.7) !important;
+      animation: unameRainbowMove 5s linear infinite !important;
+    }
+
+    /* Coeur du réacteur */
+    .username--coeur-du-reacteur {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #ec4899 0%, #06b6d4 50%, #ec4899 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 12px rgba(236,72,153,0.8), 0 0 20px rgba(6,182,212,0.6) !important;
+      animation: unameRainbowMove 3s linear infinite !important;
+    }
+
+    /* Spectre */
+    .username--spectre {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #2dd4bf 0%, #a7f3d0 40%, #5eead4 80%, #2dd4bf 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 12px rgba(45,212,191,0.8) !important;
+      animation: unameRainbowMove 4s linear infinite !important;
+    }
+
+    /* Cristallisation */
+    .username--cristallisation {
+      color: transparent !important;
+      background-image: linear-gradient(90deg, #e0e7ff 0%, #c7d2fe 30%, #fbcfe8 60%, #e0e7ff 100%) !important;
+      background-size: 200% 100% !important;
+      -webkit-background-clip: text !important;
+      background-clip: text !important;
+      text-shadow: 0 0 10px rgba(199,210,254,0.85) !important;
+      animation: unameRainbowMove 4s linear infinite !important;
+    }
+
 
     /* reduced motion */
     @media (prefers-reduced-motion: reduce){
@@ -1781,15 +1917,18 @@
       if (e === "ufx-glitch")     return "username--glitch";
       if (e === "ufx-galaxy")     return "username--galaxy";
 
-      // ── Codes moteur legendaires / mythiques -> fallback chroma (shimmer violet) ──
-      // Les effets Pixi (particles, canvas WebGL) ne peuvent pas tourner en OBS.
-      // On garde un rendu visuel agreeable sans crasher le renderer.
-      const MYTHIC_LEGENDARY = new Set([
-        "garden-of-ashes","jackpot-divin","leviathan-abyssal","forge-celeste",
-        "nuee-obsidienne","sablier-eternite","coeur-du-reacteur",
-        "eveil-lunaire","orage-interieur","spectre","cristallisation",
-      ]);
-      if (MYTHIC_LEGENDARY.has(e)) return "username--chroma";
+      // ── Codes moteur legendaires / mythiques ──
+      if (e === "garden-of-ashes" || e === "ufx-garden-of-ashes") return "username--garden-of-ashes";
+      if (e === "sablier-eternite" || e === "ufx-sablier-eternite") return "username--sablier-eternite";
+      if (e === "leviathan-abyssal" || e === "ufx-leviathan-abyssal") return "username--leviathan-abyssal";
+      if (e === "forge-celeste" || e === "ufx-forge-celeste") return "username--forge-celeste";
+      if (e === "eveil-lunaire" || e === "ufx-eveil-lunaire") return "username--eveil-lunaire";
+      if (e === "orage-interieur" || e === "ufx-orage-interieur") return "username--orage-interieur";
+      if (e === "jackpot-divin" || e === "ufx-jackpot-divin") return "username--jackpot-divin";
+      if (e === "nuee-obsidienne" || e === "ufx-nuee-obsidienne") return "username--nuee-obsidienne";
+      if (e === "coeur-du-reacteur" || e === "ufx-coeur-du-reacteur") return "username--coeur-du-reacteur";
+      if (e === "spectre" || e === "ufx-spectre") return "username--spectre";
+      if (e === "cristallisation" || e === "ufx-cristallisation") return "username--cristallisation";
 
       return "";
     }
@@ -2249,24 +2388,56 @@
       return out;
     }
 
+    function applyAppearance(ap){
+      if (!ap) return;
+      const chat = ap?.chat || ap || {};
+      const uname = chat.usernameColor || "#ffd54a";
+      const msg = chat.messageColor || "#4ade80";
+      if (chat.viewerSkinsLevel != null) viewerSkinsLevel = Number(chat.viewerSkinsLevel) || 1;
+
+      document.documentElement.style.setProperty("--chat-name-color", uname);
+      document.documentElement.style.setProperty("--chat-msg-color", msg);
+    }
+
     async function loadStreamerAppearance(){
-      if(!TOKEN || !SLUG) return;
+      if(!SLUG) return;
+      // 1) Essayer l'endpoint public streamers/:slug
       try{
-        const r = await fetch(`${API_BASE}/streamer/me/appearance`, {
-          headers: { Authorization: `Bearer ${TOKEN}` },
-        });
-        const j = await r.json();
-        if(!r.ok || !j?.ok) return;
-
-        const ap = j.appearance || j.streamer?.appearance || {};
-        const chat = ap?.chat || {};
-        const uname = chat.usernameColor || "#7c4dff";
-        const msg = chat.messageColor || "#ffffff";
-        viewerSkinsLevel = Number(chat.viewerSkinsLevel ?? 1) || 1;
-
-        document.documentElement.style.setProperty("--chat-name-color", uname);
-        document.documentElement.style.setProperty("--chat-msg-color", msg);
+        const r = await fetch(`${API_BASE}/api/public/streamers/${encodeURIComponent(SLUG)}`);
+        const j = await r.json().catch(()=>null);
+        if(j?.streamer?.appearance) {
+          applyAppearance(j.streamer.appearance);
+          return;
+        }
+        if(j?.appearance) {
+          applyAppearance(j.appearance);
+          return;
+        }
       } catch {}
+
+      try{
+        const r2 = await fetch(`${API_BASE}/streamers/${encodeURIComponent(SLUG)}`);
+        const j2 = await r2.json().catch(()=>null);
+        if(j2?.streamer?.appearance) {
+          applyAppearance(j2.streamer.appearance);
+          return;
+        }
+        if(j2?.appearance) {
+          applyAppearance(j2.appearance);
+          return;
+        }
+      } catch {}
+
+      // 2) Fallback auth si TOKEN présent
+      if(TOKEN){
+        try{
+          const r3 = await fetch(`${API_BASE}/streamer/me/appearance`, {
+            headers: { Authorization: `Bearer ${TOKEN}` },
+          });
+          const j3 = await r3.json().catch(()=>null);
+          if(j3?.appearance) applyAppearance(j3.appearance);
+        } catch {}
+      }
     }
 
     function connectSocket(){
@@ -2300,8 +2471,16 @@
       sock.on("connect", () => {
         loadEmotesCatalog().catch(()=>{});
         try { sock.emit("stream:join", { slug: SLUG }, () => {}); } catch {}
-        try { sock.emit("chat:join", { slug: SLUG }, () => {}); } catch {}
+        try {
+          sock.emit("chat:join", { slug: SLUG }, (ack) => {
+            if (ack?.appearance) applyAppearance(ack.appearance);
+          });
+        } catch {}
         try { sock.emit("chat:join", { streamerSlug: SLUG }, () => {}); } catch {}
+      });
+
+      sock.on("chat:appearance", (payload) => {
+        if (payload?.appearance) applyAppearance(payload.appearance);
       });
 
       [
