@@ -1336,7 +1336,7 @@ function stableChatKey(chatUrl: string): string {
 }
 
 function lunaChatUrl(slug: string, fontSize = 14, maxMessages = 8, scale = 1, align: ChatZoneConfig["align"] = "center", msgBgOpacity = 0.92, compact = true) {
-  const base = `${SITE_BASE}/overlay/obs/chat.html`;
+  const base = `${SITE_BASE}/overlay/chat`;
   const params = new URLSearchParams({
     slug,
     api: LUNA_API_BASE,
@@ -1755,7 +1755,7 @@ async function loadConfigFromDb(): Promise<OverlayConfig | null> {
 /** Regénère le chatUrl si c'est une URL LunaLive avec de nouveaux params */
 function rebuildChatUrlIfLuna(chat: ChatZoneConfig): string {
   const url = chat.chatUrl;
-  if (!url || !url.includes("/overlay/obs/chat.html")) return url;
+  if (!url || (!url.includes("/overlay/obs/chat.html") && !url.includes("/overlay/chat"))) return url;
   try {
     const u = new URL(url);
     u.searchParams.set("font",  String(Math.round(chat.fontSize ?? 14)));

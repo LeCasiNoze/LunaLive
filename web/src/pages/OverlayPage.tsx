@@ -5,6 +5,8 @@ import { decodeConfig, injectPremiumKeyframes, type OverlayConfig, type ZoneRect
 import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
 import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
 import { useScreenViewer } from "./fsb/StreamControlPage";
+import { ChatMessageBubble, type ChatMsgLike } from "../components/chat/ChatMessageBubble";
+import { DEFAULT_APPEARANCE, normalizeAppearance, type StreamerAppearance } from "../lib/appearance";
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -701,8 +703,6 @@ function StatsZone({ stats }: { stats: OverlayConfig["stats"] }) {
   );
 }
 
-// ─── Chat zone ────────────────────────────────────────────────────────────────
-
 /** Clé stable pour l'iframe — ignore les params visuels (font/scale/align/etc.)
  *  pour éviter le rechargement (et la perte des messages) à chaque push de config.
  *  Seuls slug+token+api changent réellement l'identité du chat. */
@@ -718,25 +718,184 @@ function chatIframeKey(chatUrl: string): string {
   }
 }
 
+// ─── Chat zone (Native React Chat Renderer with WebGL / Pixi / AnimatedUsername / FrameFxOverlay) ───────────────
+
+export function NativeOverlayChat({
+  slug,
+  socketBase,
+  fontSize = 14,
+  maxMessages = 8,
+  scale = 1,
+  align = "center",
+  msgBgOpacity = 0.92,
+}: {
+  slug: string;
+  socketBase: string;
+  fontSize?: number;
+  maxMessages?: number;
+  scale?: number;
+  align?: string;
+  msgBgOpacity?: number;
+  borderRadius?: number;
+}) {
+  const [messages, setMessages] = React.useState<ChatMsgLike[]>([]);
+  const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_APPEARANCE);
+  const cosmeticsCache = React.useRef<Record<string, any>>({});
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Charger l'apparence publique du streamer
+  React.useEffect(() => {
+    if (!slug) return;
+    const fetchApp = async () => {
+      try {
+        const r = await fetch(`${socketBase}/api/public/streamers/${encodeURIComponent(slug)}`);
+        const j = await r.json().catch(() => null);
+        const app = j?.streamer?.appearance || j?.appearance;
+        if (app) setAppearance(normalizeAppearance(app));
+      } catch {}
+    };
+    void fetchApp();
+  }, [slug, socketBase]);
+
+  // Socket chat temps réel
+  React.useEffect(() => {
+    if (!slug) return;
+    const sock = io(socketBase, {
+      transports: ["websocket", "polling"],
+      withCredentials: false,
+    });
+
+    const normalizeMsg = (p: any): ChatMsgLike | null => {
+      const payload = p?.msg ?? p?.message ?? p;
+      if (!payload) return null;
+      const username = payload.username ?? payload.user?.username ?? payload.user?.displayName ?? payload.user?.name ?? "user";
+      const body = payload.body ?? payload.text ?? payload.message ?? payload.content ?? "";
+      const createdAt = payload.createdAt ?? payload.created_at ?? payload.ts ?? new Date().toISOString();
+      const avatarUrl = payload.avatarUrl ?? payload.avatar_url ?? payload.user?.avatarUrl ?? payload.user?.avatar_url ?? null;
+      const userId = Number(payload.userId ?? payload.user_id ?? payload.user?.id ?? 0) || 0;
+      const id = payload.id ?? payload.messageId ?? `${createdAt}-${userId}-${username}`;
+      const cosmetics = payload.cosmetics ?? payload.user?.cosmetics ?? null;
+      const role = payload.role ?? payload.user?.role ?? null;
+      const isBot = !!(payload.isBot ?? payload.user?.isBot ?? (String(username).toLowerCase() === "lunabot"));
+
+      const out = {
+        id,
+        userId,
+        username: String(username),
+        body: String(body),
+        createdAt: String(createdAt),
+        avatarUrl: avatarUrl ? String(avatarUrl) : null,
+        cosmetics: cosmetics || null,
+        role,
+        isBot,
+      } as unknown as ChatMsgLike;
+
+      const key = String(username).toLowerCase();
+      if (out.cosmetics) cosmeticsCache.current[key] = out.cosmetics;
+      else if (cosmeticsCache.current[key]) out.cosmetics = cosmeticsCache.current[key];
+
+      return out;
+    };
+
+    const handleIncoming = (payload: any) => {
+      if (Array.isArray(payload)) {
+        const parsed = payload.map(normalizeMsg).filter(Boolean) as ChatMsgLike[];
+        setMessages((prev) => [...prev, ...parsed].slice(-maxMessages));
+        return;
+      }
+      const n = normalizeMsg(payload);
+      if (!n) return;
+      const evSlug = String(payload?.slug ?? payload?.streamerSlug ?? payload?.channelSlug ?? "").trim().toLowerCase();
+      if (evSlug && evSlug !== slug.toLowerCase()) return;
+
+      setMessages((prev) => {
+        const next = [...prev, n];
+        if (next.length > maxMessages) return next.slice(-maxMessages);
+        return next;
+      });
+    };
+
+    sock.on("connect", () => {
+      try { sock.emit("stream:join", { slug }, () => {}); } catch {}
+      try {
+        sock.emit("chat:join", { slug, mode: "popup" }, (ack: any) => {
+          if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
+        });
+      } catch {}
+    });
+
+    sock.on("chat:appearance", (payload: any) => {
+      if (payload?.appearance) setAppearance(normalizeAppearance(payload.appearance));
+    });
+
+    sock.on("chat:cleared", () => {
+      setMessages([]);
+    });
+
+    sock.on("chat:message_deleted", (payload: any) => {
+      const id = payload?.id;
+      if (id) setMessages((prev) => prev.filter((m) => m.id !== id));
+    });
+
+    const events = ["chat:message", "chat:msg", "chat:new", "chat:history", "chat:messages", "stream:chat", "stream:message", "message"];
+    events.forEach((ev) => sock.on(ev, handleIncoming));
+
+    return () => {
+      sock.disconnect();
+    };
+  }, [slug, socketBase, maxMessages]);
+
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const nameColor = appearance.chat.usernameColor || "#ffd54a";
+  const msgColor = appearance.chat.messageColor || "#4ade80";
+
+  return (
+    <div
+      ref={scrollRef}
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+        gap: 10,
+        overflow: "hidden",
+        padding: 10,
+        boxSizing: "border-box",
+        fontSize: `${fontSize}px`,
+        transform: scale !== 1 ? `scale(${scale})` : undefined,
+        transformOrigin: align === "left" ? "bottom left" : align === "right" ? "bottom right" : "bottom center",
+        ...({
+          ["--chat-name-color" as any]: nameColor,
+          ["--chat-msg-color" as any]: msgColor,
+          ["--msg-bg-opacity" as any]: msgBgOpacity,
+        } as any),
+      }}
+    >
+      {messages.map((m) => (
+        <div key={m.id} className="chat-enter slide" style={{ width: "100%", flexShrink: 0 }}>
+          <ChatMessageBubble
+            msg={m}
+            streamerAppearance={appearance}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
   if (!chat.enabled || !chat.chatUrl) return null;
 
   const opacity = (chat.bgOpacity ?? 0) / 100;
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
-
-  // Met à jour les params visuels via postMessage sans recharger l'iframe
-  React.useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe?.contentWindow) return;
-    iframe.contentWindow.postMessage({
-      type:  "obs-chat-update",
-      font:  chat.fontSize ?? 14,
-      max:   chat.maxMessages ?? 8,
-      scale: chat.scale ?? 1,
-      align: chat.align ?? "center",
-      msgbg: chat.msgBgOpacity ?? 0.92,
-    }, "*");
-  }, [chat.fontSize, chat.maxMessages, chat.scale, chat.align, chat.msgBgOpacity]);
+  const slug = extractSlugFromChatUrl(chat.chatUrl);
+  const socketBase = resolveSocketBase(chat.chatUrl);
+  const isLunaChat = !!slug;
 
   return (
     <div style={{
@@ -744,16 +903,28 @@ function ChatZone({ chat }: { chat: OverlayConfig["chat"] }) {
       borderRadius: chat.borderRadius,
       background: opacity > 0 ? `rgba(0,0,0,${opacity})` : "none",
       overflow: "hidden",
+      position: "relative",
     }}>
-      <iframe
-        ref={iframeRef}
-        key={chatIframeKey(chat.chatUrl)}
-        src={chat.chatUrl}
-        style={{ width: "100%", height: "100%", border: "none", background: "none", backgroundColor: "transparent" }}
-        title="Chat"
-        allow="autoplay"
-        allowTransparency={true}
-      />
+      {isLunaChat && slug ? (
+        <NativeOverlayChat
+          slug={slug}
+          socketBase={socketBase}
+          fontSize={chat.fontSize ?? 14}
+          maxMessages={chat.maxMessages ?? 8}
+          scale={chat.scale ?? 1}
+          align={chat.align ?? "center"}
+          msgBgOpacity={chat.msgBgOpacity ?? 0.92}
+        />
+      ) : (
+        <iframe
+          key={chatIframeKey(chat.chatUrl)}
+          src={chat.chatUrl}
+          style={{ width: "100%", height: "100%", border: "none", background: "none", backgroundColor: "transparent" }}
+          title="Chat"
+          allow="autoplay"
+          allowTransparency={true}
+        />
+      )}
     </div>
   );
 }

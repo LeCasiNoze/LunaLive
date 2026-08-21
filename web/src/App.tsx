@@ -15,19 +15,19 @@ const LivesPage = React.lazy(() => import("./pages/LivesPage"));
 const BrowsePage = React.lazy(() => import("./pages/BrowsePage"));
 const StreamerPage = React.lazy(() => import("./pages/StreamerPage"));
 const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
-const BecomeStreamerPage = React.lazy(() => import("./pages/BecomeStreamerPage"));
 const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ default: m.ShopPage })));
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
 const ParticipatePage = React.lazy(() => import("./pages/ParticipatePage"));
+const BecomeStreamerPage = React.lazy(() => import("./pages/BecomeStreamerPage"));
 // Page utilitaire de consultation des skins d'event (non listée)
 const EventSkinsPreviewPage = React.lazy(() => import("./pages/EventSkinsPreviewPage"));
 // Page utilitaire de traitement de TOUS les cosmétiques (workflow validation)
 const SkinsReviewPage = React.lazy(() => import("./pages/SkinsReviewPage"));
 // Labo dev des pseudos animés moteur (PixiJS) — non listé
 const UsernameFxLabPage = React.lazy(() => import("./pages/UsernameFxLabPage"));
-// Page de dev pour juger l'animation de level-up (à nettoyer avant lancement)
-const LevelUpDevPage = React.lazy(() => import("./pages/LevelUpDevPage"));
+// Banc de test des messages contextuels (raid/sub/follow…) — non listé
+const DevSpecialEventsPage = React.lazy(() => import("./pages/DevSpecialEventsPage"));
 // Catalogue complet des cosmétiques + obtentions actuelles/proposées (non listé)
 const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage"));
 
@@ -67,6 +67,7 @@ const CyclopeLandingPage = React.lazy(() => import("./pages/CyclopeLandingPage")
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
+const ChatOverlayPage = React.lazy(() => import("./pages/ChatOverlayPage"));
 const StreamControlPage = React.lazy(() => import("./pages/fsb/StreamControlPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -76,7 +77,6 @@ import { GoLiveNotifier } from "./components/GoLiveNotifier";
 import { DailyBonusToast } from "./components/DailyBonusToast";
 import { AchievementsToast } from "./components/AchievementsToast";
 import { CallsToast } from "./components/CallsToast";
-import { LevelUpListener } from "./components/LevelUpListener";
 import { AchievementsModal } from "./components/AchievementsModal";
 import ChatPopupPage from "./pages/ChatPopupPage";
 // lazy : cette page importe AffiEditorPage (~3000 lignes) — en statique
@@ -234,7 +234,6 @@ function AppInner() {
             <DailyBonusToast />
             <AchievementsToast />
             <CallsToast />
-            <LevelUpListener />
           </>
         )}
 
@@ -255,6 +254,14 @@ function AppInner() {
             element={
               <React.Suspense fallback={null}>
                 <OverlayPage />
+              </React.Suspense>
+            }
+          />
+          <Route
+            path="/overlay/chat"
+            element={
+              <React.Suspense fallback={null}>
+                <ChatOverlayPage />
               </React.Suspense>
             }
           />
@@ -379,7 +386,7 @@ function AppInner() {
           <Route path="/skins-events" element={<EventSkinsPreviewPage />} />
           <Route path="/skins-review" element={<SkinsReviewPage />} />
           <Route path="/dev/username-effects" element={<UsernameFxLabPage />} />
-          <Route path="/dev/levelup" element={<LevelUpDevPage />} />
+          <Route path="/dev/special-events" element={<DevSpecialEventsPage />} />
           <Route path="/skins-catalogue" element={<SkinsCataloguePage />} />
           <Route path="/participer" element={<ParticipatePage />} />
           <Route path="/devenir-streamer" element={<BecomeStreamerPage />} />
