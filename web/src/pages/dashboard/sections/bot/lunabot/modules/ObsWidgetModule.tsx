@@ -300,9 +300,7 @@ export function ObsWidgetModule({
   chatParams.set("max", String(Math.max(1, Number(chatMax) || CHAT_FIXED.max_lines)));
   chatParams.set("life", String(Math.max(0, Number(chatLife) || CHAT_FIXED.life_sec)));
 
-  chatParams.set("poll", "8000");
-
-  const chatObsUrl = `${base}/overlay/obs/chat.html?${chatParams.toString()}`;
+  const chatObsUrl = `${base}/overlay/chat?${chatParams.toString()}`;
 
   const viewersObsUrl =
     `${base}/overlay/obs/viewers.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(

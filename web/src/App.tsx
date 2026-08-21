@@ -19,12 +19,15 @@ const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ defa
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
 const ParticipatePage = React.lazy(() => import("./pages/ParticipatePage"));
+const BecomeStreamerPage = React.lazy(() => import("./pages/BecomeStreamerPage"));
 // Page utilitaire de consultation des skins d'event (non listée)
 const EventSkinsPreviewPage = React.lazy(() => import("./pages/EventSkinsPreviewPage"));
 // Page utilitaire de traitement de TOUS les cosmétiques (workflow validation)
 const SkinsReviewPage = React.lazy(() => import("./pages/SkinsReviewPage"));
 // Labo dev des pseudos animés moteur (PixiJS) — non listé
 const UsernameFxLabPage = React.lazy(() => import("./pages/UsernameFxLabPage"));
+// Banc de test des messages contextuels (raid/sub/follow…) — non listé
+const DevSpecialEventsPage = React.lazy(() => import("./pages/DevSpecialEventsPage"));
 // Catalogue complet des cosmétiques + obtentions actuelles/proposées (non listé)
 const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage"));
 
@@ -64,6 +67,7 @@ const CyclopeLandingPage = React.lazy(() => import("./pages/CyclopeLandingPage")
 
 // Overlay OBS — renderer transparent pour /overlay
 const OverlayPage = React.lazy(() => import("./pages/OverlayPage"));
+const ChatOverlayPage = React.lazy(() => import("./pages/ChatOverlayPage"));
 const StreamControlPage = React.lazy(() => import("./pages/fsb/StreamControlPage"));
 
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -253,6 +257,14 @@ function AppInner() {
               </React.Suspense>
             }
           />
+          <Route
+            path="/overlay/chat"
+            element={
+              <React.Suspense fallback={null}>
+                <ChatOverlayPage />
+              </React.Suspense>
+            }
+          />
 
           {/* Stream Control FSB */}
           <Route
@@ -374,8 +386,10 @@ function AppInner() {
           <Route path="/skins-events" element={<EventSkinsPreviewPage />} />
           <Route path="/skins-review" element={<SkinsReviewPage />} />
           <Route path="/dev/username-effects" element={<UsernameFxLabPage />} />
+          <Route path="/dev/special-events" element={<DevSpecialEventsPage />} />
           <Route path="/skins-catalogue" element={<SkinsCataloguePage />} />
           <Route path="/participer" element={<ParticipatePage />} />
+          <Route path="/devenir-streamer" element={<BecomeStreamerPage />} />
           <Route path="/oauth/done" element={<LoadingFallback />} />
 
           {/* Debug routes */}
