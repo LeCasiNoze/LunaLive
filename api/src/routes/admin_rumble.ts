@@ -15,7 +15,7 @@ type RelayVodItem = {
   durationSec?: number | null;
 };
 import { getRumbleBotSession, setRumbleBotSession, hasRumbleBotSession } from "../rumble_chat_session.js";
-import { sendRumbleMessage } from "../rumble_chat_bridge.js";
+import { sendRumbleMessage, sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 
 export const adminRumbleRouter = Router();
 
@@ -626,7 +626,7 @@ adminRumbleRouter.post("/admin/rumble/announce-follows", requireAdminKey, async 
 
       // Envoi sur Rumble
       if (vid) {
-        sendRumbleMessage(vid, text).catch((e: any) =>
+        sendRumbleMessageReliable(pool, vid, text).catch((e: any) =>
           console.warn("[announce-follows] sendRumble error", e?.message || e)
         );
       }

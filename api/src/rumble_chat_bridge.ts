@@ -97,7 +97,9 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
   const dedupKey = rumbleSendDedupKey(videoIdNumeric, body);
   if (shouldSkipRumbleSend(dedupKey)) {
     console.log(`[rumble_chat] sendRumbleMessage skipped (duplicate within ${RUMBLE_SEND_DEDUP_MS}ms) vid=${videoIdNumeric} body=${body.slice(0, 60)}`);
-    return null;
+    // Un doublon volontairement ignoré n'est pas un échec : le caller ne doit
+    // surtout pas le remettre dans la queue locale et l'envoyer une 2e fois.
+    return { id: "dedup", userId: "" };
   }
   // request_id: base64 de 43 chars (format observe dans le browser working request).
   // randomBytes(32) → 44 chars base64 (avec padding) → on slice à 43 + strip "=".
@@ -162,6 +164,41 @@ export async function sendRumbleMessage(videoIdNumeric: string, text: string): P
 }
 
 /**
+ * Essaie l'envoi direct depuis l'API, puis bascule dans la queue consommée par
+ * le relay résidentiel si Rumble refuse l'IP Render ou si sa session a expiré.
+ */
+export async function sendRumbleMessageReliable(
+  pool: Pool,
+  videoIdNumeric: string,
+  text: string
+): Promise<{ sent: boolean; queued: boolean }> {
+  const vid = norm(videoIdNumeric);
+  const body = String(text || "").trim().slice(0, 200);
+  if (!vid || !body) return { sent: false, queued: false };
+
+  const direct = await sendRumbleMessage(vid, body);
+  if (direct) return { sent: true, queued: false };
+
+  const queued = await pool.query(
+    `INSERT INTO rumble_send_queue (video_id_numeric, text, status)
+     SELECT $1, $2, 'pending'
+      WHERE NOT EXISTS (
+        SELECT 1
+          FROM rumble_send_queue
+         WHERE video_id_numeric = $1
+           AND text = $2
+           AND created_at > NOW() - INTERVAL '30 seconds'
+           AND status IN ('pending', 'done')
+      )
+     RETURNING id`,
+    [vid, body]
+  );
+  const wasQueued = Boolean(queued.rows?.[0]?.id);
+  console.log(`[rumble_chat] direct send unavailable vid=${vid} — relay queue ${wasQueued ? "created" : "deduplicated"}`);
+  return { sent: false, queued: wasQueued };
+}
+
+/**
  * Connecte le flux SSE chat Rumble pour un live donné.
  * Appelle `onMessage` pour chaque nouveau message (init + messages incrémentaux).
  * Retourne une fonction `stop` ou null si la connexion échoue immédiatement.
@@ -179,6 +216,13 @@ export async function connectRumbleChatSse(
 
   const ac = new AbortController();
   let stopped = false;
+  let closeNotified = false;
+
+  function notifyClose(noChatAvailable = false) {
+    if (stopped || closeNotified) return;
+    closeNotified = true;
+    onClose(noChatAvailable);
+  }
 
   // Map user_id → username, accumulée à partir des arrays `users` de chaque event.
   const userById = new Map<string, string>();
@@ -255,7 +299,7 @@ export async function connectRumbleChatSse(
         // On signale différemment pour que le caller backoff au lieu de boucler.
         const noChat = r.status === 204;
         console.warn(`[rumble_chat] SSE connect http=${r.status}${noChat ? " (no chat available)" : ""}`);
-        if (!stopped) onClose(noChat);
+        notifyClose(noChat);
         return;
       }
 
@@ -271,6 +315,9 @@ export async function connectRumbleChatSse(
         const { value, done } = await reader.read();
         if (done) break;
         buf += decoder.decode(value, { stream: true });
+        // Certains edge Rumble émettent du SSE en CRLF. Sans normalisation,
+        // la recherche de "\n\n" ne trouve jamais les séparateurs d'events.
+        buf = buf.replace(/\r\n/g, "\n");
 
         let idx;
         while ((idx = buf.indexOf("\n\n")) !== -1) {
@@ -296,7 +343,7 @@ export async function connectRumbleChatSse(
         console.warn("[rumble_chat] SSE error", e?.message || e);
       }
     } finally {
-      if (!stopped) onClose();
+      notifyClose();
     }
   })();
 
@@ -329,6 +376,8 @@ export function ensureRumbleBridge(opts: {
   let videoIdNumeric = opts.videoIdNumeric ? norm(opts.videoIdNumeric) : null;
   let stopStream: (() => void) | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
+  let targetRefreshTimer: NodeJS.Timeout | null = null;
+  let starting = false;
 
   // Dédup en mémoire (la DB a aussi son unique index, mais ça évite des INSERT inutiles)
   const seenIds = new Set<string>();
@@ -410,13 +459,13 @@ export function ensureRumbleBridge(opts: {
           author: m.username || null,
         }).then(async (res) => {
           if (res.ok) {
-            await sendRumbleMessage(videoIdNumeric || "", `🎬 Clip enregistré${title ? ` : "${title}"` : ""}`);
+            await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", `🎬 Clip enregistré${title ? ` : "${title}"` : ""}`);
           } else if (res.reason === "duplicate") {
-            await sendRumbleMessage(videoIdNumeric || "", `🎬 Clip déjà noté (fenêtre proche)`);
+            await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", `🎬 Clip déjà noté (fenêtre proche)`);
           } else if (res.reason === "live_not_active") {
-            await sendRumbleMessage(videoIdNumeric || "", `⏹️ Clip: pas de live détecté`);
+            await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", `⏹️ Clip: pas de live détecté`);
           } else {
-            await sendRumbleMessage(videoIdNumeric || "", `❌ Clip: ${res.reason}`);
+            await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", `❌ Clip: ${res.reason}`);
           }
         }).catch((e: any) => console.warn("[rumble_chat] clip error", opts.slug, e?.message || e));
       } else {
@@ -449,44 +498,74 @@ export function ensureRumbleBridge(opts: {
     }, ms);
   }
 
-  // Backoff exponentiel + circuit breaker pour éviter de boucler indéfiniment
-  // sur un stream Rumble qui retourne 204 (chat indisponible / live fini).
+  // Backoff exponentiel pour éviter de marteler un stream Rumble qui retourne
+  // 204 (chat indisponible / live fini), sans tuer le bridge pour le live suivant.
   let consecutiveFailures = 0;
-  const MAX_CONSECUTIVE_FAILURES = 20; // après ~30 min de tentatives, on stoppe
+  const MAX_CONSECUTIVE_FAILURES = 20;
   function nextBackoffMs() {
     // 5s → 10s → 20s → 40s → 60s (cap)
     return Math.min(5_000 * Math.pow(2, Math.max(0, consecutiveFailures - 1)), 60_000);
   }
 
   async function start() {
-    if (!alive) return;
+    if (!alive || starting || stopStream) return;
     if (!videoIdNumeric) {
       console.log(`[rumble_chat] ${opts.slug}: no videoIdNumeric yet, idle`);
       return;
     }
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      console.warn(`[rumble_chat] ${opts.slug}: trop d'échecs SSE (${consecutiveFailures}) — stop bridge`);
-      bridge.stop();
+      // Ne pas tuer définitivement le bridge : le prochain live peut obtenir
+      // un nouvel id alors que le chat/overlay reste ouvert dans OBS.
+      console.warn(`[rumble_chat] ${opts.slug}: trop d'échecs SSE (${consecutiveFailures}) — pause 60s`);
+      consecutiveFailures = 0;
+      scheduleReconnect(60_000);
       return;
     }
 
-    stopStream = await connectRumbleChatSse(
-      videoIdNumeric,
-      (m) => { consecutiveFailures = 0; broadcast(m); },
-      (noChatAvailable) => {
-        stopStream = null;
-        if (!alive) return;
+    starting = true;
+    try {
+      stopStream = await connectRumbleChatSse(
+        videoIdNumeric,
+        (m) => { consecutiveFailures = 0; broadcast(m); },
+        (noChatAvailable) => {
+          stopStream = null;
+          if (!alive) return;
+          consecutiveFailures++;
+          const delay = noChatAvailable
+            ? Math.max(30_000, nextBackoffMs()) // 204 = minimum 30s
+            : nextBackoffMs();
+          console.log(`[rumble_chat] ${opts.slug}: SSE closed (fail #${consecutiveFailures}${noChatAvailable ? " no-chat" : ""}), reconnecting in ${Math.round(delay/1000)}s`);
+          scheduleReconnect(delay);
+        }
+      );
+      if (!stopStream) {
         consecutiveFailures++;
-        const delay = noChatAvailable
-          ? Math.max(30_000, nextBackoffMs()) // 204 = minimum 30s
-          : nextBackoffMs();
-        console.log(`[rumble_chat] ${opts.slug}: SSE closed (fail #${consecutiveFailures}${noChatAvailable ? " no-chat" : ""}), reconnecting in ${Math.round(delay/1000)}s`);
-        scheduleReconnect(delay);
+        scheduleReconnect(Math.max(30_000, nextBackoffMs()));
       }
-    );
-    if (!stopStream) {
-      consecutiveFailures++;
-      scheduleReconnect(Math.max(30_000, nextBackoffMs()));
+    } finally {
+      starting = false;
+    }
+  }
+
+  async function refreshLiveTarget() {
+    if (!alive) return;
+    try {
+      const r = await opts.pool.query(
+        `SELECT is_live, live_video_id_numeric
+           FROM streamer_rumble_info
+          WHERE streamer_id = $1
+          LIMIT 1`,
+        [opts.streamerId]
+      );
+      const row = r.rows?.[0];
+      const nextVid = row?.is_live && row?.live_video_id_numeric
+        ? norm(row.live_video_id_numeric)
+        : null;
+      if (nextVid !== videoIdNumeric) {
+        bridge.setFlags({ publicOn, popupOn, videoIdNumeric: nextVid });
+      }
+    } catch (e: any) {
+      console.warn(`[rumble_chat] ${opts.slug}: target refresh failed`, e?.message || e);
     }
   }
 
@@ -495,6 +574,8 @@ export function ensureRumbleBridge(opts: {
       alive = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       reconnectTimer = null;
+      if (targetRefreshTimer) clearInterval(targetRefreshTimer);
+      targetRefreshTimer = null;
       try { stopStream?.(); } catch {}
       stopStream = null;
       bridges.delete(key);
@@ -506,6 +587,9 @@ export function ensureRumbleBridge(opts: {
       const newVid = p.videoIdNumeric ? norm(p.videoIdNumeric) : null;
       if (newVid !== videoIdNumeric) {
         videoIdNumeric = newVid;
+        consecutiveFailures = 0;
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = null;
         try { stopStream?.(); } catch {}
         stopStream = null;
         if (videoIdNumeric) void start();
@@ -515,6 +599,7 @@ export function ensureRumbleBridge(opts: {
   bridges.set(key, bridge);
 
   void start();
+  targetRefreshTimer = setInterval(() => void refreshLiveTarget(), 15_000);
   console.log(`[rumble_chat] ${opts.slug}: bridge created (vid=${videoIdNumeric})`);
 }
 
