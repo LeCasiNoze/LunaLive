@@ -49,6 +49,7 @@ loadEnv();
 const API_BASE = (process.env.API_BASE || "https://lunalive-api.onrender.com").replace(/\/$/, "");
 const ADMIN_KEY = process.env.ADMIN_KEY || process.env.LUNALIVE_ADMIN_KEY;
 const POLL_INTERVAL_MS = Number(process.env.RUMBLE_RELAY_INTERVAL_MS || 60_000);
+const RADIO_POLL_INTERVAL_MS = Number(process.env.RUMBLE_RADIO_INTERVAL_MS || 30_000);
 const FETCH_TIMEOUT_MS = Number(process.env.RUMBLE_RELAY_FETCH_TIMEOUT_MS || 15_000);
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const RADIO_STREAMER_ID = 32;
@@ -728,8 +729,6 @@ async function tickRadio() {
 }
 
 async function tickOnce() {
-  await tickRadio();
-
   // On utilise list-all : couvre tout le monde (pseudo-only + api_key).
   // Le relay résidentiel vérifie aussi les comptes api_key : l'API Rumble peut
   // annoncer "offline" quelques minutes alors que la page publique est live.
@@ -785,6 +784,17 @@ async function tickOnce() {
   }
 }
 
+let radioTickRunning = false;
+async function radioTick() {
+  if (radioTickRunning) return;
+  radioTickRunning = true;
+  try {
+    await tickRadio();
+  } finally {
+    radioTickRunning = false;
+  }
+}
+
 let tickRunning = false;
 async function tick() {
   if (tickRunning) {
@@ -798,6 +808,11 @@ async function tick() {
     tickRunning = false;
   }
 }
+
+// La radio a sa propre boucle: le scan followers/VOD peut durer plusieurs
+// minutes et ne doit jamais retarder la bascule vers une source live.
+void radioTick();
+setInterval(() => void radioTick(), RADIO_POLL_INTERVAL_MS);
 
 // Premier tick immédiat puis intervalle régulier (slug discovery)
 void tick();
