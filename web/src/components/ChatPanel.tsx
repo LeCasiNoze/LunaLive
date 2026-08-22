@@ -2856,7 +2856,10 @@ function openChatPopup() {
               );
             }
 
-            const isSystem = m.userId === 0;
+            // Les messages externes Rumble sont persistés avec userId=0 pour
+            // ne jamais leur accorder de droits LunaLive. Ils restent pourtant
+            // des messages de viewers et doivent passer par ChatMessageBubble.
+            const isSystem = m.userId === 0 && !m.rumble;
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 
