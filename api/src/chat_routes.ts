@@ -95,12 +95,16 @@ export function registerChatRoutes(app: Express) {
       // (ce qui causait des doublons : même msg avec ID différent).
       const messages = await getOrLoadHistory(streamerId, limit, async () => {
         const r = await pool.query(
-          `SELECT id::bigint AS id, user_id AS "userId", username, body,
-                  created_at AS "createdAt", type, data,
-                  CASE WHEN external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source
-           FROM chat_messages
-           WHERE streamer_id=$1 AND deleted_at IS NULL
-           ORDER BY created_at DESC
+          `SELECT cm.id::bigint AS id, cm.user_id AS "userId", cm.username, cm.body,
+                  cm.created_at AS "createdAt", cm.type, cm.data,
+                  CASE WHEN cm.external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source,
+                  matched_user.id AS "matchedUserId"
+           FROM chat_messages cm
+           LEFT JOIN users matched_user
+             ON cm.external_source='rumble'
+            AND lower(matched_user.username)=lower(cm.username)
+           WHERE cm.streamer_id=$1 AND cm.deleted_at IS NULL
+           ORDER BY cm.created_at DESC
            LIMIT $2`,
           [streamerId, limit]
         );
@@ -110,7 +114,11 @@ export function registerChatRoutes(app: Express) {
 
         // cosmetics bulk
         const userIds = Array.from(
-          new Set(rows.map((m: any) => Number(m.userId)).filter((x: number) => x > 0))
+          new Set(
+            rows
+              .map((m: any) => m.source === "rumble" ? Number(m.matchedUserId) : Number(m.userId))
+              .filter((x: number) => x > 0)
+          )
         );
 
         const cosmeticsByUserId = userIds.length ? await getChatCosmeticsForUsers(userIds) : null;
@@ -137,15 +145,17 @@ export function registerChatRoutes(app: Express) {
 
         return rows.map((m: any) => {
           const uid = Number(m.userId);
+          const cosmeticUid = m.source === "rumble" ? Number(m.matchedUserId || 0) : uid;
           return {
             id: Number(m.id),
             userId: uid,
             username: String(m.username || ""),
             body: String(m.body || ""),
             createdAt: new Date(m.createdAt).toISOString(),
-            cosmetics: uid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, uid) : null,
+            cosmetics: cosmeticUid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, cosmeticUid) : null,
             role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
             rumble: m.source === "rumble",
+            rumbleLinked: m.source === "rumble" && cosmeticUid > 0,
             // Cartes de célébration persistées (follow/sub/boss/raid/level/…) :
             // réaffichées telles quelles à l'ouverture du chat sur un autre device.
             ...(m.type ? { type: String(m.type), data: m.data ?? {} } : {}),

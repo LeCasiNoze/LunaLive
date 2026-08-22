@@ -115,7 +115,7 @@ function pickBonusDrops(s: ApiCallsHuntState | null): ApiHuntBonusDrop[] {
 
 function Panel({ title, right, children }: any) {
   return (
-    <div className="panel" style={{ padding: 14, borderRadius: 18 }}>
+    <div className="panel huntPanel" style={{ padding: 14, borderRadius: 18 }}>
       <div className="panelTitle" style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
         <span>{title}</span>
         {right ? <span>{right}</span> : null}
@@ -1003,13 +1003,69 @@ async function doPass() {
   const showBonusDropsPanel = !showOpts;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, position: "relative" }}>
+    <div className="huntBotTab" style={{ display: "flex", flexDirection: "column", gap: 12, position: "relative" }}>
       <style>{`
         @keyframes ggPop {
           0% { transform: translateY(8px) scale(0.96); opacity: 0; }
           25% { transform: translateY(0px) scale(1.00); opacity: 1; }
           80% { transform: translateY(0px) scale(1.00); opacity: 1; }
           100% { transform: translateY(-6px) scale(0.98); opacity: 0; }
+        }
+        .huntBotTab{
+          box-sizing:border-box;
+          padding:12px;
+          container-type:inline-size;
+        }
+        .huntPanel{
+          border-color:rgba(255,255,255,.09)!important;
+          background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))!important;
+          box-shadow:0 14px 34px rgba(0,0,0,.18)!important;
+        }
+        .huntStats{
+          display:grid;
+          grid-template-columns:repeat(3,minmax(0,1fr));
+          gap:8px;
+        }
+        .huntStat{
+          min-width:0;
+          padding:9px 10px;
+          border-radius:12px;
+          border:1px solid rgba(255,255,255,.075);
+          background:rgba(7,5,12,.24);
+        }
+        .huntStatValue{
+          margin-top:2px;
+          font-size:15px;
+          font-weight:950;
+          line-height:1.1;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+        .huntCurrentCard{display:grid;gap:12px;min-width:0}
+        .huntCurrentMain{display:flex;align-items:center;gap:12px;min-width:0}
+        .huntCurrentInfo{min-width:0;flex:1}
+        .huntCurrentTitle{font-weight:950;font-size:15px;line-height:1.2;overflow-wrap:anywhere}
+        .huntCurrentMeta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:4px}
+        .huntActions{display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);gap:8px}
+        .huntActions > button{width:100%;min-width:0;min-height:40px;padding:9px 10px!important}
+        .huntForm{
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto auto;
+          gap:8px;
+          align-items:end;
+          padding:12px;
+          border-radius:14px;
+          border:1px solid rgba(124,77,255,.28);
+          background:linear-gradient(135deg,rgba(124,77,255,.13),rgba(56,189,248,.055));
+        }
+        .huntFormField{display:grid;gap:6px;min-width:0}
+        .huntForm input{box-sizing:border-box;width:100%!important;min-width:0;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.13);background:rgba(0,0,0,.2);color:inherit}
+        @container (max-width:420px){
+          .huntStats{grid-template-columns:repeat(2,minmax(0,1fr))}
+          .huntBotTab{padding:8px}
+          .huntForm{grid-template-columns:1fr 1fr}
+          .huntFormField{grid-column:1/-1}
         }
       `}</style>
 
@@ -1071,35 +1127,35 @@ async function doPass() {
           ) : null
         }
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-          <div>
+        <div className="huntStats">
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>Start</div>
-            <div style={{ fontWeight: 950 }}>{fmtEur(startEur)}</div>
+            <div className="huntStatValue">{fmtEur(startEur)}</div>
           </div>
 
-          <div>
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>Calls en cours</div>
-            <div style={{ fontWeight: 950 }}>{callsCount}</div>
+            <div className="huntStatValue">{callsCount}</div>
           </div>
 
-          <div>
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>Bonus drops</div>
-            <div style={{ fontWeight: 950 }}>{bonusCount}</div>
+            <div className="huntStatValue">{bonusCount}</div>
           </div>
 
-          <div>
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>BE actuel</div>
-            <div style={{ fontWeight: 950 }}>{`x${beCurrent.toFixed(2)}`}</div>
+            <div className="huntStatValue">{`x${beCurrent.toFixed(2)}`}</div>
           </div>
 
-          <div>
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>BE global</div>
-            <div style={{ fontWeight: 950 }}>{`x${beGlobal.toFixed(2)}`}</div>
+            <div className="huntStatValue">{`x${beGlobal.toFixed(2)}`}</div>
           </div>
 
-          <div>
+          <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>Multi moyen bonus</div>
-            <div style={{ fontWeight: 950 }}>{`x${avgBonusMulti.toFixed(2)}`}</div>
+            <div className="huntStatValue">{`x${avgBonusMulti.toFixed(2)}`}</div>
           </div>
         </div>
 
@@ -1620,66 +1676,19 @@ async function doPass() {
       <Panel title={opening ? "Bonus en cours" : "Machine en cours"}>
         {!opening ? (
           currentFarm ? (
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <Thumb url={currentFarm.imageUrl} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
-                  {currentFarm.slotName || "—"}
-                  {currentFarm.username ? <span className="muted"> — @{currentFarm.username}</span> : null}
+            <div className="huntCurrentCard">
+              <div className="huntCurrentMain">
+                <Thumb url={currentFarm.imageUrl} />
+                <div className="huntCurrentInfo">
+                  <div className="huntCurrentTitle">{currentFarm.slotName || "—"}</div>
+                  <div className="huntCurrentMeta muted" style={{ fontSize: 12 }}>
+                    {currentFarm.username ? <span>@{currentFarm.username}</span> : null}
+                    {currentFarm.provider ? <span>{currentFarm.provider}</span> : null}
+                  </div>
                 </div>
-
-                {currentFarm.provider ? (
-                  <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                    ({currentFarm.provider})
-                  </div>
-                ) : null}
-
-                {canModerate && askBet ? (
-                  <div
-                    style={{
-                      marginTop: 10,
-                      padding: 10,
-                      borderRadius: 14,
-                      border: "1px solid rgba(124,77,255,0.25)",
-                      background: "rgba(124,77,255,0.10)",
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ fontWeight: 950, fontSize: 12, marginRight: 2 }}>Bet du bonus :</div>
-                    <input
-                      value={bonusBetInp}
-                      onChange={(e) => setBonusBetInp(e.target.value)}
-                      placeholder="ex: 0.30"
-                      style={{
-                        width: 140,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        background: "rgba(0,0,0,0.12)",
-                        color: "inherit",
-                      }}
-                    />
-                    <SmallBtn disabled={busy} onClick={doConfirmBonusWithBet} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
-                      Valider
-                    </SmallBtn>
-                    <SmallBtn
-                      disabled={busy}
-                      onClick={() => {
-                        setAskBet(false);
-                        setBonusBetInp("");
-                      }}
-                    >
-                      Annuler
-                    </SmallBtn>
-                  </div>
-                ) : null}
               </div>
 
-            {canModerate ? (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {canModerate ? <div className="huntActions">
                 <SmallBtn
                   disabled={busy}
                   onClick={() => void copySlotName(currentFarm?.slotName)}
@@ -1700,8 +1709,35 @@ async function doPass() {
                 >
                   Pass
                 </SmallBtn>
-              </div>
-            ) : null}
+              </div> : null}
+
+              {canModerate && askBet ? (
+                <div className="huntForm">
+                  <label className="huntFormField">
+                    <span style={{ fontWeight: 900, fontSize: 12 }}>Mise du bonus</span>
+                    <input
+                      autoFocus
+                      inputMode="decimal"
+                      value={bonusBetInp}
+                      onChange={(e) => setBonusBetInp(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void doConfirmBonusWithBet(); }}
+                      placeholder="Ex. 0,30 €"
+                    />
+                  </label>
+                  <SmallBtn disabled={busy} onClick={doConfirmBonusWithBet} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
+                    Valider
+                  </SmallBtn>
+                  <SmallBtn
+                    disabled={busy}
+                    onClick={() => {
+                      setAskBet(false);
+                      setBonusBetInp("");
+                    }}
+                  >
+                    Annuler
+                  </SmallBtn>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -1737,26 +1773,30 @@ async function doPass() {
             </div>
           </div>
         ) : currentOpen ? (
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <Thumb url={currentOpen.imageUrl ?? currentOpen.image_url} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.2 }}>
-                {currentOpen.slotName ?? currentOpen.name ?? "—"}
-                {currentOpen.username ? <span className="muted"> — @{currentOpen.username}</span> : null}
-              </div>
-
-              {currentOpen.provider ? (
-                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                  ({currentOpen.provider})
+          <div className="huntCurrentCard">
+            <div className="huntCurrentMain">
+              <Thumb url={currentOpen.imageUrl ?? currentOpen.image_url} />
+              <div className="huntCurrentInfo">
+                <div className="huntCurrentTitle">{currentOpen.slotName ?? currentOpen.name ?? "—"}</div>
+                <div className="huntCurrentMeta muted" style={{ fontSize: 12 }}>
+                  {currentOpen.username ? <span>@{currentOpen.username}</span> : null}
+                  {currentOpen.provider ? <span>{currentOpen.provider}</span> : null}
+                  <span>Mise <b>{fmtEur((currentOpen.betEur ?? currentOpen.bet) ?? 0)}</b></span>
                 </div>
-              ) : null}
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                bet: <b>{fmtEur((currentOpen.betEur ?? currentOpen.bet) ?? 0)}</b>
               </div>
             </div>
 
-          {canModerate ? (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end" }}>
+          {canModerate ? <div className="huntForm">
+              <label className="huntFormField">
+                <span style={{ fontWeight: 900, fontSize: 12 }}>Gain du bonus</span>
+                <input
+                  inputMode="decimal"
+                  value={payInp}
+                  onChange={(e) => setPayInp(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void doPay(); }}
+                  placeholder="Ex. 45,20 €"
+                />
+              </label>
               <SmallBtn
                 disabled={busy}
                 onClick={() => void copySlotName(currentOpen?.slotName ?? currentOpen?.name)}
@@ -1765,25 +1805,10 @@ async function doPass() {
               >
                 📋
               </SmallBtn>
-
-              <input
-                value={payInp}
-                onChange={(e) => setPayInp(e.target.value)}
-                placeholder="Pay du bonus (ex: 45.20)"
-                style={{
-                  width: 220,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(0,0,0,0.12)",
-                  color: "inherit",
-                }}
-              />
               <SmallBtn disabled={busy} onClick={doPay} style={{ border: "1px solid rgba(124,77,255,0.45)" }}>
                 Valider
               </SmallBtn>
-            </div>
-          ) : null}
+            </div> : null}
           </div>
         ) : (
           <div className="muted">Aucun bonus à ouvrir.</div>

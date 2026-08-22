@@ -71,14 +71,14 @@ export function BotMenu({
 
   if (!open) return null;
 
-  const panelW = Math.max(320, Math.min(520, Number(dockWidth ?? 360))); // ✅ ex: 420/440 en popup
+  const panelW = Math.max(380, Math.min(560, Number(dockWidth ?? 480)));
 
   const PanelInner = (
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
         width: "100%",
-        maxWidth: variant === "dock" ? panelW : 560,
+        maxWidth: variant === "dock" ? panelW : 600,
         borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.10)",
         background: "rgba(18,14,26,0.98)",
@@ -86,7 +86,7 @@ export function BotMenu({
         overflow: "hidden",
         // le contenu long SCROLLE dans le panel (header/tabs restent
         // visibles → le ✕ est toujours accessible) — fix retour Lucas
-        maxHeight: "min(86dvh, 640px)",
+        maxHeight: "min(90dvh, 760px)",
         display: "flex",
         flexDirection: "column",
       }}
@@ -199,7 +199,7 @@ export function BotMenu({
             }}
           >
             <div style={{ fontSize: 15, lineHeight: 1 }}>
-              {k === "call" ? "📞" : k === "hunt" ? "🎯" : k === "wheel" ? "🎡" : k === "rain" ? "🌧" : "🔮"}
+              {k === "call" ? "🎰" : k === "hunt" ? "🎯" : k === "wheel" ? "🎡" : k === "rain" ? "🌧" : "🔮"}
             </div>
             <div style={{ fontSize: 9, marginTop: 2, opacity: 0.9 }}>
               {k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : "Prédi."}

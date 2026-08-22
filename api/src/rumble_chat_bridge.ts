@@ -6,6 +6,7 @@ import type { Server as IOServer } from "socket.io";
 import type { Pool } from "pg";
 import { randomBytes } from "crypto";
 import { chatStore } from "./chat_store.js";
+import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
@@ -393,6 +394,26 @@ export function ensureRumbleBridge(opts: {
     }
   };
 
+  const visualCache = new Map<string, { until: number; value: { cosmetics: any; linked: boolean } }>();
+  async function resolveRumbleVisuals(username: string) {
+    const key = username.trim().toLowerCase();
+    const cached = visualCache.get(key);
+    if (cached && cached.until > Date.now()) return cached.value;
+
+    const user = await opts.pool.query(
+      `SELECT id FROM users WHERE lower(username)=lower($1) LIMIT 1`,
+      [username]
+    );
+    const userId = Number(user.rows?.[0]?.id || 0);
+    const cosmeticsByUser = userId > 0 ? await getChatCosmeticsForUsers([userId]) : null;
+    const value = {
+      cosmetics: userId > 0 ? cosmeticsByUser?.get(userId) ?? null : null,
+      linked: userId > 0,
+    };
+    visualCache.set(key, { until: Date.now() + 5 * 60_000, value });
+    return value;
+  }
+
   async function persistMessage(msgId: string, rumbleUserId: string, username: string, body: string, createdAt: Date) {
     try {
       // 1. Archive dédiée Rumble (avec rumble_user_id pour cross-ref)
@@ -417,7 +438,7 @@ export function ensureRumbleBridge(opts: {
     }
   }
 
-  function broadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
+  async function broadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
     if (m.msgId && seenIds.has(m.msgId)) return;
     if (m.msgId) addSeen(m.msgId);
 
@@ -431,9 +452,14 @@ export function ensureRumbleBridge(opts: {
       body: m.text,
     });
 
+    const visuals = await resolveRumbleVisuals(m.username).catch(() => ({ cosmetics: null, linked: false }));
+
     const payload = {
       ...stored,
+      cosmetics: visuals.cosmetics,
+      role: "viewer",
       rumble: true,
+      rumbleLinked: visuals.linked,
       rumbleSenderUserId: m.userId,
       rumbleMsgId: m.msgId,
     };
@@ -489,6 +515,15 @@ export function ensureRumbleBridge(opts: {
     }
   }
 
+  // Les résolutions de cosmétiques sont asynchrones. Cette chaîne conserve
+  // strictement l'ordre des messages tel qu'il arrive depuis Rumble.
+  let broadcastQueue = Promise.resolve();
+  function enqueueBroadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
+    broadcastQueue = broadcastQueue
+      .then(() => broadcast(m))
+      .catch((e: any) => console.warn("[rumble_chat] broadcast error", opts.slug, e?.message || e));
+  }
+
   function scheduleReconnect(ms: number) {
     if (!alive) return;
     if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -526,7 +561,7 @@ export function ensureRumbleBridge(opts: {
     try {
       stopStream = await connectRumbleChatSse(
         videoIdNumeric,
-        (m) => { consecutiveFailures = 0; broadcast(m); },
+        (m) => { consecutiveFailures = 0; enqueueBroadcast(m); },
         (noChatAvailable) => {
           stopStream = null;
           if (!alive) return;

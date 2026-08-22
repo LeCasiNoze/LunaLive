@@ -52,6 +52,7 @@ type ChatMsg = {
   createdAt: string;
   cosmetics?: ChatCosmetics | null;
   rumble?: boolean;
+  rumbleLinked?: boolean;
   // Messages spéciaux (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level).
   // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
   // "recap" = ligne centrée · "sys" = message système · "act" = carte

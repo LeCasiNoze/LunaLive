@@ -15,7 +15,6 @@ import {
   deleteCallById,
   findCurrentForBet,
   findCurrentForPay,
-  setCallBet,
   setCallPay,
 } from "./queue.js";
 import { normText } from "./normalize.js";
@@ -191,22 +190,6 @@ async function getHuntMeta(pool: Pool, ownerUserId: number) {
   };
 }
 
-async function setHuntPhase(pool: Pool, ownerUserId: number, phase: "edit" | "open") {
-  await ensureHuntSchema(pool);
-  await pool.query(
-    `
-    INSERT INTO hunt_sessions(user_id) VALUES($1)
-    ON CONFLICT (user_id) DO NOTHING
-    `,
-    [ownerUserId]
-  );
-  await pool.query(`UPDATE hunt_sessions SET phase=$2, opened=$3, updated_at=NOW() WHERE user_id=$1`, [
-    ownerUserId,
-    phase,
-    phase === "open",
-  ]);
-}
-
 type PlanCode = "viewer" | "streamer";
 
 async function hasActivePremiumViewer(pool: Pool, userId: number): Promise<boolean> {
@@ -275,8 +258,21 @@ export async function handleCallsCommand(opts: {
     arg,
   } = opts;
 
-  // ✅ NEW: hunt commands live here (because same source of truth = calls_queue)
-  const isHuntCmd = cmd === "bonus" || cmd === "pass" || cmd === "open" || cmd === "pay";
+  // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
+  // On les intercepte aussi pour éviter qu'elles apparaissent comme de simples
+  // messages si quelqu'un utilise encore l'ancienne commande.
+  if (cmd === "bonus" || cmd === "open") {
+    if (actorUserId > 0) {
+      emitUserToast(io, actorUserId, {
+        kind: "info",
+        title: "Commande retirée",
+        message: "Cette action se fait maintenant depuis l’onglet Hunt de LunaBot.",
+      });
+    }
+    return { handled: true, showOriginalInChat: false };
+  }
+
+  const isHuntCmd = cmd === "pass" || cmd === "pay";
   const isCallCmd = cmd === "call" || cmd === "pcall" || cmd === "rcall" || cmd === "listec" || cmd === "resetc";
   if (!isCallCmd && !isHuntCmd) return { handled: false };
 
@@ -318,94 +314,6 @@ export async function handleCallsCommand(opts: {
   // ──────────────────────────────────────────
   // Hunt commands
   // ──────────────────────────────────────────
-  if (cmd === "open") {
-    if (!canHuntControl) {
-      emitUserToast(io, actorUserId, {
-        kind: "error",
-        title: "Accès refusé",
-        message: "Réservé aux mods/streamer.",
-      });
-      return { handled: true, showOriginalInChat };
-    }
-
-    if (!(await isSyncActive())) {
-      emitUserToast(io, actorUserId, {
-        kind: "error",
-        title: "Sync Hunt inactif",
-        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !open.",
-      });
-      return { handled: true, showOriginalInChat };
-    }
-
-    // open requires all bets
-    const items = await listCalls(pool, streamerId, 500, 0);
-    if (!items.length) {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Hunt vide", message: "Aucun call en file." });
-      return { handled: true, showOriginalInChat };
-    }
-    const missing = items.filter((x) => !(Number(x.bet) > 0));
-    if (missing.length) {
-      emitUserToast(io, actorUserId, {
-        kind: "error",
-        title: "Bets manquants",
-        message: `Il manque la bet sur ${missing.length} machine(s).`,
-      });
-      return { handled: true, showOriginalInChat };
-    }
-
-    await setHuntPhase(pool, ownerUserId!, "open");
-
-    await sendBotChat(pool, io, { streamerId, slug }, `🔓 Hunt OPEN par @${actorUsername}`);
-
-    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
-    io.to(`chat:${slug}`).emit("calls:changed", { action: "hunt_open" });
-    io.to(`chat:${slug}`).emit("hunt:changed", { action: "open" });
-
-    return { handled: true, showOriginalInChat };
-  }
-
-  if (cmd === "bonus") {
-    if (!canHuntControl) {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
-      return { handled: true, showOriginalInChat };
-    }
-    if (!(await isSyncActive())) {
-      emitUserToast(io, actorUserId, {
-        kind: "error",
-        title: "Sync Hunt inactif",
-        message: "Active Sync Hunt + démarre un Hunt (Start) pour utiliser !bonus.",
-      });
-      return { handled: true, showOriginalInChat };
-    }
-
-    const bet = Number(String(arg || "").trim().replace(",", "."));
-    if (!(bet > 0)) {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Bet invalide", message: "Ex: !bonus 0.60" });
-      return { handled: true, showOriginalInChat };
-    }
-
-    const cur = await findCurrentForBet(pool, streamerId);
-    if (!cur) {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Aucune machine", message: "Aucun call en attente de bet." });
-      return { handled: true, showOriginalInChat };
-    }
-
-    await setCallBet(pool, streamerId, cur.id, bet);
-
-    await sendBotChat(
-      pool,
-      io,
-      { streamerId, slug },
-      `✅ Bet enregistrée: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${bet}€ (GG 🎉)`
-    );
-
-    io.to(`obsview:${slug}`).emit("calls:changed", { action: "sync" });
-    io.to(`chat:${slug}`).emit("calls:changed", { action: "bet" });
-    io.to(`chat:${slug}`).emit("hunt:changed", { action: "bet" });
-
-    return { handled: true, showOriginalInChat };
-  }
-
   if (cmd === "pass") {
     if (!canHuntControl) {
       emitUserToast(io, actorUserId, { kind: "error", title: "Accès refusé", message: "Réservé aux mods/streamer." });
@@ -454,7 +362,7 @@ export async function handleCallsCommand(opts: {
     // ensure hunt is open (sinon on pay dans le vide)
     const hm = await getHuntMeta(pool, ownerUserId!);
     if (String(hm.phase) !== "open") {
-      emitUserToast(io, actorUserId, { kind: "error", title: "Hunt pas open", message: "Fais !open d’abord." });
+      emitUserToast(io, actorUserId, { kind: "error", title: "Hunt pas ouvert", message: "Ouvre le hunt depuis l’interface LunaBot." });
       return { handled: true, showOriginalInChat };
     }
 
