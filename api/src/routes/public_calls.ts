@@ -12,14 +12,29 @@ publicCallsRouter.get("/api/public/calls/:slug/queue", async (req, res) => {
     const slug = String(req.params.slug || "").trim().toLowerCase();
     if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 
-    const stR = await pool.query<{ id: number }>(
-      `SELECT id FROM streamers WHERE slug=$1 LIMIT 1`,
+    const stR = await pool.query<{ id: number; phase: string | null; opened: boolean | null }>(
+      `SELECT s.id, hs.phase, hs.opened
+         FROM streamers s
+         LEFT JOIN hunt_sessions hs ON hs.user_id = s.user_id
+        WHERE s.slug=$1
+        LIMIT 1`,
       [slug]
     );
     const streamer = stR.rows?.[0];
     if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
 
-    // Items pas encore payés (= calls en cours), triés par pos — head + next
+    const phase = String(streamer.phase || "edit").toLowerCase();
+    const isOpening = phase === "open" || streamer.opened === true;
+
+    // En farm, la zone doit avancer uniquement dans les machines encore à
+    // farmer (bet absent). En ouverture, elle doit suivre uniquement les
+    // bonus droppés et non payés. Mélanger les deux listes faisait réapparaître
+    // un bonus déjà droppé dans la zone "call en cours".
+    const pendingFilter = isOpening
+      ? `q.bet IS NOT NULL AND q.bet > 0 AND q.pay IS NULL`
+      : `(q.bet IS NULL OR q.bet <= 0) AND q.pay IS NULL`;
+
+    // File adaptée à la phase du hunt, triée par l'ordre courant du hunt.
     const r = await pool.query(
       `SELECT
          q.id::text   AS id,
@@ -32,7 +47,7 @@ publicCallsRouter.get("/api/public/calls/:slug/queue", async (req, res) => {
        FROM calls_queue q
        LEFT JOIN slots_catalog sc ON sc.name_key = q.slot_key
        WHERE q.streamer_id=$1
-         AND q.pay IS NULL
+         AND ${pendingFilter}
        ORDER BY q.pos ASC
        LIMIT 2`,
       [streamer.id]
@@ -45,12 +60,12 @@ publicCallsRouter.get("/api/public/calls/:slug/queue", async (req, res) => {
       `SELECT COUNT(*)::text AS count
          FROM calls_queue
         WHERE streamer_id=$1
-          AND pay IS NULL`,
+          AND ${pendingFilter.replaceAll("q.", "")}`,
       [streamer.id]
     );
     const count = Number(cR.rows?.[0]?.count || 0);
 
-    return res.json({ ok: true, head, next, count });
+    return res.json({ ok: true, phase: isOpening ? "open" : phase, head, next, count });
   } catch (e) {
     console.error("[api/public/calls/queue]", e);
     return res.status(500).json({ ok: false, error: "server_error" });

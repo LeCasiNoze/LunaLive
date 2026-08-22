@@ -310,7 +310,15 @@ function ChatMessageBubbleImpl({
   const rowStyle: React.CSSProperties = isPinged
     ? { borderRadius:16, outline:"1px solid rgba(124,92,252,.28)", boxShadow:"0 0 0 2px rgba(124,92,252,.10)", background:"rgba(124,92,252,.07)" }
     : isBot
-    ? { borderRadius:16, outline:"1px solid rgba(239,68,68,.20)", background:"linear-gradient(135deg,rgba(239,68,68,.09),rgba(252,165,165,.04))" }
+    ? {
+        borderRadius:16,
+        outline:"1px solid rgba(239,68,68,.30)",
+        // Le background inline remplace celui, opaque, de .chatMsgRow.
+        // Il doit donc contenir sa propre base sombre : avec seulement .09/.04
+        // les messages LunaBot devenaient presque transparents dans OBS.
+        background:"linear-gradient(135deg,rgba(48,12,25,.96),rgba(27,10,22,.94))",
+        boxShadow:"0 10px 40px rgba(0,0,0,.32),0 0 18px rgba(239,68,68,.10)",
+      }
     : isDlive
     ? { borderRadius:14, outline:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }
     : isRumble

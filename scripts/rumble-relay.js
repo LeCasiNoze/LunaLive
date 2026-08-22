@@ -2,7 +2,7 @@
 /**
  * scripts/rumble-relay.js
  *
- * Relay local pour les streamers Rumble en mode "pseudo-only" (sans api_key).
+ * Relay local de secours pour tous les streamers Rumble.
  *
  * Cloudflare bloque l'accès aux pages /c/{user} et /user/{user} depuis Render
  * (datacenter IPs). Ce script tourne sur ta machine perso (IP résidentielle
@@ -22,6 +22,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
+import { randomBytes } from "crypto";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dir, "..");
@@ -48,8 +49,16 @@ loadEnv();
 const API_BASE = (process.env.API_BASE || "https://lunalive-api.onrender.com").replace(/\/$/, "");
 const ADMIN_KEY = process.env.ADMIN_KEY || process.env.LUNALIVE_ADMIN_KEY;
 const POLL_INTERVAL_MS = Number(process.env.RUMBLE_RELAY_INTERVAL_MS || 60_000);
+const FETCH_TIMEOUT_MS = Number(process.env.RUMBLE_RELAY_FETCH_TIMEOUT_MS || 15_000);
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const RADIO_STREAMER_ID = 32;
+
+function boundedFetch(input, init = {}) {
+  return fetch(input, {
+    ...init,
+    signal: init.signal || AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+}
 
 const pgUrl = pathToFileURL(resolve(root, "api/node_modules/pg/lib/index.js")).href;
 const { default: pg } = await import(pgUrl).catch(async () => import("pg"));
@@ -91,7 +100,7 @@ console.log(`[relay] starting — API_BASE=${API_BASE} interval=${POLL_INTERVAL_
 /** Récupère la liste des streamers à surveiller depuis Render.
  *  endpoint: 'pseudo-only' (slug discovery) ou 'all' (followers+VODs). */
 async function fetchStreamersList(endpoint = "list-pseudo-only") {
-  const r = await fetch(`${API_BASE}/admin/rumble/${endpoint}`, {
+  const r = await boundedFetch(`${API_BASE}/admin/rumble/${endpoint}`, {
     headers: { "x-admin-key": ADMIN_KEY },
   });
   if (!r.ok) throw new Error(`list http=${r.status}`);
@@ -109,7 +118,7 @@ async function scrapeRumblePage(username) {
 
   for (const path of [`/c/${encodeURIComponent(username)}`, `/user/${encodeURIComponent(username)}`]) {
     try {
-      const r = await fetch(`https://rumble.com${path}`, { headers });
+      const r = await boundedFetch(`https://rumble.com${path}`, { headers });
       if (!r.ok) {
         console.log(`[relay]   ${username}: ${path} → http=${r.status}`);
         continue;
@@ -172,7 +181,7 @@ async function findLiveSlug(username, html) {
   for (const slug of slugs) {
     try {
       const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${slug}&ad_wt=0`;
-      const r = await fetch(url, {
+      const r = await boundedFetch(url, {
         headers: {
           "user-agent": UA,
           accept: "application/json",
@@ -229,7 +238,7 @@ async function findLiveSlug(username, html) {
 async function fetchVodCards(username) {
   let html = "";
   try {
-    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}`, {
+    const r = await boundedFetch(`https://rumble.com/user/${encodeURIComponent(username)}`, {
       headers: {
         "user-agent": UA,
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -278,7 +287,7 @@ async function fetchVodCards(username) {
 async function pushVodCards(slug, items) {
   if (!Array.isArray(items) || items.length === 0) return;
   try {
-    const r = await fetch(`${API_BASE}/admin/rumble/ingest-vods`, {
+    const r = await boundedFetch(`${API_BASE}/admin/rumble/ingest-vods`, {
       method: "POST",
       headers: {
         "x-admin-key": ADMIN_KEY,
@@ -310,7 +319,7 @@ async function pushVodCards(slug, items) {
 async function fetchFollowersCount(username) {
   for (const path of [`/user/${encodeURIComponent(username)}`, `/c/${encodeURIComponent(username)}`]) {
     try {
-      const r = await fetch(`https://rumble.com${path}`, {
+      const r = await boundedFetch(`https://rumble.com${path}`, {
         headers: {
           "user-agent": UA,
           "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -342,7 +351,7 @@ async function fetchFollowersCount(username) {
 async function pushFollowersCount(slug, followers) {
   if (typeof followers !== "number" || !Number.isFinite(followers)) return;
   try {
-    const r = await fetch(`${API_BASE}/admin/rumble/announce-follows`, {
+    const r = await boundedFetch(`${API_BASE}/admin/rumble/announce-follows`, {
       method: "POST",
       headers: {
         "x-admin-key": ADMIN_KEY,
@@ -365,7 +374,7 @@ async function pushFollowersCount(slug, followers) {
 
 /** Push le videoId au backend. Optionnel: viewer count. */
 async function pushLiveVideo(slug, vSlug, viewers) {
-  const r = await fetch(`${API_BASE}/admin/rumble/set-live`, {
+  const r = await boundedFetch(`${API_BASE}/admin/rumble/set-live`, {
     method: "POST",
     headers: {
       "x-admin-key": ADMIN_KEY,
@@ -453,7 +462,7 @@ async function findCurrentLiveSlug(username) {
   };
   let html = null;
   try {
-    const r = await fetch(`https://rumble.com/user/${encodeURIComponent(username)}/live`, { headers });
+    const r = await boundedFetch(`https://rumble.com/user/${encodeURIComponent(username)}/live`, { headers });
     if (!r.ok) {
       console.log(`[relay]   ${username}: /user/${username}/live → http=${r.status}`);
       return null;
@@ -479,7 +488,7 @@ async function findCurrentLiveSlug(username) {
   let viewers = null;
   try {
     const embedUrl = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
-    const r2 = await fetch(embedUrl, {
+    const r2 = await boundedFetch(embedUrl, {
       headers: {
         "user-agent": UA,
         "accept": "application/json",
@@ -549,12 +558,12 @@ async function tickRadio() {
   }
 }
 
-async function tick() {
+async function tickOnce() {
   await tickRadio();
 
   // On utilise list-all : couvre tout le monde (pseudo-only + api_key).
-  // La slug discovery sera skip pour les api_key (le poller Render le fait
-  // déjà via api_key direct) — on les détecte via le champ `source`.
+  // Le relay résidentiel vérifie aussi les comptes api_key : l'API Rumble peut
+  // annoncer "offline" quelques minutes alors que la page publique est live.
   let streamers = [];
   try {
     streamers = await fetchStreamersList("list-all");
@@ -562,6 +571,11 @@ async function tick() {
     console.warn("[relay] fetchStreamersList failed", e?.message || e);
     return;
   }
+
+  // Les comptes déjà liés par clé API sont les plus susceptibles d'être en
+  // direct. On les vérifie en premier afin que LunaLive récupère un live en
+  // quelques secondes même si l'API officielle tarde à le déclarer.
+  streamers.sort((a, b) => Number(a.source !== "api_key") - Number(b.source !== "api_key"));
 
   if (streamers.length === 0) {
     console.log("[relay] aucun streamer Rumble à scrap");
@@ -573,19 +587,15 @@ async function tick() {
   for (const s of streamers) {
     const username = s.username;
     if (!username) continue;
-    const isPseudo = s.source === "pseudo";
     console.log(`[relay] ${s.slug} (${username}) [${s.source || "?"}]`);
 
-    // Slug discovery : uniquement pour pseudo-only (api_key fait son chemin)
-    if (isPseudo) {
-      const live = await findCurrentLiveSlug(username);
-      if (live) {
-        console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
-        const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
-        if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
-      } else {
-        console.log(`[relay]   ${username}: pas de live actif`);
-      }
+    const live = await findCurrentLiveSlug(username);
+    if (live) {
+      console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
+      const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
+      if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
+    } else {
+      console.log(`[relay]   ${username}: pas de live actif`);
     }
 
     // Followers count (delta detection + annonce "+N follow GG !") — pour tout le monde
@@ -601,6 +611,20 @@ async function tick() {
       console.log(`[relay]   ${username}: ${vods.length} VOD(s) trouvées`);
       await pushVodCards(s.slug, vods);
     }
+  }
+}
+
+let tickRunning = false;
+async function tick() {
+  if (tickRunning) {
+    console.log("[relay] tick précédent encore actif — cycle ignoré");
+    return;
+  }
+  tickRunning = true;
+  try {
+    await tickOnce();
+  } finally {
+    tickRunning = false;
   }
 }
 
@@ -630,7 +654,7 @@ async function fetchCurrentBotCookie() {
 /** Push un nouveau cookie complet à l'API Render. */
 async function pushBotCookie(cookie) {
   try {
-    const r = await fetch(`${API_BASE}/admin/rumble/bot`, {
+    const r = await boundedFetch(`${API_BASE}/admin/rumble/bot`, {
       method: "POST",
       headers: { "x-admin-key": ADMIN_KEY, "content-type": "application/json" },
       body: JSON.stringify({ cookie }),
@@ -680,7 +704,7 @@ async function refreshCookieTick() {
 
     // Visite une page authentifiée Rumble pour déclencher la rotation u_s.
     // /account redirige vers login si pas auth → on saura aussi si expiré.
-    const r = await fetch("https://rumble.com/account", {
+    const r = await boundedFetch("https://rumble.com/account", {
       method: "GET",
       redirect: "manual",
       headers: {
@@ -768,7 +792,124 @@ async function refreshCookieTick() {
 // visite rumble.com avec cookie courant pour le maintenir vivant)
 setInterval(() => void refreshCookieTick(), COOKIE_REFRESH_MS);
 
-// NOTE: la send-queue (bot replies) a été retirée. Render envoie maintenant
-// directement les messages via sendRumbleMessage (compte LunaLive_Bot vérifié).
-// Le relay ne fait plus que la slug discovery pseudo-only + viewer count
-// + le maintien automatique du cookie u_s.
+// ─────────────────────────────────────────────────────────────────
+// SEND QUEUE — fallback résidentiel pour les messages LunaBot.
+// Render tente l'envoi direct en premier. En cas de 403/Cloudflare, le message
+// arrive ici et part avec la même empreinte TLS qu'un navigateur local.
+// ─────────────────────────────────────────────────────────────────
+let cycleTlsClient = null;
+async function getCycleTLS() {
+  if (cycleTlsClient) return cycleTlsClient;
+  const localPath = pathToFileURL(resolve(root, "scripts/node_modules/cycletls/dist/index.js")).href;
+  const apiPath = pathToFileURL(resolve(root, "api/node_modules/cycletls/dist/index.js")).href;
+  const mod = await import(localPath).catch(() => import(apiPath)).catch(() => import("cycletls"));
+  const initCycleTLS = mod.default || mod;
+  cycleTlsClient = await initCycleTLS();
+  return cycleTlsClient;
+}
+
+const CHROME_JA3 = "772,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0";
+let cachedBotSession = null;
+let botSessionFetchedAt = 0;
+
+async function getBotSessionForSend() {
+  if (cachedBotSession && Date.now() - botSessionFetchedAt < 60_000) return cachedBotSession;
+  if (!dbPool) return null;
+  try {
+    const r = await dbPool.query("SELECT cookie, user_agent FROM rumble_bot_session WHERE id=1 LIMIT 1");
+    const row = r.rows?.[0];
+    if (!row?.cookie) return null;
+    cachedBotSession = { cookie: row.cookie, userAgent: row.user_agent || UA };
+    botSessionFetchedAt = Date.now();
+    return cachedBotSession;
+  } catch (e) {
+    console.warn("[relay-queue] cookie DB read failed", e?.message || e);
+    return null;
+  }
+}
+
+async function sendQueuedMessage(videoIdNumeric, text) {
+  const session = await getBotSessionForSend();
+  if (!session) return { ok: false, error: "no_cookie" };
+  const cycle = await getCycleTLS();
+  const requestId = randomBytes(32).toString("base64").replace(/=+$/, "").slice(0, 43);
+  const body = JSON.stringify({
+    data: { request_id: requestId, message: { text: String(text).slice(0, 200) }, rant: null, channel_id: null },
+  });
+  try {
+    const r = await cycle(`https://web7.rumble.com/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/message`, {
+      body,
+      ja3: CHROME_JA3,
+      userAgent: session.userAgent,
+      headers: {
+        "accept": "*/*",
+        "accept-language": "fr-FR,fr;q=0.9",
+        "cache-control": "no-cache",
+        "content-type": "application/json",
+        "cookie": session.cookie,
+        "origin": "https://rumble.com",
+        "pragma": "no-cache",
+        "referer": "https://rumble.com/",
+        "sec-ch-ua": `"Brave";v="147", "Not.A/Brand";v="8", "Chromium";v="147"`,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": `"Windows"`,
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "sec-gpc": "1",
+      },
+    }, "post");
+    const status = Number(r?.status || 0);
+    if (status >= 200 && status < 300) return { ok: true, error: null };
+    const response = typeof r?.body === "string" ? r.body.replace(/\s+/g, " ").slice(0, 160) : "";
+    return { ok: false, error: `http_${status}:${response}` };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e).slice(0, 200) };
+  }
+}
+
+const lastSendByVideo = new Map();
+let sendQueueRunning = false;
+async function sendQueueTick() {
+  if (sendQueueRunning) return;
+  sendQueueRunning = true;
+  try {
+    const r = await boundedFetch(`${API_BASE}/admin/rumble/send-queue?limit=10`, {
+      headers: { "x-admin-key": ADMIN_KEY },
+    });
+    if (!r.ok) throw new Error(`queue http=${r.status}`);
+    const { items = [] } = await r.json();
+    for (const item of items) {
+      const ageMs = Date.now() - new Date(item.created_at).getTime();
+      // Ne jamais parler dans un ancien live après un redémarrage tardif.
+      if (!Number.isFinite(ageMs) || ageMs > 10 * 60_000) {
+        await boundedFetch(`${API_BASE}/admin/rumble/send-queue/${item.id}/result`, {
+          method: "POST",
+          headers: { "x-admin-key": ADMIN_KEY, "content-type": "application/json" },
+          body: JSON.stringify({ ok: true, error: "stale_message_discarded" }),
+        });
+        continue;
+      }
+
+      const vid = String(item.video_id_numeric);
+      const waitMs = Math.max(0, 3_000 - (Date.now() - (lastSendByVideo.get(vid) || 0)));
+      if (waitMs) await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
+      const result = await sendQueuedMessage(vid, item.text);
+      lastSendByVideo.set(vid, Date.now());
+      const terminalDuplicate = String(result.error || "").startsWith("http_409");
+      console.log(`[relay-queue] id=${item.id} vid=${vid} → ${result.ok ? "OK" : result.error}`);
+      await boundedFetch(`${API_BASE}/admin/rumble/send-queue/${item.id}/result`, {
+        method: "POST",
+        headers: { "x-admin-key": ADMIN_KEY, "content-type": "application/json" },
+        body: JSON.stringify({ ok: result.ok || terminalDuplicate, error: result.error }),
+      });
+    }
+  } catch (e) {
+    console.warn("[relay-queue] tick error", e?.message || e);
+  } finally {
+    sendQueueRunning = false;
+  }
+}
+
+void sendQueueTick();
+setInterval(() => void sendQueueTick(), 5_000);

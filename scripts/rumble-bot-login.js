@@ -37,23 +37,21 @@ try {
   }
 } catch {}
 
-function findBrowserExecutable() {
-  // Priorité Opera (demandé par user), puis Brave/Chrome en fallback.
+function findBrowserExecutables() {
+  // Brave/Chrome supportent de façon fiable les profils persistants Playwright.
+  // Opera reste disponible en dernier recours mais peut quitter avec code 21.
   const candidates = [
-    `${process.env.LOCALAPPDATA}\\Programs\\Opera GX\\opera.exe`,
-    `${process.env.LOCALAPPDATA}\\Programs\\Opera\\opera.exe`,
-    "C:\\Program Files\\Opera GX\\opera.exe",
-    "C:\\Program Files\\Opera\\opera.exe",
     "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
     `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
     `${process.env.LOCALAPPDATA}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
+    `${process.env.LOCALAPPDATA}\\Programs\\Opera GX\\opera.exe`,
+    `${process.env.LOCALAPPDATA}\\Programs\\Opera\\opera.exe`,
+    "C:\\Program Files\\Opera GX\\opera.exe",
+    "C:\\Program Files\\Opera\\opera.exe",
   ];
-  for (const p of candidates) {
-    if (p && existsSync(p)) return p;
-  }
-  return null;
+  return [...new Set(candidates.filter((p) => p && existsSync(p)))];
 }
 
 // Profil persistant : une fois logué + MFA validé une seule fois, Rumble
@@ -119,8 +117,8 @@ export async function getFreshCookie(opts = {}) {
     console.warn("[rumble-login] RUMBLE_BOT_EMAIL/PASSWORD manquants dans api/.env");
     return null;
   }
-  const exe = findBrowserExecutable();
-  if (!exe) {
+  const executables = findBrowserExecutables();
+  if (executables.length === 0) {
     console.warn("[rumble-login] aucun Chrome/Brave trouvé localement");
     return null;
   }
@@ -132,18 +130,30 @@ export async function getFreshCookie(opts = {}) {
   if (isFirstRun) {
     console.log(`[rumble-login] ⚠️  Premier setup — ouverture browser visible pour MFA`);
     console.log(`[rumble-login]    Une fois logué (avec code email), ferme le navigateur, le profil sera sauvegardé.`);
-  } else {
-    console.log(`[rumble-login] launching ${exe.split("\\").pop()} ${headless ? "headless" : "headed"} (profile=${PROFILE_DIR.split("\\").pop()})`);
   }
 
-  const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
-    executablePath: exe,
-    headless,
-    viewport: { width: 1280, height: 800 },
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    locale: "fr-FR",
-    args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-  });
+  let browser = null;
+  for (const executablePath of executables) {
+    const browserName = executablePath.split("\\").pop();
+    console.log(`[rumble-login] launching ${browserName} ${headless ? "headless" : "headed"} (profile=${PROFILE_DIR.split("\\").pop()})`);
+    try {
+      browser = await chromium.launchPersistentContext(PROFILE_DIR, {
+        executablePath,
+        headless,
+        viewport: { width: 1280, height: 800 },
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        locale: "fr-FR",
+        args: ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+      });
+      break;
+    } catch (e) {
+      console.warn(`[rumble-login] ${browserName} indisponible, essai suivant: ${e?.message || e}`);
+    }
+  }
+  if (!browser) {
+    console.warn("[rumble-login] aucun navigateur n'a pu démarrer avec le profil bot");
+    return null;
+  }
 
   try {
     const page = await browser.newPage();

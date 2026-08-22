@@ -459,6 +459,14 @@ async function rotateCallsQueue(streamerId: number) {
   await reorderCalls(pool, streamerId, ids);
 }
 
+function emitCallsChanged(req: any, slug: string, action: string) {
+  const io = req.app?.locals?.io;
+  if (!io) return;
+  io.to(`obsview:${slug}`).emit("calls:changed", { action });
+  io.to(`chat:${slug}`).emit("calls:changed", { action });
+  io.to(`chat:${slug}`).emit("hunt:changed", { action });
+}
+
 export const hunt2Router = express.Router();
 hunt2Router.use(express.json());
 
@@ -569,6 +577,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
 
       await writeSessionMeta(meta.ownerUserId, { phase: "open", opened: true });
 
+      emitCallsChanged(req, slug, "hunt_open");
+
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
     } catch (e) {
@@ -585,6 +595,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
       if (!meta) return;
 
       await rotateCallsQueue(meta.streamerId);
+
+      emitCallsChanged(req, slug, "pass");
 
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
@@ -616,6 +628,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
       // workflow: bonus -> go next
       await rotateCallsQueue(meta.streamerId);
 
+      emitCallsChanged(req, slug, "bonus");
+
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
     } catch (e) {
@@ -639,6 +653,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
         await setCallPay(pool, meta.streamerId, String(it.id), pay);
       }
 
+      emitCallsChanged(req, slug, "pay");
+
       // ✅ always return the updated state (even if nothing to pay)
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
@@ -659,6 +675,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
       if (!Number.isFinite(startEur) || startEur <= 0) return res.status(400).json({ ok: false, error: "bad_start" });
 
       await writeSessionMeta(meta.ownerUserId, { start: startEur, phase: "edit", opened: false, archive_id: null });
+
+      emitCallsChanged(req, slug, "start");
 
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
@@ -704,6 +722,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
          WHERE user_id=$1`,
         [meta.ownerUserId]
       );
+
+      emitCallsChanged(req, slug, "reset");
 
       const payload = await buildCallsCompatPayload(meta);
       return res.json(payload);
