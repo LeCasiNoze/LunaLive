@@ -209,12 +209,6 @@ export async function connectRumbleChatSse(
   onMessage: (m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; requestId: string | null }) => void,
   onClose: (noChatAvailable?: boolean) => void
 ): Promise<(() => void) | null> {
-  const session = await getRumbleBotSession();
-  if (!hasRumbleBotSession(session)) {
-    console.warn("[rumble_chat] connectChatSse: no bot session");
-    return null;
-  }
-
   const ac = new AbortController();
   let stopped = false;
   let closeNotified = false;
@@ -285,8 +279,9 @@ export async function connectRumbleChatSse(
         method: "GET",
         signal: ac.signal,
         headers: {
-          "user-agent": session.userAgent || "",
-          "cookie": session.cookie || "",
+          // Le flux entrant est public. Ne pas le coupler a la session du bot,
+          // reservee aux POST, sinon une session expiree coupe tout le mirror.
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
           "accept": "text/event-stream",
           "cache-control": "no-cache",
           "origin": "https://rumble.com",

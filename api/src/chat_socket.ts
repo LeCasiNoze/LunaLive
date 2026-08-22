@@ -464,8 +464,48 @@ async function safeInitRumbleBridge(io: Server, streamerId: number, slug: string
   }
 }
 
+let rumbleBridgeSupervisorTimer: NodeJS.Timeout | null = null;
+let rumbleBridgeSupervisorRunning = false;
+
+function startRumbleBridgeSupervisor(io: Server) {
+  if (rumbleBridgeSupervisorTimer) return;
+
+  const refresh = async () => {
+    if (rumbleBridgeSupervisorRunning) return;
+    rumbleBridgeSupervisorRunning = true;
+    try {
+      const enabled = await pool.query(
+        `SELECT s.id, s.slug, s.user_id AS "ownerUserId"
+         FROM streamers s
+         JOIN streamer_chat_settings cs ON cs.streamer_id = s.id
+         WHERE lower(s.platform) = 'rumble'
+           AND s.is_live = true
+           AND (COALESCE(cs.dlive_sync_public, false) OR COALESCE(cs.dlive_sync_popup, false))`
+      );
+
+      for (const row of enabled.rows) {
+        await safeInitRumbleBridge(
+          io,
+          Number(row.id),
+          String(row.slug),
+          row.ownerUserId == null ? null : Number(row.ownerUserId)
+        );
+      }
+    } catch (e: any) {
+      console.warn("[chat_socket] rumble bridge supervisor failed", e?.message || e);
+    } finally {
+      rumbleBridgeSupervisorRunning = false;
+    }
+  };
+
+  void refresh();
+  rumbleBridgeSupervisorTimer = setInterval(() => void refresh(), 30_000);
+  rumbleBridgeSupervisorTimer.unref?.();
+}
+
 export function attachChat(io: Server) {
   chatIo = io;
+  startRumbleBridgeSupervisor(io);
 
   io.use((socket, next) => {
     tryAuth(socket);
