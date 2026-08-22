@@ -9,7 +9,7 @@
  * que CF laisse passer normalement) et fait le pont :
  *   1. interroge Render pour la liste des streamers à surveiller
  *   2. scrape rumble.com/c/{user} ou /user/{user} pour trouver leur live courant
- *   3. POST le videoId vers Render → le poller embedJS prend le relais
+ *   3. valide la playlist HLS et transmet videoId + HLS vers Render
  *
  * Usage :
  *   node scripts/rumble-relay.js
@@ -100,6 +100,34 @@ console.log(`[relay] starting — API_BASE=${API_BASE} interval=${POLL_INTERVAL_
 /** Récupère la liste des streamers à surveiller depuis Render.
  *  endpoint: 'pseudo-only' (slug discovery) ou 'all' (followers+VODs). */
 async function fetchStreamersList(endpoint = "list-pseudo-only") {
+  if (dbPool) {
+    try {
+      const pseudoOnly = endpoint === "list-pseudo-only";
+      const { rows } = await dbPool.query(
+        pseudoOnly
+          ? `SELECT s.id, s.slug, s.rumble_username AS username,
+                    ri.live_id, ri.is_live, ri.updated_at, 'pseudo' AS source
+             FROM streamers s
+             LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+             WHERE s.rumble_username IS NOT NULL
+               AND s.rumble_username <> ''
+               AND NOT EXISTS (
+                 SELECT 1 FROM rumble_accounts ra WHERE ra.assigned_to_streamer_id = s.id
+               )`
+          : `SELECT s.id, s.slug,
+                    COALESCE(NULLIF(s.rumble_username, ''), ra.username) AS username,
+                    CASE WHEN ra.id IS NOT NULL THEN 'api_key' ELSE 'pseudo' END AS source
+             FROM streamers s
+             LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+             WHERE (s.rumble_username IS NOT NULL AND s.rumble_username <> '')
+                OR ra.id IS NOT NULL`
+      );
+      return rows;
+    } catch (e) {
+      console.warn(`[relay-db] list fallback to API: ${e?.message || e}`);
+    }
+  }
+
   const r = await boundedFetch(`${API_BASE}/admin/rumble/${endpoint}`, {
     headers: { "x-admin-key": ADMIN_KEY },
   });
@@ -372,15 +400,80 @@ async function pushFollowersCount(slug, followers) {
   }
 }
 
-/** Push le videoId au backend. Optionnel: viewer count. */
-async function pushLiveVideo(slug, vSlug, viewers) {
+/** Ecrit le live en base; l'API reste un fallback si la DB locale est absente. */
+async function pushLiveVideo(slug, username, live) {
+  const viewers = (typeof live?.viewers === "number" && Number.isFinite(live.viewers) && live.viewers >= 0)
+    ? Math.floor(live.viewers)
+    : null;
+
+  if (dbPool) {
+    try {
+      const streamer = await dbPool.query(
+        `SELECT id FROM streamers WHERE lower(slug) = lower($1) LIMIT 1`,
+        [slug]
+      );
+      const streamerId = streamer.rows[0]?.id;
+      if (!streamerId) return false;
+
+      await dbPool.query(
+        `UPDATE streamers
+            SET is_live = TRUE,
+                live_started_at = COALESCE(live_started_at, NOW()),
+                title = CASE WHEN title IS NULL OR title = 'Hors ligne' THEN 'Live sur Rumble' ELSE title END,
+                viewers = COALESCE($1, viewers),
+                updated_at = NOW()
+          WHERE id = $2`,
+        [viewers, streamerId]
+      );
+      await dbPool.query(
+        `INSERT INTO streamer_rumble_info (
+           streamer_id, is_live, title, viewers_count, hls_url, video_url,
+           live_id, live_video_id_numeric, live_started_at, updated_at
+         ) VALUES ($1, TRUE, 'Live sur Rumble', $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (streamer_id) DO UPDATE SET
+           is_live = TRUE,
+           title = CASE
+             WHEN streamer_rumble_info.title IS NULL OR streamer_rumble_info.title = 'Hors ligne' THEN EXCLUDED.title
+             ELSE streamer_rumble_info.title
+           END,
+           viewers_count = COALESCE(EXCLUDED.viewers_count, streamer_rumble_info.viewers_count),
+           hls_url = EXCLUDED.hls_url,
+           video_url = EXCLUDED.video_url,
+           live_video_id_numeric = COALESCE(EXCLUDED.live_video_id_numeric, streamer_rumble_info.live_video_id_numeric),
+           live_started_at = CASE
+             WHEN streamer_rumble_info.live_id IS DISTINCT FROM EXCLUDED.live_id THEN EXCLUDED.live_started_at
+             ELSE COALESCE(streamer_rumble_info.live_started_at, EXCLUDED.live_started_at)
+           END,
+           live_id = EXCLUDED.live_id,
+           updated_at = NOW()`,
+        [
+          streamerId,
+          viewers,
+          live.hlsUrl || null,
+          `https://rumble.com/user/${encodeURIComponent(username)}/live`,
+          live.vSlug,
+          live.vidNumeric || null,
+          Date.now(),
+        ]
+      );
+      return true;
+    } catch (e) {
+      console.warn(`[relay-db]   push ${slug} failed, fallback API`, e?.message || e);
+    }
+  }
+
   const r = await boundedFetch(`${API_BASE}/admin/rumble/set-live`, {
     method: "POST",
     headers: {
       "x-admin-key": ADMIN_KEY,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ slug, videoId: vSlug, viewers: typeof viewers === "number" ? viewers : null }),
+    body: JSON.stringify({
+      slug,
+      videoId: live.vSlug,
+      viewers,
+      hlsUrl: live.hlsUrl || null,
+    }),
   });
   const j = await r.json().catch(() => null);
   if (!r.ok) {
@@ -433,19 +526,89 @@ async function setRadioLiveSource(username, live) {
 
   await dbPool.query(
     `INSERT INTO streamer_rumble_info (
-       streamer_id, is_live, live_id, live_video_id_numeric, viewers_count, updated_at
+       streamer_id, is_live, live_id, live_video_id_numeric, viewers_count, hls_url, updated_at
      )
-     VALUES ($1, TRUE, $2, $3, $4, NOW())
+     VALUES ($1, TRUE, $2, $3, $4, $5, NOW())
      ON CONFLICT (streamer_id) DO UPDATE SET
        is_live = TRUE,
        live_id = EXCLUDED.live_id,
        live_video_id_numeric = EXCLUDED.live_video_id_numeric,
        viewers_count = COALESCE(EXCLUDED.viewers_count, streamer_rumble_info.viewers_count),
+       hls_url = COALESCE(EXCLUDED.hls_url, streamer_rumble_info.hls_url),
        updated_at = NOW()`,
-    [RADIO_STREAMER_ID, live.vSlug, live.vidNumeric || null, viewers]
+    [RADIO_STREAMER_ID, live.vSlug, live.vidNumeric || null, viewers, live.hlsUrl || null]
   );
 
   return true;
+}
+
+const RUMBLE_HLS_HEADERS = {
+  "user-agent": UA,
+  "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*;q=0.9",
+  "referer": "https://rumble.com/",
+};
+
+function parseHlsVariants(text, baseUrl) {
+  const variants = [];
+  let bandwidth = 0;
+  for (const line of text.split("\n")) {
+    const value = line.trim();
+    if (!value) continue;
+    if (value.startsWith("#EXT-X-STREAM-INF")) {
+      const match = value.match(/(?:AVERAGE-)?BANDWIDTH=(\d+)/);
+      bandwidth = match ? Number(match[1]) : 0;
+      continue;
+    }
+    if (value.startsWith("#")) continue;
+    try {
+      variants.push({ url: new URL(value, baseUrl).toString(), bandwidth });
+    } catch { /* ignore malformed variant */ }
+    bandwidth = 0;
+  }
+  return variants.sort((a, b) => {
+    const aDvr = /_DVR\.m3u8(?:\?|$)/i.test(a.url) ? 1 : 0;
+    const bDvr = /_DVR\.m3u8(?:\?|$)/i.test(b.url) ? 1 : 0;
+    return aDvr - bDvr || b.bandwidth - a.bandwidth;
+  });
+}
+
+async function isActiveHlsPlaylist(url) {
+  try {
+    const r = await boundedFetch(url, { headers: RUMBLE_HLS_HEADERS });
+    if (!r.ok) return false;
+    const text = await r.text();
+    return text.trimStart().startsWith("#EXTM3U") && !text.includes("#EXT-X-ENDLIST");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rumble conserve les anciens masters apres la fin d'un live. Une chunklist
+ * accessible sans ENDLIST est donc le signal fiable que le flux avance encore.
+ */
+async function resolveActiveHls(vSlug) {
+  const rawId = String(vSlug || "").replace(/^v/i, "");
+  if (!/^[a-z0-9]{6,}$/i.test(rawId)) return null;
+
+  for (const kind of ["live-hls", "live-hls-dvr"]) {
+    const masterUrl = `https://rumble.com/${kind}/${rawId}/playlist.m3u8`;
+    try {
+      const r = await boundedFetch(masterUrl, { headers: RUMBLE_HLS_HEADERS });
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (!text.trimStart().startsWith("#EXTM3U")) continue;
+
+      const variants = parseHlsVariants(text, r.url || masterUrl);
+      if (variants.length === 0 && !text.includes("#EXT-X-ENDLIST")) {
+        return r.url || masterUrl;
+      }
+      for (const variant of variants) {
+        if (await isActiveHlsPlaylist(variant.url)) return variant.url;
+      }
+    } catch { /* try the DVR master */ }
+  }
+  return null;
 }
 
 /**
@@ -485,6 +648,7 @@ async function findCurrentLiveSlug(username) {
   // On valide via embedJS pour différencier : `live: 1/2` = en cours, `live: 0` = fini.
   // L'URL HLS `hls-vod/` est aussi un signal de fin de stream.
   let isLive = false;
+  let hlsUrl = null;
   let viewers = null;
   try {
     const embedUrl = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
@@ -505,7 +669,12 @@ async function findCurrentLiveSlug(username) {
       if (typeof d?.watching_now === "number") viewers = d.watching_now;
       else if (typeof d?.viewers === "number") viewers = d.viewers;
     }
-  } catch { /* embedJS échec → considère pas live */ }
+  } catch { /* use the HLS fallback below */ }
+
+  // embedJS est regulierement bloque en 403 par Rumble. La chunklist CDN est
+  // directement accessible et permet aussi d'ecarter les anciens DVR/VOD.
+  hlsUrl = await resolveActiveHls(vSlug);
+  isLive = !!hlsUrl;
 
   if (!isLive) {
     console.log(`[relay]   ${username}: ${vSlug} pas en live (DVR/VOD)`);
@@ -526,7 +695,7 @@ async function findCurrentLiveSlug(username) {
     }
   }
 
-  return { vSlug, vidNumeric, viewers };
+  return { vSlug, vidNumeric, viewers, hlsUrl };
 }
 
 async function tickRadio() {
@@ -572,10 +741,12 @@ async function tickOnce() {
     return;
   }
 
-  // Les comptes déjà liés par clé API sont les plus susceptibles d'être en
-  // direct. On les vérifie en premier afin que LunaLive récupère un live en
-  // quelques secondes même si l'API officielle tarde à le déclarer.
-  streamers.sort((a, b) => Number(a.source !== "api_key") - Number(b.source !== "api_key"));
+  // Les comptes pseudo-only dependent entierement du relais. Les plus recents
+  // passent d'abord; les comptes avec cle API gardent leur poller Render.
+  streamers.sort((a, b) => {
+    const sourceOrder = Number(a.source === "api_key") - Number(b.source === "api_key");
+    return sourceOrder || Number(b.id || 0) - Number(a.id || 0);
+  });
 
   if (streamers.length === 0) {
     console.log("[relay] aucun streamer Rumble à scrap");
@@ -592,7 +763,7 @@ async function tickOnce() {
     const live = await findCurrentLiveSlug(username);
     if (live) {
       console.log(`[relay]   ${username}: LIVE — slug=${live.vSlug} vid=${live.vidNumeric || "?"} viewers=${live.viewers ?? "?"}`);
-      const ok = await pushLiveVideo(s.slug, live.vSlug, live.viewers);
+      const ok = await pushLiveVideo(s.slug, username, live);
       if (ok) console.log(`[relay]   ${username}: pushed ${live.vSlug} ✓`);
     } else {
       console.log(`[relay]   ${username}: pas de live actif`);
