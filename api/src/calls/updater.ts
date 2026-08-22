@@ -1,10 +1,18 @@
 // api/src/calls/updater.ts
 import type { Pool } from "pg";
-import { upsertSlots, type SlotRow, type InsertedSlotRow } from "./catalog.js";
+import { upsertSlots, type SlotRow } from "./catalog.js";
 import { normText, keyText } from "./normalize.js";
+import { fetchShuffleProviders, fetchShuffleProviderSlots } from "./shuffle_fetcher.js";
 
 /**
- * Source: Gamba
+ * Source active du catalogue : Shuffle GraphQL.
+ *
+ * Les fonctions Gamba ci-dessous restent exportées uniquement pour les anciens
+ * scripts de diagnostic. runSlotsUpdate() ne les utilise plus : la page Gamba
+ * ne publie désormais que son provider interne et ne constitue plus un index
+ * fiable des machines à sous.
+ *
+ * Ancienne source Gamba :
  * - Liste providers: page HTML https://gamba.com/casino/providers (regex)
  * - Games: persisted query gameSearch
  *
@@ -19,7 +27,6 @@ const GAMBA_GAMESEARCH_SHA = String(
 ).trim();
 
 const GAMBA_FIRST = Math.max(1, Math.min(60, Number(process.env.GAMBA_FIRST || 39)));
-const INTER_PROVIDER_MS = Math.max(0, Number(process.env.GAMBA_INTER_PROVIDER_MS || 120));
 const LOG_NEW_MAX = Math.max(0, Number(process.env.SLOTS_LOG_NEW_MAX || 25));
 
 export function sleep(ms: number) {
@@ -317,49 +324,57 @@ export async function runSlotsUpdate(
   error: string;
   providers: ProviderResult[];
 }> {
-  console.log(`[slots-updater] 🚀 Starting slots update`);
-  
+  console.log(`[slots-updater] Starting Shuffle slots update`);
+
   const startTime = Date.now();
   const providers: ProviderResult[] = [];
-  
+
   try {
-    const providerSlugs = await fetchProviderSlugs();
-    console.log(`[slots-updater] 📋 Found ${providerSlugs.length} providers`);
+    const excludedSlugs = new Set(
+      String(process.env.SLOTS_EXCLUDED_PROVIDER_SLUGS || "shuffle-games,evolution,pragmatic-play-live")
+        .split(",")
+        .map((value) => value.trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const providerRows = (await fetchShuffleProviders()).filter(
+      (provider) => provider.gamesCount > 0 && !excludedSlugs.has(provider.slug.toLowerCase())
+    );
+    const interProviderMs = Math.max(0, Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 250));
+
+    console.log(`[slots-updater] Found ${providerRows.length} Shuffle providers`);
 
     let totalFetchedRaw = 0;
     let totalInserted = 0;
     let successCount = 0;
     let failedCount = 0;
 
-    for (let i = 0; i < providerSlugs.length; i++) {
-      const producerSlug = providerSlugs[i];
-      console.log(`[slots-updater] ▶️ [${i + 1}/${providerSlugs.length}] Processing provider: ${producerSlug}`);
+    for (let i = 0; i < providerRows.length; i++) {
+      const provider = providerRows[i];
+      console.log(`[slots-updater] [${i + 1}/${providerRows.length}] Processing Shuffle provider: ${provider.slug}`);
 
       const providerResult: ProviderResult = {
-        provider: producerSlug,
+        provider: provider.slug,
         success: false,
         fetched: 0,
         inserted: 0,
       };
 
       try {
-        // Retry avec backoff pour la récupération des jeux
         const rows = await retryWithBackoff(
-          () => fetchProviderGames(producerSlug),
-          3, // max 3 retries
-          1000, // 1s base delay
-          8000 // 8s max delay
+          () => fetchShuffleProviderSlots(provider.id, provider.slug, provider.name),
+          2,
+          1_000,
+          8_000
         );
 
         providerResult.fetched = rows.length;
         totalFetchedRaw += rows.length;
 
         if (rows.length === 0) {
-          console.log(`[slots-updater] ℹ️  ${producerSlug}: No games fetched`);
+          console.log(`[slots-updater] ${provider.slug}: no games fetched`);
           providerResult.success = true;
           providerResult.details = "No games available";
         } else {
-          // ✅ dedupe côté updater aussi
           const uniq = new Map<string, SlotRow>();
           for (const r of rows) {
             const nm = normText(r.name);
@@ -382,7 +397,7 @@ export async function runSlotsUpdate(
           const alreadyInDb = await countExistingKeys(pool, keys);
 
           console.log(
-            `[slots-updater] 📊 ${producerSlug}: fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
+            `[slots-updater] ${provider.slug}: fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
           );
 
           const inserted = await upsertSlots(pool, Array.from(uniq.values()));
@@ -393,10 +408,10 @@ export async function runSlotsUpdate(
             const names = inserted.map((x) => x.name).sort((a, b) => a.localeCompare(b));
             const show = sample(names, LOG_NEW_MAX);
             console.log(
-              `[slots-updater] ✅ ${producerSlug}: inserted=${inserted.length} new=[${show.join(" • ")}${names.length > show.length ? " …" : ""}]`
+              `[slots-updater] ${provider.slug}: inserted=${inserted.length} new=[${show.join(" | ")}${names.length > show.length ? " ..." : ""}]`
             );
           } else {
-            console.log(`[slots-updater] ✅ ${producerSlug}: inserted=0`);
+            console.log(`[slots-updater] ${provider.slug}: inserted=0`);
           }
 
           providerResult.success = true;
@@ -407,10 +422,10 @@ export async function runSlotsUpdate(
       } catch (e: any) {
         const errorMessage = String(e?.message || e);
         const stack = e?.stack || 'no stack';
-        
-        console.error(`[slots-updater] ❌ ${producerSlug}: FAILED`);
-        console.error(`[slots-updater] ❌ ${producerSlug}: Error: ${errorMessage}`);
-        console.error(`[slots-updater] ❌ ${producerSlug}: Stack: ${stack}`);
+
+        console.error(`[slots-updater] ${provider.slug}: FAILED`);
+        console.error(`[slots-updater] ${provider.slug}: Error: ${errorMessage}`);
+        console.error(`[slots-updater] ${provider.slug}: Stack: ${stack}`);
         
         providerResult.success = false;
         providerResult.error = errorMessage;
@@ -421,31 +436,24 @@ export async function runSlotsUpdate(
 
       providers.push(providerResult);
 
-      // Pause entre providers pour éviter le rate limiting
-      if (INTER_PROVIDER_MS) {
-        console.log(`[slots-updater] ⏳ Waiting ${INTER_PROVIDER_MS}ms before next provider...`);
-        await sleep(INTER_PROVIDER_MS);
+      if (interProviderMs && i < providerRows.length - 1) {
+        await sleep(interProviderMs);
       }
     }
 
     const duration = Date.now() - startTime;
     const failedProvidersList = providers.filter(p => !p.success).map(p => p.provider);
     
-    console.log(`[slots-updater] 🏁 DONE in ${(duration / 1000).toFixed(1)}s`);
-    console.log(`[slots-updater] 📈 SUMMARY:`);
-    console.log(`[slots-updater]   • Total providers: ${providerSlugs.length}`);
-    console.log(`[slots-updater]   • Success: ${successCount}`);
-    console.log(`[slots-updater]   • Failed: ${failedCount}`);
-    console.log(`[slots-updater]   • Total games fetched: ${totalFetchedRaw}`);
-    console.log(`[slots-updater]   • Total games inserted: ${totalInserted}`);
-    
+    console.log(`[slots-updater] DONE in ${(duration / 1000).toFixed(1)}s`);
+    console.log(`[slots-updater] providers=${providerRows.length} success=${successCount} failed=${failedCount} fetched=${totalFetchedRaw} inserted=${totalInserted}`);
+
     if (failedProvidersList.length > 0) {
-      console.log(`[slots-updater] ⚠️  Failed providers: [${failedProvidersList.join(', ')}]`);
+      console.log(`[slots-updater] Failed providers: [${failedProvidersList.join(', ')}]`);
     }
 
     return {
       ok: true,
-      totalProviders: providerSlugs.length,
+      totalProviders: providerRows.length,
       successProviders: successCount,
       failedProviders: failedCount,
       totalFetched: totalFetchedRaw,
@@ -453,9 +461,9 @@ export async function runSlotsUpdate(
       providers,
     };
   } catch (e: any) {
-    console.error(`[slots-updater] 💥 CRITICAL ERROR: ${String(e?.message || e)}`);
-    console.error(`[slots-updater] 💥 Stack: ${e?.stack || 'no stack'}`);
-    
+    console.error(`[slots-updater] CRITICAL ERROR: ${String(e?.message || e)}`);
+    console.error(`[slots-updater] Stack: ${e?.stack || 'no stack'}`);
+
     return {
       ok: false,
       error: String(e?.message || "critical_update_failed"),
