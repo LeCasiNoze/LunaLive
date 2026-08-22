@@ -237,8 +237,9 @@ function ChatMessageBubbleImpl({
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
   const isRumble = !!(msg as any)?.rumble;
   const rumbleLinked = !!(msg as any)?.rumbleLinked;
+  const configuredBotUserId = Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
   const isBot = !!(msg as any)?.isBot || msg.username === "LunaBot" ||
-    msg.userId === Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
+    (configuredBotUserId > 0 && msg.userId === configuredBotUserId);
 
   const c = msg.cosmetics ?? null;
   const multiTitles = (c as any)?.titles as
