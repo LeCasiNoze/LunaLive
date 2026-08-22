@@ -245,6 +245,25 @@ async function isChunklistEnded(chunklistUrl: string): Promise<boolean> {
   }
 }
 
+async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
+  if (!chunklistUrl) return false;
+  try {
+    const r = await fetch(chunklistUrl, {
+      method: "GET",
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
+        "referer": "https://rumble.com/",
+      },
+    });
+    if (!r.ok) return false;
+    const text = await r.text();
+    return text.trimStart().startsWith("#EXTM3U") && !text.includes("#EXT-X-ENDLIST");
+  } catch {
+    return false;
+  }
+}
+
 type ResolvedLivePlaylist = {
   /** URL chargée par HLS.js. On conserve le master pour laisser l'ABR choisir. */
   playbackUrl: string;
@@ -328,6 +347,26 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<ResolvedLive
     console.error(`[rumble][redirect] error:`, e);
     return null;
   }
+}
+
+async function resolveActiveHlsFromSlug(vSlug: string, cachedHlsUrl?: string | null): Promise<string | null> {
+  const rawId = String(vSlug || "").replace(/^v/i, "");
+  if (!/^[a-z0-9]{6,}$/i.test(rawId)) return null;
+
+  const candidates = [
+    cachedHlsUrl || null,
+    `https://rumble.com/live-hls/${rawId}/playlist.m3u8`,
+    `https://rumble.com/live-hls-dvr/${rawId}/playlist.m3u8`,
+  ].filter((value, index, all): value is string => !!value && all.indexOf(value) === index);
+
+  for (const candidate of candidates) {
+    const resolved = isRumbleMasterPlaylistUrl(candidate)
+      ? await resolveRedirectToCdn(candidate)
+      : { playbackUrl: candidate, probeUrl: candidate };
+    const directUrl = resolved?.probeUrl || resolved?.playbackUrl || null;
+    if (directUrl && await isActiveChunklist(directUrl)) return directUrl;
+  }
+  return null;
 }
 
 /**
@@ -631,23 +670,33 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
   const offline = offlineInfo(username);
   if (!username) return offline;
 
+  let cachedLiveId: string | null = null;
+  let cachedHlsUrl: string | null = null;
+  let cachedVideoIdNumeric: string | null = null;
+  if (streamerId) {
+    const cached = await pool.query(
+      `SELECT live_id, hls_url, live_video_id_numeric
+       FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
+      [streamerId]
+    ).catch(() => null);
+    cachedLiveId = cached?.rows?.[0]?.live_id ? String(cached.rows[0].live_id) : null;
+    cachedHlsUrl = cached?.rows?.[0]?.hls_url ? String(cached.rows[0].hls_url) : null;
+    cachedVideoIdNumeric = cached?.rows?.[0]?.live_video_id_numeric
+      ? String(cached.rows[0].live_video_id_numeric)
+      : null;
+  }
+
   // 1. Tentative directe via /user/{name}/live
   let vSlug: string | null = await findCurrentLiveSlugFromLivePage(username);
 
   // 2. Fallback : live_id pushé par le relay local
-  if (!vSlug && streamerId) {
-    const r = await pool.query(
-      `SELECT live_id FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
-      [streamerId]
-    ).catch(() => null);
-    vSlug = r?.rows?.[0]?.live_id ? String(r.rows[0].live_id) : null;
-  }
+  if (!vSlug) vSlug = cachedLiveId;
 
   if (!vSlug) {
     return offline;
   }
 
-  // Valide via embedJS
+  // Valide via embedJS quand Rumble l'autorise encore.
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
   try {
     const r2 = await fetch(url, {
@@ -658,8 +707,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
         origin: "https://rumble.com",
       },
     });
-    if (!r2.ok) return offline;
-    const d: any = await r2.json();
+    const d: any = r2.ok ? await r2.json() : null;
     // `live: 1/2` = stream actuellement en cours.
     // `live: 0` = stream fini (peut encore renvoyer URL DVR pour rewatch).
     // `livestream_has_dvr` n'est PAS un indicateur d'état (juste un flag config).
@@ -667,60 +715,56 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     const hlsCandidatePeek = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || "";
     const isVodUrl = typeof hlsCandidatePeek === "string" && hlsCandidatePeek.includes("/hls-vod/");
     const isLive = !!d?.live && !isVodUrl;
-    if (!isLive) {
-      console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas en live`);
-      return offline;
-    }
-
-    const hlsCandidate = d?.u?.hls?.url || d?.ua?.hls?.auto?.url || null;
-    const vidNumeric = d?.vid != null ? String(d.vid) : null;
-    const rawViewers = d?.watching_now ?? d?.watching ?? d?.viewer_count ?? d?.viewers ?? null;
-    const viewersCount = Number.isFinite(Number(rawViewers)) ? Math.max(0, Math.round(Number(rawViewers))) : null;
-    const thumbnailUrl = d?.i ? String(d.i) : null;
-
-    // Pas de HLS = pas de live (probablement placeholder/recommended video)
-    if (!hlsCandidate) {
-      console.log(`[rumble][pseudo-only] ${username}: ${vSlug} no HLS (placeholder?)`);
-      return offline;
-    }
-
-    let finalHls: string | null = hlsCandidate;
-    let liveProbeUrl: string | null = hlsCandidate;
-    if (finalHls && isRumbleMasterPlaylistUrl(finalHls)) {
-      const resolvedHls = await resolveRedirectToCdn(finalHls);
-      finalHls = resolvedHls?.playbackUrl || finalHls;
-      liveProbeUrl = resolvedHls?.probeUrl || null;
-    }
-
-    // Check définitif via la chunklist : ENDLIST → stream finalisé (DVR replay)
-    if (liveProbeUrl) {
-      const ended = await isChunklistEnded(liveProbeUrl);
-      if (ended) {
-        console.log(`[rumble][pseudo-only] ${username}: ${vSlug} ENDLIST → stream terminé (DVR)`);
-        return offline;
+    if (isLive && hlsCandidatePeek) {
+      const finalHls = await resolveActiveHlsFromSlug(vSlug, hlsCandidatePeek);
+      if (finalHls) {
+        const vidNumeric = d?.vid != null ? String(d.vid) : cachedVideoIdNumeric;
+        const rawViewers = d?.watching_now ?? d?.watching ?? d?.viewer_count ?? d?.viewers ?? null;
+        const viewersCount = Number.isFinite(Number(rawViewers))
+          ? Math.max(0, Math.round(Number(rawViewers)))
+          : null;
+        const thumbnailUrl = d?.i ? String(d.i) : null;
+        console.log(`[rumble][pseudo-only] ${username}: LIVE via embedJS — vid=${vSlug}, hls=${finalHls}`);
+        return {
+          username,
+          isLive: true,
+          viewersCount,
+          title: String(d?.title || `Live de ${username}`),
+          thumbnailUrl,
+          videoUrl: `https://rumble.com/user/${username}/live`,
+          hlsUrl: finalHls,
+          videoId: vSlug,
+          videoIdNumeric: vidNumeric,
+          createdAt: d?.pubDate || null,
+        };
       }
     }
-
-    const title = String(d?.title || `Live de ${username}`);
-    const createdOn = d?.pubDate || null;
-
-    console.log(`[rumble][pseudo-only] ${username}: LIVE — vid=${vSlug} (numeric=${vidNumeric}), hls=${finalHls}`);
-    return {
-      username,
-      isLive: true,
-      viewersCount,
-      title,
-      thumbnailUrl,
-      videoUrl: `https://rumble.com/user/${username}/live`,
-      hlsUrl: finalHls,
-      videoId: vSlug,
-      videoIdNumeric: vidNumeric,
-      createdAt: createdOn,
-    };
   } catch (e) {
-    console.warn(`[rumble][pseudo-only] ${username}: embedJS error`, e);
+    console.warn(`[rumble][pseudo-only] ${username}: embedJS indisponible`, e);
+  }
+
+  // Rumble peut repondre 403 sur embedJS tout en servant normalement le live.
+  // Une chunklist CDN sans ENDLIST est alors notre source de verite.
+  const matchingCachedHls = cachedLiveId?.toLowerCase() === vSlug.toLowerCase() ? cachedHlsUrl : null;
+  const fallbackHls = await resolveActiveHlsFromSlug(vSlug, matchingCachedHls);
+  if (!fallbackHls) {
+    console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas de chunklist live active`);
     return offline;
   }
+
+  console.log(`[rumble][pseudo-only] ${username}: LIVE via HLS fallback — vid=${vSlug}, hls=${fallbackHls}`);
+  return {
+    username,
+    isLive: true,
+    viewersCount: null,
+    title: `Live de ${username}`,
+    thumbnailUrl: null,
+    videoUrl: `https://rumble.com/user/${username}/live`,
+    hlsUrl: fallbackHls,
+    videoId: vSlug,
+    videoIdNumeric: cachedVideoIdNumeric,
+    createdAt: null,
+  };
 }
 
 /** Récupère l'info Rumble pour un streamer donné. Essaie d'abord le path
