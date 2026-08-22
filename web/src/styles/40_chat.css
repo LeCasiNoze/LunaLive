@@ -238,6 +238,14 @@
 .chatRoleChip--streamer{ border-color: rgba(253,230,138,0.5); background: rgba(253,230,138,0.14); box-shadow: 0 0 8px rgba(253,230,138,0.18); }
 .chatRoleChip--admin{ border-color: rgba(244,114,182,0.5); background: rgba(244,114,182,0.14); box-shadow: 0 0 8px rgba(244,114,182,0.2); }
 .chatRoleChip--bot{ border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.12); }
+.chatRoleChip--rumble{
+  border-color:rgba(133,224,80,.42);
+  background:linear-gradient(145deg,rgba(133,224,80,.19),rgba(73,150,35,.10));
+  color:#cef5b5;
+  font-size:9px;
+  padding-left:1px;
+  box-shadow:0 0 10px rgba(133,224,80,.10);
+}
 
 /* Corps du message dans sa propre bulle (séparation stricte meta/message) */
 .chatBodyBubble{

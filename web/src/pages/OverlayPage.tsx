@@ -788,6 +788,8 @@ export function NativeOverlayChat({
         cosmetics: cosmetics || null,
         role,
         isBot,
+        rumble: !!payload.rumble,
+        rumbleLinked: !!payload.rumbleLinked,
       } as unknown as ChatMsgLike;
 
       const key = String(username).toLowerCase();

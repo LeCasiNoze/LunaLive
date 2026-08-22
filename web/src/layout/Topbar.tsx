@@ -627,6 +627,9 @@ export function Topbar({
             <NavLink to="/browse" className={linkClass}>
               Browse
             </NavLink>
+            <NavLink to="/event" className={linkClass}>
+              Événements
+            </NavLink>
             <NavLink to="/casinos" className={linkClass}>
               CheckTaSlot
             </NavLink>
@@ -635,9 +638,6 @@ export function Topbar({
             </NavLink>
             <NavLink to="/shop" className={linkClass}>
               Shop
-            </NavLink>
-            <NavLink to="/event" className={linkClass}>
-              Événements
             </NavLink>
           </nav>
         )}

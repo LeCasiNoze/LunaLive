@@ -32,6 +32,7 @@ export type ChatMsgLike = {
   dlive?: boolean;
   dliveRestreamFrom?: string | null;
   rumble?: boolean;
+  rumbleLinked?: boolean;
   /** Rôle de l'auteur (attaché par l'API) : viewer | mod | streamer | admin | bot */
   role?: string | null;
 };
@@ -62,6 +63,7 @@ const ROLE_META: Record<string, { icon: string; label: string }> = {
   streamer: { icon: "🎙️", label: "Streamer" },
   admin: { icon: "👑", label: "Admin LunaLive" },
   bot: { icon: "🤖", label: "Bot" },
+  rumble: { icon: "▶", label: "Viewer Rumble" },
 };
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -234,6 +236,7 @@ function ChatMessageBubbleImpl({
   const isDlive = !!(msg as any)?.dlive;
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
   const isRumble = !!(msg as any)?.rumble;
+  const rumbleLinked = !!(msg as any)?.rumbleLinked;
   const isBot = !!(msg as any)?.isBot || msg.username === "LunaBot" ||
     msg.userId === Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
 
@@ -278,7 +281,7 @@ function ChatMessageBubbleImpl({
   // Variante "slim" (aucun badge) : avatar réduit sur la ligne du pseudo,
   // contenu pleine largeur — économise la colonne et de la hauteur.
   const slim = badges.length === 0;
-  const roleKey = isBot ? "bot" : String((msg as any)?.role || "viewer");
+  const roleKey = isBot ? "bot" : isRumble ? "rumble" : String((msg as any)?.role || "viewer");
   const roleMeta = ROLE_META[roleKey] ?? ROLE_META.viewer;
 
   const hatAsset = hatIdNorm && !hatImgErr ? HAT_ASSETS[hatIdNorm] : null;
@@ -322,7 +325,13 @@ function ChatMessageBubbleImpl({
     : isDlive
     ? { borderRadius:14, outline:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }
     : isRumble
-    ? { borderRadius:14, outline:"1px solid rgba(133,224,80,.18)", background:"linear-gradient(135deg,rgba(133,224,80,.06),rgba(133,224,80,.02))" }
+    ? {
+        borderRadius:16,
+        borderLeft:"3px solid rgba(133,224,80,.82)",
+        outline:"1px solid rgba(133,224,80,.24)",
+        background:"linear-gradient(135deg,rgba(18,30,20,.97),rgba(16,11,24,.97))",
+        boxShadow:"0 12px 34px rgba(0,0,0,.28),inset 0 1px 0 rgba(196,255,157,.035)",
+      }
     : {};
 
   return (
@@ -408,7 +417,9 @@ function ChatMessageBubbleImpl({
                       minWidth: 0,
                       ["--uname-color" as any]: isBot
                         ? "rgba(252,165,165,.95)"
-                        : (effectiveUnameColor ?? "var(--chat-name-color)"),
+                        : isRumble && !rumbleLinked
+                          ? "rgba(214,246,194,.97)"
+                          : (effectiveUnameColor ?? "var(--chat-name-color)"),
                       ...(isBot ? { fontWeight:950, letterSpacing:".5px", textTransform:"uppercase" } : null),
                       // moteur : le canvas déborde volontairement du texte
                       // (particules) — l'overflow:hidden du CSS le clipperait
@@ -446,16 +457,16 @@ function ChatMessageBubbleImpl({
                     {/* Pill Rumble */}
                     {isRumble ? (
                       <span style={{
-                        display:"inline-flex", alignItems:"center", gap:3,
+                        display:"inline-flex", alignItems:"center", gap:5,
                         marginLeft:7, padding:"1px 7px",
                         borderRadius:999, fontSize:11, fontWeight:800,
-                        border:"1px solid rgba(133,224,80,.30)",
-                        background:"rgba(133,224,80,.10)",
-                        color:"rgba(180,236,140,.95)",
+                        border:"1px solid rgba(133,224,80,.38)",
+                        background:"rgba(133,224,80,.13)",
+                        color:"rgba(205,246,176,.98)",
                         verticalAlign:"middle",
                       }} title="Message envoyé depuis le chat Rumble">
-                        <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                          <path d="M12 2 L22 12 L12 22 L2 12 Z"/>
+                        <svg width="9" height="10" viewBox="0 0 12 14" fill="currentColor" aria-hidden="true">
+                          <path d="M1 1.4a1 1 0 0 1 1.5-.86l8.7 5.6a1 1 0 0 1 0 1.72l-8.7 5.6A1 1 0 0 1 1 12.6V1.4Z"/>
                         </svg>
                         Rumble
                       </span>
@@ -485,7 +496,13 @@ function ChatMessageBubbleImpl({
 
           {/* Corps du message : dans sa propre bulle (séparation stricte
               meta/message, maquette Stitch) */}
-          <div className="chatBodyBubble" style={{ marginTop: isGrouped ? 0 : undefined }}>
+          <div className="chatBodyBubble" style={{
+            marginTop: isGrouped ? 0 : undefined,
+            ...(isRumble ? {
+              borderColor:"rgba(133,224,80,.10)",
+              background:"linear-gradient(135deg,rgba(133,224,80,.075),rgba(255,255,255,.028))",
+            } : null),
+          }}>
             <div
               className={`chatBodyText ${isEmotesOnly(String(msg.body ?? "")) ? "emotes-only" : ""}`}
               style={{
@@ -514,6 +531,7 @@ function bubblePropsEqual(
   const a = prev.msg as any;
   const b = next.msg as any;
   if (a.id !== b.id || a.body !== b.body || a.deleted !== b.deleted) return false;
+  if (a.rumble !== b.rumble || a.rumbleLinked !== b.rumbleLinked) return false;
   if (prev.isGrouped !== next.isGrouped) return false;
   if (prev.currentUsername !== next.currentUsername) return false;
   if (prev.streamerAppearance !== next.streamerAppearance) return false;
