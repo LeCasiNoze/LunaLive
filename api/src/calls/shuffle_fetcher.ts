@@ -1,6 +1,6 @@
 // api/src/calls/shuffle_fetcher.ts
 import { normText } from "./normalize.js";
-import { loadShuffleImagesIndex, getShuffleImageUrlFromIndex, type ShuffleImagesIndex } from "./shuffle_images.js";
+import { shuffleImageFromNode } from "./shuffle_images.js";
 
 export type ShuffleProviderRow = {
   id: string;
@@ -147,33 +147,25 @@ export async function fetchShuffleProviders(): Promise<ShuffleProviderRow[]> {
     .filter((x: any) => x.id && x.name && x.slug);
 }
 
-// ✅ Requête safe (sans images)
+// L'image est disponible directement dans GraphQL. Elle ne doit pas dépendre de
+// l'index n9assets : quand ce CDN est indisponible, le catalogue doit continuer
+// à se mettre à jour.
 const Q_CACHED_GAMES = `
 query CachedGames($providerSlug: String!, $first: Int!, $skip: Int!) {
   cachedGames(providerSlug: $providerSlug, first: $first, skip: $skip) {
     totalCount
-    nodes { name slug }
+    nodes { name slug image { key } }
   }
 }
 `;
 
-let _imagesIdx: ShuffleImagesIndex | null = null;
-async function imagesIndex(): Promise<ShuffleImagesIndex> {
-  if (_imagesIdx) return _imagesIdx;
-  _imagesIdx = await loadShuffleImagesIndex();
-  return _imagesIdx;
-}
-
 export async function fetchShuffleProviderSlots(
-  providerId: string,
+  _providerId: string,
   providerSlug: string,
   providerNameHint: string
 ): Promise<SlotRow[]> {
-  const pid = String(providerId || "").trim();
   const slug = String(providerSlug || "").trim();
   if (!slug) return [];
-
-  const idx = await imagesIndex();
 
   const first = Math.max(1, Math.min(40, Number(process.env.SHUFFLE_BATCH || 40)));
   let skip = 0;
@@ -202,12 +194,7 @@ export async function fetchShuffleProviderSlots(
       const name = normText(n?.name);
       if (!name) continue;
 
-      const gameSlug = typeof n?.slug === "string" ? n.slug.trim() : "";
-      const imageUrl = getShuffleImageUrlFromIndex(idx, {
-        slug: gameSlug || null,
-        providerId: pid || null,
-        name,
-      });
+      const imageUrl = shuffleImageFromNode(n);
 
       out.push({
         name,
