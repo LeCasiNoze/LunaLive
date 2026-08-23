@@ -9,6 +9,7 @@ export type ChatSettings = {
   dliveUsername: string | null;
   dliveSyncPublic: boolean;
   dliveSyncPopup: boolean;
+  rumbleCommandsEnabled: boolean;
 };
 
 export type ChatSettingsPatch = Partial<ChatSettings>;
@@ -21,6 +22,7 @@ const DEFAULTS: ChatSettings = {
   dliveUsername: null,
   dliveSyncPublic: false,
   dliveSyncPopup: false,
+  rumbleCommandsEnabled: false,
 };
 
 function toBool(v: any): boolean | null {
@@ -48,7 +50,8 @@ export async function getChatSettings(pool: Pool, streamerId: number): Promise<C
        sub_only,
        dlive_username,
        dlive_sync_public,
-       dlive_sync_popup
+       dlive_sync_popup,
+       rumble_commands_enabled
      FROM streamer_chat_settings
      WHERE streamer_id=$1
      LIMIT 1`,
@@ -74,6 +77,7 @@ export async function getChatSettings(pool: Pool, streamerId: number): Promise<C
     dliveUsername: row.dlive_username != null ? String(row.dlive_username) : null,
     dliveSyncPublic: !!row.dlive_sync_public,
     dliveSyncPopup: !!row.dlive_sync_popup,
+    rumbleCommandsEnabled: !!row.rumble_commands_enabled,
   };
 }
 
@@ -89,6 +93,7 @@ export async function patchChatSettings(
 
   const dliveSyncPublic = patch.dliveSyncPublic != null ? toBool(patch.dliveSyncPublic) : null;
   const dliveSyncPopup = patch.dliveSyncPopup != null ? toBool(patch.dliveSyncPopup) : null;
+  const rumbleCommandsEnabled = patch.rumbleCommandsEnabled != null ? toBool(patch.rumbleCommandsEnabled) : null;
 
   // ⚠️ distinction importante :
   // - undefined => ne change pas
@@ -101,7 +106,8 @@ export async function patchChatSettings(
     followOnly == null &&
     subOnly == null &&
     dliveSyncPublic == null &&
-    dliveSyncPopup == null;
+    dliveSyncPopup == null &&
+    rumbleCommandsEnabled == null;
 
   const noUserChange = !dliveUsernameProvided;
 
@@ -124,13 +130,15 @@ export async function patchChatSettings(
        sub_only          = COALESCE($4, sub_only),
        dlive_sync_public = COALESCE($5, dlive_sync_public),
        dlive_sync_popup  = COALESCE($6, dlive_sync_popup),
-       dlive_username    = CASE WHEN $7::boolean THEN $8::text ELSE dlive_username END,
+       rumble_commands_enabled = COALESCE($7, rumble_commands_enabled),
+       dlive_username    = CASE WHEN $8::boolean THEN $9::text ELSE dlive_username END,
        updated_at = now(),
-       updated_by_user_id = $9
+       updated_by_user_id = $10
      WHERE streamer_id=$1
      RETURNING
        allow_links, follow_only, sub_only,
-       dlive_username, dlive_sync_public, dlive_sync_popup`,
+       dlive_username, dlive_sync_public, dlive_sync_popup,
+       rumble_commands_enabled`,
     [
       streamerId,
       allowLinks,
@@ -138,9 +146,10 @@ export async function patchChatSettings(
       subOnly,
       dliveSyncPublic,
       dliveSyncPopup,
-      dliveUsernameProvided,          // $7
-      dliveUsername ?? null,          // $8
-      actorUserId,                    // $9
+      rumbleCommandsEnabled,
+      dliveUsernameProvided,          // $8
+      dliveUsername ?? null,          // $9
+      actorUserId,                    // $10
     ]
   );
 
@@ -153,6 +162,7 @@ export async function patchChatSettings(
     dliveUsername: row.dlive_username != null ? String(row.dlive_username) : null,
     dliveSyncPublic: !!row.dlive_sync_public,
     dliveSyncPopup: !!row.dlive_sync_popup,
+    rumbleCommandsEnabled: !!row.rumble_commands_enabled,
   };
 }
 
@@ -188,6 +198,9 @@ export function formatSettingsChangeMessage(opts: {
   }
   if ((opts.changed as any).dliveSyncPopup != null) {
     parts.push((opts.changed as any).dliveSyncPopup ? "a activé la sync DLive (popup)" : "a désactivé la sync DLive (popup)");
+  }
+  if ((opts.changed as any).rumbleCommandsEnabled != null) {
+    parts.push((opts.changed as any).rumbleCommandsEnabled ? "a activé les commandes Rumble" : "a désactivé les commandes Rumble");
   }
   if (Object.prototype.hasOwnProperty.call(opts.changed, "dliveUsername")) {
     const v = (opts.changed as any).dliveUsername;
