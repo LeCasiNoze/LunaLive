@@ -1,6 +1,17 @@
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
+import {
+  Ban,
+  Clock3,
+  Gift,
+  Radio,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+  Volume2,
+  X,
+} from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
@@ -962,8 +973,38 @@ function ChatSettingsModal(props: {
   );
 }
 
+const USER_MENU_STYLES = `
+.chat-user-menu-backdrop { position:fixed; inset:0; z-index:100005; display:grid; place-items:center; padding:16px; background:rgba(2,1,7,.74); backdrop-filter:blur(8px); }
+.chat-user-menu { width:min(390px,100%); max-height:min(680px,calc(100dvh - 32px)); display:flex; flex-direction:column; overflow:hidden; border:1px solid rgba(196,181,253,.18); border-radius:20px; background:linear-gradient(155deg,rgba(22,16,38,.99),rgba(8,6,16,.99)); box-shadow:0 30px 100px rgba(0,0,0,.7); color:#f4f0fc; font-family:'Manrope',sans-serif; }
+.chat-user-menu__head { display:flex; align-items:center; gap:11px; padding:15px; border-bottom:1px solid rgba(167,139,250,.11); }
+.chat-user-menu__avatar { width:42px; height:42px; display:grid; flex:0 0 auto; place-items:center; border:1px solid rgba(167,139,250,.25); border-radius:13px; background:linear-gradient(145deg,rgba(139,92,246,.3),rgba(59,130,246,.12)); color:#eee8ff; font-size:12px; font-weight:800; text-transform:uppercase; }
+.chat-user-menu__identity { min-width:0; flex:1; }
+.chat-user-menu__name { overflow:hidden; color:#f5f2ff; font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.chat-user-menu__source { display:flex; align-items:center; gap:5px; margin-top:4px; color:#857b96; font-size:8px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+.chat-user-menu__close { width:34px; height:34px; display:grid; place-items:center; border:1px solid rgba(167,139,250,.14); border-radius:10px; background:rgba(255,255,255,.035); color:#aaa1b9; cursor:pointer; }
+.chat-user-menu__body { min-height:0; overflow:auto; padding:13px; }
+.chat-user-menu__section + .chat-user-menu__section { margin-top:14px; padding-top:14px; border-top:1px solid rgba(167,139,250,.1); }
+.chat-user-menu__label { margin-bottom:8px; color:#746b82; font-size:8px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.chat-user-menu__grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.chat-user-action { min-height:42px; display:flex; align-items:center; gap:9px; padding:9px 11px; border:1px solid rgba(167,139,250,.13); border-radius:11px; background:rgba(255,255,255,.028); color:#cdc6d8; font:750 9px 'Manrope',sans-serif; text-align:left; cursor:pointer; }
+.chat-user-action:hover { border-color:rgba(167,139,250,.3); background:rgba(139,92,246,.09); color:#f2edfa; }
+.chat-user-action svg { flex:0 0 auto; color:#9989d9; }
+.chat-user-action.accent { border-color:rgba(139,92,246,.28); background:rgba(124,58,237,.12); }
+.chat-user-action.danger { border-color:rgba(248,113,113,.16); color:#f3a2ad; }
+.chat-user-action.danger svg { color:#ef8291; }
+.chat-user-action:disabled { opacity:.45; cursor:not-allowed; }
+.chat-user-status { display:flex; align-items:center; gap:7px; margin-top:9px; color:#7f758e; font-size:8px; font-weight:700; }
+.chat-timeouts { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:6px; }
+.chat-timeout { min-height:32px; border:1px solid rgba(167,139,250,.13); border-radius:9px; background:rgba(139,92,246,.06); color:#bdb5ca; font:800 8px 'Manrope',sans-serif; cursor:pointer; }
+.chat-timeout:hover { border-color:rgba(167,139,250,.32); color:#f2ecfa; }
+@media(max-width:560px){
+  .chat-user-menu-backdrop { align-items:end; padding:0; }
+  .chat-user-menu { width:100%; max-height:min(82dvh,680px); border-right:0; border-bottom:0; border-left:0; border-radius:20px 20px 0 0; padding-bottom:env(safe-area-inset-bottom); }
+}
+`;
+
 /* =========================================================
-   Context menu (unchanged behavior, isolated UI)
+   User actions
    ========================================================= */
 function UserMenu(props: {
   menu: {
@@ -1001,302 +1042,102 @@ function UserMenu(props: {
   doBan: (msg: ChatMsg) => void;
   doSetMod: (msg: ChatMsg, enabled: boolean) => void;
 }) {
+  React.useEffect(() => {
+    if (!props.menu.open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") props.closeMenu();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [props.menu.open, props.closeMenu]);
+
   if (!props.menu.open || !props.menu.msg) return null;
 
   const msg = props.menu.msg;
   const showGoChannel = isStreamerSender(msg, props.slug);
-
   const targetIsSelf = props.myId != null && Number(msg.userId) === Number(props.myId);
   const targetIsTimedOut =
     !!props.menu.targetTimeoutUntil && new Date(props.menu.targetTimeoutUntil).getTime() > Date.now();
+  const hasModeration = !!(
+    props.perms?.canManageMods ||
+    props.perms?.canDelete ||
+    props.perms?.canTimeout ||
+    props.perms?.canBan
+  );
+  const initials = String(msg.username || "?").trim().slice(0, 2);
 
-  // ⚠️ portal obligatoire : la sidebar chat (.panel) a un backdrop-filter qui
-  // fait d'elle le containing block des descendants position:fixed — le menu
-  // (coordonnées viewport) sortirait du panel et serait clippé par overflow:hidden.
   return createPortal(
-    <div
-      style={{
-        position: "fixed",
-        left: props.menu.x,
-        top: props.menu.y,
-        zIndex: 99999,
-        minWidth: 260,
-        maxWidth: 320,
-        borderRadius: 16,
-        background: "rgba(18,14,26,0.98)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        boxShadow: "0 18px 70px rgba(0,0,0,0.60)",
-        overflow: "hidden",
-        transform: "translate(6px, 6px)",
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* Header draggable */}
-      <div
-        onMouseDown={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          const startX = e.clientX;
-          const startY = e.clientY;
-          const startLeft = props.menu.x;
-          const startTop = props.menu.y;
-
-          const clamp = (n: number, a: number, b: number) => Math.max(a, Math.min(b, n));
-
-          const onMove = (ev: MouseEvent) => {
-            const dx = ev.clientX - startX;
-            const dy = ev.clientY - startY;
-
-            const nextX = startLeft + dx;
-            const nextY = startTop + dy;
-
-            const w = 320;
-            const h = 420;
-            const maxX = window.innerWidth - 20;
-            const maxY = window.innerHeight - 20;
-
-            props.setMenu((m: any) => ({
-              ...m,
-              x: clamp(nextX, 8, maxX - w),
-              y: clamp(nextY, 8, maxY - h),
-            }));
-          };
-
-          const onUp = () => {
-            window.removeEventListener("mousemove", onMove);
-            window.removeEventListener("mouseup", onUp);
-          };
-
-          window.addEventListener("mousemove", onMove);
-          window.addEventListener("mouseup", onUp);
-        }}
-        style={{
-          padding: "10px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          background: "linear-gradient(135deg, rgba(124,77,255,0.22), rgba(80,200,255,0.10))",
-          borderBottom: "1px solid rgba(255,255,255,0.10)",
-          cursor: "grab",
-          userSelect: "none",
-        }}
-        title="Glisse pour déplacer"
-      >
-        <div style={{ minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontWeight: 950, fontSize: 13, color: "rgba(255,255,255,0.95)", lineHeight: 1.1 }}>
-            {msg.username}
+    <div className="chat-user-menu-backdrop" onClick={props.closeMenu} role="presentation">
+      <style>{USER_MENU_STYLES}</style>
+      <section className="chat-user-menu" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Actions pour ${msg.username}`}>
+        <header className="chat-user-menu__head">
+          <div className="chat-user-menu__avatar">{initials || <UserRound size={17} />}</div>
+          <div className="chat-user-menu__identity">
+            <div className="chat-user-menu__name">{msg.username}</div>
+            <div className="chat-user-menu__source"><Radio size={10} /> {msg.rumble ? "Message Rumble" : "Utilisateur LunaLive"}</div>
           </div>
-          <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 800, marginTop: 2 }}>Actions utilisateur</div>
-        </div>
+          <button type="button" className="chat-user-menu__close" onClick={props.closeMenu} aria-label="Fermer"><X size={16} /></button>
+        </header>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            props.closeMenu();
-          }}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
-            fontWeight: 950,
-            cursor: "pointer",
-          }}
-          aria-label="Fermer"
-          title="Fermer"
-        >
-          ✕
-        </button>
-      </div>
-
-      <div style={{ padding: 12 }}>
-        {showGoChannel ? (
-          <button
-            onClick={() => props.navigateToChannel(props.slug)}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(80,200,255,0.10)",
-              color: "white",
-              textAlign: "left",
-              fontWeight: 950,
-              cursor: "pointer",
-              marginBottom: 10,
-            }}
-          >
-            📺 Voir la chaîne
-          </button>
-        ) : null}
-
-
-        {!targetIsSelf && props.menu.isTargetSub !== true ? (
-          <button
-            onClick={() => props.doGiftSub(msg)}
-            disabled={!!props.menu.giftSubLoading}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background: "rgba(80,255,160,0.12)",
-              color: "white",
-              textAlign: "left",
-              fontWeight: 950,
-              cursor: "pointer",
-              marginBottom: 10,
-              opacity: props.menu.giftSubLoading ? 0.75 : 1,
-            }}
-            title="Offrir un sub"
-          >
-            {props.menu.giftSubLoading ? "🎁 Offre en cours…" : "🎁 Offrir un sub"}
-          </button>
-        ) : null}
-
-        {!targetIsSelf && props.isAuthed && props.menu.subLoading ? (
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 850, marginBottom: 10 }}>Vérification sub…</div>
-        ) : null}
-
-        {!targetIsSelf && props.isAuthed && props.menu.isTargetSub === true ? (
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 850, marginBottom: 10 }}>Déjà abonné ✅</div>
-        ) : null}
-
-        {(props.perms?.canManageMods || props.perms?.canDelete || props.perms?.canTimeout || props.perms?.canBan) ? (
-          <div
-            style={{
-              marginTop: 6,
-              marginBottom: 10,
-              paddingTop: 10,
-              borderTop: "1px solid rgba(255,255,255,0.10)",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, marginBottom: 8 }}>Modération</div>
-
-            {props.perms?.canManageMods ? (
-              <button
-                onClick={() => props.doSetMod(msg, !(props.menu.isTargetMod === true))}
-                disabled={!!props.menu.modLoading || props.menu.isTargetMod == null}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(80,200,255,0.12)",
-                  color: "white",
-                  textAlign: "left",
-                  fontWeight: 950,
-                  cursor: "pointer",
-                  marginBottom: 10,
-                  opacity: props.menu.isTargetMod == null ? 0.7 : 1,
-                }}
-              >
-                {props.menu.modLoading
-                  ? "Chargement…"
-                  : props.menu.isTargetMod
-                  ? "🛡️ Retirer des modérateurs"
-                  : "🛡️ Mettre modérateur"}
-              </button>
-            ) : null}
-
-            {props.perms?.canDelete ? (
-              <button
-                onClick={() => props.doDelete(msg)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,120,150,0.10)",
-                  color: "white",
-                  textAlign: "left",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  marginBottom: 10,
-                }}
-              >
-                🗑️ Supprimer le message
-              </button>
-            ) : null}
-
-            {props.perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
-              <button
-                onClick={() => props.doUnmute(msg)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(124,77,255,0.14)",
-                  color: "white",
-                  textAlign: "left",
-                  fontWeight: 950,
-                  cursor: "pointer",
-                  marginBottom: 10,
-                }}
-              >
-                🔊 Démute (untimeout)
-              </button>
-            ) : null}
-
-            {props.perms?.canBan && !targetIsSelf ? (
-              <button
-                onClick={() => props.doBan(msg)}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,60,90,0.20)",
-                  color: "white",
-                  textAlign: "left",
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                  marginBottom: 10,
-                }}
-              >
-                ⛔ Bannir
-              </button>
-            ) : null}
-
-            {props.perms?.canTimeout && !targetIsSelf ? (
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, marginBottom: 8 }}>Timeout</div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {[
-                    { label: "10s", sec: 10 },
-                    { label: "1m", sec: 60 },
-                    { label: "10m", sec: 600 },
-                    { label: "1h", sec: 3600 },
-                    { label: "24h", sec: 86400 },
-                  ].map((x) => (
-                    <button
-                      key={x.sec}
-                      onClick={() => props.doTimeout(msg, x.sec)}
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(124,77,255,0.14)",
-                        color: "white",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {x.label}
-                    </button>
-                  ))}
-                </div>
+        <div className="chat-user-menu__body">
+          {(showGoChannel || (!targetIsSelf && props.menu.isTargetSub !== true)) ? (
+            <div className="chat-user-menu__section">
+              <div className="chat-user-menu__label">Actions</div>
+              <div className="chat-user-menu__grid">
+                {showGoChannel ? (
+                  <button type="button" className="chat-user-action accent" onClick={() => props.navigateToChannel(props.slug)}><Radio size={15} /> Voir la chaîne</button>
+                ) : null}
+                {!targetIsSelf && props.menu.isTargetSub !== true ? (
+                  <button type="button" className="chat-user-action" onClick={() => props.doGiftSub(msg)} disabled={!!props.menu.giftSubLoading}>
+                    <Gift size={15} /> {props.menu.giftSubLoading ? "Envoi…" : "Offrir un sub"}
+                  </button>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+              {!targetIsSelf && props.isAuthed && props.menu.subLoading ? <div className="chat-user-status">Vérification de l'abonnement…</div> : null}
+              {!targetIsSelf && props.isAuthed && props.menu.isTargetSub === true ? <div className="chat-user-status"><ShieldCheck size={11} /> Déjà abonné à la chaîne</div> : null}
+            </div>
+          ) : null}
+
+          {hasModeration ? (
+            <div className="chat-user-menu__section">
+              <div className="chat-user-menu__label">Modération</div>
+              <div className="chat-user-menu__grid">
+                {props.perms?.canManageMods ? (
+                  <button type="button" className="chat-user-action" onClick={() => props.doSetMod(msg, !(props.menu.isTargetMod === true))} disabled={!!props.menu.modLoading || props.menu.isTargetMod == null}>
+                    <ShieldCheck size={15} /> {props.menu.modLoading ? "Chargement…" : props.menu.isTargetMod ? "Retirer modérateur" : "Mettre modérateur"}
+                  </button>
+                ) : null}
+                {props.perms?.canDelete ? (
+                  <button type="button" className="chat-user-action danger" onClick={() => props.doDelete(msg)}><Trash2 size={15} /> Supprimer le message</button>
+                ) : null}
+                {props.perms?.canTimeout && !targetIsSelf && targetIsTimedOut ? (
+                  <button type="button" className="chat-user-action" onClick={() => props.doUnmute(msg)}><Volume2 size={15} /> Retirer le timeout</button>
+                ) : null}
+                {props.perms?.canBan && !targetIsSelf ? (
+                  <button type="button" className="chat-user-action danger" onClick={() => props.doBan(msg)}><Ban size={15} /> Bannir du chat</button>
+                ) : null}
+              </div>
+
+              {props.perms?.canTimeout && !targetIsSelf ? (
+                <div style={{ marginTop: 12 }}>
+                  <div className="chat-user-menu__label"><Clock3 size={10} style={{ verticalAlign: -2, marginRight: 5 }} /> Durée du timeout</div>
+                  <div className="chat-timeouts">
+                    {[
+                      { label: "10 s", sec: 10 },
+                      { label: "1 min", sec: 60 },
+                      { label: "10 min", sec: 600 },
+                      { label: "1 h", sec: 3600 },
+                      { label: "24 h", sec: 86400 },
+                    ].map((item) => (
+                      <button type="button" className="chat-timeout" key={item.sec} onClick={() => props.doTimeout(msg, item.sec)}>{item.label}</button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </section>
     </div>,
     document.body
   );

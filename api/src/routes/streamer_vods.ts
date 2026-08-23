@@ -1,8 +1,64 @@
 import { Router } from "express";
 import { pool } from "../db.js";
 import { a } from "../utils/async.js";
+import { resolveRumbleDvrPlaybackUrl, resolveRumbleVodFromVid } from "../rumble.js";
 
 export const streamerVodsRouter = Router();
+
+streamerVodsRouter.get(
+  "/streamers/:slug/vods/:permlink/playback",
+  a(async (req, res) => {
+    const slug = String(req.params.slug || "").trim();
+    const permlink = String(req.params.permlink || "").trim();
+    const videoId = permlink.replace(/^rumble_/i, "").replace(/^v/i, "");
+    if (!slug || !/^[a-z0-9]{6,}$/i.test(videoId)) {
+      return res.status(400).json({ ok: false, error: "bad_vod" });
+    }
+
+    const result = await pool.query(
+      `SELECT rv.vod_mp4_url, rv.vod_hls_url
+       FROM streamers s
+       JOIN rumble_vods rv ON rv.streamer_id = s.id
+       WHERE s.slug = $1 AND (rv.video_id = $2 OR rv.video_id = $3)
+       LIMIT 1`,
+      [slug, videoId, `v${videoId}`]
+    );
+    const vod = result.rows[0];
+    if (!vod) return res.status(404).json({ ok: false, error: "vod_not_found" });
+
+    if (vod.vod_mp4_url) {
+      return res.json({ ok: true, kind: "mp4", url: String(vod.vod_mp4_url) });
+    }
+    if (vod.vod_hls_url && !String(vod.vod_hls_url).includes("/live-hls-dvr/")) {
+      return res.json({ ok: true, kind: "hls", url: String(vod.vod_hls_url) });
+    }
+
+    const permanent = await resolveRumbleVodFromVid(`v${videoId}`).catch(() => null);
+    if (permanent?.mp4Url || permanent?.hlsUrl) {
+      await pool.query(
+        `UPDATE rumble_vods
+         SET vod_mp4_url = COALESCE($3, vod_mp4_url),
+             vod_hls_url = COALESCE($4, vod_hls_url),
+             vod_resolved_at = NOW()
+         WHERE streamer_id = (SELECT id FROM streamers WHERE slug = $1 LIMIT 1)
+           AND (video_id = $2 OR video_id = $5)`,
+        [slug, videoId, permanent.mp4Url, permanent.hlsUrl, `v${videoId}`]
+      ).catch(() => {});
+      return res.json({
+        ok: true,
+        kind: permanent.mp4Url ? "mp4" : "hls",
+        url: permanent.mp4Url || permanent.hlsUrl,
+      });
+    }
+
+    const resolvedUrl = await resolveRumbleDvrPlaybackUrl(videoId);
+    if (!resolvedUrl) {
+      return res.status(502).json({ ok: false, error: "vod_source_unavailable" });
+    }
+    res.setHeader("Cache-Control", "public, max-age=60");
+    return res.json({ ok: true, kind: "hls", url: resolvedUrl });
+  })
+);
 
 type VodOut = {
   permlink: string;

@@ -5,6 +5,18 @@
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import {
+  Bell,
+  CalendarDays,
+  Info,
+  Pencil,
+  Plus,
+  Repeat2,
+  Save,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
   getStreamerAgenda,
   putStreamerAgenda,
   getStreamerAgendaMySubs,
@@ -53,7 +65,7 @@ function emptyRule(): AgendaRule {
 
 /* ─── CSS ────────────────────────────────────────────────────── */
 const AGENDA_STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
 @keyframes agenda-fade-in {
   from { opacity:0; transform:translateY(8px); }
@@ -76,6 +88,30 @@ const AGENDA_STYLES = `
   font-weight:800; font-size:18px; letter-spacing:-.3px;
   background:linear-gradient(90deg,#c4b5fd 0%,#a78bfa 50%,#5b8ef8 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+.agenda-subtitle {
+  margin-top:4px;
+  font-size:10px; font-weight:650;
+  color:rgba(167,139,250,.52);
+}
+
+.agenda-layout {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 220px;
+  gap:14px;
+  align-items:start;
+}
+
+.agenda-days {
+  min-width:0;
+  display:flex; flex-direction:column; gap:10px;
+}
+
+.agenda-legend-wrap {
+  min-width:0;
+  position:sticky;
+  top:90px;
 }
 
 /* ── Calendrier ── */
@@ -306,6 +342,64 @@ const AGENDA_STYLES = `
   color:rgba(252,165,165,.92);
   margin-bottom:12px;
 }
+
+/* Clean stream-page treatment */
+.agenda-root { color:#f4f0fc; font-family:'Manrope',sans-serif; }
+.agenda-root :is(button,input,select,textarea) { font-family:'Manrope',sans-serif !important; font-variant-numeric:tabular-nums; }
+.agenda-header { align-items:flex-end; margin-bottom:18px; padding:0; border:0; }
+.agenda-kicker { display:flex; align-items:center; gap:7px; color:#9388ab; font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.agenda-title { display:block; margin-top:5px; color:#f5f2ff; background:none; font-family:'Manrope',sans-serif; font-size:20px; font-weight:800; letter-spacing:-.045em; }
+.agenda-subtitle { margin-top:5px; color:#847b96; font-size:10px; font-weight:600; }
+.agenda-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.agenda-action,.agenda-subscribe { min-height:36px; display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 12px; border:1px solid rgba(167,139,250,.16); border-radius:11px; background:rgba(255,255,255,.035); color:#c9c1d7; font:750 10px 'Manrope',sans-serif; cursor:pointer; }
+.agenda-action:hover,.agenda-subscribe:hover { border-color:rgba(167,139,250,.32); background:rgba(139,92,246,.1); color:#f4efff; }
+.agenda-action.primary,.agenda-subscribe.active { border-color:rgba(139,92,246,.38); background:#7c3aed; color:white; }
+.agenda-action.danger { color:#f7a7b2; }
+.agenda-action:disabled,.agenda-subscribe:disabled { opacity:.45; cursor:not-allowed; }
+.agenda-state { min-height:150px; display:grid; place-items:center; padding:28px; border:1px dashed rgba(167,139,250,.14); border-radius:17px; color:#81788f; font-size:11px; font-weight:650; text-align:center; }
+.agenda-error { border-color:rgba(248,113,113,.24); background:rgba(248,113,113,.06); color:#f4a4ad; font:650 10px 'Manrope',sans-serif; }
+.agenda-layout { grid-template-columns:minmax(0,1fr) 210px; gap:14px; }
+.agenda-days { gap:8px; }
+.agenda-notif-hint { display:flex; align-items:center; gap:8px; margin-bottom:6px; border-color:rgba(167,139,250,.12); border-radius:13px; background:rgba(139,92,246,.055); color:#9389a5; font:650 10px 'Manrope',sans-serif; }
+.agenda-day-card { padding:13px 14px; border-color:rgba(167,139,250,.11); border-radius:15px; background:rgba(255,255,255,.022); }
+.agenda-day-card.today { border-color:rgba(167,139,250,.3); background:rgba(139,92,246,.07); }
+.agenda-day-head { align-items:center; margin-bottom:10px; }
+.agenda-day-name { color:#dcd6e8; font:800 11px 'Manrope',sans-serif; font-variant-numeric:tabular-nums; }
+.agenda-day-name.today { color:#f1ebff; background:none; }
+.agenda-day-count { color:#71687e; font:700 9px 'Manrope',sans-serif; }
+.agenda-today-badge { border-color:rgba(167,139,250,.25); background:rgba(139,92,246,.12); color:#c7b8f5; font:800 8px 'Manrope',sans-serif; }
+.agenda-slot { display:grid; grid-template-columns:82px minmax(0,1fr) auto; gap:12px; padding:10px 11px; border-color:rgba(167,139,250,.09); border-radius:11px; background:rgba(5,3,11,.34); }
+.agenda-slot:hover { border-color:rgba(167,139,250,.18); background:rgba(139,92,246,.05); }
+.agenda-slot-time { min-width:0; color:#eee9f6; font:800 10px 'Manrope',sans-serif; font-variant-numeric:tabular-nums; }
+.agenda-slot-title { color:#ddd7e7; font:750 10px 'Manrope',sans-serif; }
+.agenda-slot-icon { display:grid; place-items:center; color:#9c8be2; }
+.agenda-slot-kind { margin-top:2px; color:#746b82; font:650 8px 'Manrope',sans-serif; }
+.agenda-slot-empty { padding:8px 0 2px; color:#6d6479; font:600 9px 'Manrope',sans-serif; }
+.agenda-legend-wrap { top:82px; }
+.agenda-legend { border-color:rgba(167,139,250,.11); border-radius:15px; background:rgba(255,255,255,.022); }
+.agenda-legend-title { margin-bottom:12px; color:#eee9f6; background:none; font:800 11px 'Manrope',sans-serif; }
+.agenda-legend-label { color:#746b82; font:800 8px 'Manrope',sans-serif; }
+.agenda-legend-name { color:#c9c2d4; font:700 9px 'Manrope',sans-serif; }
+.agenda-legend-dot { width:9px; height:9px; border-radius:3px; }
+.agenda-edit-card { border-color:rgba(167,139,250,.12); background:rgba(255,255,255,.02); }
+.agenda-edit-hint { display:flex; align-items:center; gap:7px; border-color:rgba(167,139,250,.11); background:rgba(139,92,246,.045); color:#81778f; font:650 9px 'Manrope',sans-serif; }
+.agenda-rule-card { border-color:rgba(167,139,250,.12); background:rgba(5,3,11,.3); }
+.agenda-input { border-color:rgba(167,139,250,.16); background:rgba(5,3,11,.42); color:#eee9f6; font:650 10px 'Manrope',sans-serif; }
+.agenda-color-btn { border-color:rgba(167,139,250,.12); background:rgba(255,255,255,.025); color:#a9a0b6; font:700 9px 'Manrope',sans-serif; }
+.agenda-edit-footer { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.agenda-auth-hint { color:#f4a4ad; font-size:9px; font-weight:650; }
+
+@media (max-width:700px) {
+  .agenda-header { align-items:flex-start; margin-bottom:14px; }
+  .agenda-layout { grid-template-columns:1fr; }
+  .agenda-legend-wrap { position:static; }
+  .agenda-day-card { padding:12px; }
+  .agenda-slot { display:grid; grid-template-columns:1fr auto; gap:8px; }
+  .agenda-slot-time { min-width:0; grid-column:1 / -1; font-size:12px; }
+  .agenda-slot-info { min-width:0; }
+  .agenda-slot button { align-self:center; }
+  .agenda-action-label { display:none; }
+}
 `;
 
 /* ─── Composant ──────────────────────────────────────────────── */
@@ -451,16 +545,20 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
 
       {/* Header */}
       <div className="agenda-header">
-        <span className="agenda-title">Agenda — 7 jours</span>
+        <div>
+          <div className="agenda-kicker"><CalendarDays size={13} /> Programmation</div>
+          <span className="agenda-title">Les 7 prochains jours</span>
+          <div className="agenda-subtitle">Prochains directs et rappels de la chaîne</div>
+        </div>
         {canEdit ? (
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <div className="agenda-actions">
             {!edit ? (
-              <button type="button" className="btnGhostSmall" onClick={() => setEdit(true)}>✏️ Modifier</button>
+              <button type="button" className="agenda-action" onClick={() => setEdit(true)}><Pencil size={13} /><span className="agenda-action-label">Modifier</span></button>
             ) : (
               <>
-                <button type="button" className="btnGhostSmall" disabled={saving} onClick={() => { setEdit(false); load(); }}>Annuler</button>
-                <button type="button" className="btnPrimarySmall" disabled={saving || !token} onClick={save}>
-                  {saving ? "⏳ Enregistrement…" : "✓ Enregistrer"}
+                <button type="button" className="agenda-action" disabled={saving} onClick={() => { setEdit(false); load(); }}><X size={13} /><span className="agenda-action-label">Annuler</span></button>
+                <button type="button" className="agenda-action primary" disabled={saving || !token} onClick={save}>
+                  <Save size={13} /> {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </>
             )}
@@ -469,23 +567,23 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
       </div>
 
       {/* Error */}
-      {error ? <div className="agenda-error">⚠️ {error}</div> : null}
+      {error ? <div className="agenda-error" role="alert">{error}</div> : null}
 
       {/* Loading */}
       {loading ? (
-        <div style={{ fontSize:13, color:"rgba(196,181,253,.65)", fontFamily:"'Syne',system-ui,sans-serif" }}>⏳ Chargement…</div>
+        <div className="agenda-state">Chargement de l'agenda…</div>
       ) : null}
 
       {/* ── Vue calendrier ── */}
       {!loading && !edit ? (
-        <div style={{ display:"flex", gap:14, flexWrap:"wrap" }}>
+        <div className="agenda-layout">
 
           {/* Colonne principale */}
-          <div style={{ flex:1, minWidth:300, display:"flex", flexDirection:"column", gap:10 }}>
+          <div className="agenda-days">
 
             {!token ? (
               <div className="agenda-notif-hint">
-                🔔 Connecte-toi pour t'inscrire et recevoir une notif <strong>10 minutes avant</strong>.
+                <Bell size={14} /> Connecte-toi pour t'inscrire et recevoir une notification <strong>10 minutes avant</strong>.
               </div>
             ) : null}
 
@@ -520,7 +618,7 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
                             <div className="agenda-slot-time">{r.startTime}–{r.endTime}</div>
                             <div className="agenda-slot-info">
                               <div className="agenda-slot-title">
-                                <span>{r._special ? "⭐" : "🟣"}</span>
+                                <span className="agenda-slot-icon">{r._special ? <Star size={11} /> : <Repeat2 size={11} />}</span>
                                 <span>{r.title}</span>
                               </div>
                               <div className="agenda-slot-kind">
@@ -529,12 +627,12 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
                             </div>
                             {token ? (
                               <button type="button"
-                                className={isSub ? "btnPrimarySmall" : "btnGhostSmall"}
+                                className={`agenda-subscribe${isSub ? " active" : ""}`}
                                 disabled={!canSub || subsLoading}
                                 onClick={() => toggleSub(rid)}
                                 title="Notif 10 min avant"
-                                style={{ whiteSpace:"nowrap", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800, flexShrink:0 }}>
-                                {isSub ? "✓ Inscrit" : "S'inscrire"}
+                                style={{ whiteSpace:"nowrap", flexShrink:0 }}>
+                                <Bell size={11} /> {isSub ? "Inscrit" : "S'inscrire"}
                               </button>
                             ) : null}
                           </div>
@@ -551,7 +649,7 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
 
           {/* Légende */}
           {(legend.regular.length || legend.event.length) ? (
-            <div style={{ width:220, flexShrink:0 }}>
+            <div className="agenda-legend-wrap">
               <div className="agenda-legend">
                 <div className="agenda-legend-title">Légende</div>
                 {legend.regular.length ? (
@@ -586,7 +684,7 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
       {!loading && edit ? (
         <div className="agenda-edit-card">
           <div className="agenda-edit-hint">
-            💡 Règles régulières (hebdo) + événements (date précise). Couleurs : palette prédéfinie uniquement.
+            <Info size={13} /> Ajoute des rendez-vous hebdomadaires ou des événements ponctuels avec une date précise.
           </div>
 
           <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -608,9 +706,9 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
                   <span style={{ color:"rgba(167,139,250,.55)", fontWeight:700, fontSize:13 }}>→</span>
                   <input type="time" className="agenda-input" value={String(r.endTime ?? "00:00")}
                     onChange={e => updateRule(i, { endTime: e.target.value })} style={{ fontWeight:800 }} />
-                  <button type="button" className="btnGhostSmall" onClick={() => removeRule(i)}
-                    style={{ marginLeft:"auto", color:"rgba(252,165,165,.85)", flexShrink:0 }}>
-                    ✕ Supprimer
+                  <button type="button" className="agenda-action danger" onClick={() => removeRule(i)}
+                    style={{ marginLeft:"auto", flexShrink:0 }}>
+                    <Trash2 size={13} /> Supprimer
                   </button>
                 </div>
 
@@ -658,14 +756,14 @@ export function AgendaTab({ slug, token, canEdit }: { slug: string; token: strin
             ))}
           </div>
 
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center", marginTop:14 }}>
-            <button type="button" className="btnGhostSmall"
+          <div className="agenda-edit-footer">
+            <button type="button" className="agenda-action"
               onClick={() => setRules(p => [...p, emptyRule()])}>
-              + Ajouter une règle
+              <Plus size={13} /> Ajouter une règle
             </button>
             {!token ? (
-              <div style={{ fontSize:11, color:"rgba(252,165,165,.70)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:600 }}>
-                ⚠️ Connecte-toi pour enregistrer
+              <div className="agenda-auth-hint">
+                Connecte-toi pour enregistrer.
               </div>
             ) : null}
           </div>

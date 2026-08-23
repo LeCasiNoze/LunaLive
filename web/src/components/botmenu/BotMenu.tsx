@@ -1,5 +1,6 @@
 // web/src/components/botmenu/BotMenu.tsx
 import * as React from "react";
+import { CloudRain, Crosshair, Dices, GripHorizontal, RotateCw, Sparkles, X } from "lucide-react";
 import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
 import { WheelTab } from "./WheelTab";
@@ -79,10 +80,10 @@ export function BotMenu({
       style={{
         width: "100%",
         maxWidth: variant === "dock" ? panelW : 600,
-        borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(18,14,26,0.98)",
-        boxShadow: "0 20px 80px rgba(0,0,0,0.55)",
+        borderRadius: 24,
+        border: "1px solid rgba(196,181,253,0.20)",
+        background: "linear-gradient(155deg, rgba(24,17,43,.99), rgba(10,7,21,.99) 68%)",
+        boxShadow: "0 32px 100px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,.035)",
         overflow: "hidden",
         // le contenu long SCROLLE dans le panel (header/tabs restent
         // visibles → le ✕ est toujours accessible) — fix retour Lucas
@@ -136,38 +137,45 @@ export function BotMenu({
         }}
         style={{
           touchAction: "none",
-          padding: "8px 12px",
+          minHeight: 58,
+          padding: "10px 12px 10px 15px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          borderBottom: "1px solid rgba(196,181,253,0.11)",
           cursor: variant === "dock" ? "grab" : "default",
           userSelect: "none",
-          background: "linear-gradient(135deg, rgba(124,77,255,0.22), rgba(80,200,255,0.10))",
+          background: "linear-gradient(135deg, rgba(139,92,246,0.17), rgba(91,141,239,0.06))",
           flexShrink: 0,
         }}
         title={variant === "dock" ? "Glisse pour déplacer" : undefined}
       >
-        <div style={{ fontWeight: 950, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ opacity: 0.55, fontSize: 12 }}>⠿</span> 🤖 LunaBot
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+          <GripHorizontal size={16} style={{ color: "#8f82ae", flex: "0 0 auto" }} />
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 13, color: "#f5f2ff", letterSpacing: "-.02em" }}>LunaBot</div>
+            <div style={{ marginTop: 2, fontWeight: 700, fontSize: 8, color: "#817891", letterSpacing: ".1em", textTransform: "uppercase" }}>Commandes du live</div>
+          </div>
         </div>
         <button
           type="button"
           onClick={onClose}
           style={{
-            width: 26,
-            height: 26,
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.06)",
-            color: "white",
+            width: 34,
+            height: 34,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 11,
+            border: "1px solid rgba(196,181,253,0.14)",
+            background: "rgba(255,255,255,0.045)",
+            color: "#c9c1d9",
             fontWeight: 900,
             fontSize: 12,
             cursor: "pointer",
             lineHeight: 1,
           }}
         >
-          ✕
+          <X size={15} />
         </button>
       </div>
 
@@ -175,37 +183,39 @@ export function BotMenu({
       <div
         style={{
           display: "flex",
-          gap: 5,
+          gap: 6,
           padding: "8px",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          borderBottom: "1px solid rgba(196,181,253,0.09)",
+          overflowX: "auto",
           flexShrink: 0,
         }}
       >
-        {(["call", "hunt", "wheel", "rain", "predictions"] as const).map((k) => (
+        {(["call", "hunt", "wheel", "rain", "predictions"] as const).map((k) => {
+          const Icon = k === "call" ? Dices : k === "hunt" ? Crosshair : k === "wheel" ? RotateCw : k === "rain" ? CloudRain : Sparkles;
+          const label = k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : "Prédictions";
+          return (
           <button
             key={k}
             type="button"
             onClick={() => setTab(k)}
             style={{
-              flex: 1,
-              padding: "6px 2px",
-              borderRadius: 10,
-              border: `1px solid ${tab === k ? "rgba(124,77,255,0.45)" : "rgba(255,255,255,0.08)"}`,
-              background: tab === k ? "rgba(124,77,255,0.22)" : "rgba(255,255,255,0.04)",
-              color: tab === k ? "#fff" : "rgba(230,230,245,0.72)",
-              fontWeight: 900,
+              flex: "1 0 72px",
+              minHeight: 50,
+              padding: "7px 6px",
+              borderRadius: 12,
+              border: `1px solid ${tab === k ? "rgba(167,139,250,0.34)" : "rgba(196,181,253,0.09)"}`,
+              background: tab === k ? "linear-gradient(135deg,rgba(139,92,246,.22),rgba(91,141,239,.08))" : "rgba(255,255,255,0.028)",
+              color: tab === k ? "#f5f2ff" : "#91889f",
+              fontWeight: 850,
               cursor: "pointer",
               whiteSpace: "nowrap",
             }}
           >
-            <div style={{ fontSize: 15, lineHeight: 1 }}>
-              {k === "call" ? "🎰" : k === "hunt" ? "🎯" : k === "wheel" ? "🎡" : k === "rain" ? "🌧" : "🔮"}
-            </div>
-            <div style={{ fontSize: 9, marginTop: 2, opacity: 0.9 }}>
-              {k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : "Prédi."}
-            </div>
+            <Icon size={16} style={{ display: "block", margin: "0 auto" }} />
+            <div style={{ fontSize: 8, marginTop: 4, opacity: 0.95 }}>{label}</div>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {/* Content — zone scrollable (le panel est plafonné en hauteur) */}

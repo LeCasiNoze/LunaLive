@@ -5,6 +5,7 @@
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { CalendarDays, ChevronRight, Film, Gift, Info, Maximize2, MoreHorizontal, Scissors, Settings2, Star, UserPlus } from "lucide-react";
 import { watchHeartbeat, me, getLives } from "../../lib/api";
 import { DlivePlayer } from "../../components/DlivePlayer";
 import RumbleStreamPlayer from "../../components/RumbleStreamPlayer";
@@ -14,7 +15,7 @@ import { FloatingBot } from "../../components/botmenu/FloatingBot";
 import { LoginModal } from "../../components/LoginModal";
 import { SubModal } from "../../components/SubModal";
 import { useAuth } from "../../auth/AuthProvider";
-import { ChatIcon, BellIcon } from "./components/icons";
+import { ChatIcon, BellIcon, EyeIcon } from "./components/icons";
 import { LiveDurationText, getAnonId } from "./utils";
 import { useResponsive } from "./hooks/useResponsive";
 import { useCinema } from "./hooks/useCinema";
@@ -56,8 +57,8 @@ function pickStreamerAvatarUrlFromStreamer(streamer: any) {
   return userAvatar || direct || byUid;
 }
 
-type MobileTabKey = "chat" | "about" | "vod" | "clips" | "agenda";
-const TAB_ORDER: MobileTabKey[] = ["chat", "about", "vod", "clips", "agenda"];
+type MobileTabKey = "about" | "vod" | "clips" | "agenda";
+const TAB_ORDER: MobileTabKey[] = ["about", "clips", "vod", "agenda"];
 
 function clampTabIndex(i: number) { return Math.max(0, Math.min(TAB_ORDER.length - 1, i)); }
 function tabIndexOf(t: MobileTabKey) { const i = TAB_ORDER.indexOf(t); return i >= 0 ? i : 0; }
@@ -282,8 +283,8 @@ export default function StreamerPageMobile() {
   const hostedBy = React.useMemo(() => new URLSearchParams(location.search).get("hostedBy"), [location.search]);
 
   const [loginOpen, setLoginOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<MobileTabKey>("chat");
-  const [tabView, setTabView] = React.useState<MobileTabKey>("chat");
+  const [tab, setTab] = React.useState<MobileTabKey>("about");
+  const [tabView, setTabView] = React.useState<MobileTabKey>("about");
   const [liveViewersNow, setLiveViewersNow] = React.useState<number | null>(null);
 
   const [subOpen, setSubOpen] = React.useState(false);
@@ -356,7 +357,7 @@ export default function StreamerPageMobile() {
   // pile au-dessus de la bottom bar, quelle que soit la taille du player.
   const streamerIsLive = !!streamer?.isLive;
   React.useLayoutEffect(() => {
-    if (!streamerIsLive || tabView !== "chat") return;
+    if (!streamerIsLive) return;
     const compute = () => {
       const el = chatBoxRef.current;
       if (!el) return;
@@ -364,7 +365,7 @@ export default function StreamerPageMobile() {
       const BOTTOM_BAR = 66; // bt-bar (~56) + petite marge
       const safe = Number(getComputedStyle(document.documentElement).getPropertyValue("--bt-safe").replace("px", "")) || 0;
       const h = Math.round(window.innerHeight - top - BOTTOM_BAR - safe);
-      setLiveChatH(h > 260 ? h : 260);
+      setLiveChatH(h > 380 ? h : 420);
     };
     compute();
     const t = window.setTimeout(compute, 250); // rattrape le layout du player
@@ -375,7 +376,7 @@ export default function StreamerPageMobile() {
       window.removeEventListener("resize", compute);
       window.removeEventListener("orientationchange", compute);
     };
-  }, [streamerIsLive, tabView]);
+  }, [streamerIsLive]);
 
   const isOwner = !!(myUserId != null && streamer?.ownerUserId != null && Number(streamer.ownerUserId) === Number(myUserId));
   const isAdmin = String(myRole) === "admin";
@@ -457,10 +458,10 @@ export default function StreamerPageMobile() {
   }, [slug, token, streamer?.isLive]);
 
   React.useEffect(() => { if (!streamer?.isLive) setLiveViewersNow(null); }, [streamer?.isLive]);
-  React.useEffect(() => { setTab("chat"); setTabView("chat"); }, [slug]);
+  React.useEffect(() => { setTab("about"); setTabView("about"); }, [slug]);
   React.useEffect(() => {
     const streamerSlug = String(slug || "").trim();
-    if (!token || !streamerSlug || tab === "chat") return;
+    if (!token || !streamerSlug) return;
     void trackFeatureEvent(token, { kind: "streamer_tab", subject: `${streamerSlug}|${tab}` });
   }, [slug, tab, token]);
 
@@ -520,6 +521,10 @@ export default function StreamerPageMobile() {
     </div>
   );
 
+  const directChatHeightStyle: React.CSSProperties = streamer.isLive
+    ? { height: liveChatH ? `${liveChatH}px` : "calc(100dvh - 310px)", minHeight: 320 }
+    : { height: "min(52vh,520px)", minHeight: 330 };
+
   if (cinema) return (
     <>
       <style>{MOBILE_STYLES}</style>
@@ -549,7 +554,7 @@ export default function StreamerPageMobile() {
   );
 
   return (
-    <div className="mob-root" style={{ display:"flex", flexDirection:"column", gap:14, paddingBottom:"calc(88px + env(safe-area-inset-bottom))" }}>
+    <div className="mob-root stream-mobile-experience" style={{ display:"flex", flexDirection:"column", gap:14, paddingBottom:"calc(88px + env(safe-area-inset-bottom))" }}>
       <style>{MOBILE_STYLES}</style>
 
       {/* LunaBot détaché : bouton flottant accessible sur TOUS les onglets
@@ -571,107 +576,107 @@ export default function StreamerPageMobile() {
       ) : null}
 
       {/* Player */}
-      <div className="mob-card" style={{ padding:0, borderRadius:18, overflow:"hidden" }}>{PlayerBlock}</div>
+      <div className="mob-player-frame">{PlayerBlock}</div>
 
-      {/* When live: prioritize Player → Chat/Content → Banner → Tabs.
-          Otherwise keep classic order: Player → Banner → Tabs → Content. */}
+      {/* Le chat fait partie du premier écran : lecteur au-dessus, saisie en bas. */}
+      <section className="mob-direct-chat" aria-label="Chat du direct">
+        <div ref={chatBoxRef} className="mob-direct-chat__inner" style={directChatHeightStyle}>
+          <div className="mob-chat-toolbar mob-chat-toolbar--compact">
+            <div style={{ flex: 1 }} />
+            {chatCanManage ? (
+              <button type="button" className="mob-action mob-action--icon" onClick={() => chatActionsRef.current?.openSettings?.()} aria-label="Paramètres du chat"><Settings2 size={15} /></button>
+            ) : null}
+            <button type="button" className="mob-action mob-action--icon" onClick={enterCinema} aria-label="Mode cinéma"><Maximize2 size={15} /></button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} actionsRef={chatActionsRef} onCanManageSettings={setChatCanManage} showBotFab={false} />
+          </div>
+        </div>
+      </section>
+
+      {/* Identité et contenus complémentaires sous l'expérience live. */}
       {(() => {
         const Banner = (
-          <div className="mob-banner">
-            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-              <div className="mob-avatar">
-                {avatarUrl ? <img src={String(avatarUrl)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontWeight:800, fontSize:18 }}>{initials}</span>}
+          <section className="mob-channel-card-v2" aria-label={`Chaîne de ${displayName}`}>
+            <div className="mob-channel-main">
+              <div className="mob-channel-avatar">
+                {avatarUrl ? <img src={String(avatarUrl)} alt={`Avatar de ${displayName}`} /> : <span style={{ fontWeight:800, fontSize:18 }}>{initials}</span>}
               </div>
               <div style={{ flex:1, minWidth:0 }}>
-                <div className="mob-name" style={{ marginBottom:6 }}>{displayName}</div>
-                {typeof followsCount === "number" ? (
-                  <div style={{ fontSize:11, color:"rgba(196,181,253,.60)", fontWeight:700 }}>{fmt(followsCount)} abonnés</div>
-                ) : null}
+                <div className="mob-channel-name">{displayName}</div>
+                <div className="mob-channel-subline">
+                  {typeof followsCount === "number" ? <span>{fmt(followsCount)} abonnés</span> : null}
+                  {streamer.title ? <><span>·</span><span className="mob-channel-title">{streamer.title}</span></> : null}
+                </div>
               </div>
-              <div style={{ display:"flex", gap:8, flexShrink:0 }}>
-                <button type="button" className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"} disabled={followLoading} onClick={toggleFollow} style={{ fontWeight:700 }}>
-                  {followLoading ? "…" : isFollowing ? "✓" : "Suivre"}
+              <div className="mob-channel-actions">
+                <button type="button" className={`mob-action${isFollowing ? "" : " mob-action--primary"}`} disabled={followLoading} onClick={toggleFollow}>
+                  <UserPlus size={14} aria-hidden="true" /> {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
                 </button>
-                <button type="button" className="btnPrimarySmall" onClick={() => { if (!token) return setLoginOpen(true); setSubError(null); setGiftError(null); setSubOpen(true); }} style={{ fontWeight:700 }}>SUB</button>
-                <button type="button" className="btnGhostSmall" onClick={() => setActionsOpen(true)} style={{ fontSize:16, lineHeight:1, padding:"8px 10px" }}>⋯</button>
+                <button type="button" className="mob-action mob-action--primary" onClick={() => { if (!token) return setLoginOpen(true); setSubError(null); setGiftError(null); setSubOpen(true); }}>
+                  <Star size={14} aria-hidden="true" /> SUB
+                </button>
+                <button type="button" className="mob-action mob-action--icon" onClick={() => setActionsOpen(true)} aria-label="Plus d'options">
+                  <MoreHorizontal size={18} aria-hidden="true" />
+                </button>
               </div>
             </div>
-            <div style={{ marginTop:12, display:"flex", gap:8, flexWrap:"wrap" }}>
+            <div className="mob-channel-stats">
               {streamer.isLive ? (
                 <>
-                  <span className="mob-badge mob-badge-live">🔴 LIVE</span>
-                  <span className="mob-badge">👁️ {fmt(viewers)}</span>
-                  <span className="mob-badge">⏱️ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} /></span>
+                  <span className="mob-status-pill mob-status-pill--live"><span className="mob-status-pulse" aria-hidden="true" /> LIVE</span>
+                  <span className="mob-status-pill"><EyeIcon /> {fmt(viewers)}</span>
+                  <span className="mob-status-pill">⏱ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} /></span>
                 </>
               ) : (
-                <span className="mob-badge" style={{ borderColor:"rgba(124,92,252,.10)", background:"rgba(124,92,252,.04)", color:"rgba(196,181,253,.42)" }}>OFFLINE</span>
+                <span className="mob-status-pill">OFFLINE</span>
               )}
-              {giftStatus?.myClaimed ? <span className="mob-badge mob-badge-green">✅ Sub offert</span> : null}
+              {giftStatus?.myClaimed ? <span className="mob-status-pill">Sub offert</span> : null}
             </div>
-          </div>
+            <button type="button" className="mob-chest-trigger" onClick={() => { chest.setChestError(null); chest.setChestModalOpen(true); }}>
+              <span className="mob-chest-trigger__icon"><Gift size={18} aria-hidden="true" /></span>
+              <span className="mob-chest-trigger__copy">
+                <strong>Coffre de la chaîne</strong>
+                <small>{chest.chestLoading ? "Synchronisation…" : chest.chestBalance > 0 ? `${fmt(chest.chestBalance)} rubis à gagner` : "Voir les conditions et le prochain tirage"}</small>
+              </span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </section>
         );
 
         const Tabs = (
-          <div className="mob-card">
-            <div className="mob-tabs-row">
-              {[["chat","Chat"],["about","À propos"],["vod","VOD"],["clips","Clips"],["agenda","Agenda"]].map(([k,l]) => (
-                <button key={k} type="button" className={`mob-tab${tab===k?" active":""}`} onClick={() => setTab(k as MobileTabKey)}>{l}</button>
-              ))}
-            </div>
+          <div className="mob-content-nav" role="tablist" aria-label="Sections de la chaîne">
+            {([
+              ["about", "À propos", Info],
+              ["clips", "Clips", Scissors],
+              ["vod", "VOD", Film],
+              ["agenda", "Agenda", CalendarDays],
+            ] as [MobileTabKey, string, React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>][]).map(([k, label, Icon]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} className={`mob-nav-tab${tab===k?" active":""}`} onClick={() => setTab(k)}>
+                <Icon size={16} aria-hidden={true} /> {label}
+              </button>
+            ))}
           </div>
         );
-
-        // Chat panel : en live, la hauteur est MESURÉE (liveChatH, cf effect
-        // ci-dessous) pour que le bas (composer) tombe pile au-dessus de la
-        // bottom bar — quelle que soit la taille du player/écran. Fallback
-        // CSS si la mesure n'a pas encore eu lieu.
-        const chatHeightStyle: React.CSSProperties = streamer.isLive
-          ? { padding:0, height: liveChatH ? `${liveChatH}px` : "calc(100dvh - 320px)", minHeight:300, display:"flex", flexDirection:"column" }
-          : { padding:0, height:"min(52vh,520px)", minHeight:330, display:"flex", flexDirection:"column" };
 
         const Content = (
-          <div onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} style={{ touchAction:"pan-y" }}>
-            <div className="mob-card" key={tabView}>
-              {tabView === "chat" ? (
-                <div ref={chatBoxRef} style={chatHeightStyle}>
-                  {/* barre compacte : Bot + options + plein écran sur la
-                      même ligne que « Chat » (hauteur réduite, retour Lucas) */}
-                  <div style={{ padding:"5px 10px", borderBottom:"1px solid rgba(124,92,252,.10)", background:"rgba(124,92,252,.03)", display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ fontWeight:800, fontSize:13 }}>Chat</div>
-                    <div style={{ flex:1 }} />
-                    {/* (bouton Bot retiré : LunaBot = bouton flottant 🤖) */}
-                    {chatCanManage ? (
-                      <button type="button" className="btnGhostSmall" onClick={() => chatActionsRef.current?.openSettings?.()} style={{ fontSize:13, padding:"4px 8px" }}>⚙️</button>
-                    ) : null}
-                    <button type="button" className="btnGhostSmall" onClick={enterCinema} style={{ fontSize:14, padding:"4px 8px" }}>⛶</button>
-                  </div>
-                  <div style={{ flex:1, minHeight:0 }}>
-                    <ChatPanel slug={String(slug||"")} onRequireLogin={() => setLoginOpen(true)} compact autoFocus={false} onFollowsCount={handleFollowsCount} actionsRef={chatActionsRef} onCanManageSettings={setChatCanManage} showBotFab={false} />
-                  </div>
-                </div>
-              ) : (
-                <div className="mob-content">
-                  {tabView === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-                  {tabView === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
-                  {tabView === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
-                  {tabView === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
-                </div>
-              )}
+          <div className="mob-tab-panel" onTouchStart={onSwipeStart} onTouchEnd={onSwipeEnd} style={{ touchAction:"pan-y" }} key={tabView} role="tabpanel">
+            <div className="mob-content-panel">
+              {tabView === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
+              {tabView === "clips" && slug ? <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} /> : null}
+              {tabView === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
+              {tabView === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
             </div>
           </div>
         );
 
-        return streamer.isLive ? (
-          <>
-            {Content}
-            {Banner}
-            {Tabs}
-          </>
-        ) : (
+        return (
           <>
             {Banner}
-            {Tabs}
-            {Content}
+            <section className="mob-content-shell" aria-label="Contenu de la chaîne">
+              {Tabs}
+              {Content}
+            </section>
           </>
         );
       })()}

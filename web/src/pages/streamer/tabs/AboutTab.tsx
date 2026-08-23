@@ -4,6 +4,19 @@
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import {
+  ArrowDown,
+  ArrowUp,
+  ExternalLink,
+  GripVertical,
+  ImagePlus,
+  Info,
+  Pencil,
+  Plus,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
   getStreamerAbout,
   putStreamerAbout,
   uploadStreamerAboutImage,
@@ -28,217 +41,51 @@ function moveItem<T>(arr: T[], from: number, to: number): T[] {
 }
 
 const ABOUT_STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
-
-@keyframes about-fade-in {
-  from { opacity:0; transform:translateY(8px); }
-  to { opacity:1; transform:translateY(0); }
-}
-
-.about-root {
-  font-family:'Syne',system-ui,sans-serif;
-  animation:about-fade-in 280ms ease both;
-}
-
-.about-header {
-  display:flex; align-items:center; justify-content:space-between; gap:14px;
-  margin-bottom:16px;
-  padding-bottom:12px;
-  border-bottom:1px solid rgba(124,92,252,.10);
-}
-
-.about-title {
-  font-family:'Syne',system-ui,sans-serif;
-  font-weight:800; font-size:18px; letter-spacing:-.3px;
-  background:linear-gradient(90deg,#c4b5fd 0%,#a78bfa 50%,#5b8ef8 100%);
-  -webkit-background-clip:text; background-clip:text; color:transparent;
-}
-
-.about-grid {
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-  gap:14px;
-  align-items:start;
-}
-
-.about-tile {
-  position:relative;
-  padding:14px;
-  border-radius:16px;
-  border:1px solid rgba(124,92,252,.14);
-  background:rgba(124,92,252,.06);
-  transition:all 180ms ease;
-}
-
-.about-tile:hover {
-  border-color:rgba(124,92,252,.30);
-  background:rgba(124,92,252,.11);
-  transform:translateY(-2px);
-  box-shadow:0 8px 24px rgba(124,92,252,.18);
-}
-
-.about-tile.edit-mode {
-  border-color:rgba(124,92,252,.24);
-  background:rgba(124,92,252,.08);
-}
-
-.about-tile.edit-mode:hover {
-  border-color:rgba(124,92,252,.36);
-  background:rgba(124,92,252,.13);
-}
-
-.about-tile-header {
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-  margin-bottom:12px;
-  padding-bottom:10px;
-  border-bottom:1px solid rgba(124,92,252,.10);
-}
-
-.about-tile-badge {
-  display:flex; align-items:center; gap:8px;
-  font-size:11px; color:rgba(167,139,250,.65);
-  font-weight:700;
-}
-
-.about-tile-badge .drag-handle {
-  cursor:grab; user-select:none; font-size:16px;
-  color:rgba(167,139,250,.50);
-  transition:color 120ms;
-}
-
-.about-tile-badge .drag-handle:hover {
-  color:rgba(167,139,250,.85);
-}
-
-.about-tile-actions {
-  display:flex; gap:6px; flex-wrap:wrap;
-}
-
-.about-img-box {
-  width:100%; aspect-ratio:1/1;
-  border-radius:14px; overflow:hidden;
-  border:1px solid rgba(124,92,252,.18);
-  background:linear-gradient(135deg,rgba(124,92,252,.08),rgba(59,77,200,.06));
-  position:relative;
-}
-
-.about-img-box::after {
-  content:"";
-  position:absolute; inset:0; pointer-events:none;
-  background:radial-gradient(circle at 30% 30%,rgba(167,139,250,.08),transparent 60%);
-}
-
-.about-img {
-  width:100%; height:100%; object-fit:contain;
-  display:block; position:relative; z-index:1;
-}
-
-.about-img-placeholder {
-  height:100%; display:flex; align-items:center; justify-content:center;
-  font-size:12px; color:rgba(167,139,250,.45); font-weight:700;
-}
-
-.about-content {
-  margin-top:12px;
-}
-
-.about-description {
-  white-space:pre-wrap; line-height:1.4; font-size:13px;
-  color:rgba(235,232,255,.88);
-  font-weight:600;
-}
-
-.about-link {
-  font-weight:800; text-decoration:none;
-  font-size:13px; color:rgba(167,139,250,.85);
-  display:inline-flex; align-items:center; gap:6px;
-  transition:color 120ms;
-}
-
-.about-link:hover {
-  color:rgba(196,181,253,.95);
-}
-
-.about-link-url {
-  margin-top:5px; font-size:10px;
-  color:rgba(167,139,250,.45);
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-
-.about-edit-section {
-  margin-top:14px;
-  padding:12px;
-  border-radius:12px;
-  border:1px solid rgba(124,92,252,.14);
-  background:rgba(124,92,252,.04);
-  display:flex; flex-direction:column; gap:10px;
-}
-
-.about-edit-hint {
-  font-size:11px; color:rgba(167,139,250,.55);
-  font-weight:600;
-}
-
-.about-input-group {
-  display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-}
-
-.about-input {
-  flex:1; min-width:200px;
-  padding:11px 14px; border-radius:12px;
-  border:1px solid rgba(124,92,252,.20);
-  background:rgba(124,92,252,.08);
-  color:rgba(235,232,255,.92);
-  font-family:'Syne',system-ui,sans-serif;
-  font-weight:700; font-size:14px;
-  outline:none;
-  transition:all 150ms ease;
-}
-
-.about-input:focus {
-  border-color:rgba(124,92,252,.42);
-  background:rgba(124,92,252,.12);
-  box-shadow:0 0 0 3px rgba(124,92,252,.10);
-}
-
-.about-input::placeholder { color:rgba(167,139,250,.40); }
-
-.about-textarea {
-  width:100%;
-  padding:11px 14px; border-radius:12px;
-  border:1px solid rgba(124,92,252,.20);
-  background:rgba(124,92,252,.08);
-  color:rgba(235,232,255,.92);
-  font-family:'Syne',system-ui,sans-serif;
-  font-weight:700; font-size:14px;
-  outline:none; resize:vertical;
-  min-height:90px;
-  transition:all 150ms ease;
-}
-
-.about-textarea:focus {
-  border-color:rgba(124,92,252,.42);
-  background:rgba(124,92,252,.12);
-  box-shadow:0 0 0 3px rgba(124,92,252,.10);
-}
-
-.about-textarea::placeholder { color:rgba(167,139,250,.40); }
-
-.about-empty {
-  padding:24px;
-  text-align:center;
-  font-size:13px; color:rgba(167,139,250,.55);
-  font-weight:600;
-}
-
-.about-footer {
-  margin-top:16px;
-  display:flex; gap:10px; flex-wrap:wrap; align-items:center;
-}
-
-.about-footer-hint {
-  font-size:11px; color:rgba(167,139,250,.50);
-  font-weight:600;
+.about-root { color:#f4f0fc; font-family:'Manrope',sans-serif; }
+.about-header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.about-heading { min-width:0; }
+.about-kicker { display:flex; align-items:center; gap:7px; color:#9388ab; font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.about-title { display:block; margin-top:5px; color:#f5f2ff; font-size:20px; font-weight:800; letter-spacing:-.045em; }
+.about-subtitle { margin-top:5px; color:#847b96; font-size:10px; font-weight:600; }
+.about-actions,.about-tile-actions,.about-input-group,.about-footer { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.about-action { min-height:36px; display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:8px 12px; border:1px solid rgba(167,139,250,.16); border-radius:11px; background:rgba(255,255,255,.035); color:#c9c1d7; font:750 10px 'Manrope',sans-serif; cursor:pointer; }
+.about-action:hover { border-color:rgba(167,139,250,.32); background:rgba(139,92,246,.1); color:#f4efff; }
+.about-action.primary { border-color:rgba(139,92,246,.38); background:#7c3aed; color:white; }
+.about-action.danger { color:#f7a7b2; }
+.about-action.icon { width:32px; min-height:32px; padding:0; }
+.about-action:disabled { opacity:.45; cursor:not-allowed; }
+.about-state { min-height:150px; display:grid; place-items:center; gap:10px; padding:28px; border:1px dashed rgba(167,139,250,.14); border-radius:17px; color:#81788f; font-size:11px; font-weight:650; text-align:center; }
+.about-state.error { min-height:0; margin-bottom:14px; border-style:solid; border-color:rgba(248,113,113,.24); background:rgba(248,113,113,.06); color:#f4a4ad; }
+.about-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; align-items:start; }
+.about-tile { position:relative; overflow:hidden; border:1px solid rgba(167,139,250,.12); border-radius:17px; background:rgba(255,255,255,.024); }
+.about-tile.edit-mode { padding:12px; overflow:visible; border-color:rgba(167,139,250,.22); background:rgba(139,92,246,.05); }
+.about-tile-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px; }
+.about-tile-badge { display:flex; align-items:center; gap:7px; color:#9389a5; font-size:9px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+.drag-handle { display:grid; place-items:center; color:#786d8d; cursor:grab; }
+.about-img-box { position:relative; width:100%; overflow:hidden; aspect-ratio:1/1; border-radius:14px; background:linear-gradient(145deg,#181126,#08060f); }
+.about-tile:not(.edit-mode) .about-img-box { border-radius:0; }
+.about-img { width:100%; height:100%; display:block; object-fit:contain; }
+.about-img-placeholder { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#746b82; font-size:10px; font-weight:700; }
+.about-content { padding:13px 14px 14px; }
+.about-edit-section + .about-content { padding-inline:0; }
+.about-description { color:#d7d1e1; font-size:11px; font-weight:600; line-height:1.6; white-space:pre-wrap; }
+.about-link { display:inline-flex; align-items:center; gap:6px; color:#b9a8f7; font-size:10px; font-weight:800; text-decoration:none; }
+.about-link:hover { color:#e3dbff; }
+.about-link-url { margin-top:5px; overflow:hidden; color:#71687e; font-size:9px; text-overflow:ellipsis; white-space:nowrap; }
+.about-edit-section { display:flex; flex-direction:column; gap:10px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(167,139,250,.11); }
+.about-edit-hint { display:flex; align-items:center; gap:6px; color:#7e748d; font-size:9px; font-weight:650; }
+.about-input,.about-textarea { width:100%; padding:10px 11px; border:1px solid rgba(167,139,250,.16); border-radius:10px; outline:none; background:rgba(5,3,11,.42); color:#eee9f6; font:600 10px/1.45 'Manrope',sans-serif; }
+.about-input:focus,.about-textarea:focus { border-color:rgba(167,139,250,.42); box-shadow:0 0 0 3px rgba(124,58,237,.1); }
+.about-input::placeholder,.about-textarea::placeholder { color:#625a6f; }
+.about-textarea { min-height:84px; resize:vertical; }
+.about-empty { padding:20px; color:#766d83; font-size:10px; text-align:center; }
+.about-footer { margin-top:16px; }
+.about-footer-hint { display:flex; align-items:center; gap:6px; color:#746b82; font-size:9px; font-weight:650; }
+@media(max-width:620px){
+  .about-header { align-items:flex-start; }
+  .about-grid { grid-template-columns:1fr; }
+  .about-actions { justify-content:flex-end; }
+  .about-action .about-action-label { display:none; }
 }
 `;
 
@@ -312,7 +159,7 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
           <img src={imgSrc} alt="" loading="lazy" className="about-img"
             onError={e => { (e.currentTarget as any).style.display = "none"; }} />
         ) : (
-          <div className="about-img-placeholder">(pas d'image)</div>
+          <div className="about-img-placeholder"><ImagePlus size={20} /> Aucune image</div>
         )}
       </div>
     );
@@ -333,16 +180,13 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
         {mode === "edit" ? (
           <div className="about-tile-header">
             <div className="about-tile-badge">
-              <span className="drag-handle">⠿</span>
+              <span className="drag-handle"><GripVertical size={15} /></span>
               <span>Bloc #{i + 1}</span>
             </div>
             <div className="about-tile-actions">
-              <button type="button" className="btnGhostSmall" disabled={i === 0} onClick={() => reorder(i, i - 1)}
-                title="Monter">↑</button>
-              <button type="button" className="btnGhostSmall" disabled={i === blocks.length - 1} onClick={() => reorder(i, i + 1)}
-                title="Descendre">↓</button>
-              <button type="button" className="btnGhostSmall" onClick={() => removeBlock(i)}
-                style={{ color:"rgba(252,165,165,.90)" }}>✕</button>
+              <button type="button" className="about-action icon" disabled={i === 0} onClick={() => reorder(i, i - 1)} title="Monter"><ArrowUp size={13} /></button>
+              <button type="button" className="about-action icon" disabled={i === blocks.length - 1} onClick={() => reorder(i, i + 1)} title="Descendre"><ArrowDown size={13} /></button>
+              <button type="button" className="about-action icon danger" onClick={() => removeBlock(i)} title="Supprimer"><Trash2 size={13} /></button>
             </div>
           </div>
         ) : null}
@@ -359,7 +203,7 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
             {!imgSrc && link ? (
               <div style={{ marginTop: desc ? 10 : 0 }}>
                 <a href={cleanUrl(link)} target="_blank" rel="noreferrer" className="about-link">
-                  🔗 <span>Ouvrir le lien</span>
+                  <ExternalLink size={12} /> <span>Ouvrir le lien</span>
                 </a>
                 <div className="about-link-url">{cleanUrl(link)}</div>
               </div>
@@ -370,13 +214,13 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
         {mode === "edit" ? (
           <div className="about-edit-section">
             <div className="about-edit-hint">
-              Taille finale : Carré <strong>800×800</strong> (crop centré auto)
+              <Info size={12} /> Image optimisée en carré 800 x 800, recadrage centré automatique.
             </div>
             
             <div className="about-input-group">
-              <label className="btnGhostSmall"
+              <label className="about-action"
                 style={{ cursor: token ? "pointer" : "not-allowed", opacity: token ? 1 : 0.6 }}>
-                {uploadingIndex === i ? "⏳ Upload…" : imgSrc ? "📷 Changer" : "📷 Uploader"}
+                <ImagePlus size={13} /> {uploadingIndex === i ? "Envoi…" : imgSrc ? "Changer" : "Importer"}
                 <input type="file" accept="image/png,image/jpeg,image/webp"
                   disabled={!token || uploadingIndex === i} style={{ display:"none" }}
                   onChange={e => {
@@ -387,9 +231,9 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
                   }} />
               </label>
               {imgSrc ? (
-                <button type="button" className="btnGhostSmall"
+                <button type="button" className="about-action danger"
                   onClick={() => updateBlock(i, { imageUrl: "" })} disabled={uploadingIndex === i}>
-                  Retirer
+                  <Trash2 size={13} /> Retirer
                 </button>
               ) : null}
             </div>
@@ -416,17 +260,21 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
       <style>{ABOUT_STYLES}</style>
 
       <div className="about-header">
-        <span className="about-title">À propos</span>
+        <div className="about-heading">
+          <div className="about-kicker"><Info size={13} /> Présentation</div>
+          <span className="about-title">À propos de la chaîne</span>
+          <div className="about-subtitle">Liens, partenaires et informations utiles réunis au même endroit.</div>
+        </div>
         {canEdit ? (
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+          <div className="about-actions">
             {!edit ? (
-              <button type="button" className="btnGhostSmall" onClick={() => setEdit(true)}>✏️ Modifier</button>
+              <button type="button" className="about-action" onClick={() => setEdit(true)}><Pencil size={13} /><span className="about-action-label">Modifier</span></button>
             ) : (
               <>
-                <button type="button" className="btnGhostSmall" disabled={saving}
-                  onClick={() => { setEdit(false); load(); }}>Annuler</button>
-                <button type="button" className="btnPrimarySmall" disabled={saving || !token} onClick={save}>
-                  {saving ? "⏳ Enregistrement…" : "✓ Enregistrer"}
+                <button type="button" className="about-action" disabled={saving}
+                  onClick={() => { setEdit(false); load(); }}><X size={13} /><span className="about-action-label">Annuler</span></button>
+                <button type="button" className="about-action primary" disabled={saving || !token} onClick={save}>
+                  <Save size={13} /> {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </>
             )}
@@ -435,22 +283,16 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
       </div>
 
       {error ? (
-        <div style={{ marginTop:8, padding:"12px 14px", borderRadius:12,
-          border:"1px solid rgba(239,68,68,.28)", background:"rgba(239,68,68,.08)",
-          fontSize:12, color:"rgba(252,165,165,.92)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:600 }}>
-          ⚠️ {error}
-        </div>
+        <div className="about-state error" role="alert">{error}</div>
       ) : null}
 
       {loading ? (
-        <div style={{ marginTop:10, fontSize:13, color:"rgba(196,181,253,.65)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:600 }}>
-          ⏳ Chargement…
-        </div>
+        <div className="about-state">Chargement de la présentation…</div>
       ) : null}
 
       {!loading && !blocks.length && !edit ? (
         <div className="about-empty">
-          Aucune description pour le moment.
+          Cette chaîne n'a pas encore ajouté de présentation.
         </div>
       ) : null}
 
@@ -458,15 +300,15 @@ export function AboutTab({ slug, token, canEdit }: { slug: string; token: string
 
       {!loading && edit ? (
         <div className="about-footer">
-          <button type="button" className="btnGhostSmall" onClick={() => setBlocks(p => [...p, emptyBlock()])}>
-            + Ajouter un bloc
+          <button type="button" className="about-action" onClick={() => setBlocks(p => [...p, emptyBlock()])}>
+            <Plus size={13} /> Ajouter un bloc
           </button>
           <div className="about-footer-hint">
-            💡 Drag & drop avec ⠿ (desktop), ou utilise ↑ ↓
+            <GripVertical size={12} /> Déplace les blocs à la souris ou avec les flèches.
           </div>
           {!token ? (
-            <div className="about-footer-hint" style={{ color:"rgba(252,165,165,.70)" }}>
-              ⚠️ Connecte-toi pour uploader/enregistrer
+            <div className="about-footer-hint" style={{ color:"#f4a4ad" }}>
+              Connecte-toi pour importer et enregistrer.
             </div>
           ) : null}
         </div>

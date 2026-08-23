@@ -1,11 +1,12 @@
 // web/src/pages/streamer/tabs/ClipsTab.tsx
 // Purple Velvet
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
+import { CalendarDays, Flame, Heart, Play, RefreshCw, Scissors, Trash2, X } from "lucide-react";
 import { deleteStreamerClip, getStreamerClips, toggleClipLike, type ApiClip } from "../../../lib/api_streamer_clips";
 import { trackFeatureEvent } from "../../../lib/feature_events";
 
-const whiteStroke = { color:"#fff", textShadow:`-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000` };
 function fmtDuration(sec: number) {
   sec = Math.max(0, Math.floor(sec || 0));
   const h = Math.floor(sec / 3600);
@@ -26,17 +27,59 @@ function timeAgo(ms: number) {
 type SortKey = "recent" | "top";
 
 const CLIP_STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
-.clip-root { font-family:'Syne',system-ui,sans-serif; }
-.clip-title { font-family:'Syne',system-ui,sans-serif; font-weight:800; font-size:16px; letter-spacing:-.2px;
-  background:linear-gradient(90deg,#c4b5fd,#a78bfa 55%,#5b8ef8); -webkit-background-clip:text; background-clip:text; color:transparent; }
-.clip-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; align-items:start; margin-top:12px; }
-.clip-card {
-  padding:10px; border-radius:16px; text-align:left; cursor:pointer;
-  background:rgba(124,92,252,.05); border:1px solid rgba(124,92,252,.10);
-  transition:border-color 140ms, background 140ms;
+.clip-root { font-family:'Manrope',sans-serif; color:#f4f0fc; }
+.clip-header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.clip-heading { min-width:0; }
+.clip-kicker { display:flex; align-items:center; gap:7px; color:#9388ab; font-size:9px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.clip-title { display:block; margin-top:5px; color:#f5f2ff; font-size:20px; font-weight:800; letter-spacing:-.045em; }
+.clip-subtitle { margin-top:5px; color:#847b96; font-size:10px; font-weight:600; }
+.clip-filters { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.clip-filter { min-height:36px; display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border:1px solid rgba(167,139,250,.13); border-radius:11px; background:rgba(255,255,255,.027); color:#91889f; cursor:pointer; font:750 10px 'Manrope',sans-serif; }
+.clip-filter:hover { border-color:rgba(167,139,250,.27); color:#d9d2e7; }
+.clip-filter.active { border-color:rgba(167,139,250,.32); background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(91,141,239,.07)); color:#f3effb; }
+.clip-filter:disabled { opacity:.45; cursor:wait; }
+.clip-state { min-height:150px; display:grid; place-items:center; padding:24px; border:1px dashed rgba(167,139,250,.14); border-radius:17px; color:#81788f; font-size:11px; text-align:center; }
+.clip-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; align-items:start; }
+.clip-card { padding:0; overflow:hidden; border:1px solid rgba(167,139,250,.12); border-radius:17px; background:rgba(255,255,255,.024); color:inherit; text-align:left; cursor:pointer; transition:transform 160ms,border-color 160ms,background 160ms; }
+.clip-card:hover { transform:translateY(-3px); border-color:rgba(167,139,250,.3); background:rgba(139,92,246,.06); }
+.clip-thumb { position:relative; overflow:hidden; aspect-ratio:16/9; background:linear-gradient(145deg,#171126,#08060f); }
+.clip-thumb img { width:100%; height:100%; display:block; object-fit:cover; transition:transform 260ms ease; }
+.clip-card:hover .clip-thumb img { transform:scale(1.025); }
+.clip-thumb::after { content:""; position:absolute; inset:0; background:linear-gradient(to top,rgba(3,2,9,.72),transparent 58%); pointer-events:none; }
+.clip-play { position:absolute; left:50%; top:50%; z-index:2; width:42px; height:42px; display:grid; place-items:center; transform:translate(-50%,-50%); border:1px solid rgba(255,255,255,.24); border-radius:50%; background:rgba(9,6,18,.62); color:#fff; backdrop-filter:blur(8px); opacity:.86; }
+.clip-duration,.clip-likes { position:absolute; bottom:9px; z-index:2; display:inline-flex; align-items:center; gap:5px; min-height:25px; padding:5px 8px; border:1px solid rgba(255,255,255,.1); border-radius:8px; background:rgba(5,3,11,.72); color:#f7f4fd; font-size:9px; font-weight:800; backdrop-filter:blur(8px); }
+.clip-duration { left:9px; }
+.clip-likes { right:9px; }
+.clip-card-body { padding:12px; }
+.clip-card-title { overflow:hidden; color:#f0ecf8; font-size:12px; font-weight:750; line-height:1.35; text-overflow:ellipsis; white-space:nowrap; }
+.clip-card-meta { display:flex; align-items:center; gap:6px; margin-top:7px; color:#776f85; font-size:9px; font-weight:650; }
+.clip-more { margin-top:14px; display:flex; justify-content:center; }
+.clip-viewer-backdrop { position:fixed; inset:0; z-index:100000; display:grid; place-items:center; padding:clamp(8px,2vw,24px); background:rgba(2,1,7,.92); animation:clip-modal-in 160ms ease both; }
+.clip-viewer { width:min(1180px,100%); max-height:calc(100dvh - 16px); display:flex; flex-direction:column; overflow:hidden; border:1px solid rgba(196,181,253,.18); border-radius:22px; background:linear-gradient(155deg,rgba(21,15,37,.99),rgba(8,6,16,.99)); box-shadow:0 36px 120px rgba(0,0,0,.78); }
+.clip-viewer-head { min-height:62px; display:flex; align-items:center; justify-content:space-between; gap:14px; padding:12px 14px 12px 18px; border-bottom:1px solid rgba(167,139,250,.11); }
+.clip-viewer-heading { min-width:0; }
+.clip-viewer-kicker { color:#8b819d; font-size:8px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.clip-viewer-title { margin-top:3px; overflow:hidden; color:#f5f2ff; font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.clip-viewer-actions { display:flex; align-items:center; gap:7px; flex:0 0 auto; }
+.clip-viewer-button { min-height:36px; display:inline-flex; align-items:center; gap:6px; padding:8px 10px; border:1px solid rgba(167,139,250,.14); border-radius:11px; background:rgba(255,255,255,.04); color:#c9c1d7; cursor:pointer; font:750 9px 'Manrope',sans-serif; }
+.clip-viewer-button.danger { border-color:rgba(248,113,113,.2); color:#f3a1aa; }
+.clip-viewer-close { width:36px; padding:0; justify-content:center; }
+.clip-viewer-stage { min-height:0; display:grid; place-items:center; padding:clamp(8px,1.5vw,18px); background:#020204; }
+.clip-viewer-stage video { width:100%; max-height:calc(100dvh - 150px); display:block; aspect-ratio:16/9; border-radius:13px; background:#000; }
+.clip-viewer-meta { display:flex; align-items:center; gap:14px; padding:10px 16px; border-top:1px solid rgba(167,139,250,.09); color:#7e758d; font-size:9px; font-weight:650; }
+@keyframes clip-modal-in { from{opacity:0} to{opacity:1} }
+@media(max-width:620px){
+  .clip-header { align-items:flex-start; flex-direction:column; }
+  .clip-filters { width:100%; justify-content:flex-start; }
+  .clip-grid { grid-template-columns:1fr; }
+  .clip-viewer-backdrop { padding:0; }
+  .clip-viewer { height:100dvh; max-height:none; border:0; border-radius:0; }
+  .clip-viewer-head { padding-top:calc(11px + env(safe-area-inset-top)); }
+  .clip-viewer-button span { display:none; }
+  .clip-viewer-stage { flex:1; }
+  .clip-viewer-stage video { max-height:calc(100dvh - 130px); border-radius:8px; }
+  .clip-viewer-meta { padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
 }
-.clip-card:hover { border-color:rgba(124,92,252,.24); background:rgba(124,92,252,.09); }
 `;
 
 export function ClipsTab({ slug, token, isOwner, onRequireLogin }: { slug: string; token: string | null; isOwner: boolean; onRequireLogin: () => void }) {
@@ -102,38 +145,42 @@ export function ClipsTab({ slug, token, isOwner, onRequireLogin }: { slug: strin
   return (
     <div className="clip-root">
       <style>{CLIP_STYLES}</style>
-      <span className="clip-title">Clips</span>
-      <div style={{ marginTop:6, fontSize:12, color:"rgba(167,139,250,.60)" }}>Clips du stream (lecture en popup). Tri par date ou popularité.</div>
-      <div style={{ marginTop:10, display:"flex", gap:10, flexWrap:"wrap" }}>
-        <button type="button" className={sort === "recent" ? "btnPrimarySmall" : "btnGhostSmall"} disabled={loading} onClick={() => setSort("recent")}>Récents</button>
-        <button type="button" className={sort === "top" ? "btnPrimarySmall" : "btnGhostSmall"} disabled={loading} onClick={() => setSort("top")}>Populaires</button>
-        <button type="button" className="btnGhostSmall" disabled={loading} onClick={() => loadMore(true)}>Reset</button>
-      </div>
-      {error ? <div style={{ marginTop:10, fontSize:12, color:"rgba(252,165,165,.90)" }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop:10, fontSize:13, color:"rgba(196,181,253,.65)" }}>Chargement…</div> : null}
-      {showEmpty ? <div style={{ marginTop:10, fontSize:13, color:"rgba(167,139,250,.60)" }}>Aucun clip pour l'instant.</div> : null}
+      <header className="clip-header">
+        <div className="clip-heading">
+          <div className="clip-kicker"><Scissors size={13} /> Vidéothèque</div>
+          <span className="clip-title">Clips de la chaîne</span>
+          <div className="clip-subtitle">Les meilleurs moments, prêts à être regardés sans quitter le direct.</div>
+        </div>
+        <div className="clip-filters" aria-label="Trier les clips">
+          <button type="button" className={`clip-filter${sort === "recent" ? " active" : ""}`} disabled={loading} onClick={() => setSort("recent")}><CalendarDays size={13} /> Récents</button>
+          <button type="button" className={`clip-filter${sort === "top" ? " active" : ""}`} disabled={loading} onClick={() => setSort("top")}><Flame size={13} /> Populaires</button>
+          <button type="button" className="clip-filter" disabled={loading} onClick={() => loadMore(true)} aria-label="Actualiser"><RefreshCw size={13} /></button>
+        </div>
+      </header>
+      {error ? <div className="clip-state" role="alert">{error}</div> : null}
+      {loading && !clips.length ? <div className="clip-state">Chargement des clips…</div> : null}
+      {showEmpty ? <div className="clip-state">Aucun clip n’a encore été publié sur cette chaîne.</div> : null}
       {clips.length ? (
         <div className="clip-grid">
-          {clips.map(c => (
-            <button key={c.id} type="button" className="clip-card" onClick={() => setOpenClip(c)}>
-              <div style={{ borderRadius:14, overflow:"hidden", border:"1px solid rgba(124,92,252,.14)", background:"rgba(0,0,0,.35)", aspectRatio:"16/9", position:"relative" }}>
-                {c.thumbUrl ? <img src={c.thumbUrl} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} /> : null}
-                <div style={{ position:"absolute", left:10, bottom:10, padding:"6px 10px", borderRadius:10, background:"rgba(0,0,0,.45)", fontWeight:800, ...whiteStroke }}>
-                  {fmtDuration(c.durationSec)}
-                </div>
-                <div style={{ position:"absolute", right:10, bottom:10, padding:"6px 10px", borderRadius:10, background:"rgba(0,0,0,.45)", fontWeight:800, ...whiteStroke, display:"inline-flex", gap:6, alignItems:"center" }} title="Likes">
-                  ❤️ {Number(c.likesCount || 0)}
-                </div>
+          {clips.map((clip) => (
+            <button key={clip.id} type="button" className="clip-card" onClick={() => setOpenClip(clip)}>
+              <div className="clip-thumb">
+                {clip.thumbUrl ? <img src={clip.thumbUrl} alt="" loading="lazy" /> : null}
+                <span className="clip-play"><Play size={18} fill="currentColor" /></span>
+                <span className="clip-duration">{fmtDuration(clip.durationSec)}</span>
+                <span className="clip-likes"><Heart size={11} fill="currentColor" /> {Number(clip.likesCount || 0)}</span>
               </div>
-              <div style={{ marginTop:10, fontWeight:800, lineHeight:1.25, fontSize:14, ...whiteStroke }}>{c.title || "(sans titre)"}</div>
-              <div style={{ marginTop:6, fontSize:11, color:"rgba(167,139,250,.60)" }}>{timeAgo(c.createdAtMs)}</div>
+              <div className="clip-card-body">
+                <div className="clip-card-title">{clip.title || "Clip sans titre"}</div>
+                <div className="clip-card-meta"><CalendarDays size={11} /> Publié il y a {timeAgo(clip.createdAtMs)}</div>
+              </div>
             </button>
           ))}
         </div>
       ) : null}
-      <div style={{ marginTop:12, display:"flex", gap:10, flexWrap:"wrap" }}>
-        {hasNext ? <button type="button" className="btnPrimarySmall" disabled={loading} onClick={() => loadMore(false)}>{loading ? "…" : "Charger plus"}</button> : null}
-      </div>
+      {hasNext ? (
+        <div className="clip-more"><button type="button" className="clip-filter active" disabled={loading} onClick={() => loadMore(false)}>{loading ? "Chargement…" : "Afficher plus de clips"}</button></div>
+      ) : null}
       {openClip ? (
         <ClipModal clip={openClip} token={token} isOwner={isOwner} busy={busyId === openClip.id} onRequireLogin={onRequireLogin} onClose={() => setOpenClip(null)} onToggleLike={() => onToggleLike(openClip)} onDelete={() => onDeleteClip(openClip)} />
       ) : null}
@@ -222,48 +269,47 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
     return () => { try { hls?.destroy(); } catch {} if (video) { video.removeEventListener("timeupdate", keepInsideClip); video.removeEventListener("seeking", keepInsideClip); video.pause(); video.removeAttribute("src"); video.load(); } };
   }, [clipId, clipUrl, vodUrl, seekToStr, durationStr]);
 
-  return (
-    <div
-      className="chatSheetBackdrop"
-      onClick={onClose}
-      role="presentation"
-      // Désactive le backdrop-filter blur qui tue les perfs GPU quand un live
-      // joue derrière (le browser blur chaque frame du live à 60fps + le clip).
-      style={{
-        zIndex: 80,
-        backdropFilter: "none",
-        WebkitBackdropFilter: "none",
-        background: "rgba(0,0,0,.85)",
-      }}
-    >
-      <div className="chatSheet" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ maxWidth:980 }}>
-        <div className="chatSheetTop" style={{ gap:10 }}>
-          <div style={{ fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontFamily:"'Syne',system-ui,sans-serif" }}>{clip.title || "Clip"}</div>
-          <div style={{ display:"inline-flex", gap:8, alignItems:"center" }}>
-            <button type="button" className="btnGhostSmall" onClick={() => { if (!token) return onRequireLogin(); onToggleLike(); }} disabled={busy} title={!token ? "Connecte-toi pour liker" : "Like"}
-              style={{ display:"inline-flex", alignItems:"center", gap:8, fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
-              <span>{clip.myLiked ? "❤️" : "🤍"}</span><span>{Number(clip.likesCount || 0)}</span>
+  React.useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div className="clip-viewer-backdrop" onClick={onClose} role="presentation">
+      <section className="clip-viewer" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={clip.title || "Clip"}>
+        <header className="clip-viewer-head">
+          <div className="clip-viewer-heading">
+            <div className="clip-viewer-kicker">Lecture du clip</div>
+            <div className="clip-viewer-title">{clip.title || "Clip sans titre"}</div>
+          </div>
+          <div className="clip-viewer-actions">
+            <button type="button" className="clip-viewer-button" onClick={() => { if (!token) return onRequireLogin(); onToggleLike(); }} disabled={busy} title={!token ? "Connecte-toi pour aimer" : "Aimer"}>
+              <Heart size={14} fill={clip.myLiked ? "currentColor" : "none"} /><span>{Number(clip.likesCount || 0)} j’aime</span>
             </button>
-            {isOwner ? (
-              <button type="button" className="btnGhostSmall" onClick={onDelete} disabled={busy}
-                style={{ background:"rgba(255,70,70,.14)", border:"1px solid rgba(255,70,70,.28)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }} title="Supprimer le clip">
-                {busy ? "…" : "Supprimer"}
-              </button>
-            ) : null}
-            <button className="iconBtn" onClick={onClose} type="button" aria-label="Fermer">✕</button>
+            {isOwner ? <button type="button" className="clip-viewer-button danger" onClick={onDelete} disabled={busy} title="Supprimer le clip"><Trash2 size={14} /><span>{busy ? "Suppression…" : "Supprimer"}</span></button> : null}
+            <button type="button" className="clip-viewer-button clip-viewer-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
           </div>
-        </div>
-        <div className="chatSheetBody" style={{ padding:14 }}>
+        </header>
+        <div className="clip-viewer-stage">
           {!(clip as any).clipUrl && !clip.vodUrl ? (
-            <div style={{ fontSize:12, color:"rgba(167,139,250,.60)" }}>Vidéo indisponible (VOD pas prête).</div>
+            <div className="clip-state">La vidéo de ce clip n’est pas encore disponible.</div>
           ) : (
-            <video ref={videoRef} controls playsInline style={{ width:"100%", borderRadius:16, background:"black", border:"1px solid rgba(124,92,252,.14)" }} />
+            <video ref={videoRef} controls playsInline />
           )}
-          <div style={{ marginTop:10, fontSize:11, color:"rgba(167,139,250,.60)", fontFamily:"'Syne',system-ui,sans-serif" }}>
-            Durée: <strong style={{ color:"rgba(235,232,255,.88)" }}>{fmtDuration(clip.durationSec)}</strong> • Publié: <strong style={{ color:"rgba(235,232,255,.88)" }}>{timeAgo(clip.createdAtMs)}</strong> • Source: <strong style={{ color:"rgba(235,232,255,.88)" }}>{(clip as any).clipUrl ? "MP4" : "VOD"}</strong>
-          </div>
         </div>
-      </div>
-    </div>
+        <footer className="clip-viewer-meta">
+          <span>Durée : <strong>{fmtDuration(clip.durationSec)}</strong></span>
+          <span>Publié il y a <strong>{timeAgo(clip.createdAtMs)}</strong></span>
+          <span>Source : <strong>{(clip as any).clipUrl ? "Clip MP4" : "VOD"}</strong></span>
+        </footer>
+      </section>
+    </div>,
+    document.body
   );
 }

@@ -103,6 +103,7 @@ export type ApiVod = {
   createdAtMs: number;
   viewCount: number;
   bestHlsUrl: string | null;
+  bestMp4Url?: string | null;
 };
 
 export async function getStreamerVods(slug: string, cursor?: string | null, limit = 24): Promise<any> {
@@ -110,6 +111,15 @@ export async function getStreamerVods(slug: string, cursor?: string | null, limi
   if (cursor) qs.set("cursor", cursor);
   qs.set("limit", String(limit));
   return j(`${API}/streamers/${encodeURIComponent(slug)}/vods?${qs.toString()}`);
+}
+
+export async function getStreamerVodPlayback(
+  slug: string,
+  permlink: string
+): Promise<{ ok: true; kind: "hls" | "mp4"; url: string } | { ok: false; error: string }> {
+  return j(
+    `${API}/streamers/${encodeURIComponent(slug)}/vods/${encodeURIComponent(permlink)}/playback`
+  );
 }
 
 export async function getStreamerAgendaMySubs(

@@ -5,6 +5,7 @@
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { CalendarDays, Film, Gift, Info, MoreHorizontal, Scissors, Star, UserPlus } from "lucide-react";
 
 import {
   watchHeartbeat,
@@ -40,6 +41,7 @@ import { AgendaTab } from "./tabs/AgendaTab";
 import { ClipsTab } from "./tabs/ClipsTab";
 
 import StreamerPageMobile from "./StreamerPage.mobile";
+import "./stream-experience.css";
 
 /* ─── utils (identiques) ─────────────────────────────────────── */
 function apiBase() {
@@ -761,11 +763,11 @@ function StreamerPageDesktop() {
       {/* ══════════════════════════════════════════════════════════
           GRILLE — player + chat
       ══════════════════════════════════════════════════════════ */}
-      <div className="streamGrid">
+      <div className="streamGrid sp-stage-grid">
         {/* ── Colonne gauche ── */}
-        <div className="streamMain">
+        <div className="streamMain sp-stage-main">
           {/* Player */}
-          <div ref={playerWrapRef}>
+          <div ref={playerWrapRef} className="sp-player-shell">
             {streamer.isLive ? (
               streamer.platform === "rumble" && streamer.rumbleEmbedUrl ? (
                 <RumbleEmbedPlayer embedUrl={streamer.rumbleEmbedUrl} title={streamer.title} isLive={streamer.isLive} />
@@ -812,7 +814,7 @@ function StreamerPageDesktop() {
 
           {/* BANNER */}
           <div ref={metaWrapRef}>
-            <div className={`sp-glass${streamer.isLive ? " sp-live-border" : ""}`} style={{ marginTop: 12, padding: "14px 16px" }}>
+            <div className={`sp-glass sp-channel-card${streamer.isLive ? " sp-live-border" : ""}`}>
               {/* déco radial fond */}
               <div
                 aria-hidden
@@ -826,24 +828,12 @@ function StreamerPageDesktop() {
                 }}
               />
 
-              <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 14 }}>
+              <div className="sp-channel-card__inner">
                 {/* Avatar */}
-                <div style={{ position: "relative", flexShrink: 0 }}>
-                  <div
-                    style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 16,
-                      border: "1px solid rgba(124,92,252,.28)",
-                      background: "linear-gradient(135deg,rgba(124,92,252,.18),rgba(59,77,200,.10))",
-                      display: "grid",
-                      placeItems: "center",
-                      overflow: "hidden",
-                      boxShadow: "0 8px 24px rgba(124,92,252,.22)",
-                    }}
-                  >
+                <div className="sp-channel-avatar-wrap">
+                  <div className="sp-channel-avatar">
                     {avatarUrl ? (
-                      <img src={String(avatarUrl)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={String(avatarUrl)} alt={`Avatar de ${displayName}`} />
                     ) : (
                       <span
                         style={{
@@ -857,79 +847,48 @@ function StreamerPageDesktop() {
                       </span>
                     )}
                   </div>
-                  {streamer.isLive && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: -2,
-                        right: -2,
-                        width: 14,
-                        height: 14,
-                        borderRadius: 999,
-                        background: "rgba(239,68,68,.90)",
-                        border: "2.5px solid rgba(11,9,22,.95)",
-                        boxShadow: "0 0 10px rgba(239,68,68,.60)",
-                      }}
-                    />
-                  )}
+                  {streamer.isLive && <span className="sp-channel-live-dot" aria-hidden="true" />}
                 </div>
 
                 {/* Meta */}
-                <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="sp-channel-identity">
                   {/* Ligne 1 : nom + status chips */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div className="sp-channel-heading">
                     <span
-                      className="sp-title-grad"
-                      style={{ fontSize: 20, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      className="sp-channel-name"
                       title={displayName}
                     >
                       {displayName}
                     </span>
 
                     {streamer.isLive ? (
-                      <span className="sp-pill sp-pill-live">
-                        <span
-                          style={{
-                            width: 6,
-                            height: 6,
-                            borderRadius: 999,
-                            background: "rgba(239,68,68,.90)",
-                            display: "inline-block",
-                            animation: "sp-dot-pulse 1.8s ease-in-out infinite",
-                          }}
-                        />
+                      <span className="sp-status-pill sp-status-pill--live">
+                        <span className="sp-status-pulse" aria-hidden="true" />
                         LIVE
                       </span>
                     ) : (
-                      <span className="sp-pill sp-pill-off">OFFLINE</span>
+                      <span className="sp-status-pill">OFFLINE</span>
                     )}
 
                     {streamer.isLive && (
-                      <span className="sp-pill">
+                      <span className="sp-status-pill">
                         <EyeIcon /> {fmt(viewers)}
                       </span>
                     )}
 
                     {streamer.isLive && (
-                      <span className="sp-pill" style={{ color: "rgba(167,139,250,.65)" }}>
+                      <span className="sp-status-pill">
                         ⏱ <LiveDurationText isLive={streamer.isLive} startedAtMs={streamer.liveStartedAtMs} />
                       </span>
                     )}
 
-                    {giftStatus?.myClaimed && <span className="sp-pill sp-pill-green">✅ Sub offert</span>}
+                    {giftStatus?.myClaimed && <span className="sp-status-pill">Sub offert</span>}
                   </div>
 
                   {/* Ligne 2 : abonnés + titre live */}
-                  <div style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div className="sp-channel-subline">
                     {typeof followsCount === "number" && (
-                      <span
-                        style={{
-                          fontFamily: "'Syne',system-ui,sans-serif",
-                          fontWeight: 700,
-                          fontSize: 12,
-                          color: "rgba(196,181,253,.55)",
-                        }}
-                      >
+                      <span>
                         {fmt(followsCount)} abonnés
                       </span>
                     )}
@@ -938,15 +897,7 @@ function StreamerPageDesktop() {
                     )}
                     {streamer.title && (
                       <span
-                        style={{
-                          fontFamily: "'Syne',system-ui,sans-serif",
-                          fontSize: 12,
-                          color: "rgba(167,139,250,.58)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          maxWidth: 560,
-                        }}
+                        className="sp-channel-title"
                         title={String(streamer.title)}
                       >
                         {streamer.title}
@@ -956,31 +907,30 @@ function StreamerPageDesktop() {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <div className="sp-channel-actions">
                   {/* Suivre */}
                   <button
                     type="button"
-                    className={isFollowing ? "btnGhostSmall" : "btnPrimarySmall"}
+                    className={`sp-action${isFollowing ? "" : " sp-action--primary"}`}
                     disabled={followLoading}
                     onClick={toggleFollow}
-                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700, minWidth: 80 }}
                   >
-                    {followLoading ? "…" : isFollowing ? "✓ Suivi" : "Suivre"}
+                    <UserPlus size={15} aria-hidden="true" />
+                    {followLoading ? "…" : isFollowing ? "Suivi" : "Suivre"}
                   </button>
 
                   {/* Sub */}
                   <button
                     type="button"
-                    className="btnPrimarySmall"
+                    className="sp-action sp-action--primary"
                     onClick={() => {
                       if (!token) return setLoginOpen(true);
                       setSubError(null);
                       setGiftError(null);
                       setSubOpen(true);
                     }}
-                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
                   >
-                    ⭐ SUB
+                    <Star size={15} aria-hidden="true" /> SUB
                   </button>
 
                   {/* Gift claim */}
@@ -1029,32 +979,26 @@ function StreamerPageDesktop() {
                   {/* Coffre */}
                   <button
                     type="button"
-                    className="btnGhostSmall"
+                    className="sp-action sp-action--chest"
                     onClick={() => {
                       chest.setChestError(null);
                       chest.setChestModalOpen(true);
                     }}
-                    style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}
                     title="Coffre"
                   >
-                    🎁{chest.chestBalance > 0 ? ` ${chest.chestBalance}` : ""}
+                    <Gift size={16} aria-hidden="true" />
+                    Coffre{chest.chestBalance > 0 ? ` · ${chest.chestBalance}` : ""}
                   </button>
 
                   {/* ⋯ menu */}
                   <button
                     type="button"
-                    className="btnGhostSmall"
+                    className="sp-action sp-action--icon"
                     onClick={() => setActionsOpen(true)}
-                    style={{
-                      fontFamily: "'Syne',system-ui,sans-serif",
-                      fontWeight: 700,
-                      fontSize: 18,
-                      lineHeight: 1,
-                      padding: "5px 11px",
-                    }}
                     title="Plus d'options"
+                    aria-label="Plus d'options"
                   >
-                    ⋯
+                    <MoreHorizontal size={19} aria-hidden="true" />
                   </button>
                 </div>
               </div>
@@ -1083,43 +1027,14 @@ function StreamerPageDesktop() {
 
         {/* ── Chat sidebar ── */}
         <aside
-          className="panel streamChat streamChatFixed"
+          className="panel streamChat streamChatFixed sp-chat-rail"
           style={{
             padding: 0,
             height: leftStackH > 0 ? leftStackH : undefined,
           }}
         >
-          <div className="sp-chat-head">
-            <div className="sp-title-grad" style={{ fontSize: 14, marginBottom: 4 }}>
-              {streamer.displayName || ""}
-            </div>
-            {streamer.isLive && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 999,
-                    background: "rgba(239,68,68,.85)",
-                    display: "inline-block",
-                    animation: "sp-dot-pulse 1.8s ease-in-out infinite",
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: "'Syne',system-ui,sans-serif",
-                    fontWeight: 700,
-                    fontSize: 11,
-                    color: "rgba(252,165,165,.75)",
-                  }}
-                >
-                  LIVE · {fmt(viewers)}
-                </span>
-              </div>
-            )}
-          </div>
           <div className="streamChatBody" style={{ flex: 1, minHeight: 0 }}>
-            <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} onFollowsCount={handleFollowsCount} showBotFab={false} />
+              <ChatPanel slug={String(slug || "")} onRequireLogin={() => setLoginOpen(true)} compact onFollowsCount={handleFollowsCount} showBotFab={false} />
           </div>
         </aside>
       </div>
@@ -1127,25 +1042,36 @@ function StreamerPageDesktop() {
       {/* ══════════════════════════════════════════════════════════
           BOTTOM PANEL — tabs
       ══════════════════════════════════════════════════════════ */}
-      <div className="sp-glass" style={{ marginTop: 14 }}>
+      <section className="sp-glass sp-content-hub" aria-label="Contenu de la chaîne">
         {/* Tabs row */}
-        <div style={{ display: "flex", gap: 8, padding: "12px 14px 0", flexWrap: "wrap", position: "relative", zIndex: 1 }}>
+        <div className="sp-content-nav" role="tablist" aria-label="Sections de la chaîne">
           {(
             [
-              ["about", "À propos"],
-              ["clips", "Clips"],
-              ["vod", "VOD"],
-              ["agenda", "Agenda"],
-            ] as [TabKey, string][]
-          ).map(([k, l]) => (
-            <button key={k} type="button" className={`sp-tab${tab === k ? " active" : ""}`} onClick={() => setTab(k)}>
-              {l}
+              ["about", "À propos", "Profil et liens", Info],
+              ["clips", "Clips", "Meilleurs moments", Scissors],
+              ["vod", "VOD", "Rediffusions", Film],
+              ["agenda", "Agenda", "Prochains lives", CalendarDays],
+            ] as [TabKey, string, string, React.ComponentType<{ size?: number; "aria-hidden"?: boolean }>][]
+          ).map(([k, label, hint, Icon]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              className={`sp-nav-tab${tab === k ? " active" : ""}`}
+              onClick={() => setTab(k)}
+            >
+              <Icon size={17} aria-hidden={true} />
+              <span className="sp-nav-tab__copy">
+                <span className="sp-nav-tab__label">{label}</span>
+                <span className="sp-nav-tab__hint">{hint}</span>
+              </span>
             </button>
           ))}
         </div>
 
         {/* Tab content */}
-        <div style={{ padding: "14px", minHeight: 80, animation: "sp-tab-in 220ms ease-out both", position: "relative", zIndex: 1 }} key={tab}>
+        <div className="sp-content-body" key={tab} role="tabpanel">
           {tab === "about" && slug ? <AboutTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
           {tab === "clips" && slug ? (
             <ClipsTab slug={String(slug)} token={token} isOwner={isOwner} onRequireLogin={() => setLoginOpen(true)} />
@@ -1153,7 +1079,7 @@ function StreamerPageDesktop() {
           {tab === "vod" && slug ? <VodTab slug={String(slug)} /> : null}
           {tab === "agenda" && slug ? <AgendaTab slug={String(slug)} token={token} canEdit={canEditTabs} /> : null}
         </div>
-      </div>
+      </section>
 
       {/* ══════════════════════════════════════════════════════════
           MODALES

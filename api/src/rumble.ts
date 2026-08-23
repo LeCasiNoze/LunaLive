@@ -594,6 +594,31 @@ export async function listScrapedRumbleStreamers(): Promise<Array<{ streamerId: 
   }));
 }
 
+/** Resolve a Rumble DVR master server-side so browsers never hit its CF-blocked URL. */
+export async function resolveRumbleDvrPlaybackUrl(videoId: string): Promise<string | null> {
+  const rawId = String(videoId || "").trim().replace(/^v/i, "");
+  if (!/^[a-z0-9]{6,}$/i.test(rawId)) return null;
+  const resolved = await resolveRedirectToCdn(
+    `https://rumble.com/live-hls-dvr/${rawId}/playlist.m3u8`
+  );
+  const url = resolved?.probeUrl || null;
+  if (!url) return null;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
+        referer: "https://rumble.com/",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      },
+    });
+    if (!response.ok) return null;
+    const text = await response.text();
+    return text.trimStart().startsWith("#EXTM3U") ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export type RumbleVodCandidate = {
   permlink: string;
   title: string;
