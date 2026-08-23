@@ -726,6 +726,8 @@ export function NativeOverlayChat({
   fontSize = 14,
   maxMessages = 8,
   scale = 1,
+  maxWidth,
+  previewMessage,
   align = "center",
   msgBgOpacity = 0.92,
 }: {
@@ -734,11 +736,22 @@ export function NativeOverlayChat({
   fontSize?: number;
   maxMessages?: number;
   scale?: number;
+  maxWidth?: number;
+  previewMessage?: string;
   align?: string;
   msgBgOpacity?: number;
   borderRadius?: number;
 }) {
-  const [messages, setMessages] = React.useState<ChatMsgLike[]>([]);
+  const [messages, setMessages] = React.useState<ChatMsgLike[]>(() => previewMessage ? [{
+    id: "preview-initial",
+    userId: 0,
+    username: "Apercu",
+    body: previewMessage,
+    createdAt: new Date().toISOString(),
+    avatarUrl: null,
+    cosmetics: null,
+    role: "streamer",
+  }] : []);
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_APPEARANCE);
   const cosmeticsCache = React.useRef<Record<string, any>>({});
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -881,6 +894,8 @@ export function NativeOverlayChat({
 
   const nameColor = appearance.chat.usernameColor || "#ffd54a";
   const msgColor = appearance.chat.messageColor || "#4ade80";
+  const safeScale = Math.max(0.25, Math.min(3, Number(scale) || 1));
+  const safeMaxWidth = maxWidth == null ? null : Math.max(260, Math.min(1400, Number(maxWidth) || 420));
 
   return (
     <div
@@ -891,13 +906,11 @@ export function NativeOverlayChat({
         display: "flex",
         flexDirection: "column",
         justifyContent: "flex-end",
-        gap: 10,
+        alignItems: align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center",
         overflow: "hidden",
         padding: 10,
         boxSizing: "border-box",
         fontSize: `${fontSize}px`,
-        transform: scale !== 1 ? `scale(${scale})` : undefined,
-        transformOrigin: align === "left" ? "bottom left" : align === "right" ? "bottom right" : "bottom center",
         ...({
           ["--chat-name-color" as any]: nameColor,
           ["--chat-msg-color" as any]: msgColor,
@@ -905,14 +918,28 @@ export function NativeOverlayChat({
         } as any),
       }}
     >
-      {messages.map((m) => (
-        <div key={m.id} className="chat-enter slide" style={{ width: "100%", flexShrink: 0 }}>
-          <ChatMessageBubble
-            msg={m}
-            streamerAppearance={appearance}
-          />
-        </div>
-      ))}
+      <div
+        style={{
+          width: safeMaxWidth == null
+            ? `${100 / safeScale}%`
+            : `min(${safeMaxWidth}px, ${100 / safeScale}%)`,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          flexShrink: 0,
+          transform: safeScale !== 1 ? `scale(${safeScale})` : undefined,
+          transformOrigin: align === "left" ? "bottom left" : align === "right" ? "bottom right" : "bottom center",
+        }}
+      >
+        {messages.map((m) => (
+          <div key={m.id} className="chat-enter slide" style={{ width: "100%", flexShrink: 0 }}>
+            <ChatMessageBubble
+              msg={m}
+              streamerAppearance={appearance}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

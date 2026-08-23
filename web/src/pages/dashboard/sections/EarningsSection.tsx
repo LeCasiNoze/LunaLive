@@ -1,371 +1,173 @@
-// web/src/components/Dashboard/sections/EarningsSection.tsx
 import * as React from "react";
 import type { ApiMyStreamer } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
+type EarningsRow = {
+  spend_type: string;
+  spent_rubis: number;
+  support_rubis: number;
+  streamer_earn_rubis: number;
+  platform_cut_rubis: number;
+  created_at: string;
+};
+
 type EarningsResp = {
   ok: true;
-  streamer: null | {
-    id: string;
-    slug: string;
-    modsPercentBp: number;
-    modsPercent: number; // ex: 12.5
-  };
+  streamer: null | { id: string; slug: string; modsPercentBp: number; modsPercent: number };
   wallet: {
     availableRubis: number;
     lifetimeRubis: number;
     reservedRubis: number;
-    breakdownByWeight: Record<string, number>; // { "10000": 123, "3500": 45 }
+    breakdownByWeight: Record<string, number>;
   };
-  last: Array<{
-    spend_type: string;
-    spent_rubis: number;
-    support_rubis: number;
-    streamer_earn_rubis: number;
-    platform_cut_rubis: number;
-    created_at: string;
-  }>;
+  last: EarningsRow[];
 };
 
-async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, init);
-  const text = await r.text().catch(() => "");
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${BASE}${path}`, init);
+  const text = await response.text().catch(() => "");
   let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    data = null;
-  }
-  if (!r.ok) {
-    const msg =
-      data?.error || data?.message || (text && text.length < 200 ? text : null) || `API ${r.status}`;
-    throw new Error(String(msg));
+  try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+  if (!response.ok) {
+    const message = data?.error || data?.message || (text && text.length < 200 ? text : null) || `API ${response.status}`;
+    throw new Error(String(message));
   }
   return data as T;
 }
 
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
-function fmtEur(n: number) {
-  if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function fmtEur(value: number) {
+  if (!Number.isFinite(value)) return "-";
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(value);
 }
 
-function fmtInt(n: any) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return "—";
-  return Math.max(0, Math.floor(v)).toLocaleString();
+function fmtInt(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Math.max(0, Math.floor(number)));
 }
 
-// ✅ valeur € pondérée (1 rubis @ weight=1.00 => 0.01€)
-function computeWeightedValue(breakdownByWeight: Record<string, number> | null | undefined) {
-  let totalRubis = 0;
+function computeWeightedValue(breakdown: Record<string, number>) {
   let valueCents = 0;
-
-  for (const [wStr, amtRaw] of Object.entries(breakdownByWeight || {})) {
-    const weightBp = Number(wStr);
-    const amt = Number(amtRaw);
-
-    // ⚠️ weight<=0 => on ne valorise pas (rubis "non classés")
-    if (!Number.isFinite(weightBp) || !Number.isFinite(amt) || amt <= 0) continue;
-
-    totalRubis += amt;
-
-    if (weightBp > 0) {
-      // cents = rubis * weight (bp)/10000 ; 1 rubis @10000 => 1 cent
-      valueCents += Math.floor((amt * weightBp) / 10000);
-    }
+  for (const [weightRaw, amountRaw] of Object.entries(breakdown)) {
+    const weight = Number(weightRaw);
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(weight) || !Number.isFinite(amount) || weight <= 0 || amount <= 0) continue;
+    valueCents += Math.floor((amount * weight) / 10_000);
   }
-
-  return { totalRubis, valueCents, valueEur: valueCents / 100 };
+  return { valueCents, valueEur: valueCents / 100 };
 }
 
-/**
- * ✅ Normalise la répartition pour qu’elle colle au solde réel (availableRubis).
- *
- * Objectif:
- * - éviter les "rubis fantômes" dans la répartition (sum(breakdown) > available)
- * - éviter d’inventer une valeur en € quand il manque des buckets (sum(breakdown) < available)
- *
- * Règles:
- * - si sumRaw > available => on scale DOWN et on arrondit pour que la somme == available
- * - si sumRaw < available => on ajoute un bucket "non classés" (weightBp=0) pour combler,
- *   sans impact sur la valeur pondérée € (pour ne pas sur-estimer)
- */
-function normalizeBreakdownToAvailable(
-  breakdownByWeight: Record<string, number> | null | undefined,
-  availableRubis: number
-) {
-  const available = Number(availableRubis);
-  const safeAvailable = Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0;
+function normalizeBreakdownToAvailable(source: Record<string, number>, availableRaw: number) {
+  const available = Number.isFinite(availableRaw) ? Math.max(0, Math.floor(availableRaw)) : 0;
+  const entries = Object.entries(source || {})
+    .map(([weight, amount]) => [String(weight), Number(amount)] as const)
+    .filter(([, amount]) => Number.isFinite(amount) && amount > 0);
+  const sourceTotal = entries.reduce((sum, [, amount]) => sum + amount, 0);
 
-  const rawEntries = Object.entries(breakdownByWeight || {})
-    .map(([w, v]) => [String(w), Number(v)] as const)
-    .filter(([, v]) => Number.isFinite(v) && v > 0);
-
-  const sumRaw = rawEntries.reduce((acc, [, v]) => acc + v, 0);
-
-  // cas simple: rien
-  if (!rawEntries.length) {
-    const out: Record<string, number> = {};
-    if (safeAvailable > 0) out["0"] = safeAvailable; // tout non classé
+  if (!entries.length) {
     return {
-      breakdown: out,
-      sumRaw,
-      available: safeAvailable,
-      mode: sumRaw > safeAvailable ? "scaled_down" : sumRaw < safeAvailable ? "added_untracked" : "ok",
-      untrackedAdded: safeAvailable,
-      scaledDownFactor: 0,
-    } as const;
+      breakdown: available > 0 ? { "0": available } : {},
+      mode: available > 0 ? "added_untracked" as const : "ok" as const,
+      untrackedAdded: available,
+    };
   }
 
-  // ✅ si la répartition dépasse le solde réel => scale down
-  if (sumRaw > safeAvailable && safeAvailable >= 0) {
-    const factor = safeAvailable === 0 ? 0 : safeAvailable / sumRaw;
-
-    // floor + distribute remainder to match exactly safeAvailable
-    const scaled = rawEntries.map(([wStr, v]) => {
-      const x = v * factor;
-      const flo = Math.floor(x);
-      const rem = x - flo;
-      return { wStr, flo, rem };
+  if (sourceTotal > available) {
+    const factor = available === 0 ? 0 : available / sourceTotal;
+    const scaled = entries.map(([weight, amount]) => {
+      const exact = amount * factor;
+      return { weight, amount: Math.floor(exact), remainder: exact - Math.floor(exact) };
     });
-
-    let sumFlo = scaled.reduce((acc, it) => acc + it.flo, 0);
-    let diff = safeAvailable - sumFlo;
-
-    // distribue les +1 sur les plus gros restes
-    if (diff > 0) {
-      scaled.sort((a, b) => b.rem - a.rem);
-      for (let i = 0; i < scaled.length && diff > 0; i++) {
-        scaled[i].flo += 1;
-        diff--;
-      }
-    } else if (diff < 0) {
-      // sécurité: si on dépasse (rare), on retire sur les plus petits restes
-      scaled.sort((a, b) => a.rem - b.rem);
-      for (let i = 0; i < scaled.length && diff < 0; i++) {
-        if (scaled[i].flo > 0) {
-          scaled[i].flo -= 1;
-          diff++;
-        }
-      }
+    let missing = available - scaled.reduce((sum, item) => sum + item.amount, 0);
+    scaled.sort((a, b) => b.remainder - a.remainder);
+    for (const item of scaled) {
+      if (missing <= 0) break;
+      item.amount += 1;
+      missing -= 1;
     }
-
-    const out: Record<string, number> = {};
-    for (const it of scaled) {
-      if (it.flo > 0) out[it.wStr] = it.flo;
-    }
-
     return {
-      breakdown: out,
-      sumRaw,
-      available: safeAvailable,
-      mode: "scaled_down",
+      breakdown: Object.fromEntries(scaled.filter((item) => item.amount > 0).map((item) => [item.weight, item.amount])),
+      mode: "scaled_down" as const,
       untrackedAdded: 0,
-      scaledDownFactor: factor,
-    } as const;
+    };
   }
 
-  // ✅ si la répartition est en dessous du solde => on ajoute un bucket non classé
-  if (sumRaw < safeAvailable) {
-    const out: Record<string, number> = {};
-    for (const [wStr, v] of rawEntries) out[wStr] = Math.floor(v);
-
-    const missing = safeAvailable - sumRaw;
-    if (missing > 0) {
-      // weight=0 => pas de valeur € (évite surestimation)
-      out["0"] = (out["0"] || 0) + missing;
-    }
-
-    return {
-      breakdown: out,
-      sumRaw,
-      available: safeAvailable,
-      mode: "added_untracked",
-      untrackedAdded: missing,
-      scaledDownFactor: 1,
-    } as const;
-  }
-
-  // ✅ parfait
-  const out: Record<string, number> = {};
-  for (const [wStr, v] of rawEntries) out[wStr] = Math.floor(v);
-
+  const breakdown: Record<string, number> = Object.fromEntries(entries.map(([weight, amount]) => [weight, Math.floor(amount)]));
+  const untrackedAdded = Math.max(0, available - sourceTotal);
+  if (untrackedAdded > 0) breakdown["0"] = (breakdown["0"] || 0) + untrackedAdded;
   return {
-    breakdown: out,
-    sumRaw,
-    available: safeAvailable,
-    mode: "ok",
-    untrackedAdded: 0,
-    scaledDownFactor: 1,
-  } as const;
-}
-
-/**
- * ✅ Estimation cashout:
- * - le streamer demande un montant en € (cents)
- * - on “retire” des rubis en priorité des poids élevés (comme dans l’économie)
- * - on estime combien de rubis seront consommés + combien resteront
- */
-function simulateCashout(breakdownByWeight: Record<string, number> | null | undefined, centsWanted: number) {
-  const entries = Object.entries(breakdownByWeight || {})
-    .map(([w, v]) => [Number(w), Number(v)] as const)
-    // ⚠️ weight<=0 => ne couvre aucun cent (donc inutile pour cashout)
-    .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0 && w > 0)
-    .sort((a, b) => b[0] - a[0]); // poids élevés d'abord
-
-  const totalRubis = Object.values(breakdownByWeight || {}).reduce((acc, v) => acc + (Number(v) || 0), 0);
-  let remainingCents = Math.max(0, Math.floor(centsWanted));
-
-  let rubisSpent = 0;
-  let centsCovered = 0;
-
-  for (const [wBp, amt] of entries) {
-    if (remainingCents <= 0) break;
-
-    const maxCentsFromBucket = Math.floor((amt * wBp) / 10000);
-    if (maxCentsFromBucket <= 0) continue;
-
-    const targetCentsHere = Math.min(remainingCents, maxCentsFromBucket);
-
-    // rubis minimal pour atteindre au moins targetCentsHere (avec le floor)
-    let needRubis = Math.ceil((targetCentsHere * 10000) / wBp);
-    needRubis = Math.min(needRubis, amt);
-
-    const gotCents = Math.floor((needRubis * wBp) / 10000);
-    if (gotCents <= 0) continue;
-
-    rubisSpent += needRubis;
-    centsCovered += gotCents;
-    remainingCents -= gotCents;
-  }
-
-  const canCover = remainingCents <= 0 && centsWanted > 0;
-  const remainingRubis = Math.max(0, Math.floor(totalRubis) - rubisSpent);
-
-  return {
-    totalRubis: Math.floor(totalRubis),
-    rubisSpent,
-    remainingRubis,
-    centsCovered,
-    eurCovered: centsCovered / 100,
-    canCover,
-    remainingCents,
+    breakdown,
+    mode: untrackedAdded > 0 ? "added_untracked" as const : "ok" as const,
+    untrackedAdded,
   };
 }
 
-const WEIGHT_HELP: Array<{ bp: number; label: string }> = [
-  { bp: 10000, label: "Top-up (rubis achetés)" },
-  { bp: 3500, label: "Farm watch (watchtime)" },
-  { bp: 3000, label: "Roue quotidienne / achievements" },
-  { bp: 2500, label: "Coffre auto" },
-  { bp: 2000, label: "Coffre streamer / dons streamers" },
-  { bp: 1000, label: "Événements plateforme" },
-  { bp: 0, label: "Non classés (non suivis / legacy)" },
-];
+function simulateCashout(breakdown: Record<string, number>, centsWanted: number) {
+  const entries = Object.entries(breakdown)
+    .map(([weight, amount]) => [Number(weight), Number(amount)] as const)
+    .filter(([weight, amount]) => Number.isFinite(weight) && Number.isFinite(amount) && weight > 0 && amount > 0)
+    .sort((a, b) => b[0] - a[0]);
+  const totalRubis = Object.values(breakdown).reduce((sum, amount) => sum + (Number(amount) || 0), 0);
+  let remainingCents = Math.max(0, Math.floor(centsWanted));
+  let rubisSpent = 0;
+  let centsCovered = 0;
 
-function InfoTip({
-  open,
-  onToggle,
-  title,
-  children,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  title?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="Information"
-        title={title ?? "Info"}
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: 999,
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 12,
-          fontWeight: 950,
-          color: "rgba(255,255,255,0.9)",
-          background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          cursor: "pointer",
-          lineHeight: 1,
-        }}
-      >
-        i
-      </button>
+  for (const [weight, amount] of entries) {
+    if (remainingCents <= 0) break;
+    const bucketCents = Math.floor((amount * weight) / 10_000);
+    if (bucketCents <= 0) continue;
+    const target = Math.min(remainingCents, bucketCents);
+    const needed = Math.min(amount, Math.ceil((target * 10_000) / weight));
+    const covered = Math.floor((needed * weight) / 10_000);
+    if (covered <= 0) continue;
+    rubisSpent += needed;
+    centsCovered += covered;
+    remainingCents -= covered;
+  }
 
-      {open ? (
-        <div
-          style={{
-            position: "absolute",
-            top: 28,
-            right: 0,
-            width: 380,
-            maxWidth: "min(380px, 86vw)",
-            padding: 12,
-            borderRadius: 14,
-            background: "rgba(10,10,14,0.95)",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 12px 36px rgba(0,0,0,0.35)",
-            zIndex: 50,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-            <div style={{ fontWeight: 950, fontSize: 12, color: "rgba(255,255,255,0.92)" }}>
-              {title ?? "Info"}
-            </div>
-            <button type="button" onClick={onToggle} className="btnPrimarySmall" style={{ padding: "4px 8px" }}>
-              Fermer
-            </button>
-          </div>
-          <div className="mutedSmall" style={{ marginTop: 8, lineHeight: 1.4 }}>
-            {children}
-          </div>
-        </div>
-      ) : null}
-    </span>
-  );
+  return {
+    rubisSpent,
+    remainingRubis: Math.max(0, Math.floor(totalRubis) - rubisSpent),
+    eurCovered: centsCovered / 100,
+    canCover: remainingCents <= 0 && centsWanted > 0,
+  };
 }
 
-function StatTile({
-  label,
-  value,
-  sub,
-}: {
+const WEIGHT_LABELS: Record<number, string> = {
+  10000: "Rubis achetes",
+  3500: "Temps de visionnage",
+  3000: "Roue et succes",
+  2500: "Coffre automatique",
+  2000: "Coffre et dons streamer",
+  1000: "Evenements plateforme",
+  0: "Non classes",
+};
+
+function sourceLabel(source: string) {
+  const value = String(source || "").toLowerCase();
+  if (value.includes("sub")) return "Abonnement";
+  if (value.includes("tip") || value.includes("don")) return "Don";
+  if (value.includes("event")) return "Evenement";
+  return source || "Autre";
+}
+
+function RevenueMetric({ label, value, note, accent = false }: {
   label: string;
   value: React.ReactNode;
-  sub?: React.ReactNode;
+  note: React.ReactNode;
+  accent?: boolean;
 }) {
   return (
-    <div
-      style={{
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10))",
-        padding: 12,
-      }}
-    >
-      <div className="mutedSmall" style={{ marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 950, lineHeight: 1.1 }}>{value}</div>
-      {sub !== undefined ? (
-        <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
-          {sub}
-        </div>
-      ) : null}
+    <div className={`earnings-metric${accent ? " is-accent" : ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
     </div>
   );
 }
@@ -373,503 +175,204 @@ function StatTile({
 export function EarningsSection({ streamer }: { streamer: ApiMyStreamer }) {
   const auth = useAuth() as any;
   const token = auth?.token ?? null;
-
   const [loading, setLoading] = React.useState(true);
   const [data, setData] = React.useState<EarningsResp | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-
-  // 💸 Cashout input
-  const [cashoutEur, setCashoutEur] = React.useState<string>("");
-  const eurWanted = Number(String(cashoutEur).replace(",", "."));
-  const isEurValid = Number.isFinite(eurWanted) && eurWanted > 0;
-
-  // 👮‍♂️ Mods %
-  const [modsPct, setModsPct] = React.useState<number>(0);
+  const [cashoutEur, setCashoutEur] = React.useState("");
+  const [modsPct, setModsPct] = React.useState(0);
   const [modsSaving, setModsSaving] = React.useState(false);
   const [modsError, setModsError] = React.useState<string | null>(null);
-
-  // ℹ️ tooltips
-  const [weightsInfoOpen, setWeightsInfoOpen] = React.useState(false);
+  const [modsSaved, setModsSaved] = React.useState(false);
 
   const reload = React.useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const r = await j<EarningsResp>("/streamer/me/earnings", {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      const result = await request<EarningsResp>("/streamer/me/earnings", {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setData(r);
-
-      const pct = Number(r?.streamer?.modsPercent ?? 0);
-      setModsPct(Number.isFinite(pct) ? clamp(pct, 0, 100) : 0);
-    } catch (e: any) {
-      setError(String(e?.message || "Erreur"));
+      setData(result);
+      setModsPct(clamp(Number(result.streamer?.modsPercent || 0), 0, 100));
+    } catch (loadError: unknown) {
+      setError(loadError instanceof Error ? loadError.message : "Impossible de charger les revenus.");
     } finally {
       setLoading(false);
     }
   }, [token]);
 
-  React.useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!mounted) return;
-      await reload();
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [reload]);
+  React.useEffect(() => { void reload(); }, [reload]);
 
-  // ✅ solde dispo : on prend la valeur API telle quelle (même si =0), sinon fallback user
   const apiAvailable = Number(data?.wallet?.availableRubis);
-  const available = Number.isFinite(apiAvailable)
-    ? Math.max(0, Math.floor(apiAvailable))
-    : Number(auth?.user?.rubis ?? 0);
-
-  const rawBreakdown = data?.wallet?.breakdownByWeight ?? {};
-
-  // ✅ normalisation anti "rubis fantômes" / anti surestimation €
-  const normalized = React.useMemo(() => {
-    return normalizeBreakdownToAvailable(rawBreakdown, available);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [available, JSON.stringify(rawBreakdown)]);
-
-  const breakdownByWeight = normalized.breakdown;
-
-  const weighted = React.useMemo(() => computeWeightedValue(breakdownByWeight), [JSON.stringify(breakdownByWeight)]);
-
-  // ✅ € : uniquement sur rubis classés (weight>0). Les non-classés (weight=0) ne donnent pas de valeur.
-  const approxEur = weighted.valueCents > 0 ? weighted.valueEur : 0;
-
-  const lifetime = Math.max(0, Math.floor(Number(data?.wallet?.lifetimeRubis ?? 0) || 0));
-  const reserved = Math.max(0, Math.floor(Number(data?.wallet?.reservedRubis ?? 0) || 0));
-
-  const weightEntries = Object.entries(breakdownByWeight)
-    .map(([w, v]) => [Number(w), Number(v)] as const)
-    .filter(([w, v]) => Number.isFinite(w) && Number.isFinite(v) && v > 0)
+  const available = Number.isFinite(apiAvailable) ? Math.max(0, Math.floor(apiAvailable)) : Number(auth?.user?.rubis || 0);
+  const normalized = normalizeBreakdownToAvailable(data?.wallet?.breakdownByWeight || {}, available);
+  const breakdown = normalized.breakdown;
+  const weighted = computeWeightedValue(breakdown);
+  const lifetime = Math.max(0, Math.floor(Number(data?.wallet?.lifetimeRubis || 0)));
+  const reserved = Math.max(0, Math.floor(Number(data?.wallet?.reservedRubis || 0)));
+  const classified = Object.entries(breakdown).reduce((sum, [weight, amount]) => Number(weight) > 0 ? sum + Number(amount) : sum, 0);
+  const classifiedPct = available > 0 ? Math.round((classified / available) * 100) : 0;
+  const weightEntries = Object.entries(breakdown)
+    .map(([weight, amount]) => [Number(weight), Number(amount)] as const)
+    .filter(([, amount]) => amount > 0)
     .sort((a, b) => b[0] - a[0]);
 
-  // provenance (dernières 30 entrées)
-  const buckets = React.useMemo(() => {
-    const out = { sub: 0, tip: 0, event: 0, other: 0 };
-    for (const row of data?.last ?? []) {
-      const t = String(row.spend_type || "").toLowerCase();
-      const v = Number(row.streamer_earn_rubis ?? 0);
-      if (!Number.isFinite(v) || v <= 0) continue;
-
-      if (t.includes("sub")) out.sub += v;
-      else if (t.includes("tip") || t.includes("don")) out.tip += v;
-      else if (t.includes("event")) out.event += v;
-      else out.other += v;
-    }
-    return out;
-  }, [data]);
-
+  const buckets = { sub: 0, tip: 0, event: 0, other: 0 };
+  for (const row of data?.last || []) {
+    const source = String(row.spend_type || "").toLowerCase();
+    const amount = Math.max(0, Number(row.streamer_earn_rubis) || 0);
+    if (source.includes("sub")) buckets.sub += amount;
+    else if (source.includes("tip") || source.includes("don")) buckets.tip += amount;
+    else if (source.includes("event")) buckets.event += amount;
+    else buckets.other += amount;
+  }
   const maxBucket = Math.max(1, ...Object.values(buckets));
+  const wanted = Number(String(cashoutEur).replace(",", "."));
+  const wantedCents = Number.isFinite(wanted) && wanted > 0 ? Math.round(wanted * 100) : 0;
+  const cashout = wantedCents > 0 ? simulateCashout(breakdown, wantedCents) : null;
 
-  // Estimation cashout (sur breakdown normalisé)
-  const wantedCents = isEurValid ? Math.round(eurWanted * 100) : 0;
-  const cashoutSim = React.useMemo(() => {
-    if (!wantedCents) return null;
-    return simulateCashout(breakdownByWeight, wantedCents);
-  }, [wantedCents, JSON.stringify(breakdownByWeight)]);
-
-  const maxCashoutEur = weighted.valueEur > 0 ? weighted.valueEur : 0;
+  async function saveModsPercent() {
+    if (!token) return;
+    setModsSaving(true);
+    setModsError(null);
+    setModsSaved(false);
+    try {
+      await request("/streamer/me/mods-percent", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ percent: clamp(Number(modsPct), 0, 100) }),
+      });
+      setModsSaved(true);
+      await reload();
+    } catch (saveError: unknown) {
+      setModsError(saveError instanceof Error ? saveError.message : "Enregistrement impossible.");
+    } finally {
+      setModsSaving(false);
+    }
+  }
 
   return (
-    <div className="panel">
-      {/* mini rework style local */}
-      <style>{`
-        .earnGrid{
-          display:grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-          margin-top: 12px;
-        }
-        @media (max-width: 980px){
-          .earnGrid{ grid-template-columns: 1fr; }
-        }
-        .earnCard{
-          border-radius: 18px;
-          border: 1px solid rgba(255,255,255,0.10);
-          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.10));
-          box-shadow: 0 18px 50px rgba(0,0,0,0.24);
-          backdrop-filter: blur(10px);
-          overflow: hidden;
-        }
-        /* ✅ Autorise les popovers (InfoTip) à sortir de la card sans se faire couper */
-        .earnCard.allowOverflow{
-          overflow: visible;            /* important */
-          position: relative;
-          z-index: 20;                  /* passe au-dessus des autres cards */
-        }
-        .earnCardInner{ padding: 14px; }
-        .earnHeadRow{
-          display:flex;
-          justify-content: space-between;
-          gap: 10px;
-          align-items: baseline;
-          flex-wrap: wrap;
-        }
-        .earnTitle{
-          font-weight: 1100;
-          letter-spacing: -0.2px;
-          font-size: 16px;
-        }
-        .earnBar{
-          height: 10px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.08);
-          overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.10);
-        }
-        .earnBarFill{
-          height: 100%;
-          background: rgba(255,255,255,0.26);
-        }
-        .earnChip{
-          padding: 8px 10px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.10);
-          font-size: 12px;
-          display:inline-flex;
-          gap: 8px;
-          align-items:center;
-          white-space: nowrap;
-        }
-        .earnTable{
-          width: 100%;
-          border-collapse: collapse;
-          overflow: hidden;
-          border-radius: 14px;
-        }
-        .earnTable th, .earnTable td{
-          padding: 10px 10px;
-          border-bottom: 1px solid rgba(255,255,255,0.08);
-          font-size: 12px;
-          text-align: left;
-        }
-        .earnTable th{
-          font-weight: 950;
-          opacity: 0.75;
-          background: rgba(255,255,255,0.03);
-        }
-        .earnRowTitle{
-          font-weight: 950;
-        }
-      `}</style>
+    <div className="earnings-dashboard">
+      <div className="earnings-toolbar">
+        <div>
+          <div className="panelTitle">Revenus de @{streamer.slug}</div>
+          <div className="mutedSmall">Soldes et transactions calcules directement depuis le portefeuille LunaLive.</div>
+        </div>
+        <button type="button" className="btnGhost" onClick={() => void reload()} disabled={loading}>
+          {loading ? "Actualisation..." : "Actualiser"}
+        </button>
+      </div>
 
-      <div className="panelTitle">Revenus</div>
-      <div className="mutedSmall">Chaîne : @{streamer.slug}</div>
+      {error ? <div className="dash-alert" role="alert">{error}</div> : null}
 
-      {loading ? <div className="muted" style={{ marginTop: 10 }}>Chargement…</div> : null}
-      {error ? (
-        <div className="mutedSmall" style={{ marginTop: 10, color: "rgba(255,90,90,0.95)" }}>
-          {error}
+      <section className="earnings-primary-grid" aria-label="Synthese des revenus">
+        <RevenueMetric accent label="Solde disponible" value={loading && !data ? "..." : `${fmtInt(available)} rubis`} note="Solde API utilisable" />
+        <RevenueMetric label="Valeur estimee" value={loading && !data ? "..." : fmtEur(weighted.valueEur)} note={`${classifiedPct} % du solde est valorisable`} />
+        <RevenueMetric label="Rubis recus au total" value={loading && !data ? "..." : fmtInt(lifetime)} note="Cumul historique" />
+        <RevenueMetric label="Montant reserve" value={loading && !data ? "..." : `${fmtInt(reserved)} rubis`} note="Deja immobilise" />
+      </section>
+
+      {normalized.mode !== "ok" ? (
+        <div className="earnings-notice">
+          {normalized.mode === "scaled_down"
+            ? "La repartition technique depassait le solde reel : elle a ete ramenee au solde API sans creer de rubis."
+            : `${fmtInt(normalized.untrackedAdded)} rubis ne sont pas classes et restent exclus de l'estimation en euros.`}
         </div>
       ) : null}
 
-      {!loading && data?.ok ? (
-        <>
-          {/* ✅ Top KPIs */}
-          <div className="earnGrid">
-            <StatTile
-              label="Solde disponible"
-              value={`${fmtInt(available)} rubis`}
-              sub={
-                <>
-                  Valeur estimée (pondérée, rubis classés) :{" "}
-                  <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(approxEur)} €</strong>
-                </>
-              }
-            />
-            <StatTile
-              label="Lifetime / Réservé"
-              value={
-                <>
-                  {fmtInt(lifetime)} <span className="mutedSmall">lifetime</span>
-                </>
-              }
-              sub={
-                <>
-                  Réservé cashout :{" "}
-                  <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtInt(reserved)}</strong>
-                </>
-              }
-            />
+      <section className="earnings-layout">
+        <article className="earnings-card">
+          <div className="earnings-card-head">
+            <div><span>Composition du solde</span><strong>Valeur par provenance</strong></div>
+            <span className="earnings-pill">{fmtInt(classified)} classes</span>
           </div>
-
-          {/* ✅ signalisation anti-phantom */}
-          {normalized.mode !== "ok" ? (
-            <div className="mutedSmall" style={{ marginTop: 10, color: "rgba(255,210,140,0.95)" }}>
-              {normalized.mode === "scaled_down" ? (
-                <>⚠️ Répartition corrigée (anti rubis fantômes) : la somme des buckets dépassait le solde réel.</>
-              ) : (
-                <>
-                  ℹ️ Répartition incomplète : {fmtInt(normalized.untrackedAdded)} rubis non classés (non valorisés en €).
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {/* ✅ 2 colonnes: Mods + Répartition */}
-          <div className="earnGrid">
-            {/* 1) Part des modos */}
-            <div className="earnCard allowOverflow">
-              <div className="earnCardInner">
-                <div className="earnHeadRow">
-                  <div className="earnTitle">Part des modos</div>
-                  <div className="mutedSmall" style={{ opacity: 0.8 }}>
-                    Actuel:{" "}
-                    <strong style={{ color: "rgba(255,255,255,0.9)" }}>
-                      {Number(data?.streamer?.modsPercent ?? 0).toLocaleString()}%
-                    </strong>
-                  </div>
+          <div className="earnings-weight-list">
+            {weightEntries.length ? weightEntries.map(([weight, amount]) => {
+              const pct = available > 0 ? Math.max(2, (amount / available) * 100) : 0;
+              return (
+                <div className="earnings-weight-row" key={weight}>
+                  <div><strong>{WEIGHT_LABELS[weight] || `Poids ${(weight / 10_000).toFixed(2)}`}</strong><span>{fmtInt(amount)} rubis</span></div>
+                  <div className="earnings-progress"><span style={{ width: `${Math.min(100, pct)}%` }} /></div>
+                  <small>{weight > 0 ? `${(weight / 10_000).toFixed(2)} centime par rubis` : "Non valorise"}</small>
                 </div>
-
-                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
-                  <div style={{ fontWeight: 1100, fontSize: 22 }}>{modsPct.toFixed(1)}%</div>
-                  <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                    (0% → 100%)
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 10 }}>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={0.5}
-                    value={modsPct}
-                    onChange={(e) => setModsPct(clamp(Number(e.target.value), 0, 100))}
-                    style={{ width: "100%" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
-                  <button
-                    type="button"
-                    className="btnPrimarySmall"
-                    disabled={modsSaving}
-                    onClick={async () => {
-                      if (!token) return;
-                      setModsError(null);
-
-                      const pct = clamp(Number(modsPct), 0, 100);
-                      if (!Number.isFinite(pct)) {
-                        setModsError("Valeur invalide.");
-                        return;
-                      }
-
-                      setModsSaving(true);
-                      try {
-                        await j("/streamer/me/mods-percent", {
-                          method: "POST",
-                          headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "application/json",
-                          },
-                          body: JSON.stringify({ percent: pct }),
-                        });
-                        await reload();
-                      } catch (e: any) {
-                        setModsError(String(e?.message || "Erreur"));
-                      } finally {
-                        setModsSaving(false);
-                      }
-                    }}
-                  >
-                    {modsSaving ? "…" : "Enregistrer"}
-                  </button>
-
-                  {modsError ? (
-                    <div className="mutedSmall" style={{ color: "rgba(255,90,90,0.95)" }}>
-                      {modsError}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            {/* 2) Répartition */}
-            <div className="earnCard allowOverflow">
-              <div className="earnCardInner">
-                <div className="earnHeadRow">
-                  <div className="earnTitle">Répartition du solde</div>
-                  <InfoTip open={weightsInfoOpen} onToggle={() => setWeightsInfoOpen((v) => !v)} title="À propos des poids">
-                    <div>
-                      Chaque rubis n’a pas la même valeur selon sa provenance.
-                      <br />
-                      Le <strong>poids</strong> représente la “valeur de soutien”.
-                      <div style={{ marginTop: 10, fontWeight: 950, opacity: 0.9 }}>Repères (indicatifs)</div>
-                      <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                        {WEIGHT_HELP.map((x) => (
-                          <div key={x.bp} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                            <span style={{ opacity: 0.9 }}>{x.label}</span>
-                            <span style={{ fontWeight: 950, opacity: 0.95 }}>{(x.bp / 10000).toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ marginTop: 10, opacity: 0.9 }}>
-                        (Le cashout retire en priorité les rubis au poids le plus élevé.)
-                      </div>
-                    </div>
-                  </InfoTip>
-                </div>
-
-                {weightEntries.length ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
-                    {weightEntries.map(([w, v]) => (
-                      <div key={String(w)} className="earnChip" title={`weight_bp=${w}`}>
-                        <strong>{(w / 10000).toFixed(2)}</strong>
-                        <span style={{ opacity: 0.85 }}>→</span>
-                        <span style={{ fontWeight: 950 }}>{fmtInt(v)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 10 }}>
-                    —
-                  </div>
-                )}
-              </div>
-            </div>
+              );
+            }) : <div className="earnings-empty">Aucun solde a repartir.</div>}
           </div>
+        </article>
 
-          {/* ✅ Cashout */}
-          <div className="earnCard" style={{ marginTop: 12 }}>
-            <div className="earnCardInner">
-              <div className="earnHeadRow">
-                <div className="earnTitle">Cashout</div>
-                <div className="mutedSmall" style={{ opacity: 0.85 }}>
-                  Max estimé :{" "}
-                  <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(maxCashoutEur)} €</strong>
-                </div>
-              </div>
-
-              <div className="mutedSmall" style={{ opacity: 0.85, lineHeight: 1.4, marginTop: 10 }}>
-                Tu demandes un retrait en <strong>€</strong>. Le site retire des rubis en priorité sur les{" "}
-                <strong>poids élevés</strong>. Les rubis <strong>non classés</strong> (poids 0) ne sont pas valorisés.
-              </div>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12, flexWrap: "wrap" }}>
-                <input
-                  value={cashoutEur}
-                  onChange={(e) => setCashoutEur(e.target.value)}
-                  placeholder="Montant en € (ex: 45)"
-                  className="input"
-                  style={{ flex: 1, minWidth: 220 }}
-                />
-                <button
-                  type="button"
-                  className="btnPrimarySmall"
-                  disabled={!isEurValid}
-                  onClick={() => {
-                    alert("Cashout API à brancher (tu l'as déjà côté backend).");
-                  }}
-                >
-                  Demander
-                </button>
-              </div>
-
-              <div style={{ marginTop: 10 }}>
-                {!isEurValid ? (
-                  <div className="mutedSmall" style={{ opacity: 0.75 }}>
-                    Saisis un montant pour voir l’estimation (rubis retirés / rubis restants).
-                  </div>
-                ) : cashoutSim ? (
-                  <>
-                    <div className="mutedSmall" style={{ opacity: 0.9 }}>
-                      Demandé :{" "}
-                      <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(eurWanted)} €</strong> • Couvert :{" "}
-                      <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtEur(cashoutSim.eurCovered)} €</strong>
-                    </div>
-
-                    <div className="mutedSmall" style={{ marginTop: 6, opacity: 0.9 }}>
-                      Rubis retirés (est.) :{" "}
-                      <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtInt(cashoutSim.rubisSpent)}</strong> • Restants :{" "}
-                      <strong style={{ color: "rgba(255,255,255,0.92)" }}>{fmtInt(cashoutSim.remainingRubis)}</strong>
-                    </div>
-
-                    {!cashoutSim.canCover ? (
-                      <div className="mutedSmall" style={{ marginTop: 8, color: "rgba(255,180,90,0.95)" }}>
-                        Solde pondéré insuffisant pour couvrir ce montant (max ≈ {fmtEur(maxCashoutEur)} €).
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            </div>
+        <article className="earnings-card">
+          <div className="earnings-card-head">
+            <div><span>Equipe</span><strong>Part des moderateurs</strong></div>
+            <span className="earnings-pill">{modsPct.toFixed(1)} %</span>
           </div>
-
-          {/* ✅ Provenance */}
-          <div className="earnCard" style={{ marginTop: 12 }}>
-            <div className="earnCardInner">
-              <div className="earnHeadRow">
-                <div className="earnTitle">Provenance (30 dernières entrées)</div>
-              </div>
-
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                {(["sub", "tip", "event", "other"] as const).map((k) => {
-                  const v = (buckets as any)[k] as number;
-                  const pct = Math.round((v / maxBucket) * 100);
-                  return (
-                    <div key={k}>
-                      <div className="mutedSmall" style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ fontWeight: 950 }}>{k.toUpperCase()}</span>
-                        <span>
-                          <strong style={{ color: "rgba(255,255,255,0.9)" }}>{fmtInt(v)}</strong> rubis
-                        </span>
-                      </div>
-                      <div className="earnBar" style={{ marginTop: 8 }}>
-                        <div className="earnBarFill" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          <p className="earnings-card-copy">Definis la part attribuee a ton equipe de moderation sur les revenus concernes.</p>
+          <input className="earnings-range" type="range" min={0} max={100} step={0.5} value={modsPct} onChange={(event) => { setModsPct(clamp(Number(event.target.value), 0, 100)); setModsSaved(false); }} />
+          <div className="earnings-range-scale"><span>0 %</span><span>50 %</span><span>100 %</span></div>
+          <div className="earnings-actions">
+            <button type="button" className="btnPrimarySmall" disabled={modsSaving} onClick={() => void saveModsPercent()}>{modsSaving ? "Enregistrement..." : "Enregistrer la part"}</button>
+            {modsSaved ? <span className="earnings-success">Enregistre</span> : null}
+            {modsError ? <span className="earnings-error">{modsError}</span> : null}
           </div>
+        </article>
 
-          {/* ✅ Dernières entrées (table) */}
-          <div className="earnCard" style={{ marginTop: 12 }}>
-            <div className="earnCardInner">
-              <div className="earnHeadRow">
-                <div className="earnTitle">Dernières entrées</div>
-                <div className="mutedSmall" style={{ opacity: 0.8 }}>
-                  Top 10
-                </div>
-              </div>
-
-              <div style={{ marginTop: 12, overflowX: "auto" }}>
-                <table className="earnTable">
-                  <thead>
-                    <tr>
-                      <th>Type</th>
-                      <th>Date</th>
-                      <th>Earn</th>
-                      <th>Platform</th>
-                      <th>Spent</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.last ?? []).slice(0, 10).map((row, i) => (
-                      <tr key={i}>
-                        <td className="earnRowTitle">{String(row.spend_type)}</td>
-                        <td>{new Date(row.created_at).toLocaleString()}</td>
-                        <td>{fmtInt(row.streamer_earn_rubis)}</td>
-                        <td>{fmtInt(row.platform_cut_rubis)}</td>
-                        <td>{fmtInt(row.spent_rubis)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+        <article className="earnings-card">
+          <div className="earnings-card-head">
+            <div><span>Projection</span><strong>Simuler un retrait</strong></div>
+            <span className="earnings-pill">Max. {fmtEur(weighted.valueEur)}</span>
           </div>
-        </>
-      ) : null}
+          <p className="earnings-card-copy">Cette simulation utilise d'abord les rubis au poids le plus eleve. Elle n'envoie aucune demande de paiement.</p>
+          <label className="earnings-amount-field">
+            <span>Montant souhaite</span>
+            <div><input inputMode="decimal" value={cashoutEur} onChange={(event) => setCashoutEur(event.target.value)} placeholder="0,00" /><b>EUR</b></div>
+          </label>
+          {cashout ? (
+            <div className={`earnings-simulation${cashout.canCover ? " is-valid" : " is-warning"}`}>
+              <div><span>Montant couvert</span><strong>{fmtEur(cashout.eurCovered)}</strong></div>
+              <div><span>Rubis estimes</span><strong>{fmtInt(cashout.rubisSpent)}</strong></div>
+              <div><span>Solde restant</span><strong>{fmtInt(cashout.remainingRubis)}</strong></div>
+              {!cashout.canCover ? <p>Le solde valorisable ne couvre pas ce montant.</p> : null}
+            </div>
+          ) : <div className="earnings-empty">Saisis un montant pour obtenir une estimation.</div>}
+        </article>
+
+        <article className="earnings-card">
+          <div className="earnings-card-head"><div><span>30 dernieres transactions</span><strong>Origine des revenus</strong></div></div>
+          <div className="earnings-source-list">
+            {([ ["sub", "Abonnements"], ["tip", "Dons"], ["event", "Evenements"], ["other", "Autres"] ] as const).map(([key, label]) => (
+              <div key={key}>
+                <div><span>{label}</span><strong>{fmtInt(buckets[key])} rubis</strong></div>
+                <div className="earnings-progress"><span style={{ width: `${Math.round((buckets[key] / maxBucket) * 100)}%` }} /></div>
+              </div>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="earnings-transactions">
+        <div className="earnings-card-head">
+          <div><span>Activite recente</span><strong>Dernieres entrees</strong></div>
+          <span className="earnings-pill">{Math.min(10, data?.last?.length || 0)} affichees</span>
+        </div>
+        <div className="earnings-table-wrap">
+          <table>
+            <thead><tr><th>Origine</th><th>Date</th><th>Revenu streamer</th><th>Part plateforme</th><th>Total utilise</th></tr></thead>
+            <tbody>
+              {(data?.last || []).slice(0, 10).map((row, index) => (
+                <tr key={`${row.created_at}-${index}`}>
+                  <td><strong>{sourceLabel(row.spend_type)}</strong><small>{row.spend_type}</small></td>
+                  <td>{new Date(row.created_at).toLocaleString("fr-FR")}</td>
+                  <td className="is-positive">+ {fmtInt(row.streamer_earn_rubis)}</td>
+                  <td>{fmtInt(row.platform_cut_rubis)}</td>
+                  <td>{fmtInt(row.spent_rubis)}</td>
+                </tr>
+              ))}
+              {!loading && !(data?.last || []).length ? <tr><td colSpan={5}><div className="earnings-empty">Aucune transaction recente.</div></td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div className="stats-footnote">La valeur en euros est une estimation prudente fondee uniquement sur les rubis classes. Le solde affiche provient toujours de l'API LunaLive.</div>
     </div>
   );
 }

@@ -323,9 +323,22 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     if (!token) return;
     setLoading(true); setErr(null);
     try {
-      const data = await getMyBotDashboard(token);
-      setCommands(data.commands);
-      setAutoposts(data.autoposts);
+      try {
+        const data = await getMyBotDashboard(token);
+        setCommands(data.commands);
+        setAutoposts(data.autoposts);
+      } catch (dashboardError) {
+        // Compatibilite pendant un deploiement decale API/web : les deux
+        // routes historiques restent une source fiable et sont lancees ensemble.
+        const message = dashboardError instanceof Error ? dashboardError.message : "";
+        if (!/Cannot GET \/me\/bot\/dashboard|404|not found/i.test(message)) throw dashboardError;
+        const [commandsResult, autopostsResult] = await Promise.all([
+          getMyBotCommands(token),
+          getMyBotAutoposts(token),
+        ]);
+        setCommands(commandsResult.commands);
+        setAutoposts(autopostsResult.autoposts);
+      }
       setConfigLoaded(true);
     } catch (error: unknown) { setErr(error instanceof Error ? error.message : "Erreur"); }
     finally { setLoading(false); }

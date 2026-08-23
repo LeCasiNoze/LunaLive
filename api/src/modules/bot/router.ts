@@ -60,6 +60,28 @@ meBotRouter.get("/overview", async (req, res) => {
   }
 });
 
+/* Configuration initiale du dashboard en un seul aller-retour. */
+meBotRouter.get("/dashboard", async (req, res) => {
+  try {
+    const s = await mustGetMyStreamer(req);
+    const [commands, autoposts] = await Promise.all([
+      listCommands(pool, s.id),
+      listAutoposts(pool, s.id),
+    ]);
+
+    res.json({
+      ok: true,
+      streamer: { id: String(s.id), slug: s.slug },
+      counts: { commands: commands.length, autoposts: autoposts.length },
+      commands,
+      autoposts,
+      limits: { textMax: BOT_TEXT_MAX },
+    });
+  } catch (e: any) {
+    res.status(e?.status || 500).json({ ok: false, reason: e?.message || "server_error" });
+  }
+});
+
 /* Commands */
 meBotRouter.get("/commands", async (req, res) => {
   try {

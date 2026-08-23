@@ -742,9 +742,9 @@ export function ObsWidgetModule({
               <iframe
                 ref={chatPreviewRef}
                 key={chatObsUrl}
-                src={chatObsUrl}
+                src={`${chatObsUrl}&preview=1`}
                 title="Aperçu Chat"
-                style={{ width: "100%", height: 180, border: 0 }}
+                style={{ width: "100%", height: 240, border: 0 }}
                 sandbox="allow-scripts allow-same-origin"
               />
             </div>

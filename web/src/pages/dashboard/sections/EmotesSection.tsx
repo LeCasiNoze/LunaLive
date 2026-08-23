@@ -6,6 +6,7 @@ import { useAuth } from "../../../auth/AuthProvider";
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
 type Kind = "emoji" | "gif";
+const SOURCE_MAX_BYTES = 8 * 1024 * 1024;
 
 type EmoteItem = {
   id: number;
@@ -22,13 +23,14 @@ type EmoteItem = {
 };
 
 async function j<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers || {});
+  headers.set("authorization", `Bearer ${token}`);
+  if (!(init.body instanceof FormData) && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`,
-      ...(init.headers || {}),
-    },
+    headers,
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -54,19 +56,11 @@ function bytesLabel(n: number | null | undefined) {
   return `${(v / 1024 / 1024).toFixed(2)} mo`;
 }
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(new Error("file_read_error"));
-    r.onload = () => resolve(String(r.result || ""));
-    r.readAsDataURL(file);
-  });
-}
-
 // small helper for nicer UI errors
 function friendlyErr(error: unknown): string {
   const m = error instanceof Error ? error.message : String(error || "Erreur");
-  if (/file_too_large/i.test(m)) return "Fichier trop lourd.";
+  if (/source_file_too_large/i.test(m)) return "Le fichier source depasse 8 Mo.";
+  if (/file_too_large_after_optimization/i.test(m)) return "Le fichier reste trop lourd apres optimisation. Essaie une animation plus courte.";
   if (/unsupported_mime/i.test(m)) return "Format non supporte (PNG, JPG, WebP ou GIF).";
   if (/gif_must_be_gif/i.test(m)) return "Un GIF doit être un vrai image/gif.";
   if (/emoji_cannot_be_gif/i.test(m)) return "Un emoji ne peut pas être un GIF (choisis PNG/WebP).";
@@ -89,6 +83,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [name, setName] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [uploadInfo, setUploadInfo] = React.useState<string | null>(null);
 
   const [uploading, setUploading] = React.useState(false);
 
@@ -128,8 +123,9 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
   const capEmoji = 40;
   const capGif = 20;
 
-  const kind: Kind = file?.type === "image/gif" ? "gif" : "emoji";
-  const capReached = kind === "emoji" ? emojis.length >= capEmoji : gifs.length >= capGif;
+  const kind: Kind = file?.type === "image/gif" || /\.gif$/i.test(file?.name || "") ? "gif" : "emoji";
+  const replacing = items.some((item) => item.kind === kind && item.name === normName(name));
+  const capReached = !replacing && (kind === "emoji" ? emojis.length >= capEmoji : gifs.length >= capGif);
 
   async function onUpload() {
     if (!token) return;
@@ -139,8 +135,11 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
     if (!nm) return setErr("Nom invalide (a-z 0-9 _)");
 
     if (!file) return setErr("Choisis un fichier.");
+    if (file.size > SOURCE_MAX_BYTES) return setErr("Le fichier source depasse 8 Mo.");
 
-    if (!["image/gif", "image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    const allowedMime = ["image/gif", "image/png", "image/jpeg", "image/webp"];
+    const allowedExtension = /\.(gif|png|jpe?g|webp)$/i.test(file.name);
+    if ((file.type && !allowedMime.includes(file.type)) || (!file.type && !allowedExtension)) {
       return setErr("Format non supporte (PNG, JPG, WebP ou GIF).");
     }
 
@@ -149,16 +148,23 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
     }
 
     setUploading(true);
+    setUploadInfo(null);
     try {
-      const dataUrl = await fileToDataUrl(file);
-
-      await j<{ ok: true; item: EmoteItem }>("/me/streamer/emotes", token, {
+      const form = new FormData();
+      form.set("name", nm);
+      form.set("file", file);
+      const result = await j<{
+        ok: true;
+        item: EmoteItem;
+        optimization?: { originalBytes: number; outputBytes: number; savedBytes: number };
+      }>("/me/streamer/emotes/upload", token, {
         method: "POST",
-        body: JSON.stringify({
-          name: nm,
-          dataUrl,
-        }),
+        body: form,
       });
+
+      if (result.optimization) {
+        setUploadInfo(`Fichier optimise : ${bytesLabel(result.optimization.originalBytes)} → ${bytesLabel(result.optimization.outputBytes)}.`);
+      }
 
       // reset form
       setName("");
@@ -220,7 +226,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontWeight: 1000 }}>Importer un emoji ou un GIF</div>
           <div className="mutedSmall" style={{ opacity: 0.85 }}>
-            Limites: {capEmoji} emojis • {capGif} GIFs
+            {capEmoji} emojis • {capGif} GIFs
           </div>
         </div>
 
@@ -240,7 +246,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
             <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 6 }}>
-              Type detecte automatiquement : fichier anime = GIF, image fixe = emoji.
+              Source : 8 Mo max. Sortie optimisee : emoji 160 ko max, animation 600 ko max.
             </div>
           </div>
         </div>
@@ -253,13 +259,17 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
             disabled={uploading || !file || !normName(name) || capReached}
             title={capReached ? "Limite atteinte" : "Uploader"}
           >
-            {uploading ? "Upload…" : "Uploader"}
+            {uploading ? "Optimisation…" : "Optimiser et importer"}
           </button>
 
           {capReached ? (
             <div className="mutedSmall" style={{ opacity: 0.85 }}>
               ⚠️ Limite atteinte pour {kind === "emoji" ? "les emojis" : "les GIFs"}.
             </div>
+          ) : null}
+
+          {uploadInfo ? (
+            <div className="mutedSmall" style={{ color: "#62e6c5" }}>{uploadInfo}</div>
           ) : null}
 
           {previewUrl ? (

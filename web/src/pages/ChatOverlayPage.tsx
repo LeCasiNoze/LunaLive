@@ -13,6 +13,8 @@ export default function ChatOverlayPage() {
   const fontSize = Number(searchParams.get("font")) || 14;
   const maxMessages = Number(searchParams.get("max")) || 8;
   const scale = Number(searchParams.get("scale")) || 1;
+  const maxWidth = Number(searchParams.get("mw")) || 420;
+  const isPreview = searchParams.get("preview") === "1";
   const align = (searchParams.get("align") as "left" | "center" | "right") || "center";
   const msgBgOpacity = Number(searchParams.get("msgbg")) || 0.92;
 
@@ -38,6 +40,8 @@ export default function ChatOverlayPage() {
         fontSize={fontSize}
         maxMessages={maxMessages}
         scale={scale}
+        maxWidth={maxWidth}
+        previewMessage={isPreview ? "Bienvenue sur le chat LunaLive !" : undefined}
         align={align}
         msgBgOpacity={msgBgOpacity}
       />
