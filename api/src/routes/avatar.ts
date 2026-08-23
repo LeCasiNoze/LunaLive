@@ -8,6 +8,7 @@ export const avatarRouter = Router();
 const PUBLIC_API_BASE = String(
   process.env.PUBLIC_API_BASE || process.env.RENDER_EXTERNAL_URL || "https://lunalive-api.onrender.com"
 ).replace(/\/$/, "");
+const PUBLIC_WEB_BASE = String(process.env.PUBLIC_WEB_BASE || "https://lunalive.win").replace(/\/$/, "");
 
 const ALLOWED_MIME = new Set(["image/webp", "image/png", "image/jpeg"]);
 const MAX_BYTES = 120 * 1024; // ✅ limite stricte (on compresse côté front)
@@ -25,15 +26,28 @@ avatarRouter.get("/avatars/u/:id", async (req, res) => {
     if (!userId) return res.status(400).end();
 
     const r = await pool.query(
-      `SELECT mime, bytes, updated_at
-       FROM user_avatars
-       WHERE user_id=$1
+      `SELECT ua.mime, ua.bytes, ua.updated_at, u.avatar_path
+       FROM users u
+       LEFT JOIN user_avatars ua ON ua.user_id = u.id
+       WHERE u.id=$1
        LIMIT 1`,
       [userId]
     );
 
     const row = r.rows?.[0];
     if (!row) return res.status(404).end();
+
+    // Imported/seeded accounts use one of the public default avatars until
+    // the owner uploads a custom picture. Keep the stable API URL for both.
+    if (!row.bytes) {
+      const rawPath = String(row.avatar_path || "").trim();
+      if (!/^\/Avatar\/avatar_[a-z0-9_-]+\.(?:png|webp|jpe?g)$/i.test(rawPath)) {
+        return res.status(404).end();
+      }
+      const optimizedPath = rawPath.replace(/\.png$/i, ".webp");
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      return res.redirect(302, `${PUBLIC_WEB_BASE}${optimizedPath}`);
+    }
 
     res.setHeader("Content-Type", String(row.mime));
     res.setHeader("Last-Modified", new Date(row.updated_at).toUTCString());

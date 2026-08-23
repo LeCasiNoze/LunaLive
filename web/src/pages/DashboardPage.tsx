@@ -21,6 +21,7 @@ import { EarningsSection }    from "./dashboard/sections/EarningsSection";
 import { StatsSection }       from "./dashboard/sections/StatsSection";
 import { SettingsSection }    from "./dashboard/sections/SettingsSection";
 import { AgencySection }      from "./dashboard/sections/AgencySection";
+import "./dashboard/dashboardStudio.css";
 
 function fmt(n: number | null | undefined) {
   const v = Number(n);
@@ -28,28 +29,23 @@ function fmt(n: number | null | undefined) {
   return v.toLocaleString("fr-FR");
 }
 
+const TAB_META: Record<DashboardTab, { index: string; title: string; copy: string }> = {
+  overview: { index: "01 / ESSENTIEL", title: "Vue d'ensemble", copy: "Le statut de ta chaine, ses connexions et les actions utiles en un coup d'oeil." },
+  stream: { index: "02 / DIFFUSION", title: "Diffusion", copy: "Prepare ton titre et retrouve les informations necessaires pour lancer ton direct." },
+  lunabot: { index: "03 / AUTOMATION", title: "LunaBot", copy: "Configure les commandes, les clips et les interactions qui animent ta communaute." },
+  moderation: { index: "04 / COMMUNAUTE", title: "Moderation", copy: "Gere ton equipe, les sanctions et l'historique des actions de moderation." },
+  appearance: { index: "05 / IDENTITE", title: "Apparence", copy: "Personnalise les ecrans, couleurs et signes distinctifs de ta chaine." },
+  emotes: { index: "06 / CHAT", title: "Emojis & GIFs", copy: "Construis une bibliotheque expressive et coherente pour ton chat." },
+  agency: { index: "07 / RESEAU", title: "Agence", copy: "Suis ton activite d'affiliation et les performances de ton reseau." },
+  earnings: { index: "08 / FINANCES", title: "Revenus", copy: "Consulte tes soldes, la repartition des rubis et tes demandes de retrait." },
+  stats: { index: "09 / ANALYSE", title: "Statistiques", copy: "Lis les tendances de ta chaine et mesure ce qui fait progresser ton audience." },
+  settings: { index: "10 / SYSTEME", title: "Parametres", copy: "Les reglages sensibles et les outils de gestion de ta chaine." },
+};
+
 /* ─── Pill Purple Velvet ──────────────────────────────────── */
 type PillTone = "neutral" | "pink" | "blue" | "green" | "gold" | "violet";
 function Pill({ children, tone = "neutral", title }: { children: React.ReactNode; tone?: PillTone; title?: string }) {
-  const tones: Record<PillTone, { bg: string; bd: string; color: string }> = {
-    neutral: { bg:"rgba(124,92,252,.08)",  bd:"rgba(124,92,252,.18)",  color:"rgba(196,181,253,.80)" },
-    violet:  { bg:"rgba(124,92,252,.16)",  bd:"rgba(124,92,252,.34)",  color:"rgba(235,232,255,.95)" },
-    pink:    { bg:"rgba(236,72,153,.14)",  bd:"rgba(236,72,153,.28)",  color:"rgba(249,168,212,.90)" },
-    blue:    { bg:"rgba(91,142,248,.14)",  bd:"rgba(91,142,248,.28)",  color:"rgba(147,197,253,.90)" },
-    green:   { bg:"rgba(52,211,153,.12)",  bd:"rgba(52,211,153,.24)",  color:"rgba(110,231,183,.90)" },
-    gold:    { bg:"rgba(251,191,36,.14)",  bd:"rgba(251,191,36,.28)",  color:"rgba(253,230,138,.90)" },
-  };
-  const t = tones[tone] ?? tones.neutral;
-  return (
-    <span title={title} style={{
-      display:"inline-flex", alignItems:"center", gap:7,
-      padding:"8px 14px", borderRadius:999,
-      border:`1px solid ${t.bd}`, background:t.bg,
-      fontSize:12, fontWeight:800, whiteSpace:"nowrap",
-      color:t.color, fontFamily:"'Syne',system-ui,sans-serif",
-      backdropFilter:"blur(10px)",
-    }}>{children}</span>
-  );
+  return <span className="dash-pill" data-tone={tone} title={title}>{children}</span>;
 }
 
 /* ─── CSS scoped ──────────────────────────────────────────── */
@@ -145,6 +141,11 @@ export default function DashboardPage() {
   const canAccess = !!user && (user.role === "streamer" || user.role === "admin");
   const [tab, setTab]             = React.useState<DashboardTab>("overview");
 
+  React.useEffect(() => {
+    document.body.classList.add("ll-dashboard-open");
+    return () => document.body.classList.remove("ll-dashboard-open");
+  }, []);
+
   async function load() {
     if (!token || !canAccess) return;
     setLoading(true); setErr(null);
@@ -184,56 +185,41 @@ export default function DashboardPage() {
   const viewers = (streamer as any)?.viewers ?? null;
 
   return (
-    <main className="container" style={{ paddingBottom:32 }}>
+    <main className="container dashboard-shell">
       <style>{DASH_CSS}</style>
 
-      <div className="pageTitle">
-        <h1 style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800 }}>Dashboard</h1>
-        <p className="muted">Espace streamer — tout ce qui concerne ta chaîne est ici.</p>
+      <div className="dash-page-heading">
+        <div>
+          <div className="dash-kicker">LunaLive studio</div>
+          <h1>Control room</h1>
+        </div>
+        <p>Un espace unique pour preparer tes directs, piloter ta communaute et suivre la croissance de ta chaine.</p>
       </div>
 
       {/* ── HERO ── */}
       <div className="dash-hero">
-        {/* Lueurs ambiantes */}
-        <div className="ll-float" style={{ position:"absolute", inset:"auto auto -50px -50px", width:220, height:220, borderRadius:999, background:"radial-gradient(circle at 30% 30%, rgba(91,142,248,.42), rgba(124,92,252,.10) 70%, transparent 72%)", pointerEvents:"none" }} />
-        <div className="ll-float2" style={{ position:"absolute", inset:"-70px -90px auto auto", width:260, height:260, borderRadius:999, background:"radial-gradient(circle at 40% 35%, rgba(167,139,250,.30), rgba(59,77,200,.10) 62%, transparent 72%)", pointerEvents:"none" }} />
-
-        <div style={{ position:"relative", display:"flex", justifyContent:"space-between", gap:14, flexWrap:"wrap" }}>
-          {/* Infos chaîne */}
-          <div style={{ minWidth:240 }}>
-            <div className="dash-hero-title">
-              🎥 {streamer?.displayName ?? "Ta chaîne"}
-            </div>
-            <div style={{ marginTop:8, fontSize:12, color:"rgba(167,139,250,.65)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:700 }}>
-              @{(streamer as any)?.slug ?? "—"} · ID {(streamer as any)?.id ?? "—"}
-            </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:14 }}>
+        <div className="dash-hero-grid">
+          <div>
+            <div className="dash-hero-eyebrow">Chaine active</div>
+            <div className="dash-hero-title">{streamer?.displayName ?? "Ta chaine"}</div>
+            <div className="dash-hero-handle">@{(streamer as any)?.slug ?? "-"} / chaine {(streamer as any)?.id ?? "-"}</div>
+            <div className="dash-hero-status">
               <Pill tone={live ? "pink" : "neutral"} title="Statut live">
-                {live ? "🔴 En live" : "⚫ Hors ligne"}
+                {live ? "En direct" : "Hors ligne"}
               </Pill>
               <Pill tone="blue" title="Viewers actuels">
-                👀 {fmt(viewers)}
+                {fmt(viewers)} spectateurs
               </Pill>
               <Pill tone={connection ? "green" : "gold"} title="Connexion stream">
-                {connection ? "✅ Connecté" : "⚠️ À connecter"}
+                {connection ? "Connexion prete" : "Connexion requise"}
               </Pill>
             </div>
           </div>
 
-          {/* Actions hero */}
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"flex-start" }}>
-            <button className="btnGhost" onClick={load} disabled={loading} title="Rafraîchir"
-              style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800 }}>
-              🔄 Rafraîchir
-            </button>
-            <button className="btnPrimary" onClick={() => setTab("stream")}
-              style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800 }}>
-              🎬 Stream
-            </button>
-            <button className="btnGhost" onClick={() => setTab("moderation")}
-              style={{ fontFamily:"'Syne',system-ui,sans-serif", fontWeight:800 }}>
-              🛡️ Modération
-            </button>
+          <div className="dash-hero-actions">
+            <button className="btnPrimary" onClick={() => setTab("stream")}>Preparer le direct</button>
+            <button className="btnGhost" onClick={() => setTab("moderation")}>Moderation</button>
+            <button className="btnGhost" onClick={load} disabled={loading} title="Rafraichir">{loading ? "Mise a jour..." : "Actualiser"}</button>
           </div>
         </div>
 
@@ -250,15 +236,20 @@ export default function DashboardPage() {
       ) : streamer && (
         <div className="dash-grid">
           {/* Sidebar */}
-          <div className="dash-card dash-sidebar-sticky">
-            <div style={{ padding:10 }}>
-              <DashboardSidebar tab={tab} setTab={setTab} streamer={streamer} />
-            </div>
+          <div className="dash-card dash-sidebar-card dash-sidebar-sticky">
+            <DashboardSidebar tab={tab} setTab={setTab} streamer={streamer} />
           </div>
 
           {/* Contenu */}
-          <div className="dash-card">
-            <div style={{ padding:16 }}>
+          <div className="dash-card dash-content-card">
+            <header className="dash-content-head">
+              <div>
+                <div className="dash-content-index">{TAB_META[tab].index}</div>
+                <div className="dash-content-title">{TAB_META[tab].title}</div>
+              </div>
+              <div className="dash-content-copy">{TAB_META[tab].copy}</div>
+            </header>
+            <div className="dash-content-body">
               {tab === "overview"   && <OverviewSection streamer={streamer} connection={connection} onGoStream={()=>setTab("stream")} onGoModeration={()=>setTab("moderation")} />}
               {tab === "agency"     && <AgencySection streamer={streamer} />}
               {tab === "lunabot"    && <LunaBotSection streamer={streamer} />}

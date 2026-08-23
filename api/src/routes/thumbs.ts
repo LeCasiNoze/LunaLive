@@ -62,7 +62,8 @@ function sendCached(res: ExResponse, hit: { buf: Buffer; contentType: string }) 
 
 function sendSvg(res: ExResponse, svg: string) {
   res.set("Content-Type", "image/svg+xml; charset=utf-8");
-  res.set("Cache-Control", `public, max-age=${LIVE_CACHE_SECONDS}`);
+  // A placeholder is a transient failure, never a valid thumbnail to cache.
+  res.set("Cache-Control", "no-store");
   return res.end(svg);
 }
 
@@ -235,16 +236,70 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
   }
 }
 
+async function resolveLatestHlsSegment(hlsUrl: string, depth = 0): Promise<string | null> {
+  if (depth > 3) return null;
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 7_000);
+  try {
+    const response = await fetch(hlsUrl, {
+      signal: ac.signal,
+      redirect: "follow",
+      headers: {
+        accept: "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
+        origin: "https://rumble.com",
+        referer: "https://rumble.com/",
+        "user-agent": "Mozilla/5.0",
+      },
+    });
+    if (!response.ok) return null;
+    const text = await response.text();
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+    const variants: Array<{ uri: string; bandwidth: number }> = [];
+    let pendingBandwidth: number | null = null;
+    for (const line of lines) {
+      if (line.startsWith("#EXT-X-STREAM-INF:")) {
+        const match = line.match(/(?:AVERAGE-)?BANDWIDTH=(\d+)/i);
+        pendingBandwidth = match ? Number(match[1]) : 0;
+        continue;
+      }
+      if (!line.startsWith("#") && pendingBandwidth != null) {
+        variants.push({ uri: new URL(line, hlsUrl).href, bandwidth: pendingBandwidth });
+        pendingBandwidth = null;
+      }
+    }
+    if (variants.length > 0) {
+      variants.sort((a, b) => b.bandwidth - a.bandwidth);
+      return resolveLatestHlsSegment(variants[0].uri, depth + 1);
+    }
+
+    const segments = lines.filter((line) => !line.startsWith("#"));
+    return segments.length ? new URL(segments[segments.length - 1], hlsUrl).href : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
   if (!FFMPEG_OK) return null;
 
+  // Opening a full DVR playlist can make ffmpeg walk from the beginning and
+  // exceed the route timeout. A completed segment at the live edge is small,
+  // recent and deterministic.
+  const latestSegment = await resolveLatestHlsSegment(hlsUrl);
+  const inputUrl = latestSegment || hlsUrl;
+
   return await new Promise<Buffer | null>((resolve) => {
+    const hlsHeaders = "Origin: https://rumble.com\r\nReferer: https://rumble.com/\r\nUser-Agent: Mozilla/5.0\r\n";
     const args = [
       "-hide_banner",
       "-loglevel", "error",
-      "-live_start_index", "-2",
       "-rw_timeout", "12000000",
-      "-i", hlsUrl,
+      "-headers", hlsHeaders,
+      "-i", inputUrl,
       "-an",
       "-frames:v", "1",
       "-q:v", "3",
@@ -273,7 +328,7 @@ async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
       const buf = Buffer.concat(out);
       if (code === 0 && isJpeg(buf)) return resolve(buf);
       if (stderr.trim()) {
-        console.warn(`[thumbs] live frame ffmpeg failed code=${code} url=${hlsUrl} err=${stderr.trim().slice(0, 280)}`);
+        console.warn(`[thumbs] live frame ffmpeg failed code=${code} url=${inputUrl} err=${stderr.trim().slice(0, 280)}`);
       }
       resolve(null);
     });

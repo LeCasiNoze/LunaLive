@@ -174,6 +174,7 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
   const clipUrl = String((clip as any).clipUrl || "").trim();
   const vodUrl = clip.vodUrl || "";
   const seekToStr = String(clip.startSec || 0);
+  const durationStr = String(clip.durationSec || 0);
 
   React.useEffect(() => {
     const video = videoRef.current;
@@ -188,12 +189,24 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
     if (!url) return;
     let hls: Hls | null = null;
     const seekTo = Math.max(0, Math.floor(Number(seekToStr) || 0));
+    const clipEnd = seekTo + Math.max(1, Number(durationStr) || 0);
+    const keepInsideClip = () => {
+      try {
+        if (video.currentTime < seekTo - 0.25) video.currentTime = seekTo;
+        if (video.currentTime >= clipEnd - 0.25) {
+          video.pause();
+          video.currentTime = clipEnd - 0.25;
+        }
+      } catch {}
+    };
+    video.addEventListener("timeupdate", keepInsideClip);
+    video.addEventListener("seeking", keepInsideClip);
     const trySeek = () => { try { if (Number.isFinite(seekTo) && seekTo > 0) video.currentTime = seekTo; } catch {} };
     if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
       const onMeta = () => { trySeek(); video.play().catch(() => {}); };
       video.addEventListener("loadedmetadata", onMeta);
-      return () => { video.removeEventListener("loadedmetadata", onMeta); video.pause(); video.removeAttribute("src"); video.load(); };
+      return () => { video.removeEventListener("loadedmetadata", onMeta); video.removeEventListener("timeupdate", keepInsideClip); video.removeEventListener("seeking", keepInsideClip); video.pause(); video.removeAttribute("src"); video.load(); };
     }
     if (Hls.isSupported()) {
       hls = new Hls({});
@@ -204,10 +217,10 @@ function ClipModal({ clip, token, isOwner, busy, onRequireLogin, onClose, onTogg
       video.src = url;
       const onMeta = () => { trySeek(); video.play().catch(() => {}); };
       video.addEventListener("loadedmetadata", onMeta);
-      return () => { video.removeEventListener("loadedmetadata", onMeta); };
+      return () => { video.removeEventListener("loadedmetadata", onMeta); video.removeEventListener("timeupdate", keepInsideClip); video.removeEventListener("seeking", keepInsideClip); };
     }
-    return () => { try { hls?.destroy(); } catch {} if (video) { video.pause(); video.removeAttribute("src"); video.load(); } };
-  }, [clipId, clipUrl, vodUrl, seekToStr]);
+    return () => { try { hls?.destroy(); } catch {} if (video) { video.removeEventListener("timeupdate", keepInsideClip); video.removeEventListener("seeking", keepInsideClip); video.pause(); video.removeAttribute("src"); video.load(); } };
+  }, [clipId, clipUrl, vodUrl, seekToStr, durationStr]);
 
   return (
     <div

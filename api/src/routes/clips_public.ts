@@ -330,6 +330,7 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.platform,
       bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       COALESCE(cnt.cnt,0)::int AS likes_count,
@@ -375,14 +376,16 @@ clipsPublicRouter.get("/streamers/:slug/clips", async (req, res) => {
       createdAtMs: Number(x.created_ts || 0),
 
       // (legacy) on garde pour debug, mais le front doit lire clipUrl en priorité
-      vodUrl: x.vod_url ?? null,
+      // A Rumble DVR playlist is the full live, not a durable clip. Exposing it
+      // as a fallback made failed renders look like multi-hour clips.
+      vodUrl: String(x.platform || "").toLowerCase() === "rumble" ? null : (x.vod_url ?? null),
       startSec,
       durationSec,
 
       // ✅ vrai clip mp4 (2 min) si prêt
       clipUrl,
 
-      thumbUrl: `${base}/thumbs/clips/${Number(x.id)}.jpg`,
+      thumbUrl: x.thumbnail_url || `${base}/thumbs/clips/${Number(x.id)}.jpg`,
 
       likesCount: Number(x.likes_count || 0),
       myLiked: !!x.my_liked,
@@ -601,6 +604,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       bc.pre_sec,
       bc.post_sec,
       bc.mp4_key,
+      bc.platform,
       bc.thumbnail_url, -- ✅ AJOUT: colonne thumbnail_url
 
       s.slug AS streamer_slug,
@@ -646,7 +650,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
     const durationSec = Math.max(1, pre + post);
 
     const ownerUserId = x.owner_user_id != null ? Number(x.owner_user_id) : null;
-    const avatarUrl = ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
+    const avatarUrl = ownerUserId ? `${base}/avatars/u/${ownerUserId}` : null;
 
     const mp4Key = String(x.mp4_key || "").trim();
     const clipUrl = mp4Key && r2Enabled() ? `${base}/public/clips/${Number(x.id)}/mp4?proxy=1` : null;
@@ -662,7 +666,7 @@ clipsPublicRouter.get("/clips/top", async (req, res) => {
       createdAtMs: Number(x.created_ts || 0),
 
       // (legacy) on garde pour debug
-      vodUrl: x.vod_url ?? null,
+      vodUrl: String(x.platform || "").toLowerCase() === "rumble" ? null : (x.vod_url ?? null),
       startSec,
       durationSec,
 
@@ -782,7 +786,7 @@ clipsPublicRouter.get("/clips/recent", async (req, res) => {
     const durationSec = Math.max(1, pre + post);
 
     const ownerUserId = x.owner_user_id != null ? Number(x.owner_user_id) : null;
-    const avatarUrl = ownerUserId && x.has_avatar ? `${base}/avatars/u/${ownerUserId}` : null;
+    const avatarUrl = ownerUserId ? `${base}/avatars/u/${ownerUserId}` : null;
 
     const mp4Key = String(x.mp4_key || "").trim();
     const clipUrl = mp4Key && r2Enabled() ? `${base}/clips/${Number(x.id)}/mp4` : null;

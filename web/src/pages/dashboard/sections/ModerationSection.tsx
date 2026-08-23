@@ -59,6 +59,7 @@ function AvatarPlaceholder({ name }: { name: string }) {
   const letter = (name || "?").slice(0, 1).toUpperCase();
   return (
     <div
+      className="studio-avatar-placeholder"
       style={{
         width: 34,
         height: 34,
@@ -81,6 +82,7 @@ function AvatarPlaceholder({ name }: { name: string }) {
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="studio-card-shell"
       style={{
         padding: 12,
         borderRadius: 18,

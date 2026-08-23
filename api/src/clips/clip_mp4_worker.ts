@@ -16,6 +16,7 @@ import {
 } from "../bot_clips/store.js";
 
 import { r2Enabled, putFileToR2, deleteFromR2 } from "./r2.js";
+import { fetchRecentRumbleVodsForUsername } from "../rumble.js";
 
 /* ─────────────────────────────────────────────
    Config
@@ -54,7 +55,7 @@ function safeName(s: string) {
  */
 type HlsSegment = { uri: string; duration: number };
 
-async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 15_000): Promise<{
+async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 15_000, depth = 0): Promise<{
   segments: HlsSegment[];
   targetDuration: number;
   mediaSequence: number;
@@ -69,6 +70,8 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 15_000): Promise<{
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0 Safari/537.36",
         "accept": "application/vnd.apple.mpegurl,application/x-mpegurl,*/*",
+        "origin": "https://rumble.com",
+        "referer": "https://rumble.com/",
       },
     }).finally(() => clearTimeout(t));
     if (!r.ok) {
@@ -77,13 +80,40 @@ async function fetchHlsPlaylist(m3u8Url: string, timeoutMs = 15_000): Promise<{
     }
     const text = await r.text();
 
+    // Rumble's stable live-hls-dvr URL is a master playlist. Resolve its
+    // highest-bandwidth variant before looking for media segments.
+    const lines = text.split(/\r?\n/);
+    const variants: Array<{ uri: string; bandwidth: number }> = [];
+    let pendingBandwidth: number | null = null;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) continue;
+      if (line.startsWith("#EXT-X-STREAM-INF:")) {
+        const m = line.match(/(?:AVERAGE-)?BANDWIDTH=(\d+)/i);
+        pendingBandwidth = m ? Number(m[1]) : 0;
+        continue;
+      }
+      if (!line.startsWith("#") && pendingBandwidth != null) {
+        variants.push({ uri: new URL(line, m3u8Url).href, bandwidth: pendingBandwidth });
+        pendingBandwidth = null;
+      }
+    }
+
+    if (variants.length > 0) {
+      if (depth >= 3) {
+        console.warn(`[clips-mp4] HLS master nesting too deep url=${m3u8Url}`);
+        return null;
+      }
+      variants.sort((a, b) => b.bandwidth - a.bandwidth);
+      return fetchHlsPlaylist(variants[0].uri, timeoutMs, depth + 1);
+    }
+
     const segments: HlsSegment[] = [];
     let pendingDuration: number | null = null;
     let targetDuration = 8;
     let mediaSequence = 0;
     let hasEndList = false;
 
-    const lines = text.split(/\r?\n/);
     for (const raw of lines) {
       const line = raw.trim();
       if (!line) continue;
@@ -319,6 +349,69 @@ async function runFfmpeg(args: string[], timeoutMs: number): Promise<{ ok: true 
   }));
 }
 
+function normalizeMatchText(value: unknown) {
+  return String(value || "").trim().toLocaleLowerCase("fr").replace(/\s+/g, " ");
+}
+
+async function recoverPermanentRumbleVod(clip: BotClipRow): Promise<{ url: string; atSec: number } | null> {
+  const streamerId = Number(clip.streamer_id || 0);
+  if (!streamerId) return null;
+
+  const account = await pool.query(
+    `SELECT COALESCE(ra.username, s.rumble_username) AS username
+     FROM streamers s
+     LEFT JOIN rumble_accounts ra ON ra.assigned_to_streamer_id = s.id
+     WHERE s.id = $1
+     LIMIT 1`,
+    [streamerId]
+  );
+  const username = String(account.rows?.[0]?.username || "").trim();
+  if (!username) return null;
+
+  const vods = await fetchRecentRumbleVodsForUsername(username, 40).catch(() => []);
+  if (!vods.length) return null;
+
+  const liveRef = String(clip.live_permlink || "").replace(/^v/i, "").toLowerCase();
+  const clipTitle = normalizeMatchText(clip.title);
+  const clipCreatedTs = Number(clip.created_ts || 0);
+  const liveStartTs = Number(clip.live_start_ts || 0);
+
+  const ranked = vods
+    .map((vod) => {
+      const refMatch = !!liveRef && vod.legacyLiveRef.toLowerCase().includes(liveRef);
+      const titleMatch = !!clipTitle && normalizeMatchText(vod.title) === clipTitle;
+      const anchor = liveStartTs > 0 ? liveStartTs : clipCreatedTs;
+      const startDelta = vod.createdAtMs > 0 && anchor > 0 ? Math.abs(vod.createdAtMs - anchor) : Number.POSITIVE_INFINITY;
+      const containsClip = vod.createdAtMs > 0 && clipCreatedTs >= vod.createdAtMs - 120_000 &&
+        clipCreatedTs <= vod.createdAtMs + (Math.max(1, vod.durationSec) + 900) * 1000;
+      const score = refMatch ? 0 : titleMatch && containsClip ? 1 + startDelta / 1e9 : containsClip ? 10 + startDelta / 1e9 : 1000;
+      return { vod, score };
+    })
+    .filter((item) => item.score < 1000)
+    .sort((a, b) => a.score - b.score);
+
+  const match = ranked[0]?.vod;
+  const url = String(match?.hlsUrl || match?.mp4Url || "").trim();
+  if (!match || !url) return null;
+
+  const correctedAtSec = match.createdAtMs > 0 && clipCreatedTs > match.createdAtMs
+    ? Math.max(0, Math.floor((clipCreatedTs - match.createdAtMs) / 1000))
+    : Math.max(0, Number(clip.at_sec || 0));
+
+  await pool.query(
+    `UPDATE bot_clips
+     SET vod_url = $2,
+         vod_permlink = $3,
+         vod_created_ts = $4,
+         at_sec = $5,
+         thumbnail_url = COALESCE(thumbnail_url, $6)
+     WHERE id = $1`,
+    [Number(clip.id), url, match.permlink || null, match.createdAtMs || null, correctedAtSec, match.thumbnailUrl]
+  );
+  console.log(`[clips-mp4] recovered permanent Rumble VOD clip=${clip.id} username=${username} permlink=${match.permlink}`);
+  return { url, atSec: correctedAtSec };
+}
+
 /* ─────────────────────────────────────────────
    Render + upload one clip
 ───────────────────────────────────────────── */
@@ -349,7 +442,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
     if (liveStartTs <= 0) {
       throw new Error("rumble_live_hls_missing_live_start_ts");
     }
-    const prepared = await prepareRumbleClipPlaylist({
+    let prepared = await prepareRumbleClipPlaylist({
       m3u8Url: vodUrl,
       clipMomentSec: at,
       pre,
@@ -359,10 +452,23 @@ async function renderAndUploadClip(clip: BotClipRow) {
       clipId: Number(clip.id),
     });
     if (!prepared) {
-      // Pas de fallback silencieux : sans la m3u8 locale, ffmpeg avec -ss
-      // sur la live HLS ignore le seek et produit un clip bidon (= démarre
-      // à segment 1 de la playlist). On préfère une erreur explicite.
-      throw new Error("rumble_live_hls_prepare_failed");
+      const recovered = await recoverPermanentRumbleVod(clip);
+      if (recovered) {
+        prepared = await prepareRumbleClipPlaylist({
+          m3u8Url: recovered.url,
+          clipMomentSec: recovered.atSec,
+          pre,
+          post,
+          liveStartTs,
+          clipCreatedTs: Number(clip.created_ts || Date.now()),
+          clipId: Number(clip.id),
+        });
+      }
+      if (!prepared) {
+        // Never fall back to ffmpeg seeking the raw live DVR: it silently
+        // starts at segment one and produces a multi-hour pseudo clip.
+        throw new Error("rumble_live_hls_prepare_failed");
+      }
     }
     inputUrl = prepared.localM3u8;
     startSec = prepared.trimStartSec;
@@ -550,6 +656,18 @@ export function startClipsMp4Renderer() {
   };
 
   ensureBotClips()
+    .then(async () => {
+      // Retry clips that failed only because the Rumble master playlist was
+      // previously mistaken for an empty media playlist.
+      await pool.query(
+        `UPDATE bot_clips
+         SET mp4_error = NULL, mp4_rendering = false
+         WHERE mp4_error = 'rumble_live_hls_prepare_failed'
+           AND deleted_ts IS NULL
+           AND created_ts >= $1`,
+        [minCreatedTs]
+      );
+    })
     .catch(() => {})
     .finally(() => {
       setInterval(() => void tick(), Math.max(2, RENDER_INTERVAL_SEC) * 1000);

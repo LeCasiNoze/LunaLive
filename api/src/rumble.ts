@@ -561,6 +561,76 @@ export async function listScrapedRumbleStreamers(): Promise<Array<{ streamerId: 
   }));
 }
 
+export type RumbleVodCandidate = {
+  permlink: string;
+  title: string;
+  hlsUrl: string | null;
+  mp4Url: string | null;
+  thumbnailUrl: string | null;
+  createdAtMs: number;
+  durationSec: number;
+  videoIdNumeric: string | null;
+  legacyLiveRef: string;
+};
+
+/**
+ * Rumble changes a live permlink when it publishes the permanent VOD. The
+ * profile grid keeps both the permanent HLS URL and a log reference to the
+ * original live id, so it is a more reliable post-live source than embedJS.
+ */
+export async function fetchRecentRumbleVodsForUsername(
+  username: string,
+  limit = 30
+): Promise<RumbleVodCandidate[]> {
+  const safeUsername = String(username || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(safeUsername)) return [];
+
+  const response = await fetch(`https://rumble.com/user/${encodeURIComponent(safeUsername)}`, {
+    signal: AbortSignal.timeout(20_000),
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+      "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    },
+  });
+  if (!response.ok) throw new Error(`rumble_profile_http_${response.status}`);
+
+  const html = await response.text();
+  const payloads = Array.from(
+    html.matchAll(/<rum-videos-grid\b[^>]*>[\s\S]*?<script\s+type=["']application\/json["']>\s*([\s\S]*?)<\/script>/gi)
+  );
+  const out: RumbleVodCandidate[] = [];
+
+  for (const match of payloads) {
+    let parsed: any = null;
+    try { parsed = JSON.parse(match[1]); } catch { continue; }
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    for (const item of items) {
+      if (item?.object_type !== "video" || item?.live === true) continue;
+      const videos = Array.isArray(item?.videos) ? item.videos : [];
+      const hls = videos.find((video: any) => video?.type === "hls" && typeof video?.url === "string")?.url || null;
+      const mp4 = videos.find((video: any) => video?.type === "mp4" && typeof video?.url === "string")?.url || null;
+      if (!hls && !mp4) continue;
+
+      const createdAtMs = Date.parse(String(item?.live_streamed_on || item?.upload_date || ""));
+      out.push({
+        permlink: String(item?.permalink_id || ""),
+        title: String(item?.title || ""),
+        hlsUrl: hls ? String(hls) : null,
+        mp4Url: mp4 ? String(mp4) : null,
+        thumbnailUrl: item?.thumb ? String(item.thumb) : null,
+        createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+        durationSec: Math.max(0, Number(item?.duration) || 0),
+        videoIdNumeric: Number.isFinite(Number(item?.id)) ? String(item.id) : null,
+        legacyLiveRef: JSON.stringify(item?.log || {}),
+      });
+      if (out.length >= Math.max(1, Math.min(100, limit))) return out;
+    }
+  }
+
+  return out;
+}
+
 /**
  * Post-live, Rumble convertit la diffusion en VOD permanent (généralement 2-5 min après
  * la fin). On appelle embedJS qui retourne alors `u.mp4.url` (MP4 CDN permanent) et

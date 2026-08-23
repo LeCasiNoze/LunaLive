@@ -207,6 +207,7 @@ function ClipViewModal({
 
   return (
     <div
+      className="studio-clip-preview-overlay"
       role="presentation"
       onClick={onClose}
       style={{
@@ -221,6 +222,7 @@ function ClipViewModal({
       }}
     >
       <div
+        className="studio-clip-preview-dialog"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
@@ -235,6 +237,7 @@ function ClipViewModal({
         }}
       >
         <div
+          className="studio-clip-preview-header"
           style={{
             display: "flex",
             justifyContent: "space-between",
