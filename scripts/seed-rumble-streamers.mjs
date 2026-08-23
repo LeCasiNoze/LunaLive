@@ -96,10 +96,15 @@ async function ensureSeedTable(client) {
       access_email TEXT NOT NULL,
       access_password_plain TEXT NOT NULL,
       bot_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      chat_mirror_initialized BOOLEAN NOT NULL DEFAULT FALSE,
       notes TEXT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await client.query(`
+    ALTER TABLE seeded_streamer_accounts
+      ADD COLUMN IF NOT EXISTS chat_mirror_initialized BOOLEAN NOT NULL DEFAULT FALSE
   `);
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS seeded_streamer_accounts_streamer_uq
@@ -233,6 +238,16 @@ async function createOrReuseSeededStreamer(client, entry) {
     [streamerId]
   );
 
+  await client.query(
+    `INSERT INTO streamer_chat_settings (streamer_id, dlive_sync_public, dlive_sync_popup)
+     VALUES ($1, TRUE, TRUE)
+     ON CONFLICT (streamer_id) DO UPDATE
+       SET dlive_sync_public = TRUE,
+           dlive_sync_popup = TRUE,
+           updated_at = NOW()`,
+    [streamerId]
+  );
+
   const subStart = new Date();
   const subEnd = new Date(Date.now() + 3650 * 24 * 3600 * 1000);
   await client.query(
@@ -262,9 +277,10 @@ async function createOrReuseSeededStreamer(client, entry) {
   await client.query(
     `INSERT INTO seeded_streamer_accounts (
        streamer_id, user_id, source_platform, source_username, source_url,
-       access_username, access_email, access_password_plain, bot_enabled, notes
+       access_username, access_email, access_password_plain, bot_enabled,
+       chat_mirror_initialized, notes
      )
-     VALUES ($1, $2, 'rumble', $3, $4, $5, $6, $7, FALSE, $8)
+     VALUES ($1, $2, 'rumble', $3, $4, $5, $6, $7, FALSE, TRUE, $8)
      ON CONFLICT (streamer_id) DO UPDATE
        SET user_id = EXCLUDED.user_id,
            source_platform = EXCLUDED.source_platform,
@@ -274,6 +290,7 @@ async function createOrReuseSeededStreamer(client, entry) {
            access_email = EXCLUDED.access_email,
            access_password_plain = COALESCE(seeded_streamer_accounts.access_password_plain, EXCLUDED.access_password_plain),
            bot_enabled = FALSE,
+           chat_mirror_initialized = TRUE,
            notes = EXCLUDED.notes,
            updated_at = NOW()`,
     [

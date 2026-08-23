@@ -13,7 +13,7 @@ import { createClipForStreamer } from "./shared/clip_service.js";
 
 type Bridge = {
   stop: () => void;
-  setFlags: (p: { publicOn: boolean; popupOn: boolean; videoIdNumeric: string | null }) => void;
+  setFlags: (p: { publicOn: boolean; popupOn: boolean; videoIdNumeric: string | null; commandsOn?: boolean }) => void;
 };
 
 const bridges = new Map<string, Bridge>();
@@ -358,17 +358,24 @@ export function ensureRumbleBridge(opts: {
   videoIdNumeric: string | null;
   publicOn: boolean;
   popupOn: boolean;
+  commandsOn: boolean;
 }) {
   const key = String(opts.slug).toLowerCase();
   const existing = bridges.get(key);
   if (existing) {
-    existing.setFlags({ publicOn: opts.publicOn, popupOn: opts.popupOn, videoIdNumeric: opts.videoIdNumeric });
+    existing.setFlags({
+      publicOn: opts.publicOn,
+      popupOn: opts.popupOn,
+      videoIdNumeric: opts.videoIdNumeric,
+      commandsOn: opts.commandsOn,
+    });
     return;
   }
 
   let alive = true;
   let publicOn = !!opts.publicOn;
   let popupOn = !!opts.popupOn;
+  let commandsOn = !!opts.commandsOn;
   let videoIdNumeric = opts.videoIdNumeric ? norm(opts.videoIdNumeric) : null;
   let stopStream: (() => void) | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
@@ -462,10 +469,9 @@ export function ensureRumbleBridge(opts: {
     if (publicOn) opts.io.to(`chat:${opts.slug}:public`).emit("chat:message", payload);
     if (popupOn) opts.io.to(`chat:${opts.slug}:popup`).emit("chat:message", payload);
 
-    // Bang commands — désactivés sur la radio (slug=lunalive) car le chat
-    // est mirroré depuis n'importe quel streamer (rotation auto), et ses
-    // commandes !discord/!ping/etc. déclencheraient des actions Luna parasites.
-    if (opts.slug === "lunalive") return;
+    // Le miroir du chat reste actif même si le bot est coupé. Les commandes
+    // restent indépendantes pour les comptes importés et pour la radio.
+    if (opts.slug === "lunalive" || !commandsOn) return;
 
     const bang = parseBangCommand(m.text);
     if (bang) {
@@ -614,6 +620,7 @@ export function ensureRumbleBridge(opts: {
     setFlags: (p) => {
       publicOn = !!p.publicOn;
       popupOn = !!p.popupOn;
+      if (typeof p.commandsOn === "boolean") commandsOn = p.commandsOn;
       const newVid = p.videoIdNumeric ? norm(p.videoIdNumeric) : null;
       if (newVid !== videoIdNumeric) {
         videoIdNumeric = newVid;

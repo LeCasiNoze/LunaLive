@@ -440,9 +440,11 @@ async function safeInitRumbleBridge(io: Server, streamerId: number, slug: string
     if (!st?.dliveSyncPublic && !st?.dliveSyncPopup) return;
 
     const r = await pool.query(
-      `SELECT s.platform, ri.live_video_id_numeric
+      `SELECT s.platform, ri.live_video_id_numeric,
+              COALESCE(bs.enabled, true) AS commands_enabled
        FROM streamers s
        LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+       LEFT JOIN bot_streamer_settings bs ON bs.streamer_id = s.id
        WHERE s.id = $1`,
       [streamerId]
     );
@@ -458,6 +460,7 @@ async function safeInitRumbleBridge(io: Server, streamerId: number, slug: string
       videoIdNumeric: row.live_video_id_numeric || null,
       publicOn: !!st.dliveSyncPublic,
       popupOn: !!st.dliveSyncPopup,
+      commandsOn: !!row.commands_enabled,
     });
   } catch (e: any) {
     console.warn("[chat_socket] rumble bridge init failed", e?.message || e);
