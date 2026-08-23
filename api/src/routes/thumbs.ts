@@ -275,7 +275,11 @@ async function resolveLatestHlsSegment(hlsUrl: string, depth = 0): Promise<strin
     }
 
     const segments = lines.filter((line) => !line.startsWith("#"));
-    return segments.length ? new URL(segments[segments.length - 1], hlsUrl).href : null;
+    if (!segments.length) return null;
+    // Stay a couple of segments behind the live edge: Rumble can advertise
+    // the newest segment just before it becomes readable on every CDN edge.
+    const stableIndex = Math.max(0, segments.length - 3);
+    return new URL(segments[stableIndex], hlsUrl).href;
   } catch {
     return null;
   } finally {

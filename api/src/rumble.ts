@@ -258,7 +258,40 @@ async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
     });
     if (!r.ok) return false;
     const text = await r.text();
-    return text.trimStart().startsWith("#EXTM3U") && !text.includes("#EXT-X-ENDLIST");
+    if (!text.trimStart().startsWith("#EXTM3U") || text.includes("#EXT-X-ENDLIST")) return false;
+
+    // Rumble may keep a stale chunklist online after every media segment has
+    // expired. Checking only ENDLIST then leaves channels falsely live for
+    // hours and gives the thumbnail renderer nothing but 404s.
+    const segments = text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .slice(-4);
+    if (!segments.length) return false;
+
+    const probes = await Promise.all(segments.map(async (segment) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6_000);
+      try {
+        const response = await fetch(new URL(segment, chunklistUrl), {
+          signal: controller.signal,
+          headers: {
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            accept: "video/mp2t,video/*,*/*",
+            referer: "https://rumble.com/",
+            range: "bytes=0-0",
+          },
+        });
+        await response.body?.cancel().catch(() => {});
+        return response.ok;
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
+    }));
+    return probes.some(Boolean);
   } catch {
     return false;
   }
