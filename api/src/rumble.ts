@@ -573,6 +573,61 @@ export type RumbleVodCandidate = {
   legacyLiveRef: string;
 };
 
+function decodeRumbleHtmlText(value: string) {
+  return value
+    .replace(/&apos;|&#39;|&#x27;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+/**
+ * Jina Reader can reach Rumble's public embed page from Render and returns
+ * the finalized player configuration. The old live id is deliberately used:
+ * Rumble keeps it as the embed id even after assigning a new VOD permlink.
+ */
+export async function resolveRumbleVodViaReaderFromEmbed(
+  videoIdWithV: string
+): Promise<RumbleVodCandidate | null> {
+  const videoId = String(videoIdWithV || "").trim().toLowerCase();
+  if (!/^v[a-z0-9]{5,}$/i.test(videoId)) return null;
+
+  const response = await fetch(`https://r.jina.ai/http://rumble.com/embed/${encodeURIComponent(videoId)}/`, {
+    signal: AbortSignal.timeout(45_000),
+    headers: {
+      accept: "application/json",
+      "x-return-format": "html",
+    },
+  });
+  if (!response.ok) throw new Error(`rumble_reader_embed_http_${response.status}`);
+  const payload = await response.json() as { data?: { html?: unknown } };
+  const html = String(payload?.data?.html || "").replace(/\\\//g, "/");
+  const hlsUrl = html.match(/https:\/\/rumble\.com\/hls-vod\/[A-Za-z0-9_-]+\/playlist\.m3u8/i)?.[0] || null;
+  if (!hlsUrl) return null;
+
+  const permanentPath = html.match(/"l":"(\/v[a-z0-9]+-[^"?]+\.html)"/i)?.[1] || "";
+  const permlink = permanentPath.match(/\/(v[a-z0-9]+)-/i)?.[1] || videoId;
+  const title = decodeRumbleHtmlText(html.match(/"title":"([^"]*)"/i)?.[1] || "");
+  const thumbnailUrl = html.match(/"i":"(https:\/\/[^"\\]+)"/i)?.[1] || null;
+  const durationSec = Math.max(0, Number(html.match(/"duration":(\d+)/i)?.[1]) || 0);
+  const videoIdNumeric = html.match(/"vid":(\d+)/i)?.[1] || null;
+
+  return {
+    permlink,
+    title,
+    hlsUrl,
+    mp4Url: null,
+    thumbnailUrl,
+    // The embed exposes upload time, not the actual live start. Keep zero so
+    // the clip worker retains its captured at_sec instead of shifting it.
+    createdAtMs: 0,
+    durationSec,
+    videoIdNumeric,
+    legacyLiveRef: videoId,
+  };
+}
+
 /**
  * Rumble changes a live permlink when it publishes the permanent VOD. The
  * profile grid keeps both the permanent HLS URL and a log reference to the
@@ -584,51 +639,58 @@ export async function fetchRecentRumbleVodsForUsername(
 ): Promise<RumbleVodCandidate[]> {
   const safeUsername = String(username || "").trim();
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(safeUsername)) return [];
+  const cappedLimit = Math.max(1, Math.min(100, limit));
 
-  const response = await fetch(`https://rumble.com/user/${encodeURIComponent(safeUsername)}`, {
-    signal: AbortSignal.timeout(20_000),
-    headers: {
-      accept: "text/html,application/xhtml+xml",
-      "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
-    },
-  });
-  if (!response.ok) throw new Error(`rumble_profile_http_${response.status}`);
-
-  const html = await response.text();
-  const payloads = Array.from(
-    html.matchAll(/<rum-videos-grid\b[^>]*>[\s\S]*?<script\s+type=["']application\/json["']>\s*([\s\S]*?)<\/script>/gi)
-  );
-  const out: RumbleVodCandidate[] = [];
-
-  for (const match of payloads) {
-    let parsed: any = null;
-    try { parsed = JSON.parse(match[1]); } catch { continue; }
-    const items = Array.isArray(parsed?.items) ? parsed.items : [];
-    for (const item of items) {
-      if (item?.object_type !== "video" || item?.live === true) continue;
-      const videos = Array.isArray(item?.videos) ? item.videos : [];
-      const hls = videos.find((video: any) => video?.type === "hls" && typeof video?.url === "string")?.url || null;
-      const mp4 = videos.find((video: any) => video?.type === "mp4" && typeof video?.url === "string")?.url || null;
-      if (!hls && !mp4) continue;
-
-      const createdAtMs = Date.parse(String(item?.live_streamed_on || item?.upload_date || ""));
-      out.push({
-        permlink: String(item?.permalink_id || ""),
-        title: String(item?.title || ""),
-        hlsUrl: hls ? String(hls) : null,
-        mp4Url: mp4 ? String(mp4) : null,
-        thumbnailUrl: item?.thumb ? String(item.thumb) : null,
-        createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
-        durationSec: Math.max(0, Number(item?.duration) || 0),
-        videoIdNumeric: Number.isFinite(Number(item?.id)) ? String(item.id) : null,
-        legacyLiveRef: JSON.stringify(item?.log || {}),
-      });
-      if (out.length >= Math.max(1, Math.min(100, limit))) return out;
+  const parseProfile = (html: string): RumbleVodCandidate[] => {
+    const payloads = Array.from(
+      html.matchAll(/<rum-videos-grid\b[^>]*>[\s\S]*?<script\s+type=["']application\/json["']>\s*([\s\S]*?)<\/script>/gi)
+    );
+    const out: RumbleVodCandidate[] = [];
+    for (const match of payloads) {
+      let parsed: any = null;
+      try { parsed = JSON.parse(match[1]); } catch { continue; }
+      const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      for (const item of items) {
+        if (item?.object_type !== "video" || item?.live === true) continue;
+        const videos = Array.isArray(item?.videos) ? item.videos : [];
+        const hls = videos.find((video: any) => video?.type === "hls" && typeof video?.url === "string")?.url || null;
+        const mp4 = videos.find((video: any) => video?.type === "mp4" && typeof video?.url === "string")?.url || null;
+        if (!hls && !mp4) continue;
+        const createdAtMs = Date.parse(String(item?.live_streamed_on || item?.upload_date || ""));
+        out.push({
+          permlink: String(item?.permalink_id || ""),
+          title: String(item?.title || ""),
+          hlsUrl: hls ? String(hls) : null,
+          mp4Url: mp4 ? String(mp4) : null,
+          thumbnailUrl: item?.thumb ? String(item.thumb) : null,
+          createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+          durationSec: Math.max(0, Number(item?.duration) || 0),
+          videoIdNumeric: Number.isFinite(Number(item?.id)) ? String(item.id) : null,
+          legacyLiveRef: JSON.stringify(item?.log || {}),
+        });
+        if (out.length >= cappedLimit) return out;
+      }
     }
+    return out;
+  };
+
+  try {
+    const response = await fetch(`https://rumble.com/user/${encodeURIComponent(safeUsername)}`, {
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "accept-language": "fr-FR,fr;q=0.9,en;q=0.8",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+      },
+    });
+    if (!response.ok) throw new Error(`rumble_profile_http_${response.status}`);
+    const direct = parseProfile(await response.text());
+    if (direct.length) return direct;
+  } catch (error: any) {
+    console.warn(`[rumble][vod-profile] direct fetch failed user=${safeUsername}`, error?.message || error);
   }
 
-  return out;
+  throw new Error(`rumble_profile_vods_unavailable_${safeUsername}`);
 }
 
 /**

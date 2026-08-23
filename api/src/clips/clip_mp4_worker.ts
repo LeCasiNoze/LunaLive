@@ -16,7 +16,7 @@ import {
 } from "../bot_clips/store.js";
 
 import { r2Enabled, putFileToR2, deleteFromR2 } from "./r2.js";
-import { fetchRecentRumbleVodsForUsername } from "../rumble.js";
+import { fetchRecentRumbleVodsForUsername, resolveRumbleVodViaReaderFromEmbed } from "../rumble.js";
 
 /* ─────────────────────────────────────────────
    Config
@@ -354,6 +354,30 @@ function normalizeMatchText(value: unknown) {
 }
 
 async function recoverPermanentRumbleVod(clip: BotClipRow): Promise<{ url: string; atSec: number } | null> {
+  const livePermalink = String(clip.live_permlink || "").trim();
+  if (/^v?[a-z0-9]{5,}$/i.test(livePermalink)) {
+    const oldEmbedId = livePermalink.startsWith("v") ? livePermalink : `v${livePermalink}`;
+    const direct = await resolveRumbleVodViaReaderFromEmbed(oldEmbedId).catch((error: any) => {
+      console.warn(`[clips-mp4] Rumble embed reader failed clip=${clip.id}`, error?.message || error);
+      return null;
+    });
+    const directUrl = String(direct?.hlsUrl || direct?.mp4Url || "").trim();
+    if (direct && directUrl) {
+      const atSec = Math.max(0, Number(clip.at_sec || 0));
+      await pool.query(
+        `UPDATE bot_clips
+         SET vod_url = $2,
+             vod_permlink = $3,
+             at_sec = $4,
+             thumbnail_url = COALESCE(thumbnail_url, $5)
+         WHERE id = $1`,
+        [Number(clip.id), directUrl, direct.permlink || null, atSec, direct.thumbnailUrl]
+      );
+      console.log(`[clips-mp4] recovered permanent Rumble VOD from embed clip=${clip.id} permlink=${direct.permlink}`);
+      return { url: directUrl, atSec };
+    }
+  }
+
   const streamerId = Number(clip.streamer_id || 0);
   if (!streamerId) return null;
 
@@ -368,7 +392,10 @@ async function recoverPermanentRumbleVod(clip: BotClipRow): Promise<{ url: strin
   const username = String(account.rows?.[0]?.username || "").trim();
   if (!username) return null;
 
-  const vods = await fetchRecentRumbleVodsForUsername(username, 40).catch(() => []);
+  const vods = await fetchRecentRumbleVodsForUsername(username, 40).catch((error: any) => {
+    console.warn(`[clips-mp4] permanent Rumble VOD lookup failed clip=${clip.id} username=${username}`, error?.message || error);
+    return [];
+  });
   if (!vods.length) return null;
 
   const liveRef = String(clip.live_permlink || "").replace(/^v/i, "").toLowerCase();
