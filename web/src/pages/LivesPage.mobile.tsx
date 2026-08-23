@@ -5,6 +5,7 @@
 //  Palette : #7c5cfc / #a78bfa / #5b8ef8 / #c4b5fd  (alignée sur LivesPage.css)
 // ─────────────────────────────────────────────────────────────────────────────
 import * as React from "react";
+import { ArrowRight, Clapperboard, Clock3, Heart, Play, Radio, Search, Sparkles, Users } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { formatViewers } from "../lib/format";
@@ -776,6 +777,90 @@ const MOBILE_CSS = `
   0%  { background-position:  100% 50%; }
   100%{ background-position: -100% 50%; }
 }
+
+/* ══ 2026 clean mobile experience ═══════════════════════════════════════ */
+.lm-page {
+  --lm-text-1:#f6f2ff;
+  --lm-text-2:#aaa0ba;
+  --lm-text-3:#84798f;
+  --lm-border:rgba(196,181,253,.14);
+  padding:0 0 calc(86px + var(--lm-safe-bottom));
+  font-family:'Manrope',sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+.lm-page :is(button,input,select) { font-family:'Manrope',sans-serif; }
+.lm-page::before { background:radial-gradient(110vw 52vh at 12% -8%,rgba(124,92,252,.14),transparent 62%),radial-gradient(90vw 50vh at 104% 45%,rgba(91,64,168,.09),transparent 65%); }
+.lm-page::after { display:none; }
+.lm-top { padding:10px 12px 8px; }
+.lm-hero { align-items:flex-end; padding:19px 17px 17px; border-color:var(--lm-border); border-radius:19px; background:linear-gradient(120deg,rgba(38,25,62,.95),rgba(15,10,26,.96) 66%); box-shadow:0 17px 48px rgba(0,0,0,.3); backdrop-filter:none; }
+.lm-hero::before { display:none; }
+.lm-hero::after { top:-88px; right:-45px; left:auto; width:190px; height:190px; border:30px solid rgba(167,139,250,.055); border-radius:50%; background:none; }
+.lm-hero-kicker { position:relative; z-index:1; display:inline-flex; align-items:center; gap:5px; color:#c4b5fd; font-size:8px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.lm-logo { margin-top:7px; background:none; color:#f7f3ff; filter:none; animation:none; font-family:'Manrope',sans-serif; font-size:29px; font-weight:800; letter-spacing:-.055em; }
+.lm-sub { margin-top:4px; color:#968ba6; font-size:9px; font-weight:600; }
+.lm-hero-pills { gap:5px; }
+.lm-pill { min-height:23px; padding:0 7px; border-radius:7px; font-family:'Manrope',sans-serif; font-size:8px; font-weight:800; letter-spacing:.02em; text-transform:uppercase; }
+.lm-pill-live { background:rgba(225,29,72,.88); border-color:rgba(251,113,133,.28); color:#fff; }
+.lm-pill-neutral { background:rgba(8,5,14,.7); }
+.lm-ping { width:5px; height:5px; margin-right:0; box-shadow:0 0 0 3px rgba(255,255,255,.16); animation:none; background:#fff; }
+.lm-pane { padding:5px 12px 18px; animation:lm-pane-in 170ms ease both; }
+.lm-search { margin:3px 0 20px; }
+.lm-search-row { height:45px; border:1px solid var(--lm-border); border-radius:13px; background:rgba(19,13,31,.88); box-shadow:0 10px 28px rgba(0,0,0,.18); }
+.lm-search-icon { color:#8d819e; }
+.lm-search-input { color:#eee9f6; font-family:'Manrope',sans-serif; font-size:12px; }
+.lm-search-input::placeholder { color:#756a83; }
+.lm-suggest { border-color:var(--lm-border); border-radius:14px; background:rgba(18,12,30,.98); box-shadow:0 22px 62px rgba(0,0,0,.55); }
+.lm-section-head { align-items:flex-end; margin:0 2px 10px; }
+.lm-section-head:not(:first-child) { margin-top:24px; }
+.lm-section-title { padding-left:0; color:#f0ebf7; font-family:'Manrope',sans-serif; font-size:15px; font-weight:800; letter-spacing:-.035em; text-transform:none; }
+.lm-section-title::before { display:none; }
+.lm-section-hint { display:grid; place-items:center; min-width:24px; min-height:24px; border-radius:8px; background:rgba(157,124,248,.08); color:#9e90bd; font-size:9px; }
+.lm-grid { grid-template-columns:1fr; gap:11px; }
+.lm-card { border-color:var(--lm-border); border-radius:17px; background:rgba(20,14,33,.88); box-shadow:0 13px 38px rgba(0,0,0,.24); backdrop-filter:none; }
+.lm-card::before,.lm-card-divider { display:none; }
+.lm-card-featured { border-color:rgba(251,191,36,.22); background:linear-gradient(145deg,rgba(58,39,42,.56),rgba(20,13,32,.9) 70%); }
+.lm-thumb { height:auto; aspect-ratio:16/9; border-radius:16px 16px 0 0; }
+.lm-thumb-bg { opacity:.88; filter:saturate(.95) brightness(.86); transform:none; }
+.lm-thumb::after { background:linear-gradient(180deg,rgba(0,0,0,.04) 38%,rgba(5,3,9,.7)); }
+.lm-card-body { gap:7px; padding:12px 13px 13px; }
+.lm-card-row { gap:9px; }
+.lm-ava { width:34px; height:34px; border-radius:11px; border-color:rgba(196,181,253,.2); }
+.lm-card-name { color:#f1edf7; font-family:'Manrope',sans-serif; font-size:12px; font-weight:800; letter-spacing:-.025em; }
+.lm-card-viewers { display:inline-flex; align-items:center; gap:5px; color:#a69aad; font-family:'Manrope',sans-serif; font-size:9px; }
+.lm-card-title { min-height:auto; color:#aaa0b7; font-size:10px; line-height:1.45; }
+.lm-card-follow { color:#82778e; font-size:8px; }
+.lm-empty-state { display:grid; justify-items:center; gap:5px; padding:42px 16px; border:1px dashed var(--lm-border); border-radius:17px; background:rgba(19,13,31,.5); color:#a997d2; text-align:center; }
+.lm-empty-state b { margin-top:4px; color:#e6dff1; font-size:12px; }
+.lm-empty-state span { color:#887d96; font-size:9px; }
+.lm-clips-card { border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; }
+.lm-clips-card::before { display:none; }
+.lm-clips-header { align-items:flex-end; padding:2px 1px 12px; }
+.lm-clips-title { background:none; color:#f0ebf7; filter:none; font-family:'Manrope',sans-serif; font-size:17px; font-weight:800; letter-spacing:-.04em; }
+.lm-clips-header p { margin:4px 0 0; color:#887e98; font-size:9px; }
+.lm-clips-count { border-radius:8px; color:#a69ab6; background:rgba(157,124,248,.07); font-size:8px; }
+.lm-clips-grid { grid-template-columns:1fr; gap:11px; padding:0; }
+.lm-clips-cross,.lm-clips-more-overlay { display:none; }
+.lm-clip-tile { min-height:0; aspect-ratio:16/10.5; border-color:var(--lm-border); border-radius:16px; background:linear-gradient(135deg,#281846,#10091d); }
+.lm-clip-bg { opacity:.78; filter:saturate(.95) brightness(.83); transform:none; }
+.lm-clip-tile::before { background:linear-gradient(180deg,rgba(0,0,0,.02) 38%,rgba(5,3,9,.82)); }
+.lm-clip-play-btn { width:38px; height:38px; border-color:rgba(255,255,255,.18); background:rgba(8,5,14,.68); }
+.lm-clip-badge { top:9px !important; right:9px !important; bottom:auto !important; left:auto !important; gap:5px; min-height:23px; padding:0 7px; border-radius:7px; background:rgba(8,5,14,.7); color:#fda4af; font-family:'Manrope',sans-serif; font-size:8px; }
+.lm-clip-ava { display:none; }
+.lm-clip-caption { position:absolute; z-index:3; right:11px; bottom:10px; left:11px; display:grid; gap:2px; color:white; text-align:left; }
+.lm-clip-caption b { overflow:hidden; font-size:11px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+.lm-clip-caption small { overflow:hidden; color:#bcb1c8; font-size:8px; font-weight:600; text-overflow:ellipsis; white-space:nowrap; }
+.lm-clips-see-all { display:flex; align-items:center; justify-content:center; gap:7px; min-height:41px; margin-top:11px; border-color:rgba(167,139,250,.18); border-radius:11px; background:rgba(157,124,248,.08); color:#c9bbed; font-family:'Manrope',sans-serif; font-size:9px; font-weight:800; }
+.lm-clips-empty { padding:35px 10px; border:1px dashed var(--lm-border); border-radius:16px; color:#8b809a; font-size:10px; text-align:center; }
+.lm-pane > :is(.dwc-card,.dba-card,.qhc-card) { border:1px solid var(--lm-border) !important; border-radius:17px !important; background:rgba(20,14,33,.88) !important; box-shadow:0 12px 36px rgba(0,0,0,.2) !important; backdrop-filter:none !important; animation:none !important; }
+.lm-pane :is(.dwc-title,.dba-title,.qhc-title) { background:none !important; -webkit-text-fill-color:initial !important; color:#f1ecf8 !important; filter:none !important; animation:none !important; font-family:'Manrope',sans-serif !important; font-size:13px !important; }
+.lm-pane :is(.dwc-sub,.dba-sub,.qhc-sub) { color:#8f849f !important; font-family:'Manrope',sans-serif !important; font-size:9px !important; }
+.lm-prof,.lm-login-cta,.lm-menu-item { border-color:var(--lm-border); background:rgba(20,14,33,.82); box-shadow:none; }
+.lm-prof-name,.lm-login-cta-title,.lm-menu-item { font-family:'Manrope',sans-serif; }
+
+@media (min-width:560px) {
+  .lm-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .lm-clips-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 `;
 
 let _mobileCssInjected = false;
@@ -856,13 +941,13 @@ function LiveCard({ live, apiBase, featured }: {
           <ThumbBg url={live.thumbFinal} />
           <div className="lm-thumb-top">
             {featured
-              ? <Pill tone="gold" title="Mise en avant">✨ FEAT.</Pill>
-              : <Pill tone="live" title="En direct"><span className="lm-ping" aria-hidden />LIVE</Pill>
+              ? <Pill tone="gold" title="Mise en avant"><Sparkles size={11} /> À la une</Pill>
+              : <Pill tone="live" title="En direct"><span className="lm-ping" aria-hidden />En direct</Pill>
             }
-            {live.durationLabel ? <Pill tone="neutral">⏱ {live.durationLabel}</Pill> : <span />}
+            {live.durationLabel ? <Pill tone="neutral"><Clock3 size={11} /> {live.durationLabel}</Pill> : <span />}
           </div>
           <div className="lm-thumb-bottom">
-            <Pill tone="neutral" title="Viewers">👁 {fmtViewers(viewers)}</Pill>
+            <Pill tone="neutral" title="Viewers"><Users size={11} /> {fmtViewers(viewers)}</Pill>
           </div>
         </div>
 
@@ -871,7 +956,7 @@ function LiveCard({ live, apiBase, featured }: {
           <div className="lm-card-row">
             <Ava apiBase={apiBase} live={live} />
             <div className="lm-card-name" title={name}>{name}</div>
-            <div className="lm-card-viewers">👁 {fmtViewers(viewers)}</div>
+            <div className="lm-card-viewers"><Users size={11} /> {fmtViewers(viewers)}</div>
           </div>
           {live.title ? (
             <div className="lm-card-title" title={live.title}>{live.title}</div>
@@ -916,10 +1001,10 @@ function ClipTile({ clip, apiBase, idx, onClick }: {
       <div className="lm-clip-bg" style={{ backgroundImage: `url(${thumb})` }} aria-hidden />
       {/* Bouton play */}
       <div className="lm-clip-play" aria-hidden>
-        <div className="lm-clip-play-btn">▶</div>
+        <div className="lm-clip-play-btn"><Play size={15} fill="currentColor" /></div>
       </div>
       {/* Badge likes */}
-      <span className={`lm-clip-badge lm-clip-badge-${corner}`}>❤️ {clip.likesCount}</span>
+      <span className={`lm-clip-badge lm-clip-badge-${corner}`}><Heart size={11} fill="currentColor" /> {clip.likesCount}</span>
       {/* Avatar streamer centré */}
       {clip.avatarUrl ? (
         <div className="lm-clip-ava" aria-hidden>
@@ -927,6 +1012,10 @@ function ClipTile({ clip, apiBase, idx, onClick }: {
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
         </div>
       ) : null}
+      <span className="lm-clip-caption">
+        <b>{clip.title || "Moment du live"}</b>
+        <small>{clip.streamerName || clip.streamerSlug || "Streamer"}</small>
+      </span>
     </button>
   );
 }
@@ -1026,7 +1115,6 @@ export default function LivesPageMobile(props: Props) {
 
   /* ─ clip click ─ */
   function handleClipClick(c: ClipVM) {
-    if (hasMoreThan4) { onOpenMonthList(); return; }
     onOpenClip(c);
   }
 
@@ -1041,7 +1129,7 @@ export default function LivesPageMobile(props: Props) {
       {featuredLives.length > 0 && (
         <div>
           <div className="lm-section-head">
-            <h2 className="lm-section-title">✨ Mise en avant</h2>
+            <h2 className="lm-section-title">À la une</h2>
             <span className="lm-section-hint">{featuredLives.length}</span>
           </div>
           <div className="lm-grid">
@@ -1055,14 +1143,16 @@ export default function LivesPageMobile(props: Props) {
       {/* Normal lives */}
       <div>
         <div className="lm-section-head">
-          <h2 className="lm-section-title">🔴 En direct</h2>
+          <h2 className="lm-section-title">En direct maintenant</h2>
           <span className="lm-section-hint">{normalLives.length}</span>
         </div>
         {!canShowGrid
           ? <SkeletonGrid />
           : normalLives.length === 0 && !loading ? (
-            <div style={{ padding:"20px 4px", fontSize:12, color:"rgba(167,155,220,.45)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:500 }}>
-              Aucun live en ce moment.
+            <div className="lm-empty-state">
+              <Radio size={20} />
+              <b>Aucun live en ce moment</b>
+              <span>Retrouve bientôt les streamers de la communauté.</span>
             </div>
           ) : (
             <div className="lm-grid">
@@ -1078,13 +1168,13 @@ export default function LivesPageMobile(props: Props) {
 
   const TabClips = (
     <div className="lm-clips-card">
-      {/* Header */}
       <div className="lm-clips-header">
         <div>
           <h2 className="lm-clips-title">
-            <span style={{ fontSize:15 }}>🎬</span>
+            <Clapperboard size={17} />
             Clips du mois
           </h2>
+          <p>Les moments préférés de la communauté.</p>
         </div>
         {!clipsLoading && clipsTotal > 0 && (
           <span className="lm-clips-count">{clipsTotal} clips</span>
@@ -1093,8 +1183,8 @@ export default function LivesPageMobile(props: Props) {
 
       {/* Grille 2×2 */}
       {clipsTop4.length === 0 ? (
-        <div style={{ padding:"8px 14px 14px", fontSize:12, color:"rgba(167,155,220,.45)", fontFamily:"'Syne',system-ui,sans-serif", fontWeight:500 }}>
-          {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
+          <div className="lm-clips-empty">
+            {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
         </div>
       ) : (
         <>
@@ -1114,7 +1204,7 @@ export default function LivesPageMobile(props: Props) {
 
           {hasMoreThan4 && (
             <button type="button" className="lm-clips-see-all" onClick={onOpenMonthList}>
-              Voir tous les clips →
+              Voir tous les clips <ArrowRight size={14} />
             </button>
           )}
         </>
@@ -1125,17 +1215,17 @@ export default function LivesPageMobile(props: Props) {
   const TabRewards = (
     <>
       <div className="lm-section-head">
-        <h2 className="lm-section-title">🎡 Roue quotidienne</h2>
+        <h2 className="lm-section-title">Roue quotidienne</h2>
       </div>
       <DailyWheelCard />
 
       <div className="lm-section-head">
-        <h2 className="lm-section-title">📅 Agenda & bonus</h2>
+        <h2 className="lm-section-title">Agenda et bonus</h2>
       </div>
       <DailyBonusAccessCard />
 
       <div className="lm-section-head">
-        <h2 className="lm-section-title">⚔️ Quêtes</h2>
+        <h2 className="lm-section-title">Quêtes</h2>
       </div>
       <QuestsHomeCard />
     </>
@@ -1153,9 +1243,10 @@ export default function LivesPageMobile(props: Props) {
       <div className="lm-top">
         <div className="lm-hero">
           <div className="lm-hero-left">
-            <h1 className="lm-logo">LunaLive</h1>
+            <span className="lm-hero-kicker"><Radio size={12} /> LunaLive</span>
+            <h1 className="lm-logo">En direct</h1>
             <div className="lm-sub">
-              <span>Plateforme casino FR</span>
+              <span>Les chaînes de la communauté</span>
               {refreshing ? <span className="lm-refreshing" aria-hidden /> : null}
             </div>
           </div>
@@ -1165,7 +1256,7 @@ export default function LivesPageMobile(props: Props) {
               <b>{totals.liveCount}</b> live{totals.liveCount > 1 ? "s" : ""}
             </Pill>
             <Pill tone="neutral" title="Viewers total">
-              👁 <b>{fmtViewers(totals.viewersTotal)}</b>
+              <Users size={11} /> <b>{fmtViewers(totals.viewersTotal)}</b>
             </Pill>
           </div>
         </div>
@@ -1457,7 +1548,7 @@ function StreamerSearch({ apiBase }: { apiBase: string }) {
   return (
     <div className="lm-search" ref={wrapRef}>
       <div className="lm-search-row">
-        <span className="lm-search-icon" aria-hidden>🔍</span>
+        <span className="lm-search-icon" aria-hidden><Search size={17} /></span>
         <input
           ref={inputRef}
           className="lm-search-input"

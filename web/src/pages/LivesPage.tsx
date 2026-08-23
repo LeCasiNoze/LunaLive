@@ -1,6 +1,21 @@
 // web/src/pages/LivesPage.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
+import {
+  ArrowRight,
+  CalendarDays,
+  Clapperboard,
+  Clock3,
+  Download,
+  Heart,
+  Play,
+  Radio,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 // hls.js est importé dynamiquement dans le ClipPlayerModal pour alléger le bundle initial
 
@@ -17,6 +32,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useIsMobile } from "../hooks/useIsMobile";
 import LivesPageMobile from "./LivesPage.mobile";
 import "./LivesPage.css";
+import "./LivesPage.v2.css";
 
 export type LiveCardVM = LiveCard & {
   thumbFallback: string;
@@ -50,7 +66,8 @@ function formatDurationDot(startIso: string, nowMs: number) {
   const diff = Math.max(0, nowMs - start);
   const h = Math.floor(diff / 3600000);
   const m = Math.floor((diff % 3600000) / 60000);
-  return `${h}.${String(m).padStart(2, "0")}`;
+  if (h <= 0) return `${Math.max(1, m)} min`;
+  return `${h} h ${String(m).padStart(2, "0")}`;
 }
 
 function withLiveThumbBust(url: string, nowMs: number) {
@@ -151,24 +168,8 @@ function Pill({
   children: React.ReactNode;
   title?: string;
 }) {
-  const map: Record<string, { bg: string; bd: string; color?: string }> = {
-    brand:   { bg: "rgba(124,92,252,0.16)",  bd: "rgba(124,92,252,0.30)" },
-    live:    { bg: "rgba(239,68,68,0.14)",   bd: "rgba(239,68,68,0.28)",  color: "#fca5a5" },
-    gold:    { bg: "rgba(251,191,36,0.14)",  bd: "rgba(251,191,36,0.28)", color: "#fde68a" },
-    neutral: { bg: "rgba(0,0,0,0.48)",       bd: "rgba(255,255,255,0.10)" },
-  };
-  const t = map[tone] ?? map.neutral;
   return (
-    <span title={title} style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      padding: "5px 10px", borderRadius: 999,
-      border: `1px solid ${t.bd}`, background: t.bg,
-      fontSize: 11, fontFamily: "var(--ll-font-display)",
-      fontWeight: 700, letterSpacing: "-0.05px",
-      color: t.color ?? "rgba(235,232,255,0.92)",
-      whiteSpace: "nowrap",
-      backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-    }}>
+    <span title={title} className={`lvx-pill is-${tone}`}>
       {children}
     </span>
   );
@@ -180,20 +181,7 @@ function GlassCard({ children, style, className }: {
   className?: string;
 }) {
   return (
-    <div className={className} style={{
-      position: "relative", borderRadius: 20,
-      border: "1px solid rgba(124,92,252,0.14)",
-      background: "rgba(13,11,24,0.82)",
-      boxShadow: "0 18px 55px rgba(0,0,0,0.38)",
-      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      overflow: "hidden", ...style,
-    }}>
-      {/* Reflet haut signature */}
-      <div aria-hidden style={{
-        position: "absolute", top: 0, left: "8%", right: "8%", height: 1,
-        background: "linear-gradient(90deg, transparent, rgba(167,139,250,0.35) 40%, rgba(91,142,248,0.25) 60%, transparent)",
-        pointerEvents: "none", zIndex: 2,
-      }} />
+    <div className={`lvx-glass-card${className ? ` ${className}` : ""}`} style={style}>
       {children}
     </div>
   );
@@ -202,19 +190,8 @@ function GlassCard({ children, style, className }: {
 function LiveBackdrop({ url }: { url: string }) {
   return (
     <>
-      <div aria-hidden style={{
-        position: "absolute", inset: 0,
-        backgroundImage: `url(${url})`,
-        backgroundRepeat: "no-repeat", backgroundPosition: "center",
-        backgroundSize: "contain", backgroundColor: "rgba(0,0,0,0.35)",
-        opacity: 0.92, filter: "contrast(1.06) saturate(1.18) brightness(1.02)",
-        pointerEvents: "none",
-      }} />
-      <div aria-hidden style={{
-        position: "absolute", inset: 0,
-        background: "linear-gradient(90deg, rgba(0,0,0,0.62), rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.70)), radial-gradient(900px 420px at 50% 0%, rgba(255,255,255,0.06), rgba(0,0,0,0) 60%)",
-        pointerEvents: "none",
-      }} />
+      <img className="lvx-live-image" src={url} alt="" loading="lazy" />
+      <div className="lvx-live-shade" aria-hidden />
     </>
   );
 }
@@ -225,53 +202,46 @@ function LiveCardBody({ live, accentColor }: {
   accentColor: string;
 }) {
   return (
-    <div style={{ padding: "12px 14px 14px" }}>
-      <div className="liveTitle" title={live.title || ""} style={{
-        fontFamily: "var(--ll-font-display)", fontWeight: 700, fontSize: 13,
-        letterSpacing: "-0.2px", color: "rgba(200,195,240,0.88)",
-      }}>
-        {live.title || "—"}
-      </div>
-
-      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 12, overflow: "hidden",
-          border: `1px solid ${accentColor}`, background: "rgba(0,0,0,0.35)",
-          flexShrink: 0,
-        }} aria-hidden>
+    <div className="lvx-live-body" style={{ ["--lvx-accent" as string]: accentColor }}>
+      <div className="lvx-live-identity">
+        <div className="lvx-live-avatar" aria-hidden>
           <img
             src={getStreamerAvatarUrl(live) || svgThumb(live.displayName || "Streamer")}
             alt=""
             loading="lazy"
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).src = svgThumb(live.displayName || "Streamer"); }}
           />
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontFamily: "var(--ll-font-display)", fontWeight: 700, fontSize: 13,
-            letterSpacing: "-0.3px", whiteSpace: "nowrap", overflow: "hidden",
-            textOverflow: "ellipsis", color: "rgba(235,232,255,0.94)",
-          }} title={live.displayName}>
-            {live.displayName}
-          </div>
-          <div style={{
-            fontSize: 11, fontFamily: "var(--ll-font-display)", fontWeight: 500,
-            color: "rgba(167,155,220,0.52)", marginTop: 1,
-          }}>
-            {formatViewers(Number((live as any).followersCount || 0))} follow
-          </div>
+        <div className="lvx-live-copy">
+          <div className="lvx-live-name" title={live.displayName}>{live.displayName}</div>
+          <div className="lvx-live-followers">{formatViewers(Number((live as any).followersCount || 0))} abonnés</div>
         </div>
+        <span className="lvx-live-arrow"><ArrowRight size={17} /></span>
       </div>
-
-      {/* Trait bas signature */}
-      <div aria-hidden style={{
-        marginTop: 12, height: 1, borderRadius: 999,
-        background: accentColor.includes("251,191") // gold
-          ? "linear-gradient(90deg, rgba(251,191,36,0.0), rgba(251,191,36,0.40), rgba(251,191,36,0.0))"
-          : "linear-gradient(90deg, rgba(124,92,252,0.0), rgba(124,92,252,0.35), rgba(91,142,248,0.25), rgba(91,142,248,0.0))",
-      }} />
+      <div className="lvx-live-title" title={live.title || ""}>{live.title || "Live en cours"}</div>
     </div>
+  );
+}
+
+function DesktopLiveCard({ live, featured = false }: {
+  live: LiveCardVM & { followersCount?: number; avatarUrl?: string | null };
+  featured?: boolean;
+}) {
+  return (
+    <Link to={`/s/${live.slug}`} className="lvx-live-link" aria-label={`Regarder ${live.displayName}`}>
+      <GlassCard className={`lvx-live-card${featured ? " is-featured" : ""}`}>
+        <div className="lvx-live-media">
+          <LiveBackdrop url={live.thumbFinal} />
+          <div className="lvx-live-topline">
+            {featured ? <Pill tone="gold"><Sparkles size={12} /> À la une</Pill> : <Pill tone="live"><span className="livePing" /> En direct</Pill>}
+            {live.durationLabel ? <Pill tone="neutral"><Clock3 size={12} /> {live.durationLabel}</Pill> : null}
+          </div>
+          <div className="lvx-live-viewers"><Users size={13} /> {formatViewers(Number(live.viewers) || 0)}</div>
+          <span className="lvx-watch"><Play size={14} fill="currentColor" /> Regarder</span>
+        </div>
+        <LiveCardBody live={live} accentColor={featured ? "rgba(251,191,36,.45)" : "rgba(167,139,250,.36)"} />
+      </GlassCard>
+    </Link>
   );
 }
 
@@ -423,26 +393,6 @@ async function fetchTopClipsMonth(token?: string | null): Promise<{ total: numbe
     }).filter(Boolean) as ClipVM[];
     return { total, clips };
   } catch { return { total: 0, clips: [] }; }
-}
-
-/* ─── ClipLikesBadge ─────────────────────────────────────────────────── */
-function ClipLikesBadge({ likes, corner }: { likes: number; corner: "tl" | "tr" | "br" | "bl" }) {
-  const pos: Record<string, React.CSSProperties> = {
-    tl: { top: 8, left: 8 }, tr: { top: 8, right: 8 },
-    br: { bottom: 8, right: 8 }, bl: { bottom: 8, left: 8 },
-  };
-  return (
-    <span style={{
-      position: "absolute", ...pos[corner],
-      display: "inline-flex", alignItems: "center", gap: 6,
-      padding: "5px 9px", borderRadius: 999,
-      fontSize: 11, fontFamily: "var(--ll-font-display)", fontWeight: 700,
-      background: "rgba(0,0,0,0.55)", border: "1px solid rgba(255,255,255,0.10)",
-      backdropFilter: "blur(10px)", pointerEvents: "none",
-    }} title={`${likes} likes`}>
-      ❤️ {likes}
-    </span>
-  );
 }
 
 /* ─── CSS modals clips ───────────────────────────────────────────────── */
@@ -654,6 +604,17 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
   const canDownload = canModerate && !!mp4;
   const canDelete   = canModerate && !!token;
 
+  React.useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
   // Pause toutes les autres vidéos pendant l'ouverture (libère le décodeur GPU).
   React.useEffect(() => {
     const allVideos = Array.from(document.querySelectorAll<HTMLVideoElement>("video"));
@@ -810,9 +771,9 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
                   </Link>
                 </span>
                 <span className="cpm-meta-dot">•</span>
-                <span>❤️ {Number(clip.likesCount || 0)}</span>
+                <span><Heart size={12} fill="currentColor" /> {Number(clip.likesCount || 0)}</span>
                 <span className="cpm-meta-dot">•</span>
-                <span>{fmtDuration(clip.durationSec)}</span>
+                <span><Clock3 size={12} /> {fmtDuration(clip.durationSec)}</span>
                 <span className="cpm-meta-dot">•</span>
                 <span>{timeAgo(clip.createdAtMs)}</span>
               </div>
@@ -826,7 +787,7 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
                 disabled={!!busy || !canLike}
                 title={!token ? "Connecte-toi pour liker" : clip.myLiked ? "Déjà liké" : "Liker ce clip"}
               >
-                <span>{clip.myLiked ? "❤️" : "🤍"}</span>
+                <Heart size={15} fill={clip.myLiked ? "currentColor" : "none"} />
                 <span>{Number(clip.likesCount || 0)}</span>
               </button>
 
@@ -839,7 +800,7 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
                     disabled={!canDownload || !!busy}
                     title={!mp4 ? "Vidéo pas encore disponible" : "Télécharger le clip"}
                   >
-                    {busy === "downloading" ? `${pct ? `${pct}%` : "…"}` : "Download"}
+                    <Download size={14} /> {busy === "downloading" ? `${pct ? `${pct}%` : "…"}` : "Télécharger"}
                   </button>
                   <button
                     className="cpm-btn-action is-danger"
@@ -848,12 +809,12 @@ function ClipPlayerModal({ clip, token, canModerate, onPatchClip, onRemoveClip, 
                     disabled={!canDelete || !!busy}
                     title="Supprimer le clip"
                   >
-                    {busy === "deleting" ? "…" : "Supprimer"}
+                    <Trash2 size={14} /> {busy === "deleting" ? "…" : "Supprimer"}
                   </button>
                 </>
               )}
 
-              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose} disabled={!!busy}>✕</button>
+              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose} disabled={!!busy}><X size={17} /></button>
             </div>
           </div>
 
@@ -884,6 +845,17 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
   title: string; clips: ClipVM[]; total: number;
   onClose: () => void; onPickClip: (c: ClipVM) => void; zIndex: number;
 }) {
+  React.useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
   return createPortal(
     <>
       <style dangerouslySetInnerHTML={{__html: CLIP_MODAL_CSS}} />
@@ -894,13 +866,13 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
             <div className="cpm-header-left">
               <div className="cpm-clip-title">{title}</div>
               <div className="cpm-clip-meta">
-                <span>Tri par ❤️ les plus likés</span>
+                <span>Les plus appréciés en premier</span>
                 <span className="cpm-meta-dot">•</span>
                 <span>{total || clips.length} clip{(total || clips.length) > 1 ? "s" : ""}</span>
               </div>
             </div>
             <div className="cpm-header-actions">
-              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
+              <button className="cpm-btn-close" type="button" aria-label="Fermer" onClick={onClose}><X size={17} /></button>
             </div>
           </div>
 
@@ -911,16 +883,12 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
               <div className="cpm-list">
                 {clips.map((c) => {
                   const name = c.streamerName || c.streamerSlug || "Streamer";
+                  const preview = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
                   return (
                     <button key={c.id} type="button" className="cpm-list-item" onClick={() => onPickClip(c)}>
-                      <div className="cpm-list-avatar" aria-hidden>
-                        {c.avatarUrl && (
-                          <img
-                            src={absolutize(c.avatarUrl) || c.avatarUrl} alt=""
-                            loading="lazy"
-                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                          />
-                        )}
+                      <div className="cpm-list-preview" aria-hidden>
+                        {preview ? <img src={preview} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+                        <span><Play size={14} fill="currentColor" /></span>
                       </div>
                       <div className="cpm-list-info">
                         <div className="cpm-list-title">{c.title || "(sans titre)"}</div>
@@ -929,8 +897,8 @@ function MonthClipsListModal({ title, clips, total, onClose, onPickClip, zIndex 
                         </div>
                       </div>
                       <div className="cpm-list-right">
-                        <div className="cpm-list-likes" title="Likes">❤️ {Number(c.likesCount || 0)}</div>
-                        <div className="cpm-list-open">▶ Ouvrir</div>
+                        <div className="cpm-list-likes" title="Likes"><Heart size={12} fill="currentColor" /> {Number(c.likesCount || 0)}</div>
+                        <div className="cpm-list-open">Regarder <ArrowRight size={12} /></div>
                       </div>
                     </button>
                   );
@@ -1113,7 +1081,6 @@ export default function LivesPage() {
   const hasMoreThan4    = clipsTotal > 4;
 
   function onClickMonthClip(c: ClipVM) {
-    if (hasMoreThan4) { setOpenMonthList(true); return; }
     setOpenClip(c);
   }
 
@@ -1153,245 +1120,122 @@ export default function LivesPage() {
 
   /* ── Desktop ── */
   return (
-    <main className="container livesPage">
-      <div className="livesWrap">
-
-        {/* ── Page header ── */}
-        <div className="livesHeader">
-          <div style={{ display: "grid", gap: 6, minWidth: 280 }}>
-            <h1 className="livesH1">LunaLive</h1>
-            <div className="mutedSmall" style={{ maxWidth: 760 }}>
-              Bienvenue sur votre plateforme dédiée à la commu casino.
-              {refreshing ? <span style={{ marginLeft: 10, opacity: 0.8 }}><span className="livePing" aria-hidden /></span> : null}
+    <main className="container livesPage lvx-page">
+      <div className="lvx-shell">
+        <header className="lvx-hero">
+          <div className="lvx-hero-copy">
+            <span className="lvx-eyebrow"><Radio size={14} /> LunaLive en direct</span>
+            <h1>Le direct commence ici.</h1>
+            <p>Retrouve les streamers de la communauté, les moments qui comptent et tes rendez-vous quotidiens.</p>
+          </div>
+          <div className="lvx-hero-side">
+            <div className="lvx-hero-stats">
+              <span><b>{totals.liveCount}</b> live{totals.liveCount !== 1 ? "s" : ""}</span>
+              <i />
+              <span><b>{formatViewers(totals.viewersTotal)}</b> spectateur{totals.viewersTotal !== 1 ? "s" : ""}</span>
             </div>
+            <button type="button" className="lvx-refresh" onClick={() => void load({ silent: true })} disabled={loading || refreshing}>
+              <RefreshCw size={16} className={refreshing ? "is-spinning" : ""} /> Actualiser
+            </button>
           </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <Pill tone="live" title="Nombre de lives en direct">🔴 Live <b>{totals.liveCount}</b></Pill>
-            {totals.viewersTotal > 0 && (
-              <Pill tone="neutral" title="Viewers total sur la plateforme">👁 Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill>
-            )}
-          </div>
-        </div>
+        </header>
 
         {err ? (
-          <div className="alert" style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span>Impossible de charger les lives pour le moment.</span>
-            <button className="btn" onClick={() => load()} disabled={loading} style={{ marginLeft: "auto" }}>
-              {loading ? "Chargement…" : "Réessayer"}
-            </button>
+          <div className="lvx-alert" role="alert">
+            <div><b>Les directs n’ont pas pu être chargés.</b><span>La connexion sera retentée automatiquement.</span></div>
+            <button type="button" onClick={() => void load()} disabled={loading}>Réessayer</button>
           </div>
         ) : null}
 
-        <div className="livesLayout">
+        <section className="lvx-section lvx-live-section">
+          <div className="lvx-section-head">
+            <div>
+              <span className="lvx-section-kicker">Maintenant</span>
+              <h2>En direct</h2>
+              <p>{totals.liveCount > 0 ? `${totals.liveCount} chaîne${totals.liveCount > 1 ? "s" : ""} à regarder maintenant` : "Le prochain live arrive bientôt"}</p>
+            </div>
+            <Link to="/browse" className="lvx-section-link">Toutes les chaînes <ArrowRight size={15} /></Link>
+          </div>
 
-          {/* ── Sidebar ── */}
-          <aside className="livesSidebar">
+          {loading && lives.length === 0 ? (
+            <div className="lvx-live-grid" aria-hidden>
+              {Array.from({ length: 6 }).map((_, index) => <div key={index} className="lvx-skeleton" style={{ animationDelay: `${index * 70}ms` }} />)}
+            </div>
+          ) : !err && featuredLives.length === 0 && normalLives.length === 0 ? (
+            <div className="lvx-empty">
+              <span><Radio size={24} /></span>
+              <h3>Le studio est calme pour le moment</h3>
+              <p>Découvre les chaînes et leurs derniers contenus en attendant le prochain direct.</p>
+              <Link to="/browse">Explorer les streamers <ArrowRight size={15} /></Link>
+            </div>
+          ) : (
+            <div className="lvx-live-grid">
+              {featuredLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} featured />)}
+              {normalLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} />)}
+            </div>
+          )}
+        </section>
+
+        <section className="lvx-section lvx-clips-section">
+          <div className="lvx-section-head">
+            <div>
+              <span className="lvx-section-kicker">Les moments forts</span>
+              <h2>Clips du mois</h2>
+              <p>Les séquences préférées de la communauté, classées par likes.</p>
+            </div>
+            {clipsTotal > 0 ? (
+              <button type="button" className="lvx-section-link" onClick={() => setOpenMonthList(true)}>
+                Voir {clipsTotal === 1 ? "le clip" : `les ${clipsTotal} clips`} <ArrowRight size={15} />
+              </button>
+            ) : null}
+          </div>
+
+          {clipsLoading && clipsTop4.length === 0 ? (
+            <div className="lvx-clips-grid" aria-hidden>{Array.from({ length: 4 }).map((_, index) => <div className="lvx-clip-skeleton" key={index} />)}</div>
+          ) : clipsTop4.length === 0 ? (
+            <div className="lvx-inline-empty"><Clapperboard size={19} /><span>Aucun clip ce mois-ci. Les prochains moments forts apparaîtront ici.</span></div>
+          ) : (
+            <div className="lvx-clips-grid">
+              {clipsTop4.map((clip) => {
+                const thumb = clip.thumbUrl ? absolutize(clip.thumbUrl) || clip.thumbUrl : null;
+                return (
+                  <button key={clip.id} type="button" className="lvx-clip-card" onClick={() => onClickMonthClip(clip)}>
+                    <span className="lvx-clip-media">
+                      {thumb ? <img src={thumb} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
+                      <span className="lvx-clip-play"><Play size={16} fill="currentColor" /></span>
+                      <span className="lvx-clip-likes"><Heart size={12} fill="currentColor" /> {Number(clip.likesCount || 0)}</span>
+                      <span className="lvx-clip-duration">{fmtDuration(clip.durationSec)}</span>
+                    </span>
+                    <span className="lvx-clip-info">
+                      <b>{clip.title || "Moment du live"}</b>
+                      <span>{clip.streamerName || clip.streamerSlug || "Streamer"} · {timeAgo(clip.createdAtMs)}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="lvx-section lvx-daily-section">
+          <div className="lvx-section-head">
+            <div>
+              <span className="lvx-section-kicker">Ton espace</span>
+              <h2>Les rendez-vous du jour</h2>
+              <p>Roue, bonus et quêtes réunis au même endroit.</p>
+            </div>
+            <span className="lvx-calendar"><CalendarDays size={15} /> Aujourd’hui</span>
+          </div>
+          <div className="lvx-tools-grid">
             <DailyWheelCard />
             <DailyBonusAccessCard />
             <QuestsHomeCard />
-
-            <div className="sidebarDivider" />
-
-            {/* Clips du mois */}
-            <div className="clipsCard sidebarCard">
-              <div style={{ padding: "14px 16px 0" }}>
-                <div className="sectionTitle" style={{ margin: "0 0 10px" }}>
-                  <h2 style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    <span style={{
-                      width: 20, height: 20, borderRadius: 7,
-                      background: "linear-gradient(135deg, rgba(124,92,252,0.50), rgba(59,77,200,0.40))",
-                      border: "1px solid rgba(124,92,252,0.25)",
-                      display: "grid", placeItems: "center", fontSize: 11, flexShrink: 0,
-                      boxShadow: "0 0 10px rgba(124,92,252,0.22)",
-                    }} aria-hidden>🎬</span>
-                    Clips du mois
-                  </h2>
-                  {clipsLoading ? (
-                    <span className="sectionHint" style={{ opacity: 0.5 }}>…</span>
-                  ) : clipsTotal > 0 ? (
-                    <span className="sectionHint">{clipsTotal} clip{clipsTotal > 1 ? "s" : ""}</span>
-                  ) : null}
-                </div>
-              </div>
-
-              {clipsTop4.length === 0 ? (
-                <div className="mutedSmall" style={{ padding: "0 16px 14px", opacity: 0.6 }}>
-                  {clipsLoading ? "Chargement…" : "Aucun clip pour le moment."}
-                </div>
-              ) : (
-                <div style={{ padding: "0 14px 14px" }}>
-                  <div className="clipsGrid">
-                    {clipsTop4.map((c, idx) => {
-                      const raw    = c.thumbUrl ? absolutize(c.thumbUrl) || c.thumbUrl : null;
-                      const thumb  = raw || svgThumb(c.streamerName || c.streamerSlug || "Clip");
-                      const corner = (["tl", "tr", "bl", "br"] as const)[idx] ?? "tl";
-                      return (
-                        <button key={c.id} type="button" className="clipTile hoverGlow" onClick={() => onClickMonthClip(c)}
-                          style={{ textDecoration: "none", color: "inherit", display: "block", padding: 0, cursor: "pointer" }}
-                          title={hasMoreThan4 ? "Ouvrir la liste des clips du mois" : c.title ? `${c.title} — ${c.likesCount} likes` : `${c.likesCount} likes`}
-                        >
-                          <img
-                            src={thumb}
-                            alt=""
-                            loading="lazy"
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              backgroundColor: "#1a1a1a",
-                            }}
-                            onError={(e) => {
-                              const target = e.currentTarget;
-                              target.style.display = "none";
-                              const parent = target.parentElement;
-                              if (parent) {
-                                parent.style.background = `linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)`;
-                                parent.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:white;font-size:24px;">🎬</div>';
-                              }
-                            }}
-                            onLoad={(e) => {
-                              const target = e.currentTarget;
-                              target.style.opacity = "1";
-                            }}
-                          />
-                          <div className="clipPlay"><span>▶</span></div>
-                          <ClipLikesBadge likes={c.likesCount} corner={corner} />
-                          {c.avatarUrl ? (
-                            <div className="clipMidAvatar" aria-hidden>
-                              <img src={absolutize(c.avatarUrl) || c.avatarUrl} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
-                            </div>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                    {extraClipsCount > 0 ? <div className="clipsCross" aria-hidden /> : null}
-                    {extraClipsCount > 0 ? (
-                      <button type="button" className="clipsMoreOverlay" onClick={() => setOpenMonthList(true)}
-                        style={{ background: "transparent", border: 0, cursor: "pointer" }} title="Voir tous les clips du mois">
-                        <div className="bubble"><strong>+{extraClipsCount}</strong> clips</div>
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {hasMoreThan4 && (
-                    <button type="button" onClick={() => setOpenMonthList(true)} style={{
-                      marginTop: 10, width: "100%", padding: "7px 12px", borderRadius: 11,
-                      border: "1px solid rgba(124,92,252,0.18)", background: "rgba(124,92,252,0.06)",
-                      color: "rgba(167,139,250,0.80)", fontFamily: "var(--ll-font-display)",
-                      fontSize: 11, fontWeight: 700, letterSpacing: "-0.1px", cursor: "pointer",
-                      transition: "background 150ms ease, border-color 150ms ease",
-                    }}
-                    onMouseEnter={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(124,92,252,0.12)"; b.style.borderColor = "rgba(124,92,252,0.32)"; }}
-                    onMouseLeave={(e) => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(124,92,252,0.06)"; b.style.borderColor = "rgba(124,92,252,0.18)"; }}
-                    >
-                      Voir tous les clips →
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </aside>
-
-          {/* ── Main lives ── */}
-          <section className="livesMain">
-            {loading && lives.length === 0 ? (
-              /* Skeleton pendant le chargement (cold-start Render ~30s) —
-                 évite la zone blanche qui donne l'impression d'un site cassé. */
-              <section className="livesGrid" aria-hidden>
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="liveSkeletonCard">
-                    <div className="sk-shimmer sk-thumb" />
-                    <div className="sk-shimmer sk-line" />
-                    <div className="sk-shimmer sk-line short" />
-                  </div>
-                ))}
-              </section>
-            ) : !err && featuredLives.length === 0 && normalLives.length === 0 ? (
-              /* État vide accueillant quand personne n'est en live. */
-              <div className="emptyLives">
-                <span className="emoji" aria-hidden>🌙</span>
-                <div className="title">Personne en live pour le moment</div>
-                <div className="sub">
-                  Reviens un peu plus tard, ou explore les streamers et leurs derniers clips en attendant le prochain live.
-                </div>
-                <Link to="/browse" className="btn" style={{ marginTop: 4, textDecoration: "none" }}>
-                  Voir tous les streamers
-                </Link>
-              </div>
-            ) : (
-              <>
-                {/* Featured */}
-                {featuredLives.length > 0 && (
-                  <div style={{ marginTop: 0 }}>
-                    <div className="sectionTitle">
-                      <h2>✨ Mise en avant</h2>
-                      <div className="sectionHint">Abonnés / premium</div>
-                    </div>
-                    <section className="livesGrid">
-                      {featuredLives.map((live) => (
-                        <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                          <GlassCard className="hoverGlow" style={{
-                            border: "1px solid rgba(251,191,36,0.22)",
-                            background: "radial-gradient(700px 220px at 20% 0%, rgba(251,191,36,0.10), transparent 60%), radial-gradient(600px 200px at 90% 10%, rgba(124,92,252,0.08), transparent 55%), rgba(13,11,24,0.82)",
-                          }}>
-                            <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
-                              <img src={live.thumbFinal} alt="" loading="lazy" />
-                              <div className="liveTopRow">
-                                <Pill tone="gold" title="Mise en avant">✨ FEATURED</Pill>
-                                {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
-                              </div>
-                              <div className="liveBottomRow">
-                                <span />
-                                {Number(live.viewers) > 0
-                                  ? <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
-                                  : <span />}
-                              </div>
-                            </div>
-                            <LiveCardBody live={live as any} accentColor="rgba(251,191,36,0.24)" />
-                          </GlassCard>
-                        </Link>
-                      ))}
-                    </section>
-                  </div>
-                )}
-
-                {/* Normal */}
-                <div style={{ marginTop: 0 }}>
-                  <section className="livesGrid">
-                    {normalLives.map((live) => (
-                      <Link key={live.id} to={`/s/${live.slug}`} className="liveLink">
-                        <GlassCard className="hoverGlow" style={{
-                          border: "1px solid rgba(124,92,252,0.16)",
-                          background: "radial-gradient(600px 200px at 15% 0%, rgba(124,92,252,0.10), transparent 60%), rgba(13,11,24,0.82)",
-                        }}>
-                          <div className="liveThumb" style={{ borderRadius: "18px 18px 0 0", border: "none" }}>
-                            <LiveBackdrop url={live.thumbFinal} />
-                            <div className="liveTopRow">
-                              <Pill tone="live" title="En direct"><span className="livePing" aria-hidden />LIVE</Pill>
-                              {live.durationLabel ? <Pill tone="neutral" title="Durée du live">⏱ {live.durationLabel}</Pill> : <span />}
-                            </div>
-                            <div className="liveBottomRow">
-                              <span />
-                              {Number(live.viewers) > 0
-                                ? <Pill tone="neutral" title="Viewers">👁 {formatViewers(live.viewers)}</Pill>
-                                : <span />}
-                            </div>
-                          </div>
-                          <LiveCardBody live={live as any} accentColor="rgba(124,92,252,0.20)" />
-                        </GlassCard>
-                      </Link>
-                    ))}
-                  </section>
-                </div>
-              </>
-            )}
-          </section>
-
-        </div>
+          </div>
+        </section>
       </div>
 
       {openMonthList ? (
-        <MonthClipsListModal title="🎬 Clips du mois" clips={clips} total={clipsTotal || clips.length}
+        <MonthClipsListModal title="Clips du mois" clips={clips} total={clipsTotal || clips.length}
           onClose={() => setOpenMonthList(false)} onPickClip={(c) => setOpenClip(c)} zIndex={79} />
       ) : null}
 
