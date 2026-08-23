@@ -542,6 +542,10 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "-nostdin",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
+      "-allowed_segment_extensions",
+      "ALL",
+      "-extension_picky",
+      "0",
       ...httpInputArgs,
       "-ss",
       String(startSec),
@@ -576,6 +580,10 @@ async function renderAndUploadClip(clip: BotClipRow) {
         "-nostdin",
         "-protocol_whitelist",
         "file,http,https,tcp,tls,crypto,data",
+        "-allowed_segment_extensions",
+        "ALL",
+        "-extension_picky",
+        "0",
         ...httpInputArgs,
         "-ss",
         String(startSec),
@@ -689,7 +697,8 @@ export function startClipsMp4Renderer() {
       await pool.query(
         `UPDATE bot_clips
          SET mp4_error = NULL, mp4_rendering = false
-         WHERE mp4_error = 'rumble_live_hls_prepare_failed'
+         WHERE (mp4_error = 'rumble_live_hls_prepare_failed'
+                OR mp4_error LIKE '%allowed_segment_extensions%')
            AND deleted_ts IS NULL
            AND created_ts >= $1`,
         [minCreatedTs]
