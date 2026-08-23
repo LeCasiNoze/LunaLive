@@ -99,8 +99,10 @@ export type AdminRequestRow = {
 
 export type ApiMyStreamer = {
   id: string;
+  ownerUserId: number;
   slug: string;
   displayName: string;
+  avatarUrl: string;
   title: string;
   viewers: number;
   isLive: boolean;

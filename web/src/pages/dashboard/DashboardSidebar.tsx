@@ -1,3 +1,4 @@
+import * as React from "react";
 import {
   Bot,
   ChartNoAxesCombined,
@@ -11,6 +12,38 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { ApiMyStreamer } from "../../lib/api";
+
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
+
+function initials(name: string) {
+  const parts = name.trim().split(/[\s._-]+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "S";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] : parts[0]?.[1];
+  return `${first}${last ?? ""}`.toUpperCase();
+}
+
+function absoluteAvatarUrl(streamer: ApiMyStreamer) {
+  const raw = streamer.avatarUrl || (streamer.ownerUserId ? `/avatars/u/${streamer.ownerUserId}` : "");
+  if (!raw) return null;
+  const absolute = /^https?:\/\//i.test(raw) ? raw : raw.startsWith("/") ? `${API_BASE}${raw}` : raw;
+  if (/\/avatars\/u\/\d+$/i.test(absolute)) return `${absolute}?v=${Math.floor(Date.now() / 60_000)}`;
+  return absolute;
+}
+
+export function DashboardAvatar({ streamer, className = "" }: { streamer: ApiMyStreamer; className?: string }) {
+  const src = absoluteAvatarUrl(streamer);
+  const [failedSrc, setFailedSrc] = React.useState<string | null>(null);
+
+  return (
+    <span className={`studio-avatar ${className}`.trim()}>
+      {src && failedSrc !== src ? (
+        <img src={src} alt={`Avatar de ${streamer.displayName}`} onError={() => setFailedSrc(src)} />
+      ) : (
+        <span aria-hidden>{initials(streamer.displayName)}</span>
+      )}
+    </span>
+  );
+}
 
 export type DashboardTab =
   | "overview"
@@ -70,9 +103,9 @@ export function DashboardSidebar({
   return (
     <aside className="studio-nav" aria-label="Navigation du dashboard">
       <div className="studio-nav-brand">
-        <span className="studio-nav-mark" aria-hidden>LL</span>
+        <DashboardAvatar streamer={streamer} className="studio-nav-avatar" />
         <span>
-          <strong>Control room</strong>
+          <strong>{streamer.displayName}</strong>
           <small>@{streamer.slug}</small>
         </span>
       </div>
@@ -98,7 +131,6 @@ export function DashboardSidebar({
                       <strong>{item.label}</strong>
                       <small>{item.hint}</small>
                     </span>
-                    <span className="studio-nav-arrow" aria-hidden>+</span>
                   </button>
                 );
               })}

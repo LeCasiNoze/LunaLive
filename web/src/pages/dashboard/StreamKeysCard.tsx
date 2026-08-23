@@ -31,7 +31,7 @@ export function StreamKeysCard({
 
   async function onCopy(v: string) {
     const ok = await copyText(v);
-    setHint(ok ? "Copié ✅" : "Impossible de copier");
+    setHint(ok ? "Copié" : "Impossible de copier");
     window.setTimeout(() => setHint(null), 1200);
   }
 
@@ -45,76 +45,33 @@ export function StreamKeysCard({
         </div>
       ) : (
         <>
+          {connection.enabled === false ? (
+            <div className="hint">Cette connexion est actuellement désactivée.</div>
+          ) : null}
+
           <div className="field">
-            <label>Plateforme</label>
-            <input value={connection.provider === "dlive" ? "DLive" : "Rumble"} readOnly />
+            <label htmlFor="dashboard-stream-provider">Plateforme</label>
+            <input id="dashboard-stream-provider" value={connection.provider === "dlive" ? "DLive" : "Rumble"} readOnly />
           </div>
 
-          {connection.provider === "dlive" && (
-            <div className="field">
-              <label>Activer DLive</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <input
-                  type="checkbox"
-                  checked={connection.enabled !== false}
-                  onChange={(e) => {
-                    // TODO: Implémenter l'API pour activer/désactiver
-                    console.log("Toggle DLive enabled:", e.target.checked);
-                  }}
-                />
-                <span className="muted">
-                  {connection.enabled !== false ? "DLive activé" : "DLive désactivé (utilisera Rumble)"}
-                </span>
-              </div>
+          <div className="field">
+            <label htmlFor="dashboard-rtmp-url">URL RTMP</label>
+            <input id="dashboard-rtmp-url" value={connection.rtmpUrl} readOnly />
+            <button className="btnGhost" onClick={() => onCopy(connection.rtmpUrl)}>Copier l'URL</button>
+          </div>
+
+          <div className="field">
+            <label htmlFor="dashboard-stream-key">Clé de stream</label>
+            <input id="dashboard-stream-key" value={show ? connection.streamKey : maskKey(connection.streamKey)} readOnly />
+            <div className="studio-secret-actions">
+              <button className="btnGhost" onClick={() => setShow((v) => !v)}>
+                {show ? "Masquer" : "Afficher"}
+              </button>
+              <button className="btnGhost" onClick={() => onCopy(connection.streamKey)}>Copier la clé</button>
             </div>
-          )}
+          </div>
 
-          {(connection.provider === "dlive" && connection.enabled !== false) ? (
-            // DLive activé : afficher les clés DLive
-            <>
-              <div className="field">
-                <label>RTMP URL</label>
-                <input value={connection.rtmpUrl} readOnly />
-                <button className="btnGhost" onClick={() => onCopy(connection.rtmpUrl)}>
-                  Copier
-                </button>
-              </div>
-
-              <div className="field">
-                <label>Stream Key</label>
-                <input value={show ? connection.streamKey : maskKey(connection.streamKey)} readOnly />
-                <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
-                  <button className="btnGhost" onClick={() => setShow((v) => !v)}>
-                    {show ? "Masquer" : "Afficher"}
-                  </button>
-                  <button className="btnGhost" onClick={() => onCopy(connection.streamKey)}>
-                    Copier
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            // DLive désactivé ou plateforme Rumble : afficher les clés Rumble
-            <>
-              <div className="field">
-                <label>RTMP URL</label>
-                <input value="rtmp://live.rumble.com/live" readOnly />
-                <button className="btnGhost" onClick={() => onCopy("rtmp://live.rumble.com/live")}>
-                  Copier
-                </button>
-              </div>
-
-              <div className="field">
-                <label>Stream Key</label>
-                <input value="r-4p6wxa-orxy-yhxt-aa4a2d" readOnly />
-                <button className="btnGhost" onClick={() => onCopy("r-4p6wxa-orxy-yhxt-aa4a2d")}>
-                  Copier
-                </button>
-              </div>
-            </>
-          )}
-
-          {hint && <div className="hint" style={{ opacity: 0.9 }}>{hint}</div>}
+          {hint && <div className="hint" role="status">{hint}</div>}
         </>
       )}
     </div>

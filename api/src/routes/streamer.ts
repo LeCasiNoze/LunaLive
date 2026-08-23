@@ -113,7 +113,8 @@ streamerRouter.get(
   requireAuth,
   a(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id::text AS id, slug, display_name AS "displayName",
+      `SELECT id::text AS id, user_id AS "ownerUserId", slug, display_name AS "displayName",
+              ('/avatars/u/' || user_id::text) AS "avatarUrl",
               title, viewers, is_live AS "isLive", featured,
               appearance
        FROM streamers
@@ -145,7 +146,8 @@ streamerRouter.patch(
       `UPDATE streamers
        SET title = $1, updated_at = NOW()
        WHERE user_id = $2
-       RETURNING id::text AS id, slug, display_name AS "displayName",
+       RETURNING id::text AS id, user_id AS "ownerUserId", slug, display_name AS "displayName",
+                 ('/avatars/u/' || user_id::text) AS "avatarUrl",
                  title, viewers, is_live AS "isLive", featured, appearance`,
       [title, req.user!.id]
     );

@@ -19,8 +19,8 @@ export function TitleEditorCard({
     setErr(null);
     try {
       await onSave(title);
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Erreur");
     } finally {
       setBusy(false);
     }
@@ -28,7 +28,7 @@ export function TitleEditorCard({
 
   return (
     <div className="panel">
-      <div className="panelTitle">En direct</div>
+      <div className="panelTitle">Informations du direct</div>
 
       <div className="muted" style={{ marginBottom: 10 }}>
         Statut : <b>{streamer.isLive ? "LIVE" : "OFFLINE"}</b>
@@ -36,8 +36,9 @@ export function TitleEditorCard({
       </div>
 
       <div className="field">
-        <label>Titre (MVP)</label>
+        <label htmlFor="dashboard-stream-title">Titre du direct</label>
         <input
+          id="dashboard-stream-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Ex: Bonus hunt — chill session"
@@ -45,11 +46,11 @@ export function TitleEditorCard({
         />
       </div>
 
-      {err && <div className="hint" style={{ opacity: 0.9 }}>⚠️ {err}</div>}
+      {err && <div className="hint" role="alert">{err}</div>}
 
       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
         <button className="btnPrimary" onClick={submit} disabled={busy}>
-          {busy ? "…" : "Enregistrer"}
+          {busy ? "Enregistrement..." : "Enregistrer"}
         </button>
       </div>
     </div>

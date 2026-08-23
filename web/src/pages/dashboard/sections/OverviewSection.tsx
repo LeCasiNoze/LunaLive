@@ -18,6 +18,8 @@ export function OverviewSection({
   onGoStream: () => void;
   onGoModeration: () => void;
 }) {
+  const connectionReady = Boolean(connection && connection.enabled !== false && connection.rtmpUrl && connection.streamKey);
+
   return (
     <div className="studio-overview">
       <section className="studio-overview-lead">
@@ -27,7 +29,7 @@ export function OverviewSection({
           <p>{streamer.title || "Aucun titre de direct n'est encore defini."}</p>
           <div className="studio-overview-badges">
             <StatusBadge tone={streamer.isLive ? "live" : "neutral"}>{streamer.isLive ? "En direct" : "Hors ligne"}</StatusBadge>
-            <StatusBadge tone={connection ? "ready" : "neutral"}>{connection ? "RTMP connecte" : "RTMP a configurer"}</StatusBadge>
+            <StatusBadge tone={connectionReady ? "ready" : "neutral"}>{connectionReady ? "RTMP connecte" : "RTMP a configurer"}</StatusBadge>
           </div>
         </div>
         <div className="studio-live-number">
