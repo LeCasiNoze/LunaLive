@@ -48,6 +48,10 @@ function fmtDate(iso: string) {
   return d.toLocaleString();
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Erreur";
+}
+
 function parseEventId(id: string): { kind: string; key: string } | null {
   const raw = String(id || "");
   const m = raw.match(/^([a-z_]+)(?:~|\|)(.+)$/i);
@@ -101,6 +105,7 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [mods, setMods] = React.useState<ApiModeratorRow[]>([]);
   const [bans, setBans] = React.useState<ApiBannedRow[]>([]);
   const [events, setEvents] = React.useState<ApiModerationEventRow[]>([]);
+  const [eventType, setEventType] = React.useState("all");
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
 
@@ -132,8 +137,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       setMods(m.moderators);
       setBans(b.bans);
       setEvents(e.events);
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -199,8 +204,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       setQ("");
       setResults([]);
       await loadAll();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(errorMessage(e));
     }
   }
 
@@ -210,8 +215,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       await removeModerator(token, userId);
       await loadAll();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(errorMessage(e));
     }
   }
 
@@ -223,8 +228,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       setQBan("");
       setBanResults([]);
       await loadAll();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(errorMessage(e));
     }
   }
 
@@ -234,8 +239,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       await unbanUserFromDashboard(token, userId);
       await loadAll();
-    } catch (e: any) {
-      setErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setErr(errorMessage(e));
     }
   }
 
@@ -269,8 +274,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       await unbanUserFromDashboard(token, userId);
       await loadAll();
       await openDetails(openId);
-    } catch (e: any) {
-      setActionErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setActionErr(errorMessage(e));
     } finally {
       setActionLoading(false);
     }
@@ -290,8 +295,8 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
       await unmuteTimeoutFromDashboard(token, timeoutId);
       await loadAll();
       await openDetails(openId);
-    } catch (e: any) {
-      setActionErr(String(e?.message || "Erreur"));
+    } catch (e: unknown) {
+      setActionErr(errorMessage(e));
     } finally {
       setActionLoading(false);
     }
@@ -310,7 +315,13 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
   const useMobile = typeof window !== "undefined" && window.matchMedia?.("(max-width: 980px)")?.matches;
 
   const parsedOpen = openId ? parseEventId(openId) : null;
-  const metaAny: any = detail?.meta || {};
+  const eventTypes = Array.from(new Set(events.map((event) => event.type))).sort((a, b) =>
+    typeLabel(a).localeCompare(typeLabel(b), "fr")
+  );
+  const visibleEvents = eventType === "all" ? events : events.filter((event) => event.type === eventType);
+  const metaAny = detail?.meta && typeof detail.meta === "object"
+    ? detail.meta as Record<string, unknown>
+    : {};
   const timeoutExpiresAt = metaAny?.expiresAt ? String(metaAny.expiresAt) : null;
 
   const banIsActive = !!detail && parsedOpen?.kind === "ban" && (metaAny?.isActive ?? true);
@@ -538,14 +549,26 @@ export function ModerationSection({ streamer }: { streamer: ApiMyStreamer }) {
 
         {/* RIGHT */}
         <div className="panel">
-          <div className="panelTitle">Events modération</div>
+          <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div className="panelTitle">Evenements de moderation</div>
+              <div className="mutedSmall" style={{ marginTop: 4 }}>{visibleEvents.length} action(s) affichee(s)</div>
+            </div>
+            <div className="field" style={{ margin: 0, minWidth: 210 }}>
+              <label htmlFor="moderation-event-type">Nature de l'action</label>
+              <select id="moderation-event-type" value={eventType} onChange={(event) => setEventType(event.target.value)}>
+                <option value="all">Toutes les actions</option>
+                {eventTypes.map((type) => <option key={type} value={type}>{typeLabel(type)}</option>)}
+              </select>
+            </div>
+          </div>
 
-          {events.length === 0 ? (
-            <div className="hint" style={{ marginTop: 10 }}>Aucun event pour le moment.</div>
+          {visibleEvents.length === 0 ? (
+            <div className="hint" style={{ marginTop: 10 }}>Aucune action pour ce filtre.</div>
           ) : (
             <CardShell>
               <div className="llScroll">
-                {events.map((e) => (
+                {visibleEvents.map((e) => (
                   <div key={e.id} className="llRow">
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 1050 }}>

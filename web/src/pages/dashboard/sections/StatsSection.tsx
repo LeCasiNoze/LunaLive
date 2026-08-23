@@ -1,462 +1,204 @@
-// web/src/components/Dashboard/sections/StatsSection.tsx
 import * as React from "react";
-import type {
-  ApiMyStreamer,
-  ApiStatsSummary,
-  StatsMetric,
-  StatsPeriod,
-} from "../../../lib/api";
-import { getMyStatsSeries, getMyStatsSummary } from "../../../lib/api";
 import { useAuth } from "../../../auth/AuthProvider";
+import {
+  getMyStatsSeries,
+  getMyStatsSummary,
+  type ApiMetric,
+  type ApiMyStreamer,
+  type ApiStatsSummary,
+  type StatsMetric,
+  type StatsPeriod,
+} from "../../../lib/api";
 
-/**
- * ✅ ICI : timezone UI
- * Si tu es en France => Europe/Paris
- * (Oslo/Paris ont le même offset la plupart du temps, mais ça évite les bugs de "jour qui saute")
- */
 const UI_TZ = "Europe/Paris";
+const METRIC_LABELS: Record<StatsMetric, string> = {
+  viewers_avg: "Viewers moyens",
+  viewers_peak: "Pic de viewers",
+  messages: "Messages du chat",
+  watch_time: "Heures regardees",
+};
 
-function isoTodayInTZ(tz: string) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
+function todayInParis() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: UI_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
-
-  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
-  const m = parts.find((p) => p.type === "month")?.value ?? "01";
-  const d = parts.find((p) => p.type === "day")?.value ?? "01";
-  return `${y}-${m}-${d}`; // YYYY-MM-DD
+  }).format(new Date());
 }
 
-/** Ajoute des jours à un YYYY-MM-DD sans subir les décalages timezone. */
-function addDaysISO(iso: string, days: number) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+function moveDate(iso: string, period: StatsPeriod, direction: -1 | 1) {
+  const date = new Date(`${iso}T12:00:00Z`);
+  if (period === "monthly") date.setUTCMonth(date.getUTCMonth() + direction);
+  else date.setUTCDate(date.getUTCDate() + direction * (period === "weekly" ? 7 : 1));
+  return date.toISOString().slice(0, 10);
 }
 
-/** Ajoute des mois à un YYYY-MM-DD sans toISOString locale (gère les fins de mois). */
-function addMonthsISO(iso: string, months: number) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  const day = d.getUTCDate();
-
-  // se mettre au 1er pour éviter les sauts bizarres (31 -> mois suivant)
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + months);
-
-  // clamp au dernier jour du mois
-  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  d.setUTCDate(Math.min(day, lastDay));
-
-  return d.toISOString().slice(0, 10);
+function formatNumber(value: number, digits = 0) {
+  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits }).format(Number(value) || 0);
 }
 
-function fmtPct(x: number | null) {
-  if (x === null) return "—";
-  const v = Math.round(x * 10) / 10;
-  return `${v > 0 ? "+" : ""}${v}%`;
+function formatHours(value: number) {
+  return `${formatNumber(value, 1)} h`;
 }
 
-function fmtHours(x: number) {
-  return `${Math.round(x * 10) / 10}h`;
+function formatPeriod(summary: ApiStatsSummary | null, fallback: string) {
+  if (!summary) return fallback;
+  const format = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: UI_TZ });
+  const start = new Date(summary.rangeStart);
+  const end = new Date(new Date(summary.rangeEnd).getTime() - 1);
+  return `${format.format(start)} - ${format.format(end)}`;
 }
 
-function fmtMinutes(x: number) {
-  return `${Math.round(x)}m`;
+function Growth({ metric }: { metric: ApiMetric | null }) {
+  if (!metric || metric.growthPct == null) return <span className="stats-growth is-neutral">Pas de comparaison</span>;
+  const rounded = Math.round(metric.growthPct * 10) / 10;
+  const tone = rounded > 0 ? "is-up" : rounded < 0 ? "is-down" : "is-neutral";
+  return <span className={`stats-growth ${tone}`}>{rounded > 0 ? "+" : ""}{formatNumber(rounded, 1)} % vs periode precedente</span>;
 }
 
-function niceNum(v: number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${Math.round((n / 1_000_000) * 10) / 10}M`;
-  if (abs >= 1_000) return `${Math.round((n / 1_000) * 10) / 10}k`;
-  // valeurs petites
-  if (abs < 10 && abs !== 0) return String(Math.round(n * 10) / 10);
-  return String(Math.round(n));
+function MetricCard({
+  label,
+  value,
+  metric,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: React.ReactNode;
+  metric: ApiMetric | null;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag type={onClick ? "button" : undefined} className={`stats-metric-card${active ? " is-active" : ""}`} onClick={onClick}>
+      <span className="stats-metric-label">{label}</span>
+      <strong>{value}</strong>
+      <Growth metric={metric} />
+    </Tag>
+  );
 }
 
-function formatXLabel(t: string) {
-  const s = String(t || "");
-  // YYYY-MM-DD => MM-DD
-  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m1) return `${m1[2]}-${m1[3]}`;
-  // YYYY-MM => YYYY-MM
-  const m2 = s.match(/^(\d{4})-(\d{2})$/);
-  if (m2) return `${m2[1]}-${m2[2]}`;
-  // ISO date-time => YYYY-MM-DD
-  const m3 = s.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (m3) return m3[1].slice(5);
-  // fallback court
-  return s.length > 10 ? s.slice(0, 10) : s;
-}
-
-function MiniLine({ points }: { points: { t: string; v: number }[] }) {
-  // un peu plus haut pour laisser place aux axes/labels
-  const w = 520;
-  const h = 180;
-
-  // paddings pour labels
-  const padL = 52;
-  const padR = 14;
-  const padT = 14;
-  const padB = 34;
-
-  const n = points?.length ?? 0;
-  const vals = (points || []).map((p) => Number(p.v)).filter((x) => Number.isFinite(x));
-
-  const rawMin = vals.length ? Math.min(...vals) : 0;
-  const rawMax = vals.length ? Math.max(...vals) : 1;
-
-  // garde un minimum de range
-  const min = Math.min(0, rawMin);
-  const max = Math.max(1, rawMax);
-  const range = max - min || 1;
-
-  const plotW = w - padL - padR;
-  const plotH = h - padT - padB;
-
-  const X = (i: number) => padL + (i * plotW) / Math.max(1, n - 1);
-  const Y = (v: number) => padT + ((max - v) / range) * plotH;
-
-  // Path
-  const d =
-    n >= 1
-      ? points
-          .map((p, i) => {
-            const xx = X(i).toFixed(2);
-            const yy = Y(Number(p.v)).toFixed(2);
-            return `${i === 0 ? "M" : "L"} ${xx} ${yy}`;
-          })
-          .join(" ")
-      : "";
-
-  // ticks Y : max / mid / min
-  const yTicks = [
-    { v: max, y: Y(max) },
-    { v: min + range * 0.5, y: Y(min + range * 0.5) },
-    { v: min, y: Y(min) },
-  ];
-
-  // ticks X : start / mid / end (si dispo)
-  const xIdxs =
-    n <= 1
-      ? [0]
-      : n === 2
-      ? [0, 1]
-      : [0, Math.floor((n - 1) / 2), n - 1];
-
-  const axisColor = "currentColor";
+function LineChart({ points }: { points: Array<{ t: string; v: number }> }) {
+  const width = 760;
+  const height = 250;
+  const pad = { left: 48, right: 18, top: 18, bottom: 38 };
+  const values = points.map((point) => Number(point.v) || 0);
+  const max = Math.max(1, ...values);
+  const plotWidth = width - pad.left - pad.right;
+  const plotHeight = height - pad.top - pad.bottom;
+  const x = (index: number) => pad.left + (index * plotWidth) / Math.max(1, points.length - 1);
+  const y = (value: number) => pad.top + (1 - value / max) * plotHeight;
+  const line = points.map((point, index) => `${index ? "L" : "M"} ${x(index).toFixed(1)} ${y(point.v).toFixed(1)}`).join(" ");
+  const area = line ? `${line} L ${x(points.length - 1).toFixed(1)} ${pad.top + plotHeight} L ${pad.left} ${pad.top + plotHeight} Z` : "";
+  const ticks = [max, max / 2, 0];
+  const xIndexes = points.length > 2 ? [0, Math.floor((points.length - 1) / 2), points.length - 1] : points.map((_, index) => index);
 
   return (
-    <svg
-      width="100%"
-      viewBox={`0 0 ${w} ${h}`}
-      style={{ display: "block" }}
-      aria-label="Graphique"
-      role="img"
-    >
-      {/* Grille horizontale */}
-      {yTicks.map((t, i) => (
-        <path
-          key={i}
-          d={`M ${padL} ${t.y.toFixed(2)} L ${(w - padR).toFixed(2)} ${t.y.toFixed(2)}`}
-          fill="none"
-          stroke={axisColor}
-          strokeWidth="1"
-          opacity="0.10"
-        />
-      ))}
-
-      {/* Axes */}
-      <path
-        d={`M ${padL} ${padT} L ${padL} ${padT + plotH}`}
-        fill="none"
-        stroke={axisColor}
-        strokeWidth="1"
-        opacity="0.22"
-      />
-      <path
-        d={`M ${padL} ${padT + plotH} L ${w - padR} ${padT + plotH}`}
-        fill="none"
-        stroke={axisColor}
-        strokeWidth="1"
-        opacity="0.22"
-      />
-
-      {/* Labels Y */}
-      {yTicks.map((t, i) => (
-        <text
-          key={i}
-          x={padL - 8}
-          y={t.y}
-          textAnchor="end"
-          dominantBaseline="middle"
-          fontSize="11"
-          opacity="0.70"
-          fill={axisColor}
-        >
-          {niceNum(t.v)}
-        </text>
-      ))}
-
-      {/* Courbe */}
-      {d ? (
-        <path d={d} fill="none" stroke={axisColor} strokeWidth="2.2" opacity="0.9" />
-      ) : (
-        <text
-          x={padL + 8}
-          y={padT + 16}
-          fontSize="12"
-          opacity="0.55"
-          fill={axisColor}
-        >
-          —
-        </text>
-      )}
-
-      {/* Labels X */}
-      {xIdxs.map((i) => {
-        const p = points[i];
-        if (!p) return null;
-        const x = X(i);
-        const y = padT + plotH + 18;
-        return (
-          <text
-            key={i}
-            x={x}
-            y={y}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontSize="11"
-            opacity="0.70"
-            fill={axisColor}
-          >
-            {formatXLabel(p.t)}
-          </text>
-        );
+    <svg className="stats-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolution de la statistique selectionnee">
+      <defs>
+        <linearGradient id="stats-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#8b5cf6" stopOpacity="0.38" />
+          <stop offset="1" stopColor="#8b5cf6" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {ticks.map((tick) => {
+        const yy = y(tick);
+        return <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={yy} y2={yy} className="stats-grid-line" /><text x={pad.left - 9} y={yy + 4} textAnchor="end">{formatNumber(tick, 1)}</text></g>;
       })}
+      {area ? <path d={area} fill="url(#stats-area)" /> : null}
+      {line ? <path d={line} className="stats-chart-line" /> : null}
+      {points.map((point, index) => <circle key={`${point.t}-${index}`} cx={x(index)} cy={y(point.v)} r="3" className="stats-chart-dot"><title>{`${formatNumber(point.v, 1)} - ${new Date(point.t).toLocaleString("fr-FR")}`}</title></circle>)}
+      {xIndexes.map((index) => points[index] ? <text key={index} x={x(index)} y={height - 12} textAnchor="middle">{new Date(points[index].t).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", timeZone: UI_TZ })}</text> : null)}
     </svg>
   );
 }
 
 export function StatsSection({ streamer }: { streamer: ApiMyStreamer }) {
-  const auth = useAuth() as any;
-  const token = auth?.token as string | undefined;
-
-  const [period, setPeriod] = React.useState<StatsPeriod>("daily");
-
-  // ✅ IMPORTANT: "aujourd'hui" calculé dans le TZ choisi (France/Paris)
-  const [cursor, setCursor] = React.useState<string>(() => isoTodayInTZ(UI_TZ));
-
+  const { token } = useAuth();
+  const [period, setPeriod] = React.useState<StatsPeriod>("weekly");
+  const [cursor, setCursor] = React.useState(todayInParis);
   const [metric, setMetric] = React.useState<StatsMetric>("viewers_avg");
-
-  const [sum, setSum] = React.useState<ApiStatsSummary | null>(null);
-  const [series, setSeries] = React.useState<{ t: string; v: number }[]>([]);
-  const [loading, setLoading] = React.useState(false);
-
-  // ✅ Fix navigation : pas de toISOString sur une date locale
-  const move = (dir: -1 | 1) => {
-    setCursor((c) => {
-      if (period === "daily") return addDaysISO(c, dir);
-      if (period === "weekly") return addDaysISO(c, dir * 7);
-      return addMonthsISO(c, dir); // monthly
-    });
-  };
+  const [summary, setSummary] = React.useState<ApiStatsSummary | null>(null);
+  const [series, setSeries] = React.useState<Array<{ t: string; v: number }>>([]);
+  const [summaryLoading, setSummaryLoading] = React.useState(true);
+  const [seriesLoading, setSeriesLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!token) return;
-    let mounted = true;
+    const controller = new AbortController();
+    setSummaryLoading(true);
+    setError(null);
+    getMyStatsSummary(token, period, cursor)
+      .then((data) => { if (!controller.signal.aborted) setSummary(data); })
+      .catch(() => { if (!controller.signal.aborted) setError("Impossible de charger les statistiques."); })
+      .finally(() => { if (!controller.signal.aborted) setSummaryLoading(false); });
+    return () => controller.abort();
+  }, [token, period, cursor]);
 
-    (async () => {
-      try {
-        setLoading(true);
-        const s = await getMyStatsSummary(token, period, cursor);
-        const g = await getMyStatsSeries(token, period, cursor, metric);
-        if (!mounted) return;
-        setSum(s);
-        setSeries(g.points || []);
-      } catch {
-        if (mounted) {
-          setSum(null);
-          setSeries([]);
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
+  React.useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    setSeriesLoading(true);
+    getMyStatsSeries(token, period, cursor, metric)
+      .then((data) => { if (!controller.signal.aborted) setSeries(data.points || []); })
+      .catch(() => { if (!controller.signal.aborted) setSeries([]); })
+      .finally(() => { if (!controller.signal.aborted) setSeriesLoading(false); });
+    return () => controller.abort();
   }, [token, period, cursor, metric]);
 
-  const m = sum?.metrics;
-
-  const Card = ({
-    title,
-    value,
-    growth,
-    onClick,
-    active,
-  }: {
-    title: string;
-    value: React.ReactNode;
-    growth?: React.ReactNode;
-    onClick?: () => void;
-    active?: boolean;
-  }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="panel"
-      style={{
-        textAlign: "left",
-        cursor: onClick ? "pointer" : "default",
-        border: active ? "1px solid rgba(180,160,255,0.45)" : undefined,
-      }}
-    >
-      <div className="mutedSmall" style={{ marginBottom: 6 }}>
-        {title}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
-      {growth !== undefined ? (
-        <div className="mutedSmall" style={{ marginTop: 8, opacity: 0.85 }}>
-          {growth}
-        </div>
-      ) : null}
-    </button>
-  );
+  const metrics = summary?.metrics;
+  const nextCursor = moveDate(cursor, period, 1);
+  const canMoveNext = nextCursor <= todayInParis();
+  const show = (value: React.ReactNode) => summaryLoading && !summary ? "..." : value;
 
   return (
-    <div className="panel">
-      <div
-        className="panelTitle"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
-        <span>Stats</span>
-        <span className="mutedSmall">@{streamer.slug}</span>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-        {(["daily", "weekly", "monthly"] as StatsPeriod[]).map((p) => (
-          <button
-            key={p}
-            type="button"
-            className="btn"
-            onClick={() => setPeriod(p)}
-            style={{ opacity: period === p ? 1 : 0.6 }}
-          >
-            {p === "daily" ? "Quotidien" : p === "weekly" ? "Hebdo" : "Mensuel"}
-          </button>
-        ))}
-
-        <div style={{ flex: 1 }} />
-
-        <button type="button" className="btn" onClick={() => move(-1)}>
-          ◀
-        </button>
-        <div className="mutedSmall" style={{ padding: "6px 10px" }}>
-          {cursor}
+    <div className="stats-dashboard">
+      <div className="stats-toolbar">
+        <div>
+          <div className="panelTitle">Audience de @{streamer.slug}</div>
+          <div className="mutedSmall">Donnees mesurees directement sur LunaLive, fuseau Europe/Paris.</div>
         </div>
-        <button type="button" className="btn" onClick={() => move(1)}>
-          ▶
-        </button>
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <div className="mutedSmall" style={{ marginBottom: 6 }}>
-          Graphe (clique une carte pour changer)
-        </div>
-        <div className="panel" style={{ padding: 12 }}>
-          {loading ? <div className="muted">Chargement…</div> : <MiniLine points={series} />}
+        <div className="stats-periods" aria-label="Periode statistique">
+          {(["daily", "weekly", "monthly"] as StatsPeriod[]).map((item) => <button key={item} type="button" className={period === item ? "is-active" : ""} onClick={() => setPeriod(item)}>{item === "daily" ? "Jour" : item === "weekly" ? "Semaine" : "Mois"}</button>)}
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-          gap: 10,
-          marginTop: 12,
-        }}
-      >
-        <Card
-          title="Peak viewers"
-          value={m ? Math.round(m.peakViewers.value) : "—"}
-          growth={m ? fmtPct(m.peakViewers.growthPct) : "—"}
-          onClick={() => setMetric("viewers_peak")}
-          active={metric === "viewers_peak"}
-        />
-        <Card
-          title="Moyenne viewers"
-          value={m ? Math.round(m.avgViewers.value) : "—"}
-          growth={m ? fmtPct(m.avgViewers.growthPct) : "—"}
-          onClick={() => setMetric("viewers_avg")}
-          active={metric === "viewers_avg"}
-        />
-        <Card
-          title="Watch time"
-          value={m ? fmtHours(m.watchHours.value) : "—"}
-          growth={m ? fmtPct(m.watchHours.growthPct) : "—"}
-          onClick={() => setMetric("watch_time")}
-          active={metric === "watch_time"}
-        />
-
-        <Card
-          title="Avg watch / viewer"
-          value={m ? fmtMinutes(m.avgWatchMinutes.value) : "—"}
-          growth={m ? fmtPct(m.avgWatchMinutes.growthPct) : "—"}
-        />
-        <Card
-          title="Heures streamées"
-          value={m ? fmtHours(m.streamHours.value) : "—"}
-          growth={m ? fmtPct(m.streamHours.growthPct) : "—"}
-        />
-        <Card
-          title="Jours streamés"
-          value={m ? Math.round(m.streamDays.value) : "—"}
-          growth={m ? fmtPct(m.streamDays.growthPct) : "—"}
-        />
-
-        <Card
-          title="Viewers uniques"
-          value={m ? Math.round(m.viewersUnique.value) : "—"}
-          growth={m ? fmtPct(m.viewersUnique.growthPct) : "—"}
-        />
-        <Card
-          title="Chatteurs uniques"
-          value={m ? Math.round(m.chattersUnique.value) : "—"}
-          growth={m ? fmtPct(m.chattersUnique.growthPct) : "—"}
-        />
-        <Card
-          title="Taux d'engagement"
-          value={m ? `${Math.round(m.engagementRate.value * 1000) / 10}%` : "—"}
-          growth={m ? fmtPct(m.engagementRate.growthPct) : "—"}
-        />
-
-        <Card
-          title="Messages"
-          value={m ? Math.round(m.messages.value) : "—"}
-          growth={m ? fmtPct(m.messages.growthPct) : "—"}
-          onClick={() => setMetric("messages")}
-          active={metric === "messages"}
-        />
-        <Card
-          title="Messages / heure"
-          value={m ? `${Math.round(m.messagesPerHour.value * 10) / 10}/h` : "—"}
-          growth={m ? fmtPct(m.messagesPerHour.growthPct) : "—"}
-        />
-        <div className="panel" style={{ opacity: 0.6 }}>
-          <div className="mutedSmall">V2</div>
-          <div style={{ fontWeight: 800, marginTop: 6 }}>Follows / Subs / Dons</div>
-          <div className="mutedSmall" style={{ marginTop: 8 }}>
-            à brancher plus tard
-          </div>
-        </div>
+      <div className="stats-date-nav">
+        <button type="button" className="btnGhost" onClick={() => setCursor(moveDate(cursor, period, -1))}>Periode precedente</button>
+        <strong>{formatPeriod(summary, cursor)}</strong>
+        <button type="button" className="btnGhost" disabled={!canMoveNext} onClick={() => setCursor(nextCursor)}>Periode suivante</button>
       </div>
+
+      {error ? <div className="dash-alert" role="alert">{error}</div> : null}
+
+      <section className="stats-primary-grid" aria-label="Indicateurs principaux">
+        <MetricCard label="Viewers moyens" value={show(formatNumber(metrics?.avgViewers.value || 0, 1))} metric={metrics?.avgViewers || null} active={metric === "viewers_avg"} onClick={() => setMetric("viewers_avg")} />
+        <MetricCard label="Pic de viewers" value={show(formatNumber(metrics?.peakViewers.value || 0))} metric={metrics?.peakViewers || null} active={metric === "viewers_peak"} onClick={() => setMetric("viewers_peak")} />
+        <MetricCard label="Heures regardees" value={show(formatHours(metrics?.watchHours.value || 0))} metric={metrics?.watchHours || null} active={metric === "watch_time"} onClick={() => setMetric("watch_time")} />
+        <MetricCard label="Nouveaux follows" value={show(formatNumber(metrics?.followersGained.value || 0))} metric={metrics?.followersGained || null} />
+      </section>
+
+      <section className="stats-chart-panel">
+        <div className="stats-chart-head"><div><span>Evolution</span><strong>{METRIC_LABELS[metric]}</strong></div>{seriesLoading ? <span className="mutedSmall">Actualisation...</span> : null}</div>
+        <LineChart points={series} />
+      </section>
+
+      <section className="stats-secondary-grid" aria-label="Indicateurs detailles">
+        <MetricCard label="Followers au total" value={show(formatNumber(metrics?.followersTotal.value || 0))} metric={metrics?.followersTotal || null} />
+        <MetricCard label="Viewers uniques" value={show(formatNumber(metrics?.viewersUnique.value || 0))} metric={metrics?.viewersUnique || null} />
+        <MetricCard label="Temps moyen par viewer" value={show(`${formatNumber(metrics?.avgWatchMinutes.value || 0, 1)} min`)} metric={metrics?.avgWatchMinutes || null} />
+        <MetricCard label="Messages" value={show(formatNumber(metrics?.messages.value || 0))} metric={metrics?.messages || null} active={metric === "messages"} onClick={() => setMetric("messages")} />
+        <MetricCard label="Chatteurs uniques" value={show(formatNumber(metrics?.chattersUnique.value || 0))} metric={metrics?.chattersUnique || null} />
+        <MetricCard label="Taux d'engagement" value={show(`${formatNumber((metrics?.engagementRate.value || 0) * 100, 1)} %`)} metric={metrics?.engagementRate || null} />
+        <MetricCard label="Messages par heure" value={show(formatNumber(metrics?.messagesPerHour.value || 0, 1))} metric={metrics?.messagesPerHour || null} />
+        <MetricCard label="Temps diffuse" value={show(formatHours(metrics?.streamHours.value || 0))} metric={metrics?.streamHours || null} />
+        <MetricCard label="Jours diffuses" value={show(formatNumber(metrics?.streamDays.value || 0))} metric={metrics?.streamDays || null} />
+      </section>
+
+      <div className="stats-footnote">Les viewers et le watch time correspondent uniquement a l'audience mesuree sur LunaLive. Les messages Rumble importes sont comptes dans l'activite du chat.</div>
     </div>
   );
 }

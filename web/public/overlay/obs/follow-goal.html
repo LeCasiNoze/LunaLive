@@ -132,6 +132,15 @@ body{
 }
 @keyframes rainbowDrift{ 0%{background-position:0% 0%;} 100%{background-position:100% 100%;} }
 
+.glowpulse-layer,.stardust-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.glowpulse-layer.hidden,.stardust-layer.hidden{display:none}
+.glowpulse-layer{background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent);mix-blend-mode:screen;animation:goalGlow 2.8s ease-in-out infinite}
+.stardust-layer{background-image:radial-gradient(circle,#fff 0 1px,transparent 1.5px),radial-gradient(circle,rgba(255,255,255,.7) 0 1px,transparent 1.5px);background-size:31px 23px,43px 37px;animation:goalDust 7s linear infinite;opacity:.6}
+@keyframes goalGlow{0%,100%{opacity:.2;transform:translateX(-45%)}50%{opacity:.9;transform:translateX(45%)}}
+@keyframes goalDust{from{background-position:0 0,0 0}to{background-position:62px -46px,-86px -74px}}
+.bar-wrap.goal-pulse{animation:goalPulse .75s cubic-bezier(.16,1,.3,1)}
+@keyframes goalPulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.75);transform:scale(1)}45%{box-shadow:0 0 28px 8px rgba(255,255,255,.42);transform:scale(1.025)}100%{box-shadow:0 0 0 0 transparent;transform:scale(1)}}
+
 /* compteur */
 .counter{
   position:absolute;
@@ -201,6 +210,9 @@ body{
   60%{opacity:1; transform:translateY(-8px) scale(1.05);}
   100%{opacity:0; transform:translateY(-16px) scale(0.9);}
 }
+@media (prefers-reduced-motion:reduce){
+  .scanline-layer,.barber-layer,.rainbowfill-inner,.glowpulse-layer,.stardust-layer,.bar-wrap.goal-pulse,.confetti i,.plusone{animation:none!important}
+}
 </style>
 </head>
 
@@ -220,6 +232,8 @@ body{
       <div class="rainbowfill-layer hidden" id="rainbowFillLayer">
         <div class="rainbowfill-inner" id="rainbowFillInner"></div>
       </div>
+      <div class="glowpulse-layer hidden" id="glowpulseLayer"></div>
+      <div class="stardust-layer hidden" id="stardustLayer"></div>
 
       <div class="counter">
         <div class="counter-inner">
@@ -281,8 +295,7 @@ const AE = qs.get('ae') === '1';
 
 function shouldPlaySpecial() {
   if (!AE) return false;
-  if (AS === "confetti") return true;
-  return false;
+  return ["confetti", "pulse", "sparkles"].includes(AS);
 }
 
 function normColor(c, fallback){
@@ -331,6 +344,9 @@ const plusoneBox       = document.getElementById('plusoneBox');
 const scanlineLayer    = document.getElementById('scanlineLayer');
 const barberLayer      = document.getElementById('barberLayer');
 const rainbowFillLayer = document.getElementById('rainbowFillLayer');
+const glowpulseLayer    = document.getElementById('glowpulseLayer');
+const stardustLayer     = document.getElementById('stardustLayer');
+const barWrap           = document.getElementById('wrap');
 
 if (FORCE_COMPACT || !LABEL) root.classList.add('compact');
 if (!root.classList.contains('compact')) titleEl.textContent = (LABEL || NAME || "Follow goal");
@@ -343,9 +359,13 @@ function applyPassiveAnimation(id){
   scanlineLayer.classList.add("hidden");
   barberLayer.classList.add("hidden");
   rainbowFillLayer.classList.add("hidden");
+  glowpulseLayer.classList.add("hidden");
+  stardustLayer.classList.add("hidden");
   if (id === "scanline") scanlineLayer.classList.remove("hidden");
   else if (id === "barber") barberLayer.classList.remove("hidden");
   else if (id === "rainbowfill") rainbowFillLayer.classList.remove("hidden");
+  else if (id === "glowpulse") glowpulseLayer.classList.remove("hidden");
+  else if (id === "stardust") stardustLayer.classList.remove("hidden");
 }
 applyPassiveAnimation(AP);
 
@@ -376,8 +396,16 @@ function spawnPlusOne(){
   setTimeout(() => el.remove(), 900);
 }
 
+function pulseGoal(){
+  barWrap.classList.remove('goal-pulse');
+  void barWrap.offsetWidth;
+  barWrap.classList.add('goal-pulse');
+  setTimeout(()=>barWrap.classList.remove('goal-pulse'),850);
+}
+
 function playSpecial(){
-  burstConfetti();
+  if (AS === 'confetti' || AS === 'sparkles') burstConfetti();
+  if (AS === 'pulse' || AS === 'sparkles') pulseGoal();
   spawnPlusOne();
 }
 
@@ -469,6 +497,11 @@ function connectSocket(){
 }
 
 connectSocket();
+
+if (qs.get('demo') === '1') {
+  if (!SLUG || !TOKEN) renderCount(Math.max(1, Math.round(TARGET * 0.72)));
+  if (shouldPlaySpecial()) setTimeout(playSpecial, 700);
+}
 
 // fallback polling
 setInterval(loadOnce, POLL);

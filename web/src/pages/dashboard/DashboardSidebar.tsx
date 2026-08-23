@@ -4,7 +4,6 @@ import {
   ChartNoAxesCombined,
   CircleDollarSign,
   Clapperboard,
-  Handshake,
   LayoutDashboard,
   MessageCircleMore,
   Palette,
@@ -47,7 +46,6 @@ export function DashboardAvatar({ streamer, className = "" }: { streamer: ApiMyS
 
 export type DashboardTab =
   | "overview"
-  | "agency"
   | "lunabot"
   | "stream"
   | "moderation"
@@ -80,7 +78,6 @@ const NAV_GROUPS: Array<{
   {
     label: "Activite",
     items: [
-      { id: "agency", label: "Agence", hint: "Affiliation", icon: Handshake },
       { id: "earnings", label: "Revenus", hint: "Soldes et retraits", icon: CircleDollarSign },
       { id: "stats", label: "Statistiques", hint: "Tendances et audience", icon: ChartNoAxesCombined },
     ],

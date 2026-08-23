@@ -7,7 +7,7 @@ import { creditWatchMinute, getPendingRankUp, dismissRankUp } from "./rankup.js"
 import { emitSpecialCard } from "./socket_emit.js";
 import { getLevelInfo } from "./economy/xp.js";
 
-const TZ = "Europe/Oslo";
+const TZ = "Europe/Paris";
 const HEARTBEAT_TTL_SECONDS = 110;
 
 // ── Caches in-memory du chemin heartbeat ──────────────────────────────────
@@ -465,7 +465,7 @@ days AS (
 viewers AS (
   SELECT r.k,
     COALESCE(COUNT(DISTINCT svm.viewer_key),0)::int AS viewers_unique,
-    (COALESCE(COUNT(svm.viewer_key),0)::float * 60.0) AS watch_seconds
+    (COALESCE(COUNT(DISTINCT (svm.viewer_key, svm.bucket_ts)),0)::float * 60.0) AS watch_seconds
   FROM ranges r
   LEFT JOIN stream_viewer_minutes svm
     ON svm.streamer_id = r.streamer_id
@@ -474,10 +474,25 @@ viewers AS (
   GROUP BY r.k
 ),
 
+follows AS (
+  SELECT r.k,
+    COALESCE(COUNT(sf.user_id) FILTER (WHERE sf.created_at >= r.start_at),0)::int AS followers_gained,
+    COALESCE(COUNT(sf.user_id),0)::int AS followers_total
+  FROM ranges r
+  LEFT JOIN streamer_follows sf
+    ON sf.streamer_id=r.streamer_id
+   AND sf.created_at < r.end_at
+  GROUP BY r.k
+),
+
 chat AS (
   SELECT r.k,
     COALESCE(COUNT(*) FILTER (WHERE cm.deleted_at IS NULL),0)::int AS messages,
-    COALESCE(COUNT(DISTINCT cm.user_id) FILTER (WHERE cm.deleted_at IS NULL),0)::int AS chatters_unique
+    COALESCE(COUNT(DISTINCT CASE
+      WHEN cm.deleted_at IS NOT NULL THEN NULL
+      WHEN cm.user_id > 0 THEN 'u:' || cm.user_id::text
+      ELSE 'external:' || lower(COALESCE(cm.username, 'inconnu'))
+    END),0)::int AS chatters_unique
   FROM ranges r
   LEFT JOIN chat_messages cm
     ON cm.streamer_id=r.streamer_id
@@ -505,6 +520,8 @@ SELECT
   (SELECT stream_days FROM days WHERE k='cur') AS "streamDays",
   (SELECT viewers_unique FROM viewers WHERE k='cur') AS "viewersUnique",
   (SELECT watch_seconds FROM viewers WHERE k='cur') AS "watchSeconds",
+  (SELECT followers_gained FROM follows WHERE k='cur') AS "followersGained",
+  (SELECT followers_total FROM follows WHERE k='cur') AS "followersTotal",
   (SELECT messages FROM chat WHERE k='cur') AS "messages",
   (SELECT chatters_unique FROM chat WHERE k='cur') AS "chattersUnique",
   (SELECT peak_viewers FROM samples WHERE k='cur') AS "peakViewers",
@@ -514,6 +531,8 @@ SELECT
   (SELECT stream_days FROM days WHERE k='prev') AS "prevStreamDays",
   (SELECT viewers_unique FROM viewers WHERE k='prev') AS "prevViewersUnique",
   (SELECT watch_seconds FROM viewers WHERE k='prev') AS "prevWatchSeconds",
+  (SELECT followers_gained FROM follows WHERE k='prev') AS "prevFollowersGained",
+  (SELECT followers_total FROM follows WHERE k='prev') AS "prevFollowersTotal",
   (SELECT messages FROM chat WHERE k='prev') AS "prevMessages",
   (SELECT chatters_unique FROM chat WHERE k='prev') AS "prevChattersUnique",
   (SELECT peak_viewers FROM samples WHERE k='prev') AS "prevPeakViewers",
@@ -557,6 +576,10 @@ LIMIT 1;
 
       const prevChattersUnique = Number(row.prevChattersUnique || 0);
       const prevEngagementRate = prevViewersUnique > 0 ? prevChattersUnique / prevViewersUnique : 0;
+      const followersGained = Number(row.followersGained || 0);
+      const followersTotal = Number(row.followersTotal || 0);
+      const prevFollowersGained = Number(row.prevFollowersGained || 0);
+      const prevFollowersTotal = Number(row.prevFollowersTotal || 0);
 
       const peakViewers = Number(row.peakViewers || 0);
       const avgViewers = Number(row.avgViewers || 0);
@@ -568,6 +591,7 @@ LIMIT 1;
         ok: true,
         period,
         cursor,
+        source: "lunalive",
         rangeStart: new Date(row.rangeStart).toISOString(),
         rangeEnd: new Date(row.rangeEnd).toISOString(),
         metrics: {
@@ -578,6 +602,8 @@ LIMIT 1;
           streamDays: { value: Number(row.streamDays || 0), prev: Number(row.prevStreamDays || 0), growthPct: growthPct(Number(row.streamDays || 0), Number(row.prevStreamDays || 0)) },
 
           viewersUnique: { value: viewersUnique, prev: prevViewersUnique, growthPct: growthPct(viewersUnique, prevViewersUnique) },
+          followersGained: { value: followersGained, prev: prevFollowersGained, growthPct: growthPct(followersGained, prevFollowersGained) },
+          followersTotal: { value: followersTotal, prev: prevFollowersTotal, growthPct: growthPct(followersTotal, prevFollowersTotal) },
 
           watchHours: { value: watchHours, prev: prevWatchHours, growthPct: growthPct(watchHours, prevWatchHours) },
           avgWatchMinutes: { value: avgWatchMinutes, prev: prevAvgWatchMinutes, growthPct: growthPct(avgWatchMinutes, prevAvgWatchMinutes) },
@@ -665,7 +691,7 @@ agg AS (
 ? `
 agg AS (
   SELECT ${bucketExprMinutes} AS bucket,
-         (COUNT(svm.viewer_key)::float / 60.0) AS v   -- ✅ heures de watchtime dans le bucket
+         (COUNT(DISTINCT (svm.viewer_key, svm.bucket_ts))::float / 60.0) AS v
   FROM stream_viewer_minutes svm
   CROSS JOIN rb
   WHERE svm.streamer_id=$1

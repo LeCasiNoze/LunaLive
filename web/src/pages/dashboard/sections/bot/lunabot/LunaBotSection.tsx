@@ -24,9 +24,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../../../auth/AuthProvider";
 import {
-  getMyBotAutoposts, getMyBotCommands, getMyBotLogs, getMyBotOverview,
+  getMyBotAutoposts, getMyBotCommands, getMyBotDashboard, getMyBotLogs,
   type ApiBotAutopost, type ApiBotCommand, type ApiBotLogRow,
-  type ApiBotOverview, type ApiMyStreamer,
+  type ApiMyStreamer,
 } from "./api";
 
 import { CommandsModule } from "./modules/CommandsModule";
@@ -307,10 +307,11 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
-  const [overview, setOverview] = React.useState<ApiBotOverview | null>(null);
   const [commands, setCommands] = React.useState<ApiBotCommand[]>([]);
   const [autoposts, setAutoposts] = React.useState<ApiBotAutopost[]>([]);
   const [logs, setLogs] = React.useState<ApiBotLogRow[]>([]);
+  const [configLoaded, setConfigLoaded] = React.useState(false);
+  const [logsLoaded, setLogsLoaded] = React.useState(false);
 
   const [activeCategory, setActiveCategory] = React.useState<ModuleCategory>("general");
   const [activeModule, setActiveModule] = React.useState<ActiveModule>(null);
@@ -318,43 +319,43 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
 
   const isAdmin = user?.role === "admin";
 
-  async function reloadAll() {
+  const reloadAll = React.useCallback(async () => {
     if (!token) return;
     setLoading(true); setErr(null);
     try {
-      const [ov, c, a, l] = await Promise.all([
-        getMyBotOverview(token),
-        getMyBotCommands(token),
-        getMyBotAutoposts(token),
-        getMyBotLogs(token, 60),
-      ]);
-      setOverview(ov); setCommands(c.commands); setAutoposts(a.autoposts); setLogs(l.logs);
-    } catch (e: any) { setErr(String(e?.message || "Erreur")); }
+      const data = await getMyBotDashboard(token);
+      setCommands(data.commands);
+      setAutoposts(data.autoposts);
+      setConfigLoaded(true);
+    } catch (error: unknown) { setErr(error instanceof Error ? error.message : "Erreur"); }
     finally { setLoading(false); }
-  }
+  }, [token]);
 
   async function reloadCommands() {
     if (!token) return;
-    const [ov, result] = await Promise.all([getMyBotOverview(token), getMyBotCommands(token)]);
-    setOverview(ov);
+    const result = await getMyBotCommands(token);
     setCommands(result.commands);
+    setConfigLoaded(true);
   }
 
   async function reloadAutoposts() {
     if (!token) return;
-    const [ov, result] = await Promise.all([getMyBotOverview(token), getMyBotAutoposts(token)]);
-    setOverview(ov);
+    const result = await getMyBotAutoposts(token);
     setAutoposts(result.autoposts);
+    setConfigLoaded(true);
   }
 
-  async function reloadLogs() {
+  const reloadLogs = React.useCallback(async () => {
     if (!token) return;
-    const [ov, result] = await Promise.all([getMyBotOverview(token), getMyBotLogs(token, 60)]);
-    setOverview(ov);
+    const result = await getMyBotLogs(token, 60);
     setLogs(result.logs);
-  }
+    setLogsLoaded(true);
+  }, [token]);
 
-  React.useEffect(() => { reloadAll(); /* eslint-disable-next-line */ }, [token]);
+  React.useEffect(() => { void reloadAll(); }, [reloadAll]);
+  React.useEffect(() => {
+    if (activeModule === "logs" && !logsLoaded) void reloadLogs();
+  }, [activeModule, logsLoaded, reloadLogs]);
 
   if (!token) {
     return (
@@ -405,7 +406,7 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     obs:       { title: "Widget OBS", desc: "URL Browser Source (avec secret) + options overlay." },
     commands:  { title: "Commandes personnalisées", desc: "Crée, active/désactive et supprime tes !commandes." },
     autoposts: { title: "Messages automatiques", desc: "Planifie des messages (exécution live-only)." },
-    clips:     { title: "Clips (!clip)", desc: "Fenêtre : 1m45 avant / 15s après. DLive VOD." },
+    clips:     { title: "Clips (!clip)", desc: "Fenetre : 1m45 avant / 15s apres." },
     logs:      { title: "Logs & diagnostic", desc: "Événements / erreurs bot." },
     calls:     { title: "Calls & Hunt", desc: "Queue, limites user, bans (users/machines/providers)." },
     "bot-wheel": { title: "Roue (tirage stream)", desc: "Inscriptions + tirage (bot_wheel)." },
@@ -414,9 +415,9 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
     "discord-welcome": { title: "Discord Welcome/Goodbye", desc: "Messages arrivée/départ (2 salons)." },
   };
   const meta = activeModule ? modalMeta[activeModule] : null;
-  const countsText = overview?.ok
-    ? `Cmd: ${overview.counts.commands} • Auto: ${overview.counts.autoposts} • Logs: ${overview.counts.logs}`
-    : "Stats indisponibles";
+  const countsText = configLoaded
+    ? `Cmd: ${commands.length} • Auto: ${autoposts.length}`
+    : "Chargement...";
 
   return (
     <>
@@ -470,15 +471,21 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
             <ObsWidgetModule
               token={token}
               streamerSlug={streamer.slug}
-              streamerName={(streamer as any).displayName ?? streamer.slug}
-              userId={(user as any)?.id ?? 0}
+              streamerName={streamer.displayName ?? streamer.slug}
+              userId={user?.id ?? 0}
             />
+          ) : activeModule === "commands" && !configLoaded ? (
+            <div className="bot-empty">Chargement des commandes...</div>
           ) : activeModule === "commands" ? (
             <CommandsModule token={token} commands={commands} onReload={reloadCommands} />
+          ) : activeModule === "autoposts" && !configLoaded ? (
+            <div className="bot-empty">Chargement des messages automatiques...</div>
           ) : activeModule === "autoposts" ? (
             <AutopostsModule token={token} autoposts={autoposts} onReload={reloadAutoposts} />
           ) : activeModule === "clips" ? (
             <ClipsModule token={token} onReload={reloadLogs} />
+          ) : activeModule === "logs" && !logsLoaded ? (
+            <div className="bot-empty">Chargement du journal...</div>
           ) : activeModule === "logs" ? (
             <LogsModule token={token} logs={logs} onReload={reloadLogs} />
           ) : activeModule === "calls" ? (

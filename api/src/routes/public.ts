@@ -21,6 +21,29 @@ const PUBLIC_CACHE_TTL_MS = 5_000;
 const publicCache = new Map<string, { body: unknown; ts: number }>();
 const publicCacheInflight = new Map<string, Promise<unknown>>();
 
+function renderFollowTemplate(template: string, username: string) {
+  return String(template || "Merci @{user} pour le follow 💜")
+    .replaceAll("@{user}", `@${username}`)
+    .replaceAll("{user}", username);
+}
+
+async function emitFollowOverlayAlert(io: any, streamer: any, username: string) {
+  const ownerUserId = Number(streamer.ownerUserId || 0);
+  if (!ownerUserId) return;
+  const result = await pool.query(`SELECT config FROM streamer_overlay_configs WHERE user_id=$1 LIMIT 1`, [ownerUserId]);
+  const alerts = result.rows?.[0]?.config?.alerts || {};
+  io.to(`stream:${String(streamer.slug).toLowerCase()}`).emit("obs:alert", {
+    event: "follow",
+    name: username,
+    text: renderFollowTemplate(alerts.follow_tpl, username),
+    imageUrl: alerts.follow_img ?? null,
+    soundUrl: alerts.follow_sound ?? null,
+    volume: Math.max(0, Math.min(1, Number(alerts.sound_vol ?? 1))),
+    durationMs: Math.max(1200, Math.min(30_000, Number(alerts.follow_duration_ms ?? 4500))),
+    createdAt: new Date().toISOString(),
+  });
+}
+
 function getPublicCache(key: string): unknown | null {
   const hit = publicCache.get(key);
   if (hit && Date.now() - hit.ts < PUBLIC_CACHE_TTL_MS) return hit.body;
@@ -792,8 +815,12 @@ publicRouter.post(
     // (remplace l'ancien message texte). Émise seulement sur un VRAI nouveau
     // follow (ON CONFLICT DO NOTHING → rowCount 0 si déjà abonné).
     if ((ins.rowCount ?? 0) > 0 && io) {
+      const followerName = String(req.user!.username);
       emitSpecialCard(io, String(streamer.slug), "follow", {
-        who: String(req.user!.username),
+        who: followerName,
+      });
+      await emitFollowOverlayAlert(io, streamer, followerName).catch((error) => {
+        console.error("[follow-overlay] emit failed", error);
       });
     }
 

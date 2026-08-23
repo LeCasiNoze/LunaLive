@@ -8,6 +8,7 @@ export {
   deleteMyBotCommand,
   getMyBotAutoposts,
   getMyBotCommands,
+  getMyBotDashboard,
   getMyBotLogs,
   getMyBotOverview,
   updateMyBotAutopost,
@@ -35,6 +36,7 @@ export {
 export type {
   ApiBotAutopost,
   ApiBotCommand,
+  ApiBotDashboard,
   ApiBotLogRow,
   ApiBotOverview,
   ApiMyStreamer,

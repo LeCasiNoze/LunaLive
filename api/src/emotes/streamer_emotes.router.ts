@@ -37,9 +37,19 @@ function parseDataUrl(dataUrl: string) {
 
 function extFromMime(mime: string) {
   if (mime === "image/png") return "png";
+  if (mime === "image/jpeg") return "jpg";
   if (mime === "image/webp") return "webp";
   if (mime === "image/gif") return "gif";
   return null;
+}
+
+function validImageSignature(mime: string, buffer: Buffer) {
+  const head = buffer.subarray(0, 16);
+  if (mime === "image/png") return head.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mime === "image/jpeg") return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  if (mime === "image/gif") return ["GIF87a", "GIF89a"].includes(head.subarray(0, 6).toString("ascii"));
+  if (mime === "image/webp") return head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP";
+  return false;
 }
 
 function tmpFilePath(ext: string) {
@@ -81,29 +91,33 @@ streamerEmotesRouter.post(
       const streamerId = await getMyStreamerId(userId);
       if (!streamerId) return res.status(404).json({ ok: false, error: "no_streamer" });
 
-      const kind = String(req.body?.kind || "");
-      if (kind !== "emoji" && kind !== "gif") return res.status(400).json({ ok: false, error: "bad_kind" });
-
       const name = normName(req.body?.name);
       if (!name) return res.status(400).json({ ok: false, error: "bad_name" });
-
-      const label = req.body?.label != null ? String(req.body.label).slice(0, 64) : null;
 
       const dataUrl = String(req.body?.dataUrl || "");
       const { mime, buf } = parseDataUrl(dataUrl);
 
       const ext = extFromMime(mime);
       if (!ext) return res.status(400).json({ ok: false, error: "unsupported_mime" });
+      if (!validImageSignature(mime, buf)) return res.status(400).json({ ok: false, error: "bad_file_signature" });
+
+      // Le fichier est la source de verite: anime = GIF, fixe = emote.
+      const kind: "emoji" | "gif" = mime === "image/gif" ? "gif" : "emoji";
 
       // caps light
       const max = kind === "gif" ? 600_000 : 160_000; // 600kb gif, 160kb emoji
       if (buf.length > max) return res.status(400).json({ ok: false, error: "file_too_large" });
 
-      if (kind === "emoji" && mime === "image/gif") {
-        return res.status(400).json({ ok: false, error: "emoji_cannot_be_gif" });
-      }
-      if (kind === "gif" && mime !== "image/gif") {
-        return res.status(400).json({ ok: false, error: "gif_must_be_gif" });
+      const cap = kind === "gif" ? 20 : 40;
+      const usage = await pool.query(
+        `SELECT COUNT(*)::int AS count,
+                BOOL_OR(lower(name)=lower($3)) AS replacing
+         FROM emotes
+         WHERE scope='channel' AND streamer_id=$1 AND kind=$2 AND status <> 'deleted'`,
+        [streamerId, kind, name]
+      );
+      if (Number(usage.rows?.[0]?.count || 0) >= cap && !usage.rows?.[0]?.replacing) {
+        return res.status(403).json({ ok: false, error: "limit_reached" });
       }
 
       const assetKey = `emotes/channel/${streamerId}/${kind}/${name}.${ext}`;
@@ -144,7 +158,7 @@ streamerEmotesRouter.post(
                     updated_at=now()
     RETURNING id, kind, scope, streamer_id, name, label, url, mime, size_bytes, status
     `,
-    [kind, streamerId, name, label, assetKey, url, mime, buf.length, userId]
+    [kind, streamerId, name, null, assetKey, url, mime, buf.length, userId]
     );
     
       res.json({ ok: true, item: up.rows[0] });

@@ -15,7 +15,6 @@ import { AppearanceSection }  from "./dashboard/sections/AppearanceSection";
 import { EarningsSection }    from "./dashboard/sections/EarningsSection";
 import { StatsSection }       from "./dashboard/sections/StatsSection";
 import { SettingsSection }    from "./dashboard/sections/SettingsSection";
-import { AgencySection }      from "./dashboard/sections/AgencySection";
 import "./dashboard/dashboardStudio.css";
 
 function fmt(n: number | null | undefined) {
@@ -31,7 +30,6 @@ const TAB_META: Record<DashboardTab, { eyebrow: string; title: string; copy: str
   moderation: { eyebrow: "Communaute", title: "Moderation", copy: "Gere ton equipe, les sanctions et l'historique de moderation." },
   appearance: { eyebrow: "Identite", title: "Apparence", copy: "Personnalise l'apparence de ta chaine et de ton chat." },
   emotes: { eyebrow: "Chat", title: "Emojis & GIFs", copy: "Gere la bibliotheque visuelle de ta communaute." },
-  agency: { eyebrow: "Reseau", title: "Agence", copy: "Suis ton activite d'affiliation et les performances de ton reseau." },
   earnings: { eyebrow: "Finances", title: "Revenus", copy: "Consulte tes soldes, tes rubis et tes demandes de retrait." },
   stats: { eyebrow: "Analyse", title: "Statistiques", copy: "Suis les tendances de ta chaine et de ton audience." },
   settings: { eyebrow: "Systeme", title: "Parametres", copy: "Gere les reglages sensibles de ta chaine." },
@@ -148,9 +146,8 @@ export default function DashboardPage() {
             </header>
             <div className="dash-content-body">
               {tab === "overview"   && <OverviewSection streamer={streamer} connection={connection} onGoStream={()=>setTab("stream")} onGoModeration={()=>setTab("moderation")} />}
-              {tab === "agency"     && <AgencySection streamer={streamer} />}
               {tab === "lunabot"    && <LunaBotSection streamer={streamer} />}
-              {tab === "stream"     && <StreamSection streamer={streamer} connection={connection} onSaveTitle={async(title)=>{ if (!token) return; const r=await updateMyStreamerTitle(token,title); setStreamer(r.streamer); }} />}
+              {tab === "stream"     && <StreamSection streamer={streamer} onSaveTitle={async(title)=>{ if (!token) return; const r=await updateMyStreamerTitle(token,title); setStreamer(r.streamer); }} />}
               {tab === "moderation" && <ModerationSection streamer={streamer} />}
               {tab === "appearance" && <AppearanceSection streamer={streamer} />}
               {tab === "emotes"     && <EmotesSection streamer={streamer} />}

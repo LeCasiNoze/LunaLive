@@ -1653,7 +1653,18 @@
     // ✅ postMessage API — update params sans reload
     window.addEventListener("message", function(e) {
       const d = e.data;
-      if (!d || d.type !== "obs-chat-update") return;
+      if (!d || e.source !== window.parent) return;
+      if (d.type === "obs-chat-test") {
+        const preview = normalizeIncoming({
+          id: `preview-${Date.now()}`,
+          username: String(d.username || "TestViewer"),
+          body: String(d.body || "Message de test"),
+          createdAt: new Date().toISOString(),
+        });
+        if (preview) pushMsg(preview);
+        return;
+      }
+      if (d.type !== "obs-chat-update") return;
       if (d.font  != null) document.documentElement.style.setProperty("--chat-font",      `${Math.floor(clampNum(d.font, 10, 60))}px`);
       if (d.scale != null) document.documentElement.style.setProperty("--chat-scale",     String(clampNum(d.scale, 0.1, 3)));
       if (d.mw    != null) document.documentElement.style.setProperty("--wrap-maxw",      `${Math.floor(clampNum(d.mw, 100, 2000))}px`);

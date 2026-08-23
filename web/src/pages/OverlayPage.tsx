@@ -757,6 +757,32 @@ export function NativeOverlayChat({
     void fetchApp();
   }, [slug, socketBase]);
 
+  React.useEffect(() => {
+    const handlePreviewMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.data?.type !== "obs-chat-test") return;
+      const body = String(event.data.body || "").trim();
+      if (!body) return;
+      const createdAt = new Date().toISOString();
+      const preview = {
+        id: `preview-${Date.now()}`,
+        userId: 0,
+        username: String(event.data.username || "TestViewer"),
+        body,
+        createdAt,
+        avatarUrl: null,
+        cosmetics: null,
+        role: "streamer",
+        isBot: false,
+        rumble: false,
+        rumbleLinked: false,
+      } as unknown as ChatMsgLike;
+      setMessages((current) => [...current, preview].slice(-maxMessages));
+    };
+
+    window.addEventListener("message", handlePreviewMessage);
+    return () => window.removeEventListener("message", handlePreviewMessage);
+  }, [maxMessages]);
+
   // Socket chat temps réel
   React.useEffect(() => {
     if (!slug) return;

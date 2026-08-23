@@ -7,11 +7,11 @@ import fs from "fs";
 import path from "path";
 import multer from "multer";
 import type { Server } from "socket.io";
+import { buildPublicUrl, deleteFromR2, getR2PublicBase, putR2Buffer, r2Enabled } from "../clips/r2.js";
 
 export const meOverlayRouter = Router();
 
-// stock MVP en mémoire (on branchera DB ensuite)
-const byUser = new Map<number, any>();
+const EMPTY_CONFIG = { chat: {}, goal: {}, viewers: {}, alerts: {} };
 
 function deepMerge(a: any, b: any) {
   if (Array.isArray(a) || Array.isArray(b)) return b ?? a;
@@ -26,6 +26,23 @@ function deepMerge(a: any, b: any) {
 function getUserId(req: any): number {
   const id = Number(req.user?.id ?? req.userId ?? 0);
   return Number.isFinite(id) ? id : 0;
+}
+
+async function getWidgetConfig(userId: number) {
+  const result = await pool.query(`SELECT config FROM streamer_overlay_configs WHERE user_id=$1 LIMIT 1`, [userId]);
+  return result.rows?.[0]?.config || EMPTY_CONFIG;
+}
+
+async function saveWidgetConfig(userId: number, patch: any) {
+  const current = await getWidgetConfig(userId);
+  const next = deepMerge(current, patch || {});
+  await pool.query(
+    `INSERT INTO streamer_overlay_configs(user_id, config)
+     VALUES($1, $2::jsonb)
+     ON CONFLICT (user_id) DO UPDATE SET config=EXCLUDED.config, updated_at=NOW()`,
+    [userId, JSON.stringify(next)]
+  );
+  return next;
 }
 
 /** =========================
@@ -55,6 +72,18 @@ function safeExtFromMime(kind: "image" | "sound", mime: string) {
   return null;
 }
 
+function fileSignatureMatches(mime: string, buffer: Buffer) {
+  const head = buffer.subarray(0, 16);
+  if (mime === "image/png") return head.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mime === "image/jpeg") return head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  if (mime === "image/gif") return head.subarray(0, 6).toString("ascii") === "GIF87a" || head.subarray(0, 6).toString("ascii") === "GIF89a";
+  if (mime === "image/webp") return head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WEBP";
+  if (["audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"].includes(mime)) return head.subarray(0, 4).toString("ascii") === "RIFF" && head.subarray(8, 12).toString("ascii") === "WAVE";
+  if (mime === "audio/ogg") return head.subarray(0, 4).toString("ascii") === "OggS";
+  if (mime === "audio/mpeg" || mime === "audio/mp3") return head.subarray(0, 3).toString("ascii") === "ID3" || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
+  return false;
+}
+
 function applyTpl(tpl: string, vars: Record<string, any>) {
   let s = String(tpl || "");
   for (const [k, v] of Object.entries(vars || {})) {
@@ -73,87 +102,35 @@ async function getOwnedStreamerSlugByUserId(userId: number): Promise<string | nu
 // multer memory (on write file nous-mêmes)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
-
-/** =========================
- *  ✅ DLive followers (cache)
- *  ========================= */
-const dliveCache = new Map<string, { t: number; count: number; last: any | null }>();
-
-async function dliveGetFollowers(username: string) {
-  const key = username.trim();
-  if (!key) return { count: 0, last: null };
-
-  const cached = dliveCache.get(key);
-  if (cached && Date.now() - cached.t < 10_000) {
-    return { count: cached.count, last: cached.last };
-  }
-
-  const query = `
-    query ($username: String!) {
-      user(username: $username) {
-        followers(first: 1) {
-          totalCount
-          list { username displayname avatar }
-        }
-      }
-    }
-  `;
-
-  const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 8000);
-
-  try {
-    const r = await fetch("https://graphigo.prd.dlive.tv/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ query, variables: { username: key } }),
-      signal: ctrl.signal,
-    });
-
-    const j: any = await r.json().catch(() => null);
-    const f = j?.data?.user?.followers;
-
-    const count = Number(f?.totalCount ?? 0) || 0;
-    const last = Array.isArray(f?.list) ? f.list[0] ?? null : null;
-
-    dliveCache.set(key, { t: Date.now(), count, last });
-    return { count, last };
-  } finally {
-    clearTimeout(to);
-  }
-}
 
 /** =========================
  *  Existing config endpoints
  *  ========================= */
-meOverlayRouter.get("/widgets-config", (req, res) => {
+meOverlayRouter.get("/widgets-config", a(async (req, res) => {
   const uid = getUserId(req);
-  const cfg = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
+  if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
+  const cfg = await getWidgetConfig(uid);
   return res.json({ ok: true, config: cfg });
-});
+}));
 
-meOverlayRouter.post("/widgets-config", (req, res) => {
+meOverlayRouter.post("/widgets-config", a(async (req, res) => {
   const uid = getUserId(req);
-  const patch = req.body ?? {};
-  const prev = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
-  const next = deepMerge(prev, patch);
-  byUser.set(uid, next);
+  if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
+  await saveWidgetConfig(uid, req.body ?? {});
   return res.json({ ok: true });
-});
+}));
 
-meOverlayRouter.post("/view-config", (req, res) => {
+meOverlayRouter.post("/view-config", a(async (req, res) => {
   const uid = getUserId(req);
-  const payload = req.body ?? {};
-  const prev = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
-  const next = deepMerge(prev, { view: payload });
-  byUser.set(uid, next);
+  if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
+  await saveWidgetConfig(uid, { view: req.body ?? {} });
   return res.json({ ok: true });
-});
+}));
 
 /** =========================
- *  ✅ followers count
+ *  Followers LunaLive
  *  GET /me/overlay/followers?slug=xxx
  *  ========================= */
 meOverlayRouter.get(
@@ -162,35 +139,38 @@ meOverlayRouter.get(
     const slug = String(req.query.slug ?? "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "missing_slug" });
 
-    // Provider account assigné = source de followers (DLive uniquement pour l'instant)
     const q = await pool.query(
-      `SELECT pa.channel_slug
-         FROM streamers s
-         LEFT JOIN provider_accounts pa
-           ON pa.assigned_to_streamer_id = s.id
-          AND pa.provider = 'dlive'
-        WHERE s.slug = $1
-        LIMIT 1`,
+      `SELECT s.id, s.slug,
+              COUNT(sf.user_id)::int AS count
+       FROM streamers s
+       LEFT JOIN streamer_follows sf ON sf.streamer_id=s.id
+       WHERE lower(s.slug)=lower($1)
+       GROUP BY s.id, s.slug
+       LIMIT 1`,
       [slug]
     );
-
-    const providerUsername = String(q.rows?.[0]?.channel_slug ?? "").trim();
-    if (!providerUsername) {
-      return res.status(404).json({ ok: false, error: "no_provider_link" });
-    }
-
-    const { count, last } = await dliveGetFollowers(providerUsername);
+    const row = q.rows?.[0];
+    if (!row) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    const latest = await pool.query(
+      `SELECT u.id, u.username
+       FROM streamer_follows sf
+       JOIN users u ON u.id=sf.user_id
+       WHERE sf.streamer_id=$1
+       ORDER BY sf.created_at DESC
+       LIMIT 1`,
+      [Number(row.id)]
+    );
+    const last = latest.rows?.[0] || null;
 
     return res.json({
       ok: true,
-      slug,
-      providerUsername,
-      count,
+      slug: String(row.slug),
+      count: Number(row.count || 0),
       lastFollower: last
         ? {
-            username: last.username ?? null,
-            displayname: last.displayname ?? null,
-            avatar: last.avatar ?? null,
+            username: String(last.username),
+            displayname: String(last.username),
+            avatar: `/avatars/u/${Number(last.id)}`,
           }
         : null,
     });
@@ -209,7 +189,7 @@ meOverlayRouter.post(
     if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
 
     const event = String(req.body?.event || "").trim().toLowerCase();
-    if (event !== "follow" && event !== "donation") {
+    if (event !== "follow") {
       return res.status(400).json({ ok: false, error: "bad_event" });
     }
 
@@ -217,32 +197,15 @@ meOverlayRouter.post(
     const slug = String(req.body?.slug || "").trim() || (await getOwnedStreamerSlugByUserId(uid));
     if (!slug) return res.status(404).json({ ok: false, error: "no_streamer" });
 
-    const name = String(req.body?.name || (event === "donation" ? "TestDonor" : "TestFollower")).trim();
-    const amount = Number(req.body?.amount ?? 0) || 0;
-    const gift = String(req.body?.gift || "Lemon").trim();
+    const name = String(req.body?.name || "TestFollower").trim();
 
-    const cfg = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
+    const cfg = await getWidgetConfig(uid);
     const aCfg = cfg.alerts || {};
-
-    const tpl =
-      event === "donation"
-        ? String(aCfg.donation_tpl ?? "Merci {user} pour {amount} {gift} !")
-        : String(aCfg.follow_tpl ?? "Merci @{user} pour le follow 💜");
-
-    const text = applyTpl(tpl, { user: name, amount, gift });
-
-    const imageUrl = event === "donation" ? (aCfg.donation_img ?? null) : (aCfg.follow_img ?? null);
-    const soundUrl = event === "donation" ? (aCfg.donation_sound ?? null) : (aCfg.follow_sound ?? null);
-
-    const volume =
-      event === "donation"
-        ? Math.max(0, Math.min(1, Number(aCfg.donation_vol ?? 0.9)))
-        : Math.max(0, Math.min(1, Number(aCfg.sound_vol ?? 1)));
-
-    const durationMs =
-      event === "donation"
-        ? Math.max(1200, Number(aCfg.donation_duration_ms ?? 5500))
-        : Math.max(1200, Number(aCfg.follow_duration_ms ?? 4500));
+    const text = applyTpl(String(aCfg.follow_tpl ?? "Merci @{user} pour le follow 💜"), { user: name });
+    const imageUrl = aCfg.follow_img ?? null;
+    const soundUrl = aCfg.follow_sound ?? null;
+    const volume = Math.max(0, Math.min(1, Number(aCfg.sound_vol ?? 1)));
+    const durationMs = Math.max(1200, Number(aCfg.follow_duration_ms ?? 4500));
 
     const io = (req.app?.get?.("io") || req.app?.locals?.io) as Server | undefined;
     if (!io) return res.status(500).json({ ok: false, error: "io_missing" });
@@ -250,8 +213,6 @@ meOverlayRouter.post(
     io.to(`stream:${String(slug).toLowerCase()}`).emit("obs:alert", {
       event,
       name,
-      amount,
-      gift,
       text,
       imageUrl,
       soundUrl,
@@ -267,7 +228,7 @@ meOverlayRouter.post(
 /** =========================
  *  ✅ upload alert file
  *  POST /me/overlay/alerts/upload (multipart)
- *  fields: kind=image|sound, event=follow|donation, file
+ *  fields: kind=image|sound, event=follow, file
  *  ========================= */
 meOverlayRouter.post(
   "/alerts/upload",
@@ -277,31 +238,38 @@ meOverlayRouter.post(
     if (!uid) return res.status(401).json({ ok: false, error: "unauthorized" });
 
     const kind = String(req.body?.kind || "").trim().toLowerCase() as "image" | "sound";
-    const event = String(req.body?.event || "").trim().toLowerCase() as "follow" | "donation";
+    const event = String(req.body?.event || "").trim().toLowerCase() as "follow";
     if (kind !== "image" && kind !== "sound") return res.status(400).json({ ok: false, error: "bad_kind" });
-    if (event !== "follow" && event !== "donation") return res.status(400).json({ ok: false, error: "bad_event" });
+    if (event !== "follow") return res.status(400).json({ ok: false, error: "bad_event" });
 
     const f = req.file as any;
     if (!f || !f.buffer) return res.status(400).json({ ok: false, error: "missing_file" });
 
     const ext = safeExtFromMime(kind, f.mimetype);
     if (!ext) return res.status(400).json({ ok: false, error: "bad_mime" });
+    if (!fileSignatureMatches(String(f.mimetype).toLowerCase(), f.buffer)) {
+      return res.status(400).json({ ok: false, error: "bad_file_signature" });
+    }
 
-    const dir = path.join(process.cwd(), "uploads", "alerts", `u${uid}`);
-    fs.mkdirSync(dir, { recursive: true });
+    const maxBytes = kind === "image" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+    if (f.size > maxBytes) return res.status(413).json({ ok: false, error: "file_too_large" });
+    if (!r2Enabled()) return res.status(503).json({ ok: false, error: "storage_unavailable" });
 
-    const fname = `${event}-${kind}-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-    const abs = path.join(dir, fname);
-    fs.writeFileSync(abs, f.buffer);
+    const configKey = kind === "image" ? "follow_img" : "follow_sound";
+    const previous = await getWidgetConfig(uid);
+    const previousUrl = previous.alerts?.[configKey] || null;
+    const assetKey = `overlays/users/u${uid}/alerts/follow-${kind}-${Date.now()}.${ext}`;
+    const uploaded = await putR2Buffer({ key: assetKey, contentType: f.mimetype, buffer: f.buffer });
+    const url = buildPublicUrl(assetKey);
+    if (!uploaded || !url) return res.status(503).json({ ok: false, error: "upload_failed" });
 
-    // URL publique via API (/uploads/...)
-    const url = `${publicBase(req)}/uploads/alerts/u${uid}/${fname}`;
+    await saveWidgetConfig(uid, { alerts: { [configKey]: url } });
 
-    // ✅ persiste direct dans config mémoire
-    const key = `${event}_${kind === "image" ? "img" : "sound"}`; // follow_img, follow_sound, donation_img, donation_sound
-    const prev = byUser.get(uid) ?? { chat: {}, goal: {}, viewers: {}, alerts: {} };
-    const next = deepMerge(prev, { alerts: { [key]: url } });
-    byUser.set(uid, next);
+    const publicBase = getR2PublicBase();
+    if (previousUrl && publicBase && previousUrl.startsWith(`${publicBase}/`)) {
+      const oldKey = previousUrl.slice(publicBase.length + 1).split("/").map(decodeURIComponent).join("/");
+      if (oldKey && oldKey !== assetKey) void deleteFromR2(oldKey).catch(() => {});
+    }
 
     return res.json({ ok: true, url });
   })

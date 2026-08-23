@@ -757,6 +757,7 @@ export type ApiStatsSummary = {
   ok: true;
   period: StatsPeriod;
   cursor: string;
+  source: "lunalive";
   rangeStart: string;
   rangeEnd: string;
   metrics: {
@@ -767,6 +768,8 @@ export type ApiStatsSummary = {
     streamDays: ApiMetric;
 
     viewersUnique: ApiMetric;
+    followersGained: ApiMetric;
+    followersTotal: ApiMetric;
 
     watchHours: ApiMetric;
     avgWatchMinutes: ApiMetric;
@@ -1343,6 +1346,20 @@ export type ApiBotLogRow = {
 
 export async function getMyBotOverview(token: string) {
   return j<ApiBotOverview>("/me/bot/overview", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export type ApiBotDashboard = {
+  ok: true;
+  streamer: { id: string; slug: string };
+  counts: { commands: number; autoposts: number };
+  commands: ApiBotCommand[];
+  autoposts: ApiBotAutopost[];
+};
+
+export async function getMyBotDashboard(token: string) {
+  return j<ApiBotDashboard>("/me/bot/dashboard", {
     headers: { Authorization: `Bearer ${token}` },
   });
 }

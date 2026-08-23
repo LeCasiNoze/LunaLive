@@ -31,8 +31,9 @@ async function j<T>(path: string, token: string, init: RequestInit = {}): Promis
     },
   });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || (data && (data as any).ok === false)) throw new Error((data as any)?.error || `HTTP ${res.status}`);
+  const data: unknown = await res.json().catch(() => ({}));
+  const envelope = data && typeof data === "object" ? data as { ok?: boolean; error?: string } : {};
+  if (!res.ok || envelope.ok === false) throw new Error(envelope.error || `HTTP ${res.status}`);
   return data as T;
 }
 
@@ -63,13 +64,15 @@ async function fileToDataUrl(file: File): Promise<string> {
 }
 
 // small helper for nicer UI errors
-function friendlyErr(e: any): string {
-  const m = String(e?.message || e || "Erreur");
+function friendlyErr(error: unknown): string {
+  const m = error instanceof Error ? error.message : String(error || "Erreur");
   if (/file_too_large/i.test(m)) return "Fichier trop lourd.";
-  if (/unsupported_mime/i.test(m)) return "Format non supporté (PNG/WebP pour emoji, GIF pour gif).";
+  if (/unsupported_mime/i.test(m)) return "Format non supporte (PNG, JPG, WebP ou GIF).";
   if (/gif_must_be_gif/i.test(m)) return "Un GIF doit être un vrai image/gif.";
   if (/emoji_cannot_be_gif/i.test(m)) return "Un emoji ne peut pas être un GIF (choisis PNG/WebP).";
   if (/bad_dataurl/i.test(m)) return "Fichier illisible (dataUrl invalide).";
+  if (/bad_file_signature/i.test(m)) return "Le contenu du fichier ne correspond pas a son format.";
+  if (/limit_reached/i.test(m)) return "Limite de medias atteinte pour ce type.";
   if (/no_streamer/i.test(m)) return "Aucune chaîne liée à ton compte.";
   if (/r2_public_base_missing/i.test(m)) return "R2 configuré mais URL publique manquante (R2_PUBLIC_BASE).";
   if (/HTTP\s+413/i.test(m)) return "Fichier trop lourd (limite serveur).";
@@ -83,9 +86,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [err, setErr] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<EmoteItem[]>([]);
 
-  const [kind, setKind] = React.useState<Kind>("emoji");
   const [name, setName] = React.useState("");
-  const [label, setLabel] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
@@ -98,7 +99,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       const r = await j<{ ok: true; items: EmoteItem[] }>("/me/streamer/emotes", token);
       setItems(Array.isArray(r.items) ? r.items : []);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setErr(friendlyErr(e));
     } finally {
       setLoading(false);
@@ -121,20 +122,13 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  // if kind changes, clear incompatible file
-  React.useEffect(() => {
-    if (!file) return;
-    if (kind === "gif" && file.type !== "image/gif") setFile(null);
-    if (kind === "emoji" && file.type === "image/gif") setFile(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind]);
-
   const emojis = items.filter((x) => x.kind === "emoji" && x.status !== "deleted");
   const gifs = items.filter((x) => x.kind === "gif" && x.status !== "deleted");
 
   const capEmoji = 40;
   const capGif = 20;
 
+  const kind: Kind = file?.type === "image/gif" ? "gif" : "emoji";
   const capReached = kind === "emoji" ? emojis.length >= capEmoji : gifs.length >= capGif;
 
   async function onUpload() {
@@ -146,9 +140,9 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
 
     if (!file) return setErr("Choisis un fichier.");
 
-    // mime side checks (le backend re-check)
-    if (kind === "gif" && file.type !== "image/gif") return setErr("Un GIF doit être un vrai image/gif.");
-    if (kind === "emoji" && file.type === "image/gif") return setErr("Un emoji ne peut pas être un GIF (choisis PNG/WebP).");
+    if (!["image/gif", "image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      return setErr("Format non supporte (PNG, JPG, WebP ou GIF).");
+    }
 
     if (capReached) {
       return setErr(kind === "emoji" ? `Limite atteinte (${capEmoji} emojis).` : `Limite atteinte (${capGif} GIFs).`);
@@ -161,21 +155,18 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
       await j<{ ok: true; item: EmoteItem }>("/me/streamer/emotes", token, {
         method: "POST",
         body: JSON.stringify({
-          kind,
           name: nm,
-          label: label.trim() ? label.trim().slice(0, 64) : null,
           dataUrl,
         }),
       });
 
       // reset form
       setName("");
-      setLabel("");
       setFile(null);
 
       // refresh list (simple et sûr)
       await refresh();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setErr(friendlyErr(e));
     } finally {
       setUploading(false);
@@ -191,7 +182,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
     try {
       await j<{ ok: true }>(`/me/streamer/emotes/${id}`, token, { method: "DELETE" });
       await refresh();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setErr(friendlyErr(e));
     }
   }
@@ -227,51 +218,29 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
         }}
       >
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 1000 }}>Uploader une emote</div>
+          <div style={{ fontWeight: 1000 }}>Importer un emoji ou un GIF</div>
           <div className="mutedSmall" style={{ opacity: 0.85 }}>
             Limites: {capEmoji} emojis • {capGif} GIFs
           </div>
         </div>
 
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "160px 1fr 1fr", gap: 10, alignItems: "end" }}>
+        <div className="emote-upload-grid">
           <div className="field" style={{ margin: 0 }}>
-            <label>Type</label>
-            <select
-              value={kind}
-              onChange={(e) => {
-                setKind(e.target.value as Kind);
-                setErr(null);
-              }}
-            >
-              <option value="emoji">Emoji (PNG/WebP)</option>
-              <option value="gif">GIF (GIF)</option>
-            </select>
-          </div>
-
-          <div className="field" style={{ margin: 0 }}>
-            <label>Nom (token)</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: luna_love" />
+            <label htmlFor="channel-emote-name">Nom</label>
+            <input id="channel-emote-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="ex: luna_love" />
             <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 6 }}>
               Utilisation chat : <b>{kind === "gif" ? ":g:" : ":e:"}{normName(name) || "name"}:</b>
             </div>
           </div>
-
           <div className="field" style={{ margin: 0 }}>
-            <label>Label (optionnel)</label>
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ex: Luna Love" />
-          </div>
-
-          <div className="field" style={{ margin: 0, gridColumn: "1 / -1" }}>
             <label>Fichier</label>
             <input
               type="file"
-              accept={kind === "gif" ? "image/gif" : "image/png,image/webp"}
+              accept="image/png,image/jpeg,image/webp,image/gif"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
             <div className="mutedSmall" style={{ opacity: 0.75, marginTop: 6 }}>
-              {kind === "gif"
-                ? "GIF: recommandé < 600KB."
-                : "Emoji: PNG/WebP recommandé < 160KB."}
+              Type detecte automatiquement : fichier anime = GIF, image fixe = emoji.
             </div>
           </div>
         </div>
@@ -334,7 +303,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
       </div>
 
       {/* Lists */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start" }}>
+      <div className="emote-library-grid">
         {/* Emojis */}
         <div style={{ borderRadius: 18, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.02)", padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -381,7 +350,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
                       }}
                       onError={(ev) => {
                         // small fallback if url broken
-                        (ev.currentTarget as any).style.opacity = "0.25";
+                        ev.currentTarget.style.opacity = "0.25";
                       }}
                     />
                   ) : (
@@ -455,7 +424,7 @@ export function EmotesSection({ streamer }: { streamer: ApiMyStreamer }) {
                         border: "1px solid rgba(255,255,255,0.10)",
                       }}
                       onError={(ev) => {
-                        (ev.currentTarget as any).style.opacity = "0.25";
+                        ev.currentTarget.style.opacity = "0.25";
                       }}
                     />
                   ) : (

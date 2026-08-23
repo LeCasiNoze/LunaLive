@@ -6,7 +6,6 @@ import {
   obsSaveViewConfig,
   obsSendTestAlert,
   obsUploadAlertFile,
-  type WidgetsConfig,
 } from "../obs_api";
 
 const InlineLabel = ({ children }: { children: React.ReactNode }) => (
@@ -38,11 +37,15 @@ const PASSIVE_ANIMS = [
   { id: "scanline", label: "Reflet fluide (scanline)" },
   { id: "barber", label: "Rayures diagonales (barber)" },
   { id: "rainbowfill", label: "Remplissage arc-en-ciel animé" },
+  { id: "glowpulse", label: "Halo lumineux respirant" },
+  { id: "stardust", label: "Poussiere lumineuse" },
 ] as const;
 
 const SPECIAL_ANIMS = [
   { id: "none", label: "Aucune" },
   { id: "confetti", label: "Confettis + badge +1" },
+  { id: "pulse", label: "Impulsion lumineuse +1" },
+  { id: "sparkles", label: "Etincelles +1" },
 ] as const;
 
 function clamp(n: number, a: number, b: number) {
@@ -148,6 +151,8 @@ export function ObsWidgetModule({
 
   // chat (✅ seul maxw est modifiable)
   const [maxw, setMaxw] = React.useState(420);
+  const [chatTestMessage, setChatTestMessage] = React.useState("Bienvenue sur le chat LunaLive !");
+  const chatPreviewRef = React.useRef<HTMLIFrameElement | null>(null);
 
   // valeurs fixes (non modifiables dans la modale)
   const scale = CHAT_FIXED.scale;
@@ -157,16 +162,12 @@ export function ObsWidgetModule({
   const chatLife = CHAT_FIXED.life_sec;
 
   // alerts
-  const [alertsKind, setAlertsKind] = React.useState<"follow" | "donation">("follow");
   const [alertTpl, setAlertTpl] = React.useState("Merci @{user} pour le follow 💜");
   const [alertImg, setAlertImg] = React.useState<string | null>(null);
   const [alertSound, setAlertSound] = React.useState<string | null>(null);
   const [alertVol, setAlertVol] = React.useState(1);
   const [testing, setTesting] = React.useState(false);
   const [testFollow, setTestFollow] = React.useState("TestFollower");
-  const [testDonor, setTestDonor] = React.useState("TestDonor");
-  const [testAmount, setTestAmount] = React.useState<number>(1);
-  const [testGift, setTestGift] = React.useState("Lemon");
 
   const [savedMsg, setSavedMsg] = React.useState<string | null>(null);
   const [showUrl, setShowUrl] = React.useState(false);
@@ -177,8 +178,6 @@ export function ObsWidgetModule({
   const [savingGoal, setSavingGoal] = React.useState(false);
   const [savingViewers, setSavingViewers] = React.useState(false);
   const [savingAlerts, setSavingAlerts] = React.useState(false);
-
-  const lastCfgRef = React.useRef<WidgetsConfig | null>(null);
 
   // Goal animations
   const [goalAnimPassive, setGoalAnimPassive] = React.useState<string>("none");
@@ -202,39 +201,26 @@ export function ObsWidgetModule({
         const r = await obsGetWidgetsConfig(token);
         if (!r?.ok || !r.config) return;
 
-        lastCfgRef.current = r.config;
-
-        const a = (r.config as any).alerts || {};
+        const a = r.config.alerts || {};
         setAlertImg(a.follow_img ?? null);
         setAlertSound(a.follow_sound ?? null);
 
-        const followTpl = String(a.follow_tpl ?? "Merci @{user} pour le follow 💜");
-        const followVol = Number(a.sound_vol ?? 1);
-
-        const donTpl = String(a.donation_tpl ?? "Merci {user} pour {amount} {gift} !");
-        const donVol = Number(a.donation_vol ?? 0.9);
-
-        if (alertsKind === "donation") {
-          setAlertTpl(donTpl);
-          setAlertVol(donVol);
-        } else {
-          setAlertTpl(followTpl);
-          setAlertVol(followVol);
-        }
+        setAlertTpl(String(a.follow_tpl ?? "Merci @{user} pour le follow 💜"));
+        setAlertVol(Number(a.sound_vol ?? 1));
 
         // Chat (✅ uniquement maxw)
-        setMaxw((r.config as any).chat?.maxw ?? 420);
+        setMaxw(r.config.chat?.maxw ?? 420);
 
         // Goal
-        setFg((r.config as any).goal?.fg ?? "#ffffff");
-        setBg((r.config as any).goal?.bg ?? "#1f1f1f");
-        setTxt((r.config as any).goal?.txt ?? "#ffffff");
-        setGoalTarget(Number((r.config as any).goal?.target ?? 100));
+        setFg(r.config.goal?.fg ?? "#ffffff");
+        setBg(r.config.goal?.bg ?? "#1f1f1f");
+        setTxt(r.config.goal?.txt ?? "#ffffff");
+        setGoalTarget(Number(r.config.goal?.target ?? 100));
 
         // Goal animations
-        setGoalAnimPassive((r.config as any).goal?.anim_passive ?? "none");
-        setGoalAnimSpecial((r.config as any).goal?.anim_special ?? "none");
-        setGoalAnimEnabled(Boolean((r.config as any).goal?.anim_enabled ?? true));
+        setGoalAnimPassive(r.config.goal?.anim_passive ?? "none");
+        setGoalAnimSpecial(r.config.goal?.anim_special ?? "none");
+        setGoalAnimEnabled(Boolean(r.config.goal?.anim_enabled ?? true));
 
         // Viewers
       } catch {
@@ -243,20 +229,6 @@ export function ObsWidgetModule({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // when alertsKind switches, use cached config
-  React.useEffect(() => {
-    const cfg = lastCfgRef.current as any;
-    if (!cfg) return;
-    const a = cfg.alerts || {};
-    if (alertsKind === "donation") {
-      setAlertTpl(String(a.donation_tpl ?? "Merci {user} pour {amount} {gift} !"));
-      setAlertVol(Number(a.donation_vol ?? 0.9));
-    } else {
-      setAlertTpl(String(a.follow_tpl ?? "Merci @{user} pour le follow 💜"));
-      setAlertVol(Number(a.sound_vol ?? 1));
-    }
-  }, [alertsKind]);
 
   // debounce sync view-config (comme NozeBot)
   React.useEffect(() => {
@@ -330,14 +302,13 @@ export function ObsWidgetModule({
     `${base}/overlay/obs/alerts.html?uid=${encodeURIComponent(uid)}&slug=${encodeURIComponent(streamerSlug)}&token=${encodeURIComponent(token)}` +
     `&api=${encodeURIComponent(API_BASE)}` +
     `&name=${encodeURIComponent(streamerName)}` +
-    `&listen=${encodeURIComponent(alertsKind)}` +
+    `&listen=follow` +
     `&poll=8000`;
 
   function copy(text: string) {
     navigator.clipboard?.writeText(text).then(
       () => flash("URL copiée ✅"),
       () => {
-        // eslint-disable-next-line no-alert
         prompt("Copie l’URL :", text);
       }
     );
@@ -393,7 +364,7 @@ export function ObsWidgetModule({
     setSavingViewers(true);
     try {
       await obsSaveWidgetsConfig(token, {
-        viewers: { fg, bg, pos: "br", sec: 8, add_dlive: false },
+        viewers: { fg, bg, pos: "br", sec: 8 },
       });
       flash("Viewers enregistré ✅");
     } catch {
@@ -406,13 +377,8 @@ export function ObsWidgetModule({
   async function saveAlerts() {
     setSavingAlerts(true);
     try {
-      const payload =
-        alertsKind === "donation"
-          ? { alerts: { donation_tpl: alertTpl, donation_vol: clamp(alertVol, 0, 1) } }
-          : { alerts: { follow_tpl: alertTpl, sound_vol: clamp(alertVol, 0, 1) } };
-
-      await obsSaveWidgetsConfig(token, payload as any);
-      flash(alertsKind === "donation" ? "Alert Donation enregistrée ✅" : "Alert Follow enregistrée ✅");
+      await obsSaveWidgetsConfig(token, { alerts: { follow_tpl: alertTpl, sound_vol: clamp(alertVol, 0, 1) } });
+      flash("Alerte Follow enregistree");
     } catch {
       flash("Erreur lors de l’enregistrement ❌");
     } finally {
@@ -421,30 +387,40 @@ export function ObsWidgetModule({
   }
 
   async function uploadAlertFile(kind: "image" | "sound", file: File) {
-    const r = await obsUploadAlertFile(token, { kind, event: alertsKind, file });
-    if (kind === "image") setAlertImg(r.url);
-    else setAlertSound(r.url);
-    flash(kind === "image" ? "Image importée ✅" : "Son importé ✅");
+    const allowed = kind === "image"
+      ? ["image/png", "image/jpeg", "image/webp", "image/gif"]
+      : ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave", "audio/ogg"];
+    const maxBytes = kind === "image" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+    if (!allowed.includes(file.type)) return flash("Format de fichier non supporte");
+    if (file.size > maxBytes) return flash(kind === "image" ? "Image trop lourde (5 Mo max)" : "Son trop lourd (3 Mo max)");
+    try {
+      const r = await obsUploadAlertFile(token, { kind, event: "follow", file });
+      if (kind === "image") setAlertImg(r.url);
+      else setAlertSound(r.url);
+      flash(kind === "image" ? "Image importee" : "Son importe");
+    } catch {
+      flash("Echec de l'import");
+    }
+  }
+
+  function sendChatPreview() {
+    const body = chatTestMessage.trim();
+    if (!body) return;
+    chatPreviewRef.current?.contentWindow?.postMessage({
+      type: "obs-chat-test",
+      username: streamerName || "TestViewer",
+      body,
+    }, window.location.origin);
   }
 
   async function testOverlay() {
     setTesting(true);
     try {
-      if (alertsKind === "donation") {
-        await obsSendTestAlert(token, {
-          event: "donation",
-          name: (testDonor || "TestDonor").trim(),
-          amount: Math.max(0, Number(testAmount || 0)),
-          gift: (testGift || "Lemon").trim(),
-          uid: Number(uid) || undefined,
-        });
-      } else {
-        await obsSendTestAlert(token, {
-          event: "follow",
-          name: (testFollow || "TestFollower").trim(),
-          uid: Number(uid) || undefined,
-        });
-      }
+      await obsSendTestAlert(token, {
+        event: "follow",
+        name: (testFollow || "TestFollower").trim(),
+        uid: Number(uid) || undefined,
+      });
       flash("Alerte envoyée ✅");
     } catch {
       flash("Échec d’envoi ❌");
@@ -460,46 +436,12 @@ export function ObsWidgetModule({
       {/* === ALERTS === */}
       {tab === "alerts" && (
         <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="btnGhostInline"
-              onClick={() => setAlertsKind("follow")}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 999,
-                fontWeight: 950,
-                border:
-                  alertsKind === "follow"
-                    ? "1px solid rgba(124,77,255,0.55)"
-                    : "1px solid rgba(255,255,255,0.10)",
-                background: alertsKind === "follow" ? "rgba(124,77,255,0.14)" : "rgba(0,0,0,0.12)",
-              }}
-            >
-              Follow
-            </button>
-
-            <button
-              type="button"
-              className="btnGhostInline"
-              onClick={() => setAlertsKind("donation")}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 999,
-                fontWeight: 950,
-                border:
-                  alertsKind === "donation"
-                    ? "1px solid rgba(124,77,255,0.55)"
-                    : "1px solid rgba(255,255,255,0.10)",
-                background: alertsKind === "donation" ? "rgba(124,77,255,0.14)" : "rgba(0,0,0,0.12)",
-              }}
-            >
-              Donation
-            </button>
+          <div className="hint">
+            Seule l'alerte Follow est active pour le moment. Les reglages et medias sont sauvegardes durablement.
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <InlineLabel>URL OBS — Alerts / {alertsKind === "donation" ? "Donation" : "Follow"}</InlineLabel>
+            <InlineLabel>URL OBS - Alerte Follow</InlineLabel>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
                 style={{ ...inputStyle(), flex: 1, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
@@ -535,91 +477,24 @@ export function ObsWidgetModule({
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <InlineLabel>Tester {alertsKind === "donation" ? "une donation" : "un follow"}</InlineLabel>
-
-            {alertsKind === "donation" ? (
-              <div style={{ display: "grid", gap: 8 }}>
-                <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
-                  <input
-                    style={inputStyle()}
-                    value={testDonor}
-                    onChange={(e) => setTestDonor(e.target.value)}
-                    placeholder="Nom donateur"
-                  />
-                  <input
-                    style={inputStyle()}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={testAmount}
-                    onChange={(e) => setTestAmount(parseInt(e.target.value || "0", 10))}
-                    placeholder="Montant"
-                  />
-                  <input
-                    style={inputStyle()}
-                    value={testGift}
-                    onChange={(e) => setTestGift(e.target.value)}
-                    placeholder="Gift (ex: Lemon)"
-                  />
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    className="btnGhostInline"
-                    type="button"
-                    onClick={testOverlay}
-                    disabled={testing}
-                    style={{
-                      borderRadius: 14,
-                      padding: "10px 12px",
-                      fontWeight: 950,
-                      opacity: testing ? 0.7 : 1,
-                    }}
-                  >
-                    {testing ? "Test…" : "Test Donation"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <input
-                  style={{ ...inputStyle(), flex: 1 }}
-                  value={testFollow}
-                  onChange={(e) => setTestFollow(e.target.value)}
-                  placeholder="Nom du follower"
-                />
-                <button
-                  className="btnGhostInline"
-                  type="button"
-                  onClick={testOverlay}
-                  disabled={testing}
-                  style={{
-                    borderRadius: 14,
-                    padding: "10px 12px",
-                    fontWeight: 950,
-                    opacity: testing ? 0.7 : 1,
-                  }}
-                >
-                  {testing ? "Test…" : "Test Follow"}
-                </button>
-              </div>
-            )}
+            <InlineLabel>Tester un follow</InlineLabel>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input style={{ ...inputStyle(), flex: 1 }} value={testFollow} onChange={(e) => setTestFollow(e.target.value)} placeholder="Nom du follower" />
+              <button className="btnGhostInline" type="button" onClick={testOverlay} disabled={testing}>
+                {testing ? "Test..." : "Envoyer le test"}
+              </button>
+            </div>
           </div>
 
           <details style={detailsStyle()}>
-            <summary style={{ cursor: "pointer", fontWeight: 950 }}>
-              Message automatique ({alertsKind === "donation" ? "Donation" : "Follow"})
-            </summary>
+            <summary style={{ cursor: "pointer", fontWeight: 950 }}>Message de l'alerte</summary>
             <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
               <InlineLabel>Template</InlineLabel>
               <input
                 style={{ ...inputStyle(), fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
                 value={alertTpl}
                 onChange={(e) => setAlertTpl(e.target.value)}
-                placeholder={
-                  alertsKind === "donation"
-                    ? "Ex: Merci {user} pour {amount} {gift} !"
-                    : "Ex: Merci @{user} pour le follow 💜"
-                }
+                placeholder="Ex: Merci @{user} pour le follow"
               />
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button
@@ -641,13 +516,11 @@ export function ObsWidgetModule({
           </details>
 
           <details style={detailsStyle()}>
-            <summary style={{ cursor: "pointer", fontWeight: 950 }}>
-              Médias ({alertsKind === "donation" ? "Donation" : "Follow"})
-            </summary>
+            <summary style={{ cursor: "pointer", fontWeight: 950 }}>Medias de l'alerte</summary>
 
             <div style={{ marginTop: 10, display: "grid", gap: 12 }}>
               <div style={{ display: "grid", gap: 8 }}>
-                <InlineLabel>Image (PNG, JPG, WEBP)</InlineLabel>
+                <InlineLabel>Image ou GIF - 5 Mo maximum</InlineLabel>
                 <input
                   style={inputStyle()}
                   type="file"
@@ -679,11 +552,11 @@ export function ObsWidgetModule({
               <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
 
               <div style={{ display: "grid", gap: 8 }}>
-                <InlineLabel>Son (MP3, WAV, OGG) + volume</InlineLabel>
+                <InlineLabel>Son (MP3, WAV, OGG) - 3 Mo maximum</InlineLabel>
                 <input
                   style={inputStyle()}
                   type="file"
-                  accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg"
+                  accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/wave,audio/vnd.wave,audio/ogg,.mp3,.wav,.ogg"
                   onChange={async (e) => {
                     const f = e.currentTarget.files?.[0];
                     if (!f) return;
@@ -750,7 +623,7 @@ export function ObsWidgetModule({
               <iframe
                 key={alertsObsUrl}
                 src={alertsObsUrl}
-                title={`Aperçu Alerts — ${alertsKind}`}
+                title="Aperçu alerte Follow"
                 style={{ width: "100%", height: 160, border: 0 }}
                 sandbox="allow-scripts allow-same-origin"
               />
@@ -843,6 +716,20 @@ export function ObsWidgetModule({
           </details>
 
           <div style={{ display: "grid", gap: 8 }}>
+            <InlineLabel>Message de test</InlineLabel>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input
+                style={{ ...inputStyle(), flex: 1 }}
+                value={chatTestMessage}
+                onChange={(event) => setChatTestMessage(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter") sendChatPreview(); }}
+                placeholder="Ecris un message pour tester l'apercu"
+              />
+              <button className="btnGhostInline" type="button" onClick={sendChatPreview}>Afficher le test</button>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
             <InlineLabel>Aperçu</InlineLabel>
             <div
               style={{
@@ -853,6 +740,7 @@ export function ObsWidgetModule({
               }}
             >
               <iframe
+                ref={chatPreviewRef}
                 key={chatObsUrl}
                 src={chatObsUrl}
                 title="Aperçu Chat"
@@ -1200,7 +1088,7 @@ export function ObsWidgetModule({
             <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.18)" }}>
               <iframe
                 key={goalObsUrl}
-                src={`${goalObsUrl}&compact=1`}
+                src={`${goalObsUrl}&compact=1&demo=1`}
                 title="Aperçu Follow Goal"
                 style={{ width: "100%", height: 160, border: 0 }}
                 sandbox="allow-scripts allow-same-origin"

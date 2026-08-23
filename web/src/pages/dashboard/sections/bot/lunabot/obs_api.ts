@@ -16,6 +16,10 @@ const OBS_VIEW_CFG = "/me/overlay/view-config";
 const OBS_ALERT_TEST = "/me/overlay/alert";
 const OBS_ALERT_UPLOAD = "/me/overlay/alerts/upload";
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
 async function authed<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -27,7 +31,7 @@ async function authed<T>(token: string, path: string, init: RequestInit = {}): P
   });
 
   const text = await r.text().catch(() => "");
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
@@ -35,9 +39,10 @@ async function authed<T>(token: string, path: string, init: RequestInit = {}): P
   }
 
   if (!r.ok) {
+    const payload = record(data);
     const msg =
-      data?.error ||
-      data?.message ||
+      payload.error ||
+      payload.message ||
       (text && text.length < 200 ? text : null) ||
       `API ${r.status}`;
     throw new Error(String(msg));
@@ -47,10 +52,25 @@ async function authed<T>(token: string, path: string, init: RequestInit = {}): P
 }
 
 export type WidgetsConfig = {
-  chat?: any;
-  goal?: any;
-  viewers?: any;
-  alerts?: any;
+  chat?: { maxw?: number; [key: string]: unknown };
+  goal?: {
+    fg?: string;
+    bg?: string;
+    txt?: string;
+    target?: number;
+    anim_passive?: string;
+    anim_special?: string;
+    anim_enabled?: boolean | number;
+    [key: string]: unknown;
+  };
+  viewers?: Record<string, unknown>;
+  alerts?: {
+    follow_img?: string | null;
+    follow_sound?: string | null;
+    follow_tpl?: string;
+    sound_vol?: number;
+    [key: string]: unknown;
+  };
 };
 
 export async function obsGetWidgetsConfig(token: string) {
@@ -78,9 +98,7 @@ export async function obsSaveViewConfig(
 
 export async function obsSendTestAlert(
   token: string,
-  payload:
-    | { event: "follow"; name: string; uid?: number }
-    | { event: "donation"; name: string; amount: number; gift: string; uid?: number }
+  payload: { event: "follow"; name: string; uid?: number }
 ) {
   return authed<{ ok: boolean }>(token, OBS_ALERT_TEST, {
     method: "POST",
@@ -91,7 +109,7 @@ export async function obsSendTestAlert(
 
 export async function obsUploadAlertFile(
   token: string,
-  payload: { kind: "image" | "sound"; event: "follow" | "donation"; file: File }
+  payload: { kind: "image" | "sound"; event: "follow"; file: File }
 ) {
   const fd = new FormData();
   fd.set("kind", payload.kind);
@@ -105,16 +123,17 @@ export async function obsUploadAlertFile(
   });
 
   const text = await r.text().catch(() => "");
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
     data = null;
   }
 
-  if (!r.ok || !data?.ok) {
-    throw new Error(String(data?.error || data?.message || "upload_failed"));
+  const payloadData = record(data);
+  if (!r.ok || payloadData.ok !== true) {
+    throw new Error(String(payloadData.error || payloadData.message || "upload_failed"));
   }
 
-  return data as { ok: true; url: string };
+  return payloadData as { ok: true; url: string };
 }

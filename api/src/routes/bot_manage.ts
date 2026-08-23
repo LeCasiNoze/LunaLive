@@ -260,6 +260,43 @@ const overviewHandler = a(async (req: any, res: any) => {
 
 mountAliases("get", "/overview", requireAuth, overviewHandler);
 
+/* Commands and autoposts share one access lookup; logs remain lazy. */
+const dashboardHandler = a(async (req: any, res: any) => {
+  const s = await resolveBotManageTarget(req);
+  if (!s.ok) return res.status(s.status).json({ ok: false, error: s.error, ...(s.detail ? { detail: s.detail } : {}) });
+
+  const [settings, commands, autoposts] = await Promise.all([
+    getBotSettings(s.streamerId),
+    pool.query(
+      `SELECT id::text AS id, trigger, response, enabled,
+              cooldown_sec AS "cooldownSec", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM bot_commands WHERE streamer_id=$1 ORDER BY id DESC`,
+      [s.streamerId]
+    ),
+    pool.query(
+      `SELECT id::text AS id, message, every_sec AS "everySec", enabled,
+              created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM bot_autoposts WHERE streamer_id=$1 ORDER BY id DESC`,
+      [s.streamerId]
+    ),
+  ]);
+
+  res.setHeader("Cache-Control", "private, no-store");
+  return res.json({
+    ok: true,
+    streamer: { id: String(s.streamerId), slug: s.slug },
+    access: s.access,
+    live: { isLive: !!s.isLive },
+    settings,
+    limits: LIMITS,
+    commands: commands.rows,
+    autoposts: autoposts.rows,
+    counts: { commands: commands.rowCount || 0, autoposts: autoposts.rowCount || 0 },
+  });
+});
+
+mountAliases("get", "/dashboard", requireAuth, dashboardHandler);
+
 /* ──────────────────────────────────────────
    COMMANDS
 ────────────────────────────────────────── */
