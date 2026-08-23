@@ -3,7 +3,6 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRight,
-  CalendarDays,
   Clapperboard,
   Clock3,
   Download,
@@ -187,13 +186,22 @@ function GlassCard({ children, style, className }: {
   );
 }
 
-function LiveBackdrop({ url }: { url: string }) {
+function LiveBackdrop({ url, label }: { url: string; label: string }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [url]);
+
   return (
     <>
-      <img className="lvx-live-image" src={url} alt="" loading="lazy" />
+      <div className="lvx-live-fallback" aria-hidden>{initialsForPreview(label)}</div>
+      {!failed ? <img className="lvx-live-image" src={url} alt="" loading="lazy" onError={() => setFailed(true)} /> : null}
       <div className="lvx-live-shade" aria-hidden />
     </>
   );
+}
+
+function initialsForPreview(label: string) {
+  const parts = String(label || "Live").trim().split(/[\s._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] || "L") + (parts[1]?.[0] || parts[0]?.[1] || "")).toUpperCase();
 }
 
 /* ─── LiveCard shared inner layout ─────────────────────────────────── */
@@ -231,7 +239,7 @@ function DesktopLiveCard({ live, featured = false }: {
     <Link to={`/s/${live.slug}`} className="lvx-live-link" aria-label={`Regarder ${live.displayName}`}>
       <GlassCard className={`lvx-live-card${featured ? " is-featured" : ""}`}>
         <div className="lvx-live-media">
-          <LiveBackdrop url={live.thumbFinal} />
+          <LiveBackdrop url={live.thumbFinal} label={live.displayName} />
           <div className="lvx-live-topline">
             {featured ? <Pill tone="gold"><Sparkles size={12} /> À la une</Pill> : <Pill tone="live"><span className="livePing" /> En direct</Pill>}
             {live.durationLabel ? <Pill tone="neutral"><Clock3 size={12} /> {live.durationLabel}</Pill> : null}
@@ -283,41 +291,6 @@ async function fetchStreamersIndex(): Promise<{
   } catch {
     return { featuredLiveSlugs: new Set(), metaBySlug: new Map() };
   }
-}
-
-const followsCache = new Map<string, { n: number; ts: number }>();
-
-async function fetchFollowsCountBySlug(slug: string, token: string | null): Promise<number | null> {
-  const s = String(slug || "").trim().toLowerCase();
-  if (!s) return null;
-  const cached = followsCache.get(s);
-  const now = Date.now();
-  if (cached && now - cached.ts < 120_000) return cached.n;
-  try {
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const r = await fetch(`${API_BASE}/streamers/${encodeURIComponent(s)}`, { headers });
-    const j = await r.json().catch(() => null);
-    const out = Number.isFinite(Number(j?.followsCount)) ? Number(j.followsCount) : 0;
-    followsCache.set(s, { n: out, ts: now });
-    return out;
-  } catch { return null; }
-}
-
-async function fetchFollowsCountsForLives(slugs: string[], token: string | null): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const uniq = Array.from(new Set(slugs.map((x) => String(x || "").trim().toLowerCase()).filter(Boolean)));
-  if (!uniq.length) return out;
-  let i = 0;
-  const worker = async () => {
-    while (i < uniq.length) {
-      const slug = uniq[i++]!;
-      const n = await fetchFollowsCountBySlug(slug, token);
-      if (typeof n === "number") out.set(slug, n);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(4, uniq.length) }, worker));
-  return out;
 }
 
 async function fetchViewersBatchPublic(slugs: string[]): Promise<Map<string, number> | null> {
@@ -1006,16 +979,7 @@ export default function LivesPage() {
         return { ...(x as any), viewers: ov != null ? ov : (Number((x as any).viewers ?? 0) || 0) } as any;
       });
 
-      const followsMap = await fetchFollowsCountsForLives(
-        vmWithViewers.map((x) => String((x as any).slug || "").trim().toLowerCase()).filter(Boolean),
-        token
-      );
-
-      const vmFinal = vmWithViewers.map((x) => {
-        const slug = String((x as any).slug || "").trim().toLowerCase();
-        const n    = followsMap.get(slug);
-        return typeof n === "number" ? { ...(x as any), followersCount: n } as any : x as any;
-      });
+      const vmFinal = vmWithViewers;
 
       setLives((prev) => mergeThumbFinal(prev, vmFinal));
 
@@ -1120,22 +1084,21 @@ export default function LivesPage() {
 
   /* ── Desktop ── */
   return (
-    <main className="container livesPage lvx-page">
-      <div className="lvx-shell">
-        <header className="lvx-hero">
-          <div className="lvx-hero-copy">
-            <span className="lvx-eyebrow"><Radio size={14} /> LunaLive en direct</span>
-            <h1>Le direct commence ici.</h1>
-            <p>Retrouve les streamers de la communauté, les moments qui comptent et tes rendez-vous quotidiens.</p>
-          </div>
-          <div className="lvx-hero-side">
-            <div className="lvx-hero-stats">
-              <span><b>{totals.liveCount}</b> live{totals.liveCount !== 1 ? "s" : ""}</span>
-              <i />
-              <span><b>{formatViewers(totals.viewersTotal)}</b> spectateur{totals.viewersTotal !== 1 ? "s" : ""}</span>
+    <main className="container livesPage livesPage-restored">
+      <div className="livesWrap">
+        <header className="livesHeader">
+          <div className="livesHeaderCopy">
+            <h1 className="livesH1">LunaLive</h1>
+            <div className="mutedSmall">
+              Bienvenue sur votre plateforme dédiée à la commu casino.
+              {refreshing ? <span className="livesRefreshing"><span className="livePing" aria-hidden /> Mise à jour</span> : null}
             </div>
-            <button type="button" className="lvx-refresh" onClick={() => void load({ silent: true })} disabled={loading || refreshing}>
-              <RefreshCw size={16} className={refreshing ? "is-spinning" : ""} /> Actualiser
+          </div>
+          <div className="livesHeaderStats">
+            <Pill tone="live"><span className="livePing" aria-hidden /> Live <b>{totals.liveCount}</b></Pill>
+            {totals.viewersTotal > 0 ? <Pill tone="neutral"><Users size={12} /> Viewers <b>{formatViewers(totals.viewersTotal)}</b></Pill> : null}
+            <button type="button" className="livesRefreshBtn" onClick={() => void load({ silent:true })} disabled={loading || refreshing} aria-label="Actualiser les lives">
+              <RefreshCw size={15} className={refreshing ? "is-spinning" : ""} />
             </button>
           </div>
         </header>
@@ -1147,15 +1110,41 @@ export default function LivesPage() {
           </div>
         ) : null}
 
-        <section className="lvx-section lvx-live-section">
-          <div className="lvx-section-head">
-            <div>
-              <span className="lvx-section-kicker">Maintenant</span>
-              <h2>En direct</h2>
-              <p>{totals.liveCount > 0 ? `${totals.liveCount} chaîne${totals.liveCount > 1 ? "s" : ""} à regarder maintenant` : "Le prochain live arrive bientôt"}</p>
-            </div>
-            <Link to="/browse" className="lvx-section-link">Toutes les chaînes <ArrowRight size={15} /></Link>
-          </div>
+        <div className="livesLayout">
+          <aside className="livesSidebar" aria-label="Rendez-vous du jour">
+            <DailyWheelCard />
+            <DailyBonusAccessCard />
+            <QuestsHomeCard />
+
+            <div className="sidebarDivider" />
+            <section className="livesSidebarClips">
+              <div className="livesSidebarClipsHead">
+                <div><Clapperboard size={15} /><h2>Clips du mois</h2></div>
+                {clipsTotal > 0 ? <button type="button" onClick={() => setOpenMonthList(true)}>{clipsTotal}</button> : null}
+              </div>
+              {clipsLoading && clipsTop4.length === 0 ? (
+                <div className="livesSidebarClipGrid" aria-hidden>{Array.from({length:4}).map((_,index) => <div className="lvx-clip-skeleton" key={index} />)}</div>
+              ) : clipsTop4.length === 0 ? (
+                <div className="livesSidebarClipsEmpty">Aucun clip pour le moment.</div>
+              ) : (
+                <div className="livesSidebarClipGrid">
+                  {clipsTop4.map((clip) => {
+                    const thumb = clip.thumbUrl ? absolutize(clip.thumbUrl) || clip.thumbUrl : svgThumb(clip.streamerName || "Clip");
+                    return (
+                      <button key={clip.id} type="button" className="livesSidebarClip" onClick={() => onClickMonthClip(clip)} aria-label={`Regarder ${clip.title || "le clip"}`}>
+                        <img src={thumb} alt="" loading="lazy" onError={(event) => { event.currentTarget.src = svgThumb(clip.streamerName || "Clip"); }} />
+                        <span className="livesSidebarClipPlay"><Play size={13} fill="currentColor" /></span>
+                        <span className="livesSidebarClipLikes"><Heart size={10} fill="currentColor" /> {clip.likesCount}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {hasMoreThan4 ? <button type="button" className="livesSidebarAllClips" onClick={() => setOpenMonthList(true)}>Voir tous les clips <ArrowRight size={13} /></button> : null}
+            </section>
+          </aside>
+
+          <section className="livesMain">
 
           {loading && lives.length === 0 ? (
             <div className="lvx-live-grid" aria-hidden>
@@ -1169,69 +1158,18 @@ export default function LivesPage() {
               <Link to="/browse">Explorer les streamers <ArrowRight size={15} /></Link>
             </div>
           ) : (
-            <div className="lvx-live-grid">
-              {featuredLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} featured />)}
-              {normalLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} />)}
-            </div>
+            <>
+              {featuredLives.length > 0 ? (
+                <div className="livesFeaturedBlock">
+                  <div className="sectionTitle"><h2>Mise en avant</h2><span className="sectionHint">Premium</span></div>
+                  <div className="lvx-live-grid">{featuredLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} featured />)}</div>
+                </div>
+              ) : null}
+              <div className="lvx-live-grid">{normalLives.map((live) => <DesktopLiveCard key={live.id} live={live as any} />)}</div>
+            </>
           )}
-        </section>
-
-        <section className="lvx-section lvx-clips-section">
-          <div className="lvx-section-head">
-            <div>
-              <span className="lvx-section-kicker">Les moments forts</span>
-              <h2>Clips du mois</h2>
-              <p>Les séquences préférées de la communauté, classées par likes.</p>
-            </div>
-            {clipsTotal > 0 ? (
-              <button type="button" className="lvx-section-link" onClick={() => setOpenMonthList(true)}>
-                Voir {clipsTotal === 1 ? "le clip" : `les ${clipsTotal} clips`} <ArrowRight size={15} />
-              </button>
-            ) : null}
-          </div>
-
-          {clipsLoading && clipsTop4.length === 0 ? (
-            <div className="lvx-clips-grid" aria-hidden>{Array.from({ length: 4 }).map((_, index) => <div className="lvx-clip-skeleton" key={index} />)}</div>
-          ) : clipsTop4.length === 0 ? (
-            <div className="lvx-inline-empty"><Clapperboard size={19} /><span>Aucun clip ce mois-ci. Les prochains moments forts apparaîtront ici.</span></div>
-          ) : (
-            <div className="lvx-clips-grid">
-              {clipsTop4.map((clip) => {
-                const thumb = clip.thumbUrl ? absolutize(clip.thumbUrl) || clip.thumbUrl : null;
-                return (
-                  <button key={clip.id} type="button" className="lvx-clip-card" onClick={() => onClickMonthClip(clip)}>
-                    <span className="lvx-clip-media">
-                      {thumb ? <img src={thumb} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
-                      <span className="lvx-clip-play"><Play size={16} fill="currentColor" /></span>
-                      <span className="lvx-clip-likes"><Heart size={12} fill="currentColor" /> {Number(clip.likesCount || 0)}</span>
-                      <span className="lvx-clip-duration">{fmtDuration(clip.durationSec)}</span>
-                    </span>
-                    <span className="lvx-clip-info">
-                      <b>{clip.title || "Moment du live"}</b>
-                      <span>{clip.streamerName || clip.streamerSlug || "Streamer"} · {timeAgo(clip.createdAtMs)}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="lvx-section lvx-daily-section">
-          <div className="lvx-section-head">
-            <div>
-              <span className="lvx-section-kicker">Ton espace</span>
-              <h2>Les rendez-vous du jour</h2>
-              <p>Roue, bonus et quêtes réunis au même endroit.</p>
-            </div>
-            <span className="lvx-calendar"><CalendarDays size={15} /> Aujourd’hui</span>
-          </div>
-          <div className="lvx-tools-grid">
-            <DailyWheelCard />
-            <DailyBonusAccessCard />
-            <QuestsHomeCard />
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
 
       {openMonthList ? (

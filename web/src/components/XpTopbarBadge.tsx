@@ -27,6 +27,8 @@ const CSS = `
   transition: background 160ms ease, border-color 160ms ease, transform 140ms ease;
   position: relative;
   user-select: none;
+  overflow: visible;
+  isolation: isolate;
 }
 .xpb:hover {
   background: rgba(124,92,252,0.16);
@@ -74,7 +76,7 @@ const CSS = `
   color: #dde8ff;
   white-space: nowrap;
   box-shadow: 0 12px 32px rgba(0,0,0,.5);
-  z-index: 1000;
+  z-index: 5000;
   pointer-events: none;
   opacity: 0;
   transform: translateY(-4px);

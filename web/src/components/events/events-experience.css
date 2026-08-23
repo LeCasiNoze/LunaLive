@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+.evRoot {
+  --ev-clean-line: rgba(196,181,253,.14);
+  --ev-clean-line-strong: rgba(167,139,250,.3);
+  --ev-clean-panel: rgba(19,13,31,.86);
+  width: min(1460px, calc(100% - 28px));
+  min-height: calc(100dvh - 72px);
+  margin-inline: auto;
+  padding-top: 18px;
+  color: #f5f1fb;
+  font-family: 'Manrope', sans-serif;
+  font-variant-numeric: tabular-nums;
+  align-content: start;
+}
+.evRoot *, .evRoot :is(button,input,select,textarea) { font-family:'Manrope',sans-serif; }
+.evRoot::before { content:''; position:fixed; inset:0; z-index:-1; pointer-events:none; background:radial-gradient(900px 500px at 15% -10%,rgba(124,92,252,.13),transparent 64%),radial-gradient(760px 480px at 104% 55%,rgba(91,64,168,.08),transparent 68%); }
+.evRoot :is(.evMesh,.evHeroSpotlight,.evGrain) { display:none; }
+
+.evTopBar { padding:12px 14px; border:1px solid var(--ev-clean-line); border-radius:16px; background:rgba(15,10,26,.86); box-shadow:0 12px 34px rgba(0,0,0,.2); backdrop-filter:none; }
+.evTopBarEmoji { display:grid; place-items:center; width:34px; height:34px; border:1px solid rgba(167,139,250,.18); border-radius:10px; background:rgba(157,124,248,.08); font-size:17px; filter:none; }
+.evTopBarTitle { color:#f3eef9; font-size:15px; font-weight:800; letter-spacing:-.025em; }
+.evTopBarDates { color:#8f849e; font-size:9px; opacity:1; }
+.evCdChip,.evSwitchChip { border-radius:10px; font-size:10px; }
+.evCdChip { color:#d6c9f8; border-color:rgba(167,139,250,.18); background:rgba(157,124,248,.07); }
+.evSwitchChip { padding:8px 11px; border-color:var(--ev-clean-line); background:rgba(255,255,255,.025); color:#9f94ae; box-shadow:none; }
+.evSwitchChip.active { border-color:var(--ev-clean-line-strong); background:rgba(157,124,248,.12); box-shadow:none; }
+
+.evRoot :is(.evHero,.evTabPanel,.evCard,.evWheel2Status,.evMarketHero,.evShopItem,.evBossBanner,.evDuoGroup) { border-color:var(--ev-clean-line); background:var(--ev-clean-panel); box-shadow:0 14px 42px rgba(0,0,0,.22); backdrop-filter:none; }
+.evHero { padding:24px 20px; border-radius:19px; }
+.evHeroContent { gap:12px; margin-top:4px; }
+.evTitle { color:#f6f2fc; background:none; -webkit-text-fill-color:initial; filter:none; animation:none; font-size:clamp(1.9rem,5vw,3.2rem); font-weight:800; letter-spacing:-.055em; }
+.evHeroMeta { color:#a69bb7; font-size:11px; }
+.evStateBadge { padding:7px 10px; border-radius:9px; font-size:9px; }
+.evCountdownLabel { color:#8f849e; font-size:9px; }
+.evCountdown { gap:6px; }
+.evCdBox { min-width:54px; padding:9px 6px; border-color:var(--ev-clean-line); border-radius:11px; background:rgba(255,255,255,.035); box-shadow:none; }
+.evCdNum { color:#eee8fa; font-size:1.45rem; font-weight:800; text-shadow:none; }
+.evCdUnit { color:#81758f; font-size:8px; }
+
+.evTabs { gap:6px; padding:5px; border:1px solid var(--ev-clean-line); border-radius:13px; background:rgba(15,10,26,.76); }
+.evTab { min-height:38px; border-radius:9px; color:#93889f; font-size:10px; font-weight:750; }
+.evTab.active { color:#eee9f7; background:rgba(157,124,248,.13); box-shadow:inset 0 0 0 1px rgba(167,139,250,.17); }
+.evTabPanel { padding:16px; border-radius:18px; }
+.evCard { border-radius:16px; }
+.evRoot :is(.evSectionTitle,.evCardTitle,.evWheel2Title,.evMarketHero h3) { color:#f1edf7; font-weight:800; letter-spacing:-.035em; }
+.evRoot :is(.evMuted,.evCardSub,.evHint,.evMarketHero p) { color:#958a9f; }
+.evRoot :is(.evBtn,.evChipBtn,.evClipVoteBtn,.evShopBuyBtn) { border-radius:10px; font-size:10px; font-weight:800; box-shadow:none; }
+.evRoot :is(.evBarFill,.evProgressFill) { background:linear-gradient(90deg,#7c5cfc,#a78bfa); box-shadow:none; }
+.evRoot :is(.evWheel2Status::before,.evBossStageGlow,.evBossPosterOrb,.evBossPosterRing) { animation:none; }
+
+.evLock { overflow:hidden; border:1px solid var(--ev-clean-line); border-radius:20px; background:linear-gradient(145deg,rgba(24,16,40,.94),rgba(10,7,18,.96)); box-shadow:0 24px 70px rgba(0,0,0,.28); }
+.evLockMain { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:24px; align-items:stretch; padding:clamp(22px,4vw,42px); }
+.evLockCopy { align-self:center; }
+.evLockKicker { display:inline-flex; align-items:center; gap:7px; color:#b9a6ea; font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+.evLockCopy h1 { max-width:720px; margin:12px 0 10px; color:#f7f3fd; font-size:clamp(30px,5vw,56px); font-weight:800; line-height:1.02; letter-spacing:-.06em; }
+.evLockCopy > p { max-width:660px; margin:0; color:#a79caf; font-size:13px; line-height:1.65; }
+.evLockGauge { max-width:650px; margin-top:26px; }
+.evLockCount { display:flex; align-items:baseline; gap:7px; color:#8f849e; }
+.evLockCount strong { color:#f5f0fb; font-size:27px; font-weight:800; letter-spacing:-.04em; }
+.evLockCount span { font-size:10px; font-weight:700; }
+.evLockCount b { margin-left:auto; color:#c5b5eb; font-size:11px; }
+.evLockTrack { overflow:hidden; height:9px; margin-top:8px; border:1px solid rgba(255,255,255,.06); border-radius:99px; background:rgba(255,255,255,.055); }
+.evLockFill { height:100%; border-radius:inherit; background:linear-gradient(90deg,#7c5cfc,#a78bfa); transition:width .45s ease; }
+.evLockCTA { display:inline-flex; align-items:center; gap:8px; min-height:43px; margin-top:18px; padding:0 14px; border:1px solid rgba(167,139,250,.28); border-radius:11px; background:rgba(157,124,248,.14); color:#eee8fc; font-size:11px; font-weight:800; cursor:pointer; }
+.evLockCTA svg:last-child { margin-left:2px; }
+.evLockCTA:hover:not(:disabled) { background:rgba(157,124,248,.2); }
+.evLockCTA:disabled { opacity:.5; cursor:not-allowed; }
+.evLockCTA.isShaking { animation:ev-lock-shake .35s ease; }
+@keyframes ev-lock-shake { 25%{transform:translateX(-4px)} 50%{transform:translateX(4px)} 75%{transform:translateX(-2px)} }
+.evLockDone { display:inline-flex; align-items:center; gap:8px; min-height:43px; margin-top:18px; padding:0 13px; border:1px solid rgba(52,211,153,.25); border-radius:11px; background:rgba(52,211,153,.08); color:#a7f3d0; font-size:10px; font-weight:800; }
+.evLockErr { margin-top:9px; color:#fda4af; font-size:10px; font-weight:700; }
+.evLockSide { display:grid; align-content:center; justify-items:center; padding:24px 16px; border:1px solid rgba(167,139,250,.17); border-radius:17px; background:rgba(157,124,248,.065); text-align:center; }
+.evLockSideIcon { display:grid; place-items:center; width:54px; height:54px; margin-bottom:17px; border:1px solid rgba(167,139,250,.22); border-radius:16px; background:rgba(157,124,248,.1); color:#c4b5fd; }
+.evLockSideLabel { display:flex; align-items:center; gap:6px; color:#9d91aa; font-size:9px; font-weight:750; }
+.evLockSide strong { margin-top:6px; color:#f4effa; font-size:42px; font-weight:800; line-height:1; letter-spacing:-.06em; }
+.evLockSide small { margin-top:5px; color:#8c8199; font-size:9px; }
+.evLockLower { display:grid; grid-template-columns:1fr 1fr; border-top:1px solid var(--ev-clean-line); }
+.evLockReqs,.evLockTeaser { padding:20px clamp(20px,3vw,34px); }
+.evLockTeaser { border-left:1px solid var(--ev-clean-line); background:rgba(157,124,248,.035); }
+.evLockReqsTitle,.evLockTeaser > span { display:flex; align-items:center; gap:6px; margin-bottom:10px; color:#a99cc0; font-size:9px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+.evLockReq { display:flex; align-items:center; gap:9px; padding:6px 0; color:#a89eaf; font-size:10px; font-weight:650; }
+.evLockReq .st { display:grid; place-items:center; width:20px; height:20px; border:1px solid rgba(255,255,255,.09); border-radius:7px; color:#756a82; }
+.evLockReq.done { color:#c7edda; }
+.evLockReq.done .st { border-color:rgba(52,211,153,.25); background:rgba(52,211,153,.08); color:#6ee7b7; }
+.evLockReqLogin { margin:0; color:#8f849d; font-size:10px; line-height:1.5; }
+.evLockTeaser h2 { margin:0; color:#eee9f7; font-size:17px; font-weight:800; letter-spacing:-.035em; }
+.evLockTeaser p { margin:7px 0 0; color:#91869e; font-size:10px; line-height:1.55; }
+
+@media (max-width:760px) {
+  .evRoot { width:calc(100% - 20px); padding-top:10px; }
+  .evLockMain { grid-template-columns:1fr; padding:22px 18px; }
+  .evLockSide { grid-template-columns:auto 1fr auto; justify-items:start; gap:10px; padding:13px; text-align:left; }
+  .evLockSideIcon { width:38px; height:38px; margin:0; border-radius:11px; }
+  .evLockSideLabel { display:none; }
+  .evLockSide strong { margin:0; font-size:27px; }
+  .evLockSide small { margin:0; }
+  .evLockLower { grid-template-columns:1fr; }
+  .evLockTeaser { border-top:1px solid var(--ev-clean-line); border-left:0; }
+  .evLockCopy h1 { font-size:34px; }
+  .evCountdown { width:100%; justify-content:center; }
+  .evCdBox { min-width:0; flex:1; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .evRoot * { animation:none!important; transition:none!important; }
+}

@@ -272,6 +272,7 @@ const css = `
   box-shadow: none;
 }
 .dba-btn.is-ghost::before { display: none; }
+.dba-card{font-family:'Manrope',sans-serif;border-radius:17px;border-color:rgba(196,181,253,.12);background:rgba(17,11,28,.86);box-shadow:none;transform:none!important}.dba-card::before{left:16px;right:16px;background:linear-gradient(90deg,rgba(159,131,255,.65),transparent)}.dba-card::after{opacity:.3}.dba-title,.dba-stat-value,.dba-btn{font-family:'Manrope',sans-serif}.dba-title{font-size:15px;letter-spacing:-.25px;background:none;-webkit-text-fill-color:initial;color:#ede7f5;filter:none}.dba-icon{border-radius:11px}.dba-btn{height:42px;border-radius:11px;background:rgba(124,92,252,.14);box-shadow:none}.dba-btn:hover:not(:disabled){transform:none;box-shadow:none;background:rgba(124,92,252,.22)}
 `;
 
 /* ─── helpers ──────────────────────────────────────────────────────── */

@@ -173,6 +173,11 @@ live_viewers AS (
   WHERE vs.ended_at IS NULL
     AND vs.last_heartbeat_at >= (NOW() - ($1::int * INTERVAL '1 second'))
   GROUP BY vs.streamer_id
+),
+follower_counts AS (
+  SELECT streamer_id, COUNT(*)::int AS follows_count
+  FROM streamer_follows
+  GROUP BY streamer_id
 )
 SELECT
   ls.id::text AS id,
@@ -183,9 +188,11 @@ SELECT
   COALESCE(v.viewers, 0)::int AS viewers,
   ls."thumbUrlDb",
   ls."liveStartedAt",
-  ls."avatarUrl"
+  ls."avatarUrl",
+  COALESCE(fc.follows_count, 0)::int AS "followsCount"
 FROM live_streamers ls
 LEFT JOIN live_viewers v ON v.streamer_id = ls.id
+LEFT JOIN follower_counts fc ON fc.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       `,
       [HEARTBEAT_TTL_SECONDS]
@@ -207,6 +214,7 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
           ? (apiThumb || (r.thumbUrlDb ? String(r.thumbUrlDb) : null))
           : (r.thumbUrlDb ? String(r.thumbUrlDb) : apiThumb),
         avatarUrl: r.avatarUrl ? String(r.avatarUrl) : null,
+        followsCount: Number(r.followsCount || 0),
       };
     });
 
@@ -249,9 +257,13 @@ WITH base AS (
   SELECT
     s.id,
     s.slug,
+    s.platform,
     COALESCE(s.display_name, s.slug) AS "displayName",
     s.title,
     s.is_live AS "isLive",
+    s.live_started_at AS "liveStartedAt",
+    s.thumb_url AS "thumbUrlDb",
+    s.offline_bg_path AS "offlineBgPath",
     s.featured,
     s.user_id AS "ownerUserId",
     -- Avatar via endpoint /avatars/u/{id} (gère perso + par défaut comme le header)
@@ -264,12 +276,11 @@ rumble_lives AS (
     s.id AS streamer_id,
     r.is_live,
     r.title AS rumble_title,
-    r.viewers_count AS rumble_viewers
+    r.viewers_count AS rumble_viewers,
+    r.thumbnail_url AS rumble_thumbnail_url
   FROM streamers s
-  LEFT JOIN rumble_accounts ra ON s.id = ra.assigned_to_streamer_id
   LEFT JOIN streamer_rumble_info r ON s.id = r.streamer_id
-  WHERE ra.username IS NOT NULL
-    AND r.is_live = true
+  WHERE r.is_live = true
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
@@ -287,28 +298,75 @@ live_viewers AS (
   WHERE vs.ended_at IS NULL
     AND vs.last_heartbeat_at >= (NOW() - ($1::int * INTERVAL '1 second'))
   GROUP BY vs.streamer_id
+),
+follower_counts AS (
+  SELECT streamer_id, COUNT(*)::int AS follows_count
+  FROM streamer_follows
+  GROUP BY streamer_id
+),
+last_sessions AS (
+  SELECT streamer_id, MAX(COALESCE(ended_at, started_at)) AS last_stream_at
+  FROM live_sessions
+  WHERE ended_at IS NOT NULL
+  GROUP BY streamer_id
+),
+latest_vods AS (
+  SELECT DISTINCT ON (streamer_id)
+    streamer_id,
+    thumbnail_url,
+    COALESCE(ended_at, started_at, created_at) AS last_vod_at
+  FROM rumble_vods
+  ORDER BY streamer_id, ended_at DESC NULLS LAST, id DESC
 )
 SELECT
   b.id::text AS id,
   b.slug,
+  b.platform,
   b."displayName",
   COALESCE(rl.rumble_title, b.title) AS title,
   COALESCE(rl.rumble_viewers, v.viewers, 0)::int AS viewers,
-  COALESCE(b."isLive", rl.is_live) AS "isLive",
+  (b."isLive" OR COALESCE(rl.is_live, FALSE)) AS "isLive",
+  b."liveStartedAt",
+  COALESCE(rl.rumble_thumbnail_url, b."thumbUrlDb", lv.thumbnail_url) AS "thumbUrlDb",
+  b."offlineBgPath",
+  lv.thumbnail_url AS "lastVodThumbUrl",
+  COALESCE(GREATEST(ls.last_stream_at, lv.last_vod_at), ls.last_stream_at, lv.last_vod_at) AS "lastStreamAt",
+  COALESCE(fc.follows_count, 0)::int AS "followsCount",
   b.featured,
   b."ownerUserId",
   b."avatarUrl"
 FROM base b
 LEFT JOIN rumble_lives rl ON b.id = rl.streamer_id
 LEFT JOIN live_viewers v ON v.streamer_id = b.id
+LEFT JOIN follower_counts fc ON fc.streamer_id = b.id
+LEFT JOIN last_sessions ls ON ls.streamer_id = b.id
+LEFT JOIN latest_vods lv ON lv.streamer_id = b.id
 ORDER BY LOWER(b."displayName") ASC
       `,
       [HEARTBEAT_TTL_SECONDS]
     );
 
-    publicCache.set("streamers", { body: rows, ts: Date.now() });
+    const payload = rows.map((row: any) => {
+      const slug = String(row.slug || "").trim();
+      const isLive = row.isLive === true;
+      const offlineBgUrl = row.offlineBgPath
+        ? `/uploads/streamers/${encodeURIComponent(String(row.offlineBgPath))}`
+        : null;
+
+      return {
+        ...row,
+        isLive,
+        thumbUrl: isLive && slug
+          ? `/thumbs/${encodeURIComponent(slug)}.jpg`
+          : (row.thumbUrlDb ? String(row.thumbUrlDb) : null),
+        offlineBgUrl,
+        lastStreamAt: row.lastStreamAt ? String(row.lastStreamAt) : null,
+      };
+    });
+
+    publicCache.set("streamers", { body: payload, ts: Date.now() });
     res.set("Cache-Control", "public, max-age=5");
-    res.json(rows);
+    res.json(payload);
   })
 );
 

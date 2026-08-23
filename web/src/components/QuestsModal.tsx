@@ -1,6 +1,7 @@
 // web/src/components/QuestsModal.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { CheckCircle2, Gem, Gift, Target, X } from "lucide-react";
 import { claimQuest, getQuests, type Quest, type QuestType } from "../lib/api_quests";
 import { fireLevelUpToast } from "./LevelUpToast";
 
@@ -99,6 +100,34 @@ const CSS = `
   .qm-row{flex-direction:column;align-items:stretch}
   .qm-reward{align-self:flex-start}
 }
+
+@keyframes qm-enter{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+.qm-back{background:rgba(4,2,12,.86);backdrop-filter:blur(15px);font-family:'Manrope',sans-serif}
+.qm-shell{width:min(940px,100%);max-height:min(88dvh,820px);border-color:rgba(196,181,253,.2);border-radius:26px;background:linear-gradient(145deg,rgba(20,14,35,.99),rgba(8,6,17,.995));box-shadow:0 40px 110px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.05);color:#f4f0ff;animation:qm-enter .24s cubic-bezier(.22,1,.36,1)}
+.qm-head{padding:20px 24px;border-bottom-color:rgba(196,181,253,.11)}
+.qm-head-main{display:flex;align-items:center;gap:13px}.qm-head-icon{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;color:#d8ccff;background:rgba(124,92,252,.15);border:1px solid rgba(196,181,253,.18)}
+.qm-title{font-size:20px;letter-spacing:-.35px}.qm-sub{color:rgba(220,212,242,.58);font-size:12px}
+.qm-close{width:38px;height:38px;padding:0;display:grid;place-items:center;border-radius:12px;border-color:rgba(196,181,253,.16);background:rgba(255,255,255,.035);color:#e9e2ff}
+.qm-tabs{gap:7px;padding:13px 24px 0;border-bottom-color:rgba(196,181,253,.1)}
+.qm-tab{position:relative;padding:10px 15px 12px;border-radius:10px 10px 0 0;color:rgba(211,202,239,.58);font-size:12px}
+.qm-tab-active{color:#f6f2ff;background:rgba(124,92,252,.12);border-bottom-color:#9f83ff}.qm-tab-badge{background:#8c6cff;color:#fff}
+.qm-body{padding:20px 24px 25px}
+.qm-overview{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:17px}
+.qm-overview-item{padding:12px 14px;border:1px solid rgba(196,181,253,.12);border-radius:14px;background:rgba(255,255,255,.025)}
+.qm-overview-item span{display:block;color:rgba(211,202,239,.52);font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.qm-overview-item strong{display:block;margin-top:4px;color:#f5f1ff;font-size:16px;font-variant-numeric:tabular-nums}
+.qm-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.qm-card{min-height:190px;padding:16px;border-color:rgba(196,181,253,.12);border-radius:17px;background:rgba(255,255,255,.025);gap:12px}
+.qm-card-claimable{border-color:rgba(52,211,153,.34);background:linear-gradient(150deg,rgba(16,185,129,.09),rgba(124,92,252,.05));box-shadow:inset 3px 0 0 rgba(52,211,153,.72)}
+.qm-card-claimed{opacity:.6;background:rgba(255,255,255,.018)}
+.qm-h{font-size:14px;line-height:1.35}.qm-d{color:rgba(211,202,239,.55);font-size:11.5px}.qm-tag{display:block;width:max-content;margin-bottom:8px;padding:3px 7px;font-size:9px;background:rgba(255,255,255,.035)}
+.qm-reward{gap:5px;padding:6px 9px;background:rgba(124,92,252,.14);border:1px solid rgba(196,181,253,.16);font-size:11.5px}
+.qm-bar{height:7px;background:rgba(255,255,255,.06)}.qm-bar-fill{background:linear-gradient(90deg,#7655ee,#b19cff)}
+.qm-meta{color:rgba(211,202,239,.55)}.qm-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto}
+.qm-claim{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 13px;border-radius:11px;background:linear-gradient(135deg,#21b985,#118964);box-shadow:none}
+.qm-empty{padding:60px 20px;color:rgba(211,202,239,.56)}
+@media(max-width:700px){
+  .qm-back{padding:8px;align-items:end}.qm-shell{max-height:96dvh;border-radius:24px 24px 0 0}.qm-head{padding:15px 16px}.qm-tabs{padding:8px 12px 0;overflow-x:auto}.qm-tab{flex:1;white-space:nowrap}.qm-body{padding:14px 13px 20px}.qm-overview{gap:7px}.qm-overview-item{padding:10px}.qm-list{grid-template-columns:1fr}.qm-card{min-height:0}.qm-row{flex-direction:row;align-items:flex-start}
+}
 `;
 
 function ensureCss() {
@@ -189,16 +218,21 @@ export function QuestsModal({ open, onClose, onClaimed }: Props) {
     weekly: quests.filter((q) => q.type === "weekly" && q.claimable).length,
     monthly: quests.filter((q) => q.type === "monthly" && q.claimable).length,
   };
+  const completedCount = quests.filter((q) => q.completed || q.claimedAt).length;
+  const totalClaimable = Object.values(claimableByType).reduce((sum, value) => sum + value, 0);
 
   return createPortal(
     <div className="qm-back" onClick={onClose}>
       <div className="qm-shell" onClick={(e) => e.stopPropagation()}>
         <div className="qm-head">
-          <div>
-            <h2 className="qm-title">🎯 Quêtes</h2>
-            <div className="qm-sub">Gagne des rubis en restant actif sur LunaLive.</div>
+          <div className="qm-head-main">
+            <span className="qm-head-icon"><Target size={20} /></span>
+            <div>
+              <h2 className="qm-title">Centre de quêtes</h2>
+              <div className="qm-sub">Progresse sur LunaLive et récupère tes récompenses.</div>
+            </div>
           </div>
-          <button className="qm-close" onClick={onClose} aria-label="Fermer">×</button>
+          <button className="qm-close" onClick={onClose} aria-label="Fermer"><X size={17} /></button>
         </div>
 
         <div className="qm-tabs">
@@ -217,6 +251,11 @@ export function QuestsModal({ open, onClose, onClaimed }: Props) {
         </div>
 
         <div className="qm-body">
+          <div className="qm-overview" aria-label="Résumé des quêtes">
+            <div className="qm-overview-item"><span>Actives</span><strong>{quests.length}</strong></div>
+            <div className="qm-overview-item"><span>Terminées</span><strong>{completedCount}</strong></div>
+            <div className="qm-overview-item"><span>À récupérer</span><strong>{totalClaimable}</strong></div>
+          </div>
           {err && (
             <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: "rgba(240,78,78,.1)", border: "1px solid rgba(240,78,78,.28)", color: "#fc8181", fontSize: 12.5 }}>
               ⚠️ {err}
@@ -249,9 +288,9 @@ export function QuestsModal({ open, onClose, onClaimed }: Props) {
                         {q.description && <div className="qm-d">{q.description}</div>}
                       </div>
                       {q.rewardRubis > 0 ? (
-                        <div className="qm-reward">+{q.rewardRubis} 💎</div>
+                        <div className="qm-reward"><Gem size={13} />+{q.rewardRubis}</div>
                       ) : q.rewardMeta?.title_code ? (
-                        <div className="qm-reward">🎖 Titre exclusif</div>
+                        <div className="qm-reward"><Gift size={13} />Titre exclusif</div>
                       ) : null}
                     </div>
 
@@ -262,26 +301,23 @@ export function QuestsModal({ open, onClose, onClaimed }: Props) {
                       />
                     </div>
 
-                    <div className="qm-meta">
-                      <span>{fmtMetric(q.metric, q.target, q.progress)}</span>
-                      <span>
+                    <div className="qm-card-foot">
+                      <div className="qm-meta" style={{ flex: 1 }}>
+                        <span>{fmtMetric(q.metric, q.target, q.progress)}</span>
+                        <span>
                         {q.claimedAt
-                          ? "✓ Récupéré"
+                          ? "Récupéré"
                           : q.claimable
                           ? "Prêt à récupérer"
                           : `${pct}%`}
                       </span>
+                      </div>
+                      {q.claimedAt ? <CheckCircle2 size={18} color="#34d399" /> : q.claimable ? (
+                        <button className="qm-claim" onClick={() => handleClaim(q.code)} disabled={claimingCode === q.code}>
+                          <Gift size={14} />{claimingCode === q.code ? "…" : "Récupérer"}
+                        </button>
+                      ) : null}
                     </div>
-
-                    {q.claimable && (
-                      <button
-                        className="qm-claim"
-                        onClick={() => handleClaim(q.code)}
-                        disabled={claimingCode === q.code}
-                      >
-                        {claimingCode === q.code ? "…" : "🎁 Récupérer"}
-                      </button>
-                    )}
                   </div>
                 );
               })}

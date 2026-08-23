@@ -936,6 +936,16 @@ export function DailyBonusAgendaModalMobile({
           box-shadow: 0 0 0 2px rgba(124,77,255,0.10);
         }
 
+        /* Finition mobile: hiérarchie nette, tailles tactiles et violet LunaLive. */
+        .llDBmOverlay{background:rgba(3,2,10,.88);backdrop-filter:blur(14px);font-family:'Manrope',sans-serif}
+        .llDBmSheet{height:min(94dvh,860px);border-color:rgba(196,181,253,.18);background:linear-gradient(155deg,rgba(20,14,35,.995),rgba(8,6,17,.998));box-shadow:0 -28px 90px rgba(0,0,0,.72)}
+        .llDBmGrab{padding:8px 0 2px}.llDBmGrab span{width:38px;height:4px;background:rgba(196,181,253,.25)}
+        .llDBmHeader{padding:11px 15px 12px;border-bottom-color:rgba(196,181,253,.1)}.llDBmTitle{font-weight:800;font-size:17px;letter-spacing:-.35px}.llDBmSub{color:rgba(211,202,239,.52);font-size:10px}.llDBmClose{width:38px;height:38px;padding:0;border-radius:12px;border-color:rgba(196,181,253,.15);background:rgba(255,255,255,.035)}
+        .llDBmTabsWrap{padding:9px 13px 11px;border-bottom-color:rgba(196,181,253,.1);background:rgba(14,9,25,.97)}.llDBmTabs{gap:6px}.llDBmTab{min-height:40px;padding:8px;border-radius:11px;border-color:rgba(196,181,253,.1);background:rgba(255,255,255,.025);color:rgba(222,215,242,.64);font-weight:750;font-size:11px}.llDBmTab.isActive{border-color:rgba(196,181,253,.25);background:rgba(124,92,252,.16);box-shadow:inset 0 -2px 0 #9f83ff;color:#f5f1ff}
+        .llDBmSlide{padding:13px 13px 22px}.llDBmChips{gap:6px}.llDBmChip{padding:6px 8px;border-radius:9px;border-color:rgba(196,181,253,.1);background:rgba(255,255,255,.025);font-weight:700;font-size:10px}
+        .llDBmToday{padding:15px;border-radius:17px;border-color:rgba(196,181,253,.18);background:linear-gradient(135deg,rgba(124,92,252,.16),rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}.llDBmTodayTitle{font-weight:800}.llDBmRewardBig{font-weight:800;font-size:21px}.llDBmCTA{min-height:44px;border-radius:12px;background:linear-gradient(135deg,#7655ee,#4d38b8);font-weight:800;font-size:12px;box-shadow:none}
+        .llDBmWeekGrid{gap:5px}.llDBmWDay{border-radius:11px;padding:8px 2px;border-color:rgba(196,181,253,.1);background:rgba(255,255,255,.022)}.llDBmWDay.isToday{border-color:rgba(159,131,255,.55);background:rgba(124,92,252,.14);box-shadow:inset 0 0 0 1px rgba(196,181,253,.08);animation:none}.llDBmWDayL{font-weight:750;font-size:8px}.llDBmWDayR{font-weight:800;font-size:10px}
+        .llDBmSectionTitle{font-weight:800;color:#f2edff}.llDBmInfoCard{border-radius:15px;border-color:rgba(196,181,253,.11);background:rgba(255,255,255,.025)}
         @media (prefers-reduced-motion: reduce){
           .llDBmSlides{ transition: none !important; }
         }

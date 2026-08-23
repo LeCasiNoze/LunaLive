@@ -13,6 +13,7 @@ import { EventLaunchLock, fetchLaunchLock, type LaunchLockState } from "../compo
 import { LoadingScreen } from "../components/LoadingScreen";
 import { BOSS_WEAPONS, type BossWeapon } from "../components/events/boss3d/weapons";
 import "../components/events/events-theme.css";
+import "../components/events/events-experience.css";
 import {
   getCurrentBoss,
   getCurrentChest,

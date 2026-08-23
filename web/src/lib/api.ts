@@ -42,10 +42,17 @@ export type ApiLive = {
   title: string;
   viewers: number;
   thumbUrl?: string | null;
+  avatarUrl?: string | null;
+  followsCount?: number;
   liveStartedAt?: string | null;
 };
 
-export type ApiStreamer = ApiLive & { isLive: boolean; featured: boolean };
+export type ApiStreamer = ApiLive & {
+  isLive: boolean;
+  featured: boolean;
+  offlineBgUrl?: string | null;
+  lastStreamAt?: string | null;
+};
 
 export type ApiStreamerRequest = {
   id: number;

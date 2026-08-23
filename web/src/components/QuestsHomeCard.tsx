@@ -240,6 +240,7 @@ const css = `
   font-size: 12px;
   line-height: 1.5;
 }
+.qhc-card{font-family:'Manrope',sans-serif;border-radius:17px;border-color:rgba(196,181,253,.12);background:rgba(17,11,28,.86);box-shadow:none;transform:none!important}.qhc-card::before{left:16px;right:16px;background:linear-gradient(90deg,rgba(159,131,255,.65),transparent)}.qhc-card::after{opacity:.3}.qhc-title,.qhc-cta{font-family:'Manrope',sans-serif}.qhc-title{font-size:15px;letter-spacing:-.25px;color:#ede7f5}.qhc-icon{border-radius:11px}.qhc-cta{min-height:42px;border-radius:11px;background:rgba(124,92,252,.14);box-shadow:none}.qhc-cta:hover{transform:none;background:rgba(124,92,252,.22)}
 `;
 
 let stylesInjected = false;

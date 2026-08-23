@@ -791,7 +791,17 @@ const MOBILE_CSS = `
 .lm-page :is(button,input,select) { font-family:'Manrope',sans-serif; }
 .lm-page::before { background:radial-gradient(110vw 52vh at 12% -8%,rgba(124,92,252,.14),transparent 62%),radial-gradient(90vw 50vh at 104% 45%,rgba(91,64,168,.09),transparent 65%); }
 .lm-page::after { display:none; }
-.lm-top { padding:10px 12px 8px; }
+.lm-top { padding:10px 12px 5px; }
+.lm-summary { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; padding:4px 2px 10px; border-bottom:1px solid var(--lm-border); }
+.lm-summary > div:first-child > span { color:#a78bfa; font-size:8px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+.lm-summary h1 { margin:3px 0 0; color:#f5f1fb; font-size:22px; font-weight:800; letter-spacing:-.055em; }
+.lm-summary-stats { display:flex; align-items:center; justify-content:flex-end; gap:6px; flex-wrap:wrap; }
+.lm-summary-stats > span { display:inline-flex; align-items:center; gap:5px; min-height:28px; padding:0 8px; border:1px solid var(--lm-border); border-radius:9px; background:rgba(157,124,248,.045); color:#9d92ae; font-size:8px; font-weight:700; }
+.lm-summary-stats > span i { width:6px; height:6px; border-radius:50%; background:#f43f5e; box-shadow:0 0 0 3px rgba(244,63,94,.12); }
+.lm-rewards-shortcut { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; width:100%; min-height:50px; margin:2px 0 10px; padding:8px 11px; border:1px solid rgba(167,139,250,.2); border-radius:13px; background:rgba(157,124,248,.08); color:#cbbcf1; text-align:left; }
+.lm-rewards-shortcut > span { display:grid; gap:1px; min-width:0; }
+.lm-rewards-shortcut b { color:#eee9f7; font-size:10px; font-weight:800; }
+.lm-rewards-shortcut small { color:#8f849f; font-size:8px; }
 .lm-hero { align-items:flex-end; padding:19px 17px 17px; border-color:var(--lm-border); border-radius:19px; background:linear-gradient(120deg,rgba(38,25,62,.95),rgba(15,10,26,.96) 66%); box-shadow:0 17px 48px rgba(0,0,0,.3); backdrop-filter:none; }
 .lm-hero::before { display:none; }
 .lm-hero::after { top:-88px; right:-45px; left:auto; width:190px; height:190px; border:30px solid rgba(167,139,250,.055); border-radius:50%; background:none; }
@@ -815,19 +825,19 @@ const MOBILE_CSS = `
 .lm-section-title { padding-left:0; color:#f0ebf7; font-family:'Manrope',sans-serif; font-size:15px; font-weight:800; letter-spacing:-.035em; text-transform:none; }
 .lm-section-title::before { display:none; }
 .lm-section-hint { display:grid; place-items:center; min-width:24px; min-height:24px; border-radius:8px; background:rgba(157,124,248,.08); color:#9e90bd; font-size:9px; }
-.lm-grid { grid-template-columns:1fr; gap:11px; }
+.lm-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .lm-card { border-color:var(--lm-border); border-radius:17px; background:rgba(20,14,33,.88); box-shadow:0 13px 38px rgba(0,0,0,.24); backdrop-filter:none; }
 .lm-card::before,.lm-card-divider { display:none; }
 .lm-card-featured { border-color:rgba(251,191,36,.22); background:linear-gradient(145deg,rgba(58,39,42,.56),rgba(20,13,32,.9) 70%); }
 .lm-thumb { height:auto; aspect-ratio:16/9; border-radius:16px 16px 0 0; }
 .lm-thumb-bg { opacity:.88; filter:saturate(.95) brightness(.86); transform:none; }
 .lm-thumb::after { background:linear-gradient(180deg,rgba(0,0,0,.04) 38%,rgba(5,3,9,.7)); }
-.lm-card-body { gap:7px; padding:12px 13px 13px; }
-.lm-card-row { gap:9px; }
-.lm-ava { width:34px; height:34px; border-radius:11px; border-color:rgba(196,181,253,.2); }
-.lm-card-name { color:#f1edf7; font-family:'Manrope',sans-serif; font-size:12px; font-weight:800; letter-spacing:-.025em; }
-.lm-card-viewers { display:inline-flex; align-items:center; gap:5px; color:#a69aad; font-family:'Manrope',sans-serif; font-size:9px; }
-.lm-card-title { min-height:auto; color:#aaa0b7; font-size:10px; line-height:1.45; }
+.lm-card-body { gap:5px; padding:9px 9px 10px; }
+.lm-card-row { gap:6px; }
+.lm-ava { width:27px; height:27px; border-radius:9px; border-color:rgba(196,181,253,.2); }
+.lm-card-name { color:#f1edf7; font-family:'Manrope',sans-serif; font-size:10px; font-weight:800; letter-spacing:-.025em; }
+.lm-card-viewers { display:inline-flex; align-items:center; gap:3px; color:#a69aad; font-family:'Manrope',sans-serif; font-size:7px; }
+.lm-card-title { min-height:23px; color:#aaa0b7; font-size:8px; line-height:1.4; -webkit-line-clamp:2; }
 .lm-card-follow { color:#82778e; font-size:8px; }
 .lm-empty-state { display:grid; justify-items:center; gap:5px; padding:42px 16px; border:1px dashed var(--lm-border); border-radius:17px; background:rgba(19,13,31,.5); color:#a997d2; text-align:center; }
 .lm-empty-state b { margin-top:4px; color:#e6dff1; font-size:12px; }
@@ -858,7 +868,7 @@ const MOBILE_CSS = `
 .lm-prof-name,.lm-login-cta-title,.lm-menu-item { font-family:'Manrope',sans-serif; }
 
 @media (min-width:560px) {
-  .lm-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .lm-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
   .lm-clips-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 `;
@@ -910,10 +920,11 @@ function Ava({ apiBase, live }: { apiBase: string; live: any }) {
 }
 
 /** Fond de thumbnail (image + overlay) */
-function ThumbBg({ url }: { url: string }) {
+function ThumbBg({ url, label }: { url: string; label: string }) {
+  const fallback = svgThumb(label);
   return (
     <>
-      <div className="lm-thumb-bg" style={{ backgroundImage: `url(${url})` }} aria-hidden />
+      <div className="lm-thumb-bg" style={{ backgroundImage: `url(${url}), url(${fallback})` }} aria-hidden />
       <div aria-hidden style={{
         position:"absolute", inset:0,
         background: "linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.14) 55%, rgba(0,0,0,.60)), radial-gradient(600px 280px at 50% 0%, rgba(255,255,255,.06), rgba(0,0,0,0) 60%)",
@@ -938,7 +949,7 @@ function LiveCard({ live, apiBase, featured }: {
       <div className={`lm-card${featured ? " lm-card-featured" : ""}`}>
         {/* Thumbnail */}
         <div className="lm-thumb">
-          <ThumbBg url={live.thumbFinal} />
+          <ThumbBg url={live.thumbFinal} label={name} />
           <div className="lm-thumb-top">
             {featured
               ? <Pill tone="gold" title="Mise en avant"><Sparkles size={11} /> À la une</Pill>
@@ -1239,7 +1250,7 @@ export default function LivesPageMobile(props: Props) {
   ═══════════════════════════════════════ */
   return (
     <main className="lm-page">
-      {/* ── Hero header (fixe, hors viewport scroll-snap) ── */}
+      {/* En-tête historique de la page mobile. */}
       <div className="lm-top">
         <div className="lm-hero">
           <div className="lm-hero-left">
@@ -1251,13 +1262,8 @@ export default function LivesPageMobile(props: Props) {
             </div>
           </div>
           <div className="lm-hero-pills">
-            <Pill tone="live" title="Lives en direct">
-              <span className="lm-ping" aria-hidden />
-              <b>{totals.liveCount}</b> live{totals.liveCount > 1 ? "s" : ""}
-            </Pill>
-            <Pill tone="neutral" title="Viewers total">
-              <Users size={11} /> <b>{fmtViewers(totals.viewersTotal)}</b>
-            </Pill>
+            <Pill tone="live" title="Lives en direct"><span className="lm-ping" aria-hidden /><b>{totals.liveCount}</b> live{totals.liveCount > 1 ? "s" : ""}</Pill>
+            <Pill tone="neutral" title="Viewers total"><Users size={11} /> <b>{fmtViewers(totals.viewersTotal)}</b></Pill>
           </div>
         </div>
         {err && <div className="lm-err" style={{ marginTop: 8 }}>⚠️ {err}</div>}

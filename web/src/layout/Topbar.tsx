@@ -204,7 +204,7 @@ export function Topbar({
           box-shadow: 0 18px 55px rgba(0,0,0,0.38);
           backdrop-filter: blur(16px);
           -webkit-backdrop-filter: blur(16px);
-          overflow: hidden;
+          overflow: visible;
         }
         .llTopbar::before{
           content:"";
@@ -670,6 +670,8 @@ export function Topbar({
                   cursor: "pointer",
                   position: "relative",
                   fontWeight: 700,
+                  overflow: "visible",
+                  isolation: "isolate",
                 }}
               >
                 🎯 {!isMobile && <span style={{ marginLeft: 4 }}>Quêtes</span>}
@@ -690,6 +692,7 @@ export function Topbar({
                       display: "grid",
                       placeItems: "center",
                       boxShadow: "0 2px 6px rgba(16,185,129,.5)",
+                      zIndex: 3,
                     }}
                   >
                     {questsClaimable}

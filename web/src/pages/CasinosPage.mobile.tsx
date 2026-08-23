@@ -34,7 +34,7 @@ function useDebounced<T>(v: T, ms: number) {
 }
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
 .cm-page {
   --cm-text-1: rgba(235,232,255,.96);
@@ -273,6 +273,35 @@ const CSS = `
   border: 1px dashed rgba(124,92,252,.18); border-radius: 14px;
   background: rgba(11,9,22,.40);
 }
+
+/* Passe sobre, cohérente avec les pages publiques. */
+.cm-page { padding-inline:10px; font-family:'Manrope',sans-serif; font-variant-numeric:tabular-nums; }
+.cm-page *,.cm-page :is(button,input,select) { font-family:'Manrope',sans-serif; }
+.cm-content { gap:10px; padding-top:9px; }
+.cm-hero { padding:4px 2px 11px; border:0; border-bottom:1px solid rgba(196,181,253,.14); border-radius:0; background:none; box-shadow:none; }
+.cm-hero::before { display:none; }
+.cm-hero-kicker { display:block; margin-bottom:4px; color:#a78bfa; font-size:8px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+.cm-hero-title { color:#f4effa; background:none; filter:none; font-size:23px; letter-spacing:-.055em; }
+.cm-hero-sub { margin-top:4px; color:#91869e; font-size:9px; }
+.cm-search-row { min-height:43px; padding:0 11px; border-color:rgba(196,181,253,.14); border-radius:12px; background:rgba(19,13,31,.86); box-shadow:0 10px 28px rgba(0,0,0,.18); }
+.cm-search-row:focus-within { border-color:rgba(167,139,250,.4); box-shadow:0 0 0 3px rgba(157,124,248,.08); }
+.cm-search-input { font-size:12px; font-weight:650; }
+.cm-seg { padding:3px; border-color:rgba(196,181,253,.14); border-radius:12px; background:rgba(19,13,31,.86); box-shadow:none; }
+.cm-seg-btn { min-height:35px; border-radius:9px; font-size:8px; font-weight:750; }
+.cm-seg-btn.active { background:rgba(157,124,248,.13); box-shadow:inset 0 0 0 1px rgba(167,139,250,.16); }
+.cm-sec-head { margin-top:10px; }
+.cm-sec-title { color:#f0ebf7; background:none; filter:none; font-size:14px; font-weight:800; letter-spacing:-.035em; }
+.cm-sec-hint { border-radius:8px; background:rgba(157,124,248,.07); color:#9d91aa; font-size:8px; }
+.cm-podium,.cm-list { gap:8px; }
+.cm-podium-card,.cm-card { border-color:rgba(196,181,253,.14); border-radius:14px; background:rgba(19,13,31,.86); box-shadow:0 11px 30px rgba(0,0,0,.2); }
+.cm-podium-card { padding:10px; }
+.cm-card { min-height:64px; padding:9px 10px; }
+.cm-card-logo { width:40px; height:40px; border-radius:11px; }
+.cm-card-name,.cm-podium-name { color:#eee9f6; font-size:11px; font-weight:800; letter-spacing:-.02em; }
+.cm-card-meta,.cm-podium-rating { color:#958a9f; font-size:8px; }
+.cm-pill { border-radius:7px; font-size:7px; }
+.cm-card-arrow { width:26px; height:26px; border-radius:8px; background:rgba(157,124,248,.07); }
+.cm-skel { height:64px; border-radius:14px; }
 `;
 
 let _cssInjected = false;
@@ -449,10 +478,11 @@ export default function CasinosPageMobile() {
     <main className="cm-page">
       <div className="cm-content">
 
-        {/* Hero */}
+        {/* En-tête compact */}
         <div className="cm-hero">
+          <span className="cm-hero-kicker">Avis et transparence</span>
           <h1 className="cm-hero-title">CheckTaSlot</h1>
-          <div className="cm-hero-sub">Compare, vérifie, lis les retours — sans blabla.</div>
+          <div className="cm-hero-sub">Notes LunaLive, avis communauté et alertes réunis.</div>
         </div>
 
         {/* Search */}
@@ -493,7 +523,7 @@ export default function CasinosPageMobile() {
         {!q.trim() && podium.length > 0 ? (
           <>
             <div className="cm-sec-head">
-              <h2 className="cm-sec-title">🏆 Podium LunaLive</h2>
+              <h2 className="cm-sec-title">Podium LunaLive</h2>
               <span className="cm-sec-hint">Top 3</span>
             </div>
             <div className="cm-podium">
@@ -506,7 +536,7 @@ export default function CasinosPageMobile() {
         {!q.trim() && watchlist.length > 0 ? (
           <>
             <div className="cm-sec-head">
-              <h2 className="cm-sec-title">⚠ À surveiller</h2>
+              <h2 className="cm-sec-title">À surveiller</h2>
               <span className="cm-sec-hint">{watchlist.length}</span>
             </div>
             <div className="cm-list">
@@ -517,7 +547,7 @@ export default function CasinosPageMobile() {
 
         {/* All casinos */}
         <div className="cm-sec-head">
-          <h2 className="cm-sec-title">🎰 {q.trim() ? "Résultats" : "Tous les casinos"}</h2>
+          <h2 className="cm-sec-title">{q.trim() ? "Résultats" : "Tous les casinos"}</h2>
           <span className="cm-sec-hint">{sortedAll.length}</span>
         </div>
         {loading && !data ? (

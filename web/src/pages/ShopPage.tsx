@@ -1,6 +1,7 @@
 // web/src/pages/ShopPage.tsx
 // ─── REWORK VISUEL Purple Velvet ─── logique 100% identique à l'original ───
 import * as React from "react";
+import { Coins, CreditCard, Gem, LockKeyhole, Palette, ShoppingBag, Sparkles, TrendingUp, Trophy } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { ChatMessageBubble } from "../components/chat/ChatMessageBubble";
 import type { ChatCosmetics } from "../lib/cosmetics";
@@ -15,6 +16,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import ShopPageMobile from "./ShopPage.mobile";
 import { useLocation } from "react-router-dom";
 import { setSeo } from "../lib/seo";
+import "./ShopPage.v2.css";
 type Kind = "username" | "badge" | "title" | "frame" | "hat";
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 
@@ -33,6 +35,13 @@ const TOP_TABS = [
   { id: "subs",     label: "Abonnements" },
   { id: "rubis",    label: "Rubis" },
 ] as const;
+
+function ShopTabIcon({ id }: { id: (typeof TOP_TABS)[number]["id"] }) {
+  if (id === "skins") return <Palette size={16} />;
+  if (id === "upgrades") return <TrendingUp size={16} />;
+  if (id === "subs") return <CreditCard size={16} />;
+  return <Coins size={16} />;
+}
 
 const SKIN_CATS: Array<{ id: Kind; label: string; emoji: string }> = [
   { id: "username", label: "Pseudo",           emoji: "✨" },
@@ -468,23 +477,27 @@ export function ShopPage({ streamerAppearance = DEFAULT_STREAMER_APPEARANCE }: {
         }
       `}</style>
 
-      <div className="shopHeaderRow">
-        <div style={{ display:"grid", gap:6, minWidth:280 }}>
-          <div className="shopTitle">Shop</div>
-          <div className="muted">Skins de chat, talents, abonnements — preview en direct.</div>
+      <section className="shopHeaderRow shopHero">
+        <div className="shopHeroMain">
+          <span className="shopHeroMark"><ShoppingBag size={24} /></span>
+          <div>
+            <span className="shopEyebrow">Personnalisation et progression</span>
+            <h1 className="shopTitle">Shop</h1>
+            <p>Personnalise ton identité dans le chat, améliore tes talents et gère tes abonnements.</p>
+          </div>
         </div>
         <div className="shopChips">
-          <span className="shopChip" title="Rubis disponibles">💎 <b>{Number(effectiveRubis).toLocaleString("fr-FR")}</b> rubis</span>
-          <span className="shopChip" title="Prestige disponible">🏆 <b>{Number(effectivePrestige).toLocaleString("fr-FR")}</b> prestige</span>
+          <span className="shopChip" title="Rubis disponibles"><Gem size={15} /><span><b>{Number(effectiveRubis).toLocaleString("fr-FR")}</b><small>Rubis</small></span></span>
+          <span className="shopChip" title="Prestige disponible"><Trophy size={15} /><span><b>{Number(effectivePrestige).toLocaleString("fr-FR")}</b><small>Prestige</small></span></span>
         </div>
-      </div>
+      </section>
 
-      {!token ? <div className="muted">Connecte-toi pour accéder au shop.</div> : null}
+      {!token ? <div className="shopLoginNotice"><LockKeyhole size={17} /><span><strong>Connecte-toi pour accéder à ta collection</strong><small>Le catalogue reste visible, les achats et l’aperçu personnel seront ensuite activés.</small></span></div> : null}
       {err ? <div className="hint" style={{ opacity:.95 }}>⚠️ {err}</div> : null}
 
       <div className="shopTabs">
         {TOP_TABS.map(t=>(
-          <button key={t.id} className={topTab===t.id?"btnPrimary":"btnGhost"} onClick={()=>setTopTab(t.id)} disabled={loading||buying||subsBusy}>{t.label}</button>
+          <button key={t.id} className={`shopTab${topTab===t.id?" isActive":""}`} onClick={()=>setTopTab(t.id)} disabled={loading||buying||subsBusy}><ShopTabIcon id={t.id} />{t.label}</button>
         ))}
       </div>
 
@@ -609,6 +622,7 @@ export function ShopPage({ streamerAppearance = DEFAULT_STREAMER_APPEARANCE }: {
             </div>
 
             <div className="shopGrid2">
+              {visible.length === 0 ? <div className="shopEmpty"><span><Sparkles size={22} /></span><strong>{token ? "Aucun article dans cette catégorie" : "Ta collection t’attend"}</strong><small>{token ? "De nouveaux éléments seront ajoutés prochainement." : "Connecte-toi pour charger le catalogue et essayer les éléments directement sur ton profil."}</small></div> : null}
               {visible.map(it=>{
                 const ownedNow=isOwnedItem(it); const isEquipped=(equipped as any)?.[it.kind]===it.code;
                 const pr=Number(it.priceRubis??0); const pp=Number((it as any).pricePrestige??0);

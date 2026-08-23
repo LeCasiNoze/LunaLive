@@ -277,6 +277,7 @@ const css = `
   box-shadow: none;
 }
 .dwc-btn.is-used::before { display: none; }
+.dwc-card{font-family:'Manrope',sans-serif;border-radius:17px;border-color:rgba(196,181,253,.12);background:rgba(17,11,28,.86);box-shadow:none;transform:none!important}.dwc-card::before{left:16px;right:16px;background:linear-gradient(90deg,rgba(159,131,255,.7),transparent)}.dwc-card::after{opacity:.35}.dwc-title,.dwc-balance-value,.dwc-btn{font-family:'Manrope',sans-serif}.dwc-title{font-size:15px;letter-spacing:-.25px;background:none;-webkit-text-fill-color:initial;color:#ede7f5;filter:none}.dwc-icon{border-radius:11px}.dwc-btn{height:42px;border-radius:11px;background:rgba(124,92,252,.14);box-shadow:none}.dwc-btn:hover:not(:disabled){transform:none;box-shadow:none;background:rgba(124,92,252,.22)}
 `;
 
 /* ─── helpers ────────────────────────────────────────────────────────── */

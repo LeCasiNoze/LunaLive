@@ -5,6 +5,7 @@
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { CalendarDays, Check, Gift, Lock, Sparkles, Ticket, X } from "lucide-react";
 import {
   claimDailyBonusToday,
   claimDailyBonusMilestone,
@@ -548,6 +549,21 @@ const CSS = `
 .dba-claim-btn:active:not(:disabled) { transform:translateY(0); filter:brightness(.96); }
 .dba-claim-btn:disabled { opacity:.34; cursor:not-allowed; }
 
+/* Couche finale: agenda plus clair, moins décoratif, davantage orienté action. */
+.dba-backdrop{padding:24px;background:rgba(3,2,10,.87);backdrop-filter:blur(15px);font-family:'Manrope',sans-serif}
+.dba-dialog{width:min(1080px,96vw);height:min(760px,90dvh);grid-template-columns:232px 1fr;border-radius:26px;border-color:rgba(196,181,253,.2);background:linear-gradient(145deg,rgba(20,14,35,.99),rgba(8,6,17,.995));box-shadow:0 42px 120px rgba(0,0,0,.72),inset 0 1px 0 rgba(255,255,255,.05)}
+.dba-sidebar{border-right-color:rgba(196,181,253,.1);background:rgba(255,255,255,.018)}
+.dba-sidebar-head{padding:19px 16px}.dba-sidebar-brand{display:flex;align-items:center;gap:10px}.dba-sidebar-icon{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;color:#d8ccff;background:rgba(124,92,252,.14);border:1px solid rgba(196,181,253,.16)}
+.dba-sidebar-title{font-family:'Manrope',sans-serif;color:#f5f1ff;background:none;filter:none;animation:none;font-size:15px}
+.dba-close-btn{width:36px;height:36px;border-radius:11px}.dba-sidebar-nav{padding:12px 10px}.dba-nav-item{padding:10px 11px;border-radius:11px;border-color:transparent;background:transparent;font-family:'Manrope',sans-serif;font-size:12px}.dba-nav-item:hover{transform:none}.dba-nav-item.active{border-color:rgba(196,181,253,.17);background:rgba(124,92,252,.14);box-shadow:inset 3px 0 0 #9f83ff}
+.dba-sidebar-meta{padding:12px}.dba-meta-card{padding:10px 12px;border-radius:13px;background:rgba(0,0,0,.18)}.dba-meta-row{font-family:'Manrope',sans-serif;font-size:10px}.dba-meta-label{color:rgba(211,202,239,.48)}
+.dba-body{padding:24px 26px 28px}.dba-section-title{font-family:'Manrope',sans-serif;color:#f6f2ff;background:none;filter:none;animation:none;font-size:20px}.dba-section-sub,.dba-prem-pill,.dba-day-label,.dba-day-reward,.dba-day-date,.dba-status-pill,.dba-card-label,.dba-milestone,.dba-milestone-hint,.dba-html,.dba-quest,.dba-claim-btn{font-family:'Manrope',sans-serif}
+.dba-today{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;margin-bottom:18px;padding:18px 20px;border:1px solid rgba(196,181,253,.18);border-radius:18px;background:linear-gradient(130deg,rgba(124,92,252,.17),rgba(124,92,252,.045) 55%,rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.dba-today-copy{display:flex;align-items:center;gap:13px}.dba-today-icon{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;color:#ddd2ff;background:rgba(124,92,252,.16);border:1px solid rgba(196,181,253,.18)}.dba-today-label{color:rgba(211,202,239,.52);font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}.dba-today-value{margin-top:3px;color:#f8f5ff;font-size:19px;font-weight:800;letter-spacing:-.4px}.dba-today-date{margin-top:3px;color:rgba(211,202,239,.5);font-size:11px}
+.dba-today-btn{min-width:170px;height:44px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 17px;border:1px solid rgba(204,190,255,.32);border-radius:12px;background:linear-gradient(135deg,#7655ee,#4d38b8);color:#fff;font:800 12px 'Manrope',sans-serif;cursor:pointer}.dba-today-btn:disabled{opacity:.46;cursor:not-allowed}
+.dba-week-grid{grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}.dba-day-card{min-width:0;padding:12px 10px;border-radius:14px;background:rgba(255,255,255,.022)}.dba-day-card.claimable{border-color:rgba(159,131,255,.5);background:rgba(124,92,252,.13);box-shadow:inset 0 0 0 1px rgba(196,181,253,.08)}.dba-day-label{font-size:10px}.dba-day-reward{margin-top:12px;font-size:14px;white-space:nowrap}.dba-day-date{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dba-status-pill{width:100%;justify-content:center;margin-top:10px;padding:4px 6px;font-size:9px;white-space:nowrap}
+.dba-section-card{margin-top:18px;padding:17px;border-radius:17px;border-color:rgba(196,181,253,.11);background:rgba(255,255,255,.02)}.dba-milestones{display:grid;grid-template-columns:repeat(4,1fr)}.dba-milestone{justify-content:center;border-radius:12px;padding:11px 10px;font-size:11px}.dba-quest{border-radius:12px;background:rgba(255,255,255,.025)}
+
 @media (prefers-reduced-motion:reduce) {
   .dba-day-card.claimable { animation:none; }
   .dba-day-card:hover,.dba-milestone:hover { transform:none !important; }
@@ -583,6 +599,7 @@ function DailyBonusAgendaModalDesktop({
   const milestones   = Array.isArray(state?.milestones) ? state.milestones : [];
   const premiumActive = Boolean(state?.premiumActive ?? state?.premium?.active ?? false);
   const premiumLabel  = String(state?.premium?.label ?? "").trim() || "Abonnement actif";
+  const todayEntry = week.find(d => d.status === "today_claimable" || d.status === "today_claimed") ?? null;
 
   /* ── Content tabs ── */
   const [contentList, setContentList] = React.useState<ApiPublicContentTab[]>([]);
@@ -787,17 +804,17 @@ function DailyBonusAgendaModalDesktop({
         {/* ── Sidebar ── */}
         <aside className="dba-sidebar">
           <div className="dba-sidebar-head">
-            <span className="dba-sidebar-title">Daily Bonus</span>
-            <button className="dba-close-btn" type="button" aria-label="Fermer" onClick={onClose}>✕</button>
+            <div className="dba-sidebar-brand"><span className="dba-sidebar-icon"><Sparkles size={17} /></span><span className="dba-sidebar-title">Daily Bonus</span></div>
+            <button className="dba-close-btn" type="button" aria-label="Fermer" onClick={onClose}><X size={16} /></button>
           </div>
 
           <nav className="dba-sidebar-nav">
             <button type="button" className={`dba-nav-item${tab === "agenda" ? " active" : ""}`} onClick={() => setTab("agenda")}>
-              📅 Bonus quotidien
+              <CalendarDays size={15} /> Bonus quotidien
             </button>
             {showWelcomeTab ? (
               <button type="button" className={`dba-nav-item${tab === "welcome" ? " active" : ""}`} onClick={() => setTab("welcome")}>
-                🎯 Bienvenue
+                 <Gift size={15} /> Bienvenue
               </button>
             ) : null}
             {contentTabs.map(t => {
@@ -814,7 +831,7 @@ function DailyBonusAgendaModalDesktop({
               );
             })}
             <button type="button" className="dba-nav-item disabled" disabled>
-              🎉 Événements
+              <Lock size={15} /> Événements
             </button>
           </nav>
 
@@ -850,6 +867,22 @@ function DailyBonusAgendaModalDesktop({
                   </div>
                 ) : null}
               </div>
+
+              {todayEntry ? (
+                <div className="dba-today">
+                  <div className="dba-today-copy">
+                    <span className="dba-today-icon">{todayEntry.status === "today_claimed" ? <Check size={20} /> : <Gift size={20} />}</span>
+                    <div>
+                      <div className="dba-today-label">Récompense du jour</div>
+                      <div className="dba-today-value">{rewardLabel(todayEntry.reward)}{premiumActive ? " ×2" : ""}</div>
+                      <div className="dba-today-date">{todayEntry.label} · {todayEntry.date}</div>
+                    </div>
+                  </div>
+                  <button className="dba-today-btn" type="button" onClick={claimToday} disabled={todayEntry.status !== "today_claimable" || !!busy}>
+                    {todayEntry.status === "today_claimed" ? <><Check size={16} /> Déjà récupéré</> : busy === "today" ? "Récupération…" : <><Ticket size={16} /> Récupérer</>}
+                  </button>
+                </div>
+              ) : null}
 
               <div className="dba-week-grid">
                 {week.map((d) => {

@@ -1,12 +1,14 @@
 // web/src/pages/CasinosPage.tsx
 // ─── REWORK VISUEL Purple Velvet ─── logique 100% identique à l'original ───
 import * as React from "react";
+import { BadgeCheck, Handshake, RefreshCw, Scale, Search, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { listCasinos, type CasinoListItem, type CasinoListResp } from "../lib/api_casinos";
 import { PartnerPlansModal } from "../components/PartnerPlansModal";
 import { setSeo } from "../lib/seo";
 import { useIsMobile } from "../hooks/useIsMobile";
 import CasinosPageMobile from "./CasinosPage.mobile";
+import "./CasinosPage.v2.css";
 
 /* ─────────────────────────────────────────────
    Utils (identiques à l'original)
@@ -138,9 +140,10 @@ function Pill({
   );
 }
 
-function GlassCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function GlassCard({ children, style, className }: { children: React.ReactNode; style?: React.CSSProperties; className?: string }) {
   return (
     <div
+      className={className}
       style={{
         borderRadius: 22,
         border: "1px solid rgba(124,92,252,.14)",
@@ -275,9 +278,11 @@ function CasinoCard({ c }: { c: CasinoListItem }) {
   return (
     <Link
       to={`/casinos/${encodeURIComponent(c.slug)}`}
+      className="cts-casino-link"
       style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
     >
       <div
+        className="cts-casino-card"
         style={{
           height: "100%",
           padding: 14,
@@ -423,9 +428,11 @@ function PodiumCard({ rank, c }: { rank: 1 | 2 | 3; c: CasinoListItem }) {
   return (
     <Link
       to={`/casinos/${encodeURIComponent(c.slug)}`}
+      className={`cts-podium-link rank-${rank}`}
       style={{ textDecoration: "none", color: "inherit", display: "block", height: "100%" }}
     >
       <div
+        className="cts-podium-card"
         style={{
           height: "100%",
           padding: 16,
@@ -735,27 +742,30 @@ function CasinosPageDesktop() {
 
       <div className="checktaslotWrap">
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "baseline" }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <h1 className="checktaslotTitle" style={{ fontSize: 34, lineHeight: 1.05, margin: 0 }}>
-              <span className="w1">Check</span>
-              <span className="w2">Ta</span>
-              <span className="w3">Slot</span>
-            </h1>
-            <div className="mutedSmall" style={{ maxWidth: 760 }}>
-              Compare, check, et lis les retours — sans blabla. ✨
+        <section className="cts-page-head cts-hero">
+          <div className="cts-hero-main">
+            <span className="cts-hero-mark"><ShieldCheck size={25} /></span>
+            <div className="cts-page-copy">
+              <span className="cts-kicker">Le comparateur communautaire</span>
+              <h1 className="checktaslotTitle"><span>CheckTaSlot</span></h1>
+              <p>Des fiches lisibles, une note éditoriale indépendante et l’expérience réelle de la communauté.</p>
+              <div className="cts-trust">
+                <span><BadgeCheck size={14} /> Notes séparées</span>
+                <span><Users size={14} /> {data?.casinos?.length ?? 0} casinos analysés</span>
+              </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <Pill tone="neutral">🧾 Avis</Pill>
-            <Pill tone="neutral">🔗 Soutiens</Pill>
-            <Pill tone="neutral">🛡️ Transparence</Pill>
-          </div>
-        </div>
+          <aside className="cts-method" aria-label="Méthode CheckTaSlot">
+            <div><Scale size={17} /><span><strong>Deux scores</strong><small>LunaLive et communauté</small></span></div>
+            <div><Sparkles size={17} /><span><strong>Retours concrets</strong><small>Avis, retraits et captures</small></span></div>
+            <div><ShieldCheck size={17} /><span><strong>Transparence</strong><small>Alertes visibles sans détour</small></span></div>
+          </aside>
+        </section>
 
         {/* Partner strip */}
         <div style={{ marginTop: 12 }}>
           <GlassCard
+            className="cts-partner"
             style={{
               padding: 12,
               borderRadius: 18,
@@ -769,7 +779,7 @@ function CasinosPageDesktop() {
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               <div style={{ display: "grid", gap: 3, minWidth: 260 }}>
                 <div style={{ fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 700 }}>
-                  🤝 <span style={{ opacity: 0.92 }}>Vous êtes un casino sérieux ?</span>{" "}
+                  <Handshake size={16} /> <span style={{ opacity: 0.92 }}>Vous êtes un casino sérieux ?</span>{" "}
                   <span className="mutedSmall">Apparaissez ici.</span>
                 </div>
                 <div className="mutedSmall" style={{ opacity: 0.95 }}>
@@ -790,10 +800,10 @@ function CasinosPageDesktop() {
 
         {/* Toolbar */}
         <div style={{ marginTop: 12 }}>
-          <GlassCard style={{ padding: 14 }}>
+          <GlassCard className="cts-toolbar" style={{ padding: 14 }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div className="cts-search-wrap">
-                <span style={{ opacity: 0.7 }}>🔎</span>
+                <Search size={17} aria-hidden />
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -813,7 +823,7 @@ function CasinosPageDesktop() {
               </select>
 
               <button className="cts-btn-primary" type="button" onClick={() => load()} disabled={loading}>
-                {loading ? "Chargement…" : "Rechercher"}
+                <RefreshCw size={15} className={loading ? "is-spinning" : ""} /> {loading ? "Chargement…" : "Actualiser"}
               </button>
             </div>
           </GlassCard>
@@ -826,7 +836,7 @@ function CasinosPageDesktop() {
           <>
             {/* PODIUM */}
             {podium?.length > 0 && (
-              <section style={{ marginTop: 16 }}>
+              <section className="cts-section cts-podium-section" style={{ marginTop: 16 }}>
                 <div style={{ display: "grid", gap: 4 }}>
                   <h2 className="checktaslotH2">Podium</h2>
                   <div className="mutedSmall">Basé sur la note LunaLive.</div>
@@ -849,7 +859,7 @@ function CasinosPageDesktop() {
 
             {/* WATCHLIST */}
             {data.watchlist?.length > 0 && (
-              <section style={{ marginTop: 18 }}>
+              <section className="cts-section cts-watch-section" style={{ marginTop: 18 }}>
                 <div style={{ display: "grid", gap: 4 }}>
                   <h2 className="checktaslotH2">Transparence</h2>
                   <div className="mutedSmall">À éviter / Sous surveillance (liste publique).</div>
@@ -900,10 +910,10 @@ function CasinosPageDesktop() {
             )}
 
             {/* LISTE */}
-            <section style={{ marginTop: 18 }}>
+            <section className="cts-section cts-all-section" style={{ marginTop: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
                 <div style={{ display: "grid", gap: 4 }}>
-                  <h2 className="checktaslotH2">Tout les Casinos</h2>
+                  <h2 className="checktaslotH2">Tous les casinos</h2>
                 </div>
               </div>
 

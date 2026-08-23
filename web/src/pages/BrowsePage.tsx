@@ -20,6 +20,8 @@ type UiStreamer = {
   isLive: boolean;
   avatarUrl?: string | null;
   previewUrl?: string | null;
+  offlineBgUrl?: string | null;
+  lastStreamAt?: string | null;
   viewers?: number;
   followsCount?: number;
 };
@@ -34,6 +36,10 @@ type StreamerApiRecord = {
   thumb_url?: string | null;
   previewUrl?: string | null;
   preview_url?: string | null;
+  offlineBgUrl?: string | null;
+  offline_bg_url?: string | null;
+  lastStreamAt?: string | null;
+  last_stream_at?: string | null;
   avatarUrl?: string | null;
   avatar_url?: string | null;
   viewers?: number;
@@ -61,6 +67,18 @@ function withMinuteBust(url: string, nowMs: number) {
 function formatCount(value: number | null | undefined) {
   const count = Math.max(0, Number(value) || 0);
   return new Intl.NumberFormat("fr-FR", { notation: count >= 1_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(count);
+}
+
+function formatLastStream(value: string | null | undefined, isLive: boolean) {
+  if (isLive) return "En direct maintenant";
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+  if (!Number.isFinite(timestamp)) return "Aucun live récent";
+  const minutes = Math.max(1, Math.floor((Date.now() - timestamp) / 60_000));
+  if (minutes < 60) return `Dernier stream il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Dernier stream il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `Dernier stream il y a ${days} jour${days > 1 ? "s" : ""}`;
 }
 
 function initialsOf(name: string) {
@@ -115,6 +133,8 @@ export default function BrowsePage() {
           isLive: Boolean(streamer.isLive),
           avatarUrl: streamer.avatarUrl ?? streamer.avatar_url ?? null,
           previewUrl: preview ? withMinuteBust(preview, nowMs) : null,
+          offlineBgUrl: absolutize(streamer.offlineBgUrl ?? streamer.offline_bg_url ?? null),
+          lastStreamAt: streamer.lastStreamAt ?? streamer.last_stream_at ?? null,
           viewers: Number(streamer.viewers || 0),
           followsCount: Number(streamer.followsCount ?? streamer.follows_count ?? streamer.followersCount ?? 0),
         };
@@ -149,18 +169,6 @@ export default function BrowsePage() {
   return (
     <main className="container bp-page">
       <div className="bp-shell">
-        <header className="bp-hero">
-          <div className="bp-hero-copy">
-            <span className="bp-eyebrow"><Radio size={14} /> Communauté LunaLive</span>
-            <h1>Explore les chaînes</h1>
-            <p>Trouve un direct, découvre une nouvelle personnalité ou retrouve ton streamer favori.</p>
-          </div>
-          <div className="bp-stats" aria-label="Statistiques des chaînes">
-            <div className="bp-stat is-live"><span className="bp-stat-icon"><Radio size={17} /></span><span><b>{stats.live}</b> en direct</span></div>
-            <div className="bp-stat"><span className="bp-stat-icon"><Users size={17} /></span><span><b>{stats.total}</b> chaînes</span></div>
-          </div>
-        </header>
-
         <section className="bp-controls" aria-label="Rechercher et filtrer les streamers">
           <div className="bp-search">
             <Search size={18} aria-hidden />
@@ -193,8 +201,13 @@ export default function BrowsePage() {
 
         <div className="bp-results-head">
           <div>
-            <h2>{filter === "live" ? "En direct maintenant" : filter === "offline" ? "Chaînes hors ligne" : "Toutes les chaînes"}</h2>
+            <span className="bp-results-kicker">Communauté LunaLive</span>
+            <h1>{filter === "live" ? "En direct maintenant" : filter === "offline" ? "Chaînes hors ligne" : "Toutes les chaînes"}</h1>
             <p>{loading ? "Mise à jour des chaînes..." : `${filtered.length} résultat${filtered.length > 1 ? "s" : ""}${q ? ` pour « ${q} »` : ""}`}</p>
+          </div>
+          <div className="bp-inline-stats" aria-label="Statistiques des chaînes">
+            <span><i className="is-live" /> <b>{stats.live}</b> en direct</span>
+            <span><Users size={14} /> <b>{stats.total}</b> chaînes</span>
           </div>
         </div>
 
@@ -210,14 +223,12 @@ export default function BrowsePage() {
 
           {!loading && !err ? filtered.map((streamer, index) => {
             const title = String(streamer.title || (streamer.isLive ? "Live en cours" : "Retrouve bientôt cette chaîne en direct."));
+            const mediaUrl = streamer.isLive ? streamer.previewUrl : (streamer.offlineBgUrl || streamer.previewUrl);
             return (
               <Link key={streamer.id} to={`/s/${streamer.slug}`} className={`bp-card${streamer.isLive ? " is-live" : ""}`} style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}>
                 <div className="bp-card-media">
-                  {streamer.isLive && streamer.previewUrl ? (
-                    <img src={streamer.previewUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} />
-                  ) : (
-                    <div className="bp-card-placeholder" aria-hidden><Radio size={25} /></div>
-                  )}
+                  <div className="bp-card-placeholder" aria-hidden><Radio size={25} /></div>
+                  {mediaUrl ? <img src={mediaUrl} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}
                   <div className="bp-card-shade" />
                   <div className="bp-card-status">
                     {streamer.isLive ? <span className="bp-live-label"><i /> En direct</span> : <span className="bp-offline-label">Hors ligne</span>}
@@ -229,7 +240,10 @@ export default function BrowsePage() {
                   <StreamerAvatar streamer={streamer} />
                   <div className="bp-card-copy">
                     <div className="bp-card-name">{streamer.displayName}</div>
-                    <div className="bp-card-handle">@{streamer.slug}</div>
+                    <div className="bp-card-meta">
+                      <span>{formatLastStream(streamer.lastStreamAt, streamer.isLive)}</span>
+                      <span>{formatCount(streamer.followsCount)} follow</span>
+                    </div>
                     <div className="bp-card-title">{title}</div>
                   </div>
                   <span className="bp-card-arrow" aria-hidden><ArrowRight size={17} /></span>

@@ -1,6 +1,7 @@
 // web/src/components/DailyWheelModal.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { Gem, RotateCw, Sparkles, Trophy, X } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { spinWheel, type ApiWheelMe, type ApiWheelSpinResult } from "../lib/api";
 
@@ -54,6 +55,15 @@ function segColor(amount: number): SegColor {
     stroke: "rgba(70,100,210,0.62)",
     label:  "rgba(170,195,255,0.92)",
   };
+}
+
+function shuffleSegments(items: ApiWheelMe["segments"]): ApiWheelMe["segments"] {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+  }
+  return copy;
 }
 
 /* ─── Audio Web Audio API ────────────────────────────────────────── */
@@ -323,6 +333,51 @@ const CSS = `
 }
 .dwm-btn-spin:active:not(:disabled){transform:translateY(0);filter:brightness(.95);}
 .dwm-btn-spin:disabled{opacity:.40;cursor:not-allowed;}
+
+/* Direction finale: lisible, dense et cohérente avec LunaLive. */
+.dwm-backdrop{padding:24px;background:rgba(3,2,10,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.dwm-dialog{width:min(830px,100%);border-radius:26px;border-color:rgba(172,145,255,.25);background:linear-gradient(145deg,rgba(20,14,35,.985),rgba(8,6,17,.99));font-family:'Manrope',sans-serif;overflow:visible}
+.dwm-dialog::after{top:-90px;left:12%;width:70%;height:220px;background:radial-gradient(ellipse,rgba(124,92,252,.18),transparent 68%)}
+.dwm-header{padding:19px 22px;border-bottom-color:rgba(196,181,253,.12)}
+.dwm-title-wrap{display:flex;align-items:center;gap:11px;min-width:0}
+.dwm-title-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#c4b5fd;background:rgba(124,92,252,.15);border:1px solid rgba(196,181,253,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.dwm-title{font-family:'Manrope',sans-serif;font-size:17px;letter-spacing:-.25px;color:#f5f1ff;background:none;-webkit-text-fill-color:initial;filter:none;animation:none}
+.dwm-kicker{margin-top:3px;color:rgba(211,202,239,.55);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dwm-close{width:38px;height:38px;border-radius:12px}
+.dwm-body{display:grid;grid-template-columns:minmax(330px,1.08fr) minmax(250px,.92fr);align-items:center;gap:32px;padding:26px 30px 30px}
+.dwm-stage-column{display:grid;place-items:center;min-width:0}
+.dwm-stage{width:min(350px,76vw)}
+.dwm-wheel-ring{inset:-7px;border:1px solid rgba(196,181,253,.34);box-shadow:0 0 0 5px rgba(124,92,252,.06),0 28px 70px rgba(0,0,0,.55)}
+.dwm-wheel-svg{box-shadow:0 24px 60px rgba(0,0,0,.58)}
+.dwm-pointer{top:-10px}
+.dwm-pointer-tri{border-left-width:12px;border-right-width:12px;border-top-width:20px;border-top-color:#f4f0ff}
+.dwm-hub{width:84px;height:84px;background:linear-gradient(145deg,#171126,#090612);border-color:rgba(196,181,253,.42)}
+.dwm-hub-top,.dwm-hub-sub{font-family:'Manrope',sans-serif}
+.dwm-hub-top{font-size:15px}.dwm-hub-sub{font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+.dwm-info{align-self:stretch;display:flex;flex-direction:column;justify-content:center;min-width:0;padding:22px;border:1px solid rgba(196,181,253,.14);border-radius:20px;background:linear-gradient(155deg,rgba(124,92,252,.11),rgba(255,255,255,.025) 46%,rgba(0,0,0,.14));box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+.dwm-info-icon{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:#d9ceff;background:rgba(124,92,252,.15);border:1px solid rgba(196,181,253,.18)}
+.dwm-info-title{margin-top:18px;color:#f7f4ff;font-size:22px;font-weight:800;letter-spacing:-.55px;line-height:1.12}
+.dwm-info-copy{margin-top:8px;color:rgba(220,212,242,.64);font-size:13px;font-weight:550;line-height:1.55}
+.dwm-reward{align-items:flex-start;margin-top:18px;padding:15px 16px;border:1px solid rgba(251,191,36,.24);border-radius:15px;background:rgba(251,191,36,.07)}
+.dwm-reward-amount{font-family:'Manrope',sans-serif;font-size:30px;letter-spacing:-.7px}
+.dwm-reward-label,.dwm-hint{font-family:'Manrope',sans-serif}
+.dwm-reward-label{color:rgba(253,230,138,.64)}
+.dwm-hint{text-align:left;margin-top:14px;min-height:18px}
+.dwm-footer{margin-top:22px;display:grid;grid-template-columns:.72fr 1.28fr}
+.dwm-btn-ghost,.dwm-btn-spin{height:46px;border-radius:13px;font-family:'Manrope',sans-serif}
+.dwm-btn-spin{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#7655ee,#4c37b7);border-color:rgba(204,190,255,.38)}
+.dwm-mini-rule{display:flex;align-items:center;gap:8px;margin-top:14px;color:rgba(206,197,232,.48);font-size:11px;font-weight:650}
+@media(max-width:720px){
+  .dwm-backdrop{padding:10px;align-items:end}
+  .dwm-dialog{width:100%;max-height:96dvh;border-radius:24px 24px 0 0;overflow:auto}
+  .dwm-header{position:sticky;top:0;z-index:30;padding:15px 16px;background:rgba(16,11,29,.96);backdrop-filter:blur(12px)}
+  .dwm-body{display:flex;padding:18px 16px 22px;gap:18px}
+  .dwm-stage{width:min(300px,78vw)}
+  .dwm-info{width:100%;padding:17px}
+  .dwm-info-icon{display:none}.dwm-info-title{margin-top:0;font-size:18px}.dwm-info-copy{font-size:12px}
+  .dwm-footer{margin-top:16px}.dwm-btn-ghost,.dwm-btn-spin{height:44px}
+}
+@media(prefers-reduced-motion:reduce){.dwm-pointer,.dwm-title{animation:none}.dwm-dialog{animation:none}}
 `;
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -346,7 +401,9 @@ export function DailyWheelModal({
   const auth  = useAuth() as any;
   const token = auth?.token ?? null;
 
-  const segs     = (segments?.length ? segments : FALLBACK_SEGMENTS) as ApiWheelMe["segments"];
+  const sourceSegments = (segments?.length ? segments : FALLBACK_SEGMENTS) as ApiWheelMe["segments"];
+  const [visualSegments, setVisualSegments] = React.useState<ApiWheelMe["segments"]>(() => shuffleSegments(sourceSegments));
+  const segs     = visualSegments.length ? visualSegments : sourceSegments;
   const n        = Math.max(1, segs.length);
   const sliceRad = (2 * Math.PI) / n;
   const sliceDeg = 360 / n;
@@ -377,8 +434,9 @@ export function DailyWheelModal({
     setPhase("idle"); setMsg(null); setResult(null); setBurst(false);
     setRotDeg(0); rotRef.current = 0;
     setSpinFrom("0deg"); setSpinTo("0deg");
+    setVisualSegments(shuffleSegments(sourceSegments));
     return () => { document.body.style.overflow = prev; };
-  }, [open]);
+  }, [open, segments]);
 
   /* ── Particules canvas ── */
   const burstRef    = React.useRef(false);
@@ -440,7 +498,17 @@ export function DailyWheelModal({
         try { window.dispatchEvent(new CustomEvent("rubis:update", {detail:{rubis:newRubis,source:"wheel"}})); } catch {}
       }
 
-      const idx    = Number((r as any).segmentIndex ?? 0);
+      const rawReward = (r as any)?.reward;
+      const rewardAmount = rawReward && typeof rawReward === "object"
+        ? Number(rawReward.raw ?? rawReward.amount ?? rawReward.value ?? 0)
+        : Number(rawReward ?? 0);
+      const matchingIndexes = segs
+        .map((segment, index) => Number(segment.amount) === rewardAmount ? index : -1)
+        .filter(index => index >= 0);
+      const serverIndex = Number((r as any).segmentIndex ?? 0);
+      const idx = matchingIndexes.length
+        ? matchingIndexes[Math.floor(Math.random() * matchingIndexes.length)]!
+        : ((serverIndex % n) + n) % n;
       const spins  = 7 + Math.floor(Math.random() * 3);
       const cAngle = (idx + 0.5) * sliceDeg;
       const addDeg = spins * 360 + (360 - cAngle);
@@ -448,9 +516,6 @@ export function DailyWheelModal({
       const to     = from + addDeg;
 
       const DURATION   = 4400;
-      const totalTicks = Math.max(14, spins * n);
-      const intervalMs = Math.max(18, Math.floor(DURATION / totalTicks));
-
       /* ✅ injecter les CSS vars AVANT de passer spinning */
       setSpinFrom(`${from}deg`);
       setSpinTo(`${to}deg`);
@@ -459,11 +524,20 @@ export function DailyWheelModal({
       await new Promise(res => requestAnimationFrame(() => res(null)));
       setPhase("spinning");
 
-      let c = 0;
-      const tid = window.setInterval(() => { c++; tick(); if (c >= totalTicks) window.clearInterval(tid); }, intervalMs);
+      const startedAt = performance.now();
+      let tickTimer = 0;
+      const scheduleTick = () => {
+        const progress = Math.min(1, (performance.now() - startedAt) / DURATION);
+        tick();
+        if (progress < .97) {
+          const delay = 24 + Math.pow(progress, 2.6) * 210;
+          tickTimer = window.setTimeout(scheduleTick, delay);
+        }
+      };
+      scheduleTick();
 
       window.setTimeout(async () => {
-        window.clearInterval(tid); ding();
+        window.clearTimeout(tickTimer); ding();
         setRotDeg(to % 360); setPhase("done"); setBurst(true);
         try { await onAfterSpin?.(); } catch {}
       }, DURATION + 40);
@@ -499,15 +573,17 @@ export function DailyWheelModal({
 
         {/* Header */}
         <div className="dwm-header">
-          <span className="dwm-title">🎡 Daily Wheel</span>
-          <button className="dwm-close" type="button" aria-label="Fermer" onClick={onClose} disabled={phase === "spinning"}>✕</button>
+          <div className="dwm-title-wrap">
+            <span className="dwm-title-icon"><Sparkles size={18} /></span>
+            <div><div className="dwm-title">Daily Wheel</div><div className="dwm-kicker">Une chance chaque jour</div></div>
+          </div>
+          <button className="dwm-close" type="button" aria-label="Fermer" onClick={onClose} disabled={phase === "spinning"}><X size={17} /></button>
         </div>
 
         {/* Body */}
         <div className="dwm-body">
 
-          {/* Stage */}
-          <div className="dwm-stage">
+          <div className="dwm-stage-column"><div className="dwm-stage">
             <div className={`dwm-wheel-glow${phase === "spinning" ? " is-spinning" : ""}`} />
             <div className={`dwm-wheel-ring${phase === "spinning" ? " is-spinning" : ""}`} />
 
@@ -551,7 +627,6 @@ export function DailyWheelModal({
                   const midA  = a0 + sliceRad / 2;
                   const lr    = 160 * 0.63;
                   const lx = 170 + lr * Math.cos(midA), ly = 170 + lr * Math.sin(midA);
-                  const tRot = (midA * 180) / Math.PI + 90;
 
                   return (
                     <g key={i}>
@@ -565,10 +640,9 @@ export function DailyWheelModal({
                       <text
                         x={lx} y={ly}
                         textAnchor="middle" dominantBaseline="middle"
-                        transform={`rotate(${tRot},${lx},${ly})`}
                         fill={col.label}
                         fontSize={n > 9 ? "11" : "13"}
-                        fontFamily="'Syne',system-ui,sans-serif"
+                        fontFamily="'Manrope',system-ui,sans-serif"
                         fontWeight="800"
                       >
                         {seg.label}
@@ -594,24 +668,25 @@ export function DailyWheelModal({
 
             {/* Canvas particules */}
             <canvas ref={canvasRef} className="dwm-particles" />
-          </div>
+          </div></div>
 
-          {/* Reward */}
-          {phase === "done" && result && (
-            <div className="dwm-reward">
-              <div className="dwm-reward-amount">+{rewardV.toLocaleString("fr-FR")} 💎</div>
-              <div className="dwm-reward-label">rubis gagnés</div>
+          <aside className="dwm-info">
+            <span className="dwm-info-icon">{phase === "done" ? <Trophy size={20} /> : <Gem size={20} />}</span>
+            <div className="dwm-info-title">{phase === "done" ? "Gain débloqué" : phase === "spinning" ? "La roue décide…" : "Tente ta chance"}</div>
+            <div className="dwm-info-copy">Les cases changent de place à chaque ouverture. Le gain indiqué par la roue est ajouté immédiatement à ton solde.</div>
+            {phase === "done" && result && (
+              <div className="dwm-reward">
+                <div className="dwm-reward-amount">+{rewardV.toLocaleString("fr-FR")} rubis</div>
+                <div className="dwm-reward-label">crédités sur ton compte</div>
+              </div>
+            )}
+            {msg && <div className={`dwm-hint${phase === "error" ? " is-error" : ""}`}>{msg}</div>}
+            <div className="dwm-mini-rule"><RotateCw size={13} /> Une tentative disponible par jour</div>
+            <div className="dwm-footer">
+              <button className="dwm-btn-ghost" type="button" onClick={onClose} disabled={phase === "spinning"}>Fermer</button>
+              <button className="dwm-btn-spin" type="button" onClick={onSpin} disabled={phase === "spinning" || phase === "done"}><RotateCw size={15} />{btnLabel}</button>
             </div>
-          )}
-
-          {/* Hint / erreur */}
-          {msg && <div className={`dwm-hint${phase === "error" ? " is-error" : ""}`}>{phase === "error" ? "⚠️ " : ""}{msg}</div>}
-
-          {/* Footer */}
-          <div className="dwm-footer">
-            <button className="dwm-btn-ghost" type="button" onClick={onClose} disabled={phase === "spinning"}>Fermer</button>
-            <button className="dwm-btn-spin"  type="button" onClick={onSpin}  disabled={phase === "spinning" || phase === "done"}>{btnLabel}</button>
-          </div>
+          </aside>
         </div>
       </div>
     </div>,

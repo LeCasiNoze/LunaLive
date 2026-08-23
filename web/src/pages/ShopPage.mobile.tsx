@@ -59,10 +59,11 @@ function isStreamerRole(role?: string) { const r = String(role || "").toLowerCas
 
 /* ── CSS ── */
 const SHOP_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
 .shop-root {
   position:relative; min-height:100svh; padding:0 0 80px; overflow-x:hidden;
+  font-family:'Manrope',sans-serif;
 }
 .shop-root::before {
   content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
@@ -156,6 +157,8 @@ const SHOP_CSS = `
 
 /* Cards XL tactiles */
 .shop-grid { display:flex; flex-direction:column; gap:14px; }
+.shop-mobile-empty{min-height:230px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;border:1px dashed rgba(196,181,253,.16);border-radius:16px;background:radial-gradient(220px 140px at 50% 42%,rgba(124,92,252,.1),transparent 72%)}
+.shop-mobile-empty strong{color:#eee8f6;font-size:14px}.shop-mobile-empty span{max-width:300px;margin-top:7px;color:#8b8097;font-size:11px;line-height:1.5}
 .shop-card {
   padding:16px; border-radius:18px; border:1px solid rgba(124,92,252,.14);
   background:rgba(11,9,22,.88); backdrop-filter:blur(12px);
@@ -626,6 +629,7 @@ export default function ShopPageMobile({ streamerAppearance = DEFAULT_STREAMER_A
               </div>
 
               <div className="shop-grid">
+                {visible.length === 0 ? <div className="shop-mobile-empty"><strong>{token ? "Aucun article disponible" : "Ta collection t’attend"}</strong><span>{token ? "Cette catégorie sera enrichie prochainement." : "Connecte-toi pour charger le catalogue et essayer chaque élément sur ton profil."}</span></div> : null}
                 {visible.map(it => {
                   const ownedNow = isOwnedItem(it); const isEquipped = (equipped as any)?.[it.kind] === it.code;
                   const pr = Number(it.priceRubis ?? 0); const pp = Number((it as any).pricePrestige ?? 0);

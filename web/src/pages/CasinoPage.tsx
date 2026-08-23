@@ -1,7 +1,7 @@
 // web/src/pages/CasinoPage.tsx
 // ─── REWORK VISUEL Purple Velvet ─── logique 100% identique à l'original ───
 import * as React from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   getCasino, getCasinoComments, postCasinoComment, reactToCasinoComment,
   setCasinoRating, absApiUrl,
@@ -9,6 +9,7 @@ import {
 } from "../lib/api_casinos";
 import { useAuth } from "../auth/AuthProvider";
 import { setSeo, setDynamicRouteSeo } from "../lib/seo";
+import "./CasinoPage.v2.css";
 const DEV = Boolean(import.meta.env.DEV);
 
 /* ─────────────────────────────────────────────
@@ -593,6 +594,7 @@ export default function CasinoPage() {
       <div style={{ position: "relative", zIndex: 1 }}>
         {/* HERO */}
         <GlassCard
+          className="cd-hero"
           style={{
             position: "relative",
             overflow: "hidden",
@@ -604,9 +606,11 @@ export default function CasinoPage() {
         >
           <LogoBackdrop url={logoSrc} opacity={0.16} scale={1.08} position="center" />
 
-          <div style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 260 }}>
+          <Link className="cd-back" to="/casinos">← Tous les casinos</Link>
+          <div className="cd-hero-row" style={{ position: "relative", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div className="cd-identity" style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 260 }}>
               <div
+                className="cd-logo"
                 style={{
                   width: 56, height: 56, borderRadius: 18,
                   border: "1px solid rgba(124,92,252,.24)",
@@ -619,25 +623,23 @@ export default function CasinoPage() {
                   : <div style={{ width: 34, height: 34, borderRadius: 12, background: "rgba(124,92,252,.12)" }} />}
               </div>
 
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 26, fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 800, letterSpacing: -0.7, lineHeight: 1.05 }}>
+              <div className="cd-identity-copy" style={{ minWidth: 0 }}>
+                <div className="cd-name" style={{ fontSize: 26, fontFamily: "'Syne',system-ui,sans-serif", fontWeight: 800, letterSpacing: -0.7, lineHeight: 1.05 }}>
                   {casino.name}
                 </div>
                 <div className="mutedSmall" style={{ marginTop: 6 }}>
                   Notes & retours de la communauté • Transparence • 18+
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-                  <Pill tone="neutral" title={`Note moyenne ${fmtRatingOutOf5(avg)}`}>
-                    ⭐ <StarsInline rating={avg} showNumber />
-                    <span style={{ opacity: 0.72 }}>• {rc.toLocaleString("fr-FR")} avis</span>
-                  </Pill>
-                  <Pill tone="brand" title={`Avis LunaLive ${fmtRatingOutOf5(teamNum)}`}>
-                    💜 <StarsInline rating={teamNum} showNumber />
-                  </Pill>
+                <div className="cd-statuses" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
                   {isAvoid ? <Pill tone="danger">⛔ À éviter</Pill> : null}
                   {!isAvoid && isWatch ? <Pill tone="warn">👀 Sous surveillance</Pill> : null}
+                  {!isAvoid && !isWatch ? <Pill tone="brand">Fiche vérifiée LunaLive</Pill> : null}
                 </div>
               </div>
+            </div>
+            <div className="cd-scoreboard">
+              <div><span>LunaLive</span><strong>{fmtRating(teamNum)}</strong><small>/5</small><StarsInline rating={teamNum} /></div>
+              <div><span>Communauté</span><strong>{fmtRating(avg)}</strong><small>/5 · {rc.toLocaleString("fr-FR")} avis</small><StarsInline rating={avg} /></div>
             </div>
           </div>
 
@@ -662,7 +664,7 @@ export default function CasinoPage() {
             </div>
           ) : null}
 
-          <div style={{ position: "relative", marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div className="cd-anchor-row" style={{ position: "relative", marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button className="cd-anchor" type="button" onClick={() => refOverview.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>✨ Aperçu</button>
             <button className="cd-anchor" type="button" onClick={() => refRate.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>⭐ Noter</button>
             <button className="cd-anchor" type="button" onClick={() => refComments.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>💬 Avis & Screens</button>
@@ -677,7 +679,7 @@ export default function CasinoPage() {
           <div style={{ display: "grid", gap: 14 }}>
 
             {/* OVERVIEW */}
-            <GlassCard ref={refOverview} style={{ padding: 16 }}>
+            <GlassCard ref={refOverview} className="cd-section-card cd-overview" style={{ padding: 16 }}>
               <SectionTitle title="Aperçu" icon="🧭" />
               <div style={{ marginTop: 12 }}>
                 {casino.description
@@ -721,7 +723,7 @@ export default function CasinoPage() {
             </GlassCard>
 
             {/* RATE */}
-            <GlassCard ref={refRate} style={{ padding: 16 }}>
+            <GlassCard ref={refRate} className="cd-section-card cd-rate" style={{ padding: 16 }}>
               <SectionTitle
                 title="Donner une note"
                 subtitle="1 note par compte, modifiable à tout moment."
@@ -744,7 +746,7 @@ export default function CasinoPage() {
             </GlassCard>
 
             {/* COMMENTS */}
-            <GlassCard ref={refComments} style={{ padding: 16 }}>
+            <GlassCard ref={refComments} className="cd-section-card cd-comments" style={{ padding: 16 }}>
               <SectionTitle
                 title="Avis & Screens"
                 subtitle="Partage un avis, un retrait, une big win… Ajoute jusqu'à 3 images."
@@ -901,6 +903,7 @@ export default function CasinoPage() {
           {/* SIDE */}
           <div style={{ display: "grid", gap: 14 }}>
             <GlassCard
+              className="cd-section-card cd-support"
               ref={refSupport}
               style={{ padding: 16, position: "relative", overflow: "hidden" }}
             >

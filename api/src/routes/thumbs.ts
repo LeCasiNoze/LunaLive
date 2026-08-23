@@ -208,11 +208,19 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
       `
       SELECT
         COALESCE(LOWER(s.platform), '') AS platform,
-        COALESCE(ri.thumbnail_url, s.thumb_url) AS fallback_thumb_url,
+        COALESCE(ri.thumbnail_url, s.thumb_url, latest_vod.thumbnail_url) AS fallback_thumb_url,
         COALESCE(ri.is_live, FALSE) AS rumble_is_live,
         ri.hls_url AS rumble_hls_url
       FROM streamers s
       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
+      LEFT JOIN LATERAL (
+        SELECT rv.thumbnail_url
+        FROM rumble_vods rv
+        WHERE rv.streamer_id = s.id
+          AND NULLIF(BTRIM(rv.thumbnail_url), '') IS NOT NULL
+        ORDER BY rv.ended_at DESC NULLS LAST, rv.id DESC
+        LIMIT 1
+      ) latest_vod ON TRUE
       WHERE s.slug = $1
       LIMIT 1
       `,
