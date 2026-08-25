@@ -828,23 +828,47 @@ async function findCurrentLiveSlugFromLivePage(username: string): Promise<string
     const r = await fetch(url, { headers: { "accept": "application/json" } });
     if (!r.ok) {
       console.log(`[rumble][live-page] ${username}: worker http=${r.status}`);
-      return null;
-    }
-    const j: any = await r.json().catch(() => null);
-    if (!j?.ok) {
+    } else {
+      const j: any = await r.json().catch(() => null);
+      if (!j?.ok) {
       console.log(`[rumble][live-page] ${username}: worker error ${j?.error || ""}`);
-      return null;
+      } else if (j.slug) {
+        console.log(`[rumble][live-page] ${username}: worker→slug=${j.slug} (path=${j.path})`);
+        return j.slug;
+      } else {
+        console.log(`[rumble][live-page] ${username}: worker no slug (path=${j.path}, lastStatus=${j.lastStatus})`);
+      }
     }
-    if (j.slug) {
-      console.log(`[rumble][live-page] ${username}: worker→slug=${j.slug} (path=${j.path})`);
-      return j.slug;
-    }
-    console.log(`[rumble][live-page] ${username}: worker no slug (path=${j.path}, lastStatus=${j.lastStatus})`);
-    return null;
   } catch (e: any) {
     console.warn(`[rumble][live-page] ${username}: worker fetch error`, e?.message || e);
-    return null;
   }
+
+  // Rumble can block the Cloudflare-to-Cloudflare route with a 403. The public
+  // profile remains readable through Jina's text renderer and contains a
+  // distinct "N LIVE" video card. We try both Rumble profile kinds because
+  // recorded discovery can return either /user/ or /c/ creators.
+  const profileKinds = ["user", "c"] as const;
+  const results = await Promise.all(profileKinds.map(async (kind) => {
+    const profileUrl = `https://r.jina.ai/http://rumble.com/${kind}/${encodeURIComponent(username)}`;
+    try {
+      const response = await fetch(profileUrl, {
+        signal: AbortSignal.timeout(20_000),
+        headers: { accept: "text/plain" },
+      });
+      if (!response.ok) return null;
+      const text = await response.text();
+      const live = text.match(/\bLIVE\]\(http:\/\/rumble\.com\/(v[a-z0-9]+)[^)]*\)/i);
+      return live?.[1] ? { slug: live[1], kind } : null;
+    } catch {
+      return null;
+    }
+  }));
+  const live = results.find(Boolean);
+  if (live) {
+    console.log(`[rumble][live-page] ${username}: reader→slug=${live.slug} (path=${live.kind})`);
+    return live.slug;
+  }
+  return null;
 }
 
 /**
