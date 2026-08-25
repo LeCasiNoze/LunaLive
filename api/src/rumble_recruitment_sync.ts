@@ -8,6 +8,74 @@ function config() {
   return base && key ? { base, key } : null;
 }
 
+type RecordedTarget = {
+  slug: string;
+  displayName: string;
+  rumbleUrl: string;
+  followers: number;
+};
+
+async function pullRecordedTargets() {
+  const cfg = config();
+  if (!cfg || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
+  const response = await fetch(`${cfg.base}/api/internal/recruitment/rumble?mode=targets`, {
+    headers: { "x-nivora-bot-key": cfg.key },
+  });
+  if (!response.ok) throw new Error(`Nivora targets returned ${response.status}: ${(await response.text()).slice(0, 200)}`);
+  const payload = await response.json() as { targets?: unknown };
+  if (!Array.isArray(payload.targets) || payload.targets.length > 500) throw new Error("Nivora targets payload is invalid");
+  const targets: RecordedTarget[] = payload.targets.flatMap((raw: any) => {
+    const slug = typeof raw?.slug === "string" ? raw.slug.trim() : "";
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(slug)) return [];
+    return [{
+      slug,
+      displayName: typeof raw?.displayName === "string" ? raw.displayName.slice(0, 120) : slug,
+      rumbleUrl: typeof raw?.rumbleUrl === "string" && raw.rumbleUrl.startsWith("https://rumble.com/")
+        ? raw.rumbleUrl : `https://rumble.com/user/${slug}`,
+      followers: Math.max(0, Math.round(Number(raw?.followers) || 0)),
+    }];
+  });
+  if (!targets.length) return;
+
+  const values = [
+    targets.map((target) => target.slug),
+    targets.map((target) => target.displayName),
+    targets.map((target) => target.rumbleUrl),
+    targets.map((target) => target.followers),
+  ];
+  await pool.query(
+    `WITH input AS (
+       SELECT * FROM UNNEST($1::text[],$2::text[],$3::text[],$4::int[])
+         AS t(slug,display_name,rumble_url,followers)
+     )
+     UPDATE rumble_outreach_contacts contact SET
+       display_name=COALESCE(NULLIF(contact.display_name,''),input.display_name),
+       rumble_url=input.rumble_url,
+       followers=GREATEST(contact.followers,input.followers),
+       updated_at=NOW()
+     FROM input WHERE lower(contact.slug)=lower(input.slug)`,
+    values
+  );
+  await pool.query(
+    `WITH input AS (
+       SELECT * FROM UNNEST($1::text[],$2::text[],$3::text[],$4::int[])
+         AS t(slug,display_name,rumble_url,followers)
+     )
+     INSERT INTO rumble_outreach_contacts
+       (slug,display_name,rumble_url,followers,source_data,notes)
+     SELECT lower(input.slug),input.display_name,input.rumble_url,input.followers,
+       jsonb_build_array(jsonb_build_object('url',input.rumble_url,'label','Nivora recorded-stream discovery')),
+       'Découvert dans les diffusions enregistrées ; live surveillé directement hors catégorie.'
+     FROM input
+     WHERE NOT EXISTS (
+       SELECT 1 FROM rumble_outreach_contacts existing WHERE lower(existing.slug)=lower(input.slug)
+     )
+     ON CONFLICT (slug) DO NOTHING`,
+    values
+  );
+  log(`pulled ${targets.length} recorded-stream monitoring target(s) from Nivora`);
+}
+
 async function sync(recentOnly = false) {
   const cfg = config();
   if (!cfg || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
@@ -47,7 +115,9 @@ async function sync(recentOnly = false) {
 
 export function startRumbleRecruitmentSync() {
   if (!config() || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
+  setTimeout(() => void pullRecordedTargets().catch((error) => log("target pull failed", error)), 5_000);
   setTimeout(() => void sync().catch((error) => log("initial sync failed", error)), 20_000);
+  setInterval(() => void pullRecordedTargets().catch((error) => log("target pull failed", error)), 10 * 60_000);
   setInterval(() => void sync(true).catch((error) => log("live sync failed", error)), 30_000);
   setInterval(() => void sync().catch((error) => log("sync failed", error)), 5 * 60_000);
 }

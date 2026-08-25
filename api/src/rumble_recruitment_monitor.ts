@@ -1,6 +1,11 @@
 import type { PoolClient } from "pg";
 import { pool } from "./db.js";
-import { fetchRumbleGamblingCategoryLives, type RumbleCategorySnapshot, type RumbleLiveInfo } from "./rumble.js";
+import {
+  fetchRumbleGamblingCategoryLives,
+  fetchRumbleLiveInfoFromUsername,
+  type RumbleCategorySnapshot,
+  type RumbleLiveInfo,
+} from "./rumble.js";
 import { connectRumbleChatSse } from "./rumble_chat_bridge.js";
 
 type Contact = { id: number; slug: string; display_name: string; rumble_url: string; is_live: boolean; live_video_id: string | null };
@@ -348,17 +353,16 @@ async function markOffline(contact: Contact) {
 }
 
 async function monitorOne(contact: Contact, snapshot: RumbleCategorySnapshot | null) {
-  // A failed snapshot must never turn a creator offline.
-  if (!snapshot) return;
   const username = rumbleUsername(contact);
-  const indexedLive = snapshot.lives.get(username.toLowerCase());
+  const indexedLive = snapshot?.lives.get(username.toLowerCase());
   if (!indexedLive) {
-    // At the category limit, missing creators may simply be on the next page.
-    if (!snapshot.complete) {
-      await pool.query(
-        `UPDATE rumble_outreach_contacts SET monitoring_updated_at=NOW() WHERE id=$1`,
-        [contact.id]
-      );
+    // Recorded-stream discovery also finds creators who do not list their live
+    // in Gambling & Slots. Probe their canonical /live page so their audience
+    // and unique chatters are still measured on the next broadcast.
+    const targeted = await fetchRumbleLiveInfoFromUsername(username);
+    if (targeted.isLive) {
+      categoryAbsences.delete(contact.id);
+      await markLive(contact, targeted);
       return;
     }
     if (!contact.is_live) {
@@ -367,9 +371,10 @@ async function monitorOne(contact: Contact, snapshot: RumbleCategorySnapshot | n
       return;
     }
     const previous = categoryAbsences.get(contact.id);
-    if (previous?.snapshotAt === snapshot.fetchedAt) return;
+    const snapshotAt = snapshot?.fetchedAt ?? Date.now();
+    if (previous?.snapshotAt === snapshotAt) return;
     const count = (previous?.count || 0) + 1;
-    categoryAbsences.set(contact.id, { count, snapshotAt: snapshot.fetchedAt });
+    categoryAbsences.set(contact.id, { count, snapshotAt });
     if (count >= 3) {
       categoryAbsences.delete(contact.id);
       await markOffline(contact);
@@ -398,8 +403,7 @@ async function tick() {
   try {
     if (!(await acquireSingletonLock())) return;
     const categoryLives = await fetchRumbleGamblingCategoryLives();
-    if (!categoryLives) return;
-    await upsertDiscoveredLives(categoryLives);
+    if (categoryLives) await upsertDiscoveredLives(categoryLives);
     const contacts = await dueContacts();
     // Two concurrent probes keep request pressure low and avoid long serial batches.
     for (let index = 0; index < contacts.length; index += 2) {
