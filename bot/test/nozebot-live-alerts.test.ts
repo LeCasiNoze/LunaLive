@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildProfileEmbed } from "../src/nozebot/commands.js";
 import { buildMemberWelcomeMessage } from "../src/nozebot/discord.js";
 import { buildLiveAlertMessage, parseLunaLivePayload } from "../src/nozebot/live-alerts.js";
+import type { LunaLiveProfile } from "../src/nozebot/lunalive-api.js";
 
 const sourceConfig = {
   streamerSlug: "lecasinoze",
@@ -86,4 +88,50 @@ test("builds the public welcome with only the new member mention enabled", () =>
     content: "<@123456789>, bienvenue dans la maison !",
     allowedMentions: { parse: [], users: ["123456789"] },
   });
+});
+
+test("builds a rich profile from the shared LunaLive data", () => {
+  const profile: LunaLiveProfile = {
+    userId: 7,
+    username: "LeCasiNoze",
+    rubis: 1234,
+    xp: 250,
+    level: 8,
+    levelTitle: "Nouveau-Né IX",
+    pctToNext: 62,
+    xpToNext: 42,
+    isMaxLevel: false,
+    watchSecondsTotal: 9000,
+    chatMessagesTotal: 321,
+    callsTotal: 12,
+    predictionsTotal: 5,
+    predictionWinsTotal: 2,
+    wheelSpinsTotal: 14,
+    dailyBonusClaimsTotal: 9,
+    rubisEarnedTotal: 1800,
+    rubisSpentTotal: 566,
+    achievementsByTier: {
+      bronze: { unlocked: 4, total: 10 },
+      silver: { unlocked: 2, total: 8 },
+      gold: { unlocked: 1, total: 6 },
+      master: { unlocked: 0, total: 2 },
+    },
+    achievementsTotalUnlocked: 7,
+    achievementsTotalAll: 26,
+    entitlementsTotal: 3,
+    questsCompletedTotal: 11,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    lastLoginAt: "2026-09-01T00:00:00.000Z",
+    equippedTitleCode: null,
+    followsCount: 2,
+  };
+
+  const embed = buildProfileEmbed(profile, "https://cdn.discordapp.com/avatar.png").toJSON();
+  assert.equal(embed.color, 0x9d7cff);
+  assert.equal(embed.title, "LeCasiNoze");
+  assert.match(embed.description || "", /Niveau 8/);
+  assert.match(embed.description || "", /42 XP/);
+  assert.equal(embed.fields?.length, 6);
+  assert.match(embed.fields?.[0]?.value || "", /1[\s ]?234 Rubis/);
+  assert.match(embed.footer?.text || "", /Données synchronisées/);
 });

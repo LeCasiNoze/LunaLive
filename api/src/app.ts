@@ -61,6 +61,7 @@ import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
 import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
+import { internalNozeBotRouter } from "./routes/internal_nozebot.js";
 
 // Bot module (clean)
 import meBotRouter from "./modules/bot/router.js";
@@ -261,6 +262,7 @@ export function createApp() {
 
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
+  app.use(internalNozeBotRouter);
 
   app.use(pushRouter);
   app.use(thumbsRouter);

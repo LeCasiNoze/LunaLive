@@ -20,6 +20,11 @@ import {
 } from "discord.js";
 import type { Pool } from "pg";
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
+import {
+  handleNozeBotCommand,
+  registerNozeBotCommands,
+  type NozeBotCommandConfig,
+} from "./commands.js";
 
 const DEFAULTS = {
   guildId: "1188913226990235800",
@@ -28,6 +33,7 @@ const DEFAULTS = {
   adminRoleId: "1188940226358415443",
   startHereChannelId: "1188914815561891990",
   generalChannelId: "1188913389125255198",
+  commandsChannelId: "1304110217419559026",
   leaveLogChannelId: "1424038747950813234",
   botLogChannelId: "1193268118345240669",
   supportCategoryId: "1544429387754246185",
@@ -95,6 +101,7 @@ type NozeBotConfig = {
   ticketOpenerChannelId: string;
   notificationRoleIds: readonly string[];
   liveAlerts: LiveAlertConfig;
+  commands: NozeBotCommandConfig;
 };
 
 function livePollMs(): number {
@@ -129,6 +136,15 @@ function loadConfig(): NozeBotConfig | null {
       lunaLiveUrl: process.env.NOZEBOT_LUNALIVE_URL?.trim() || DEFAULTS.lunaLiveUrl,
       rumbleUrl: process.env.NOZEBOT_RUMBLE_URL?.trim() || DEFAULTS.rumbleUrl,
       pollMs: livePollMs(),
+    },
+    commands: {
+      guildId: process.env.NOZEBOT_GUILD_ID?.trim() || DEFAULTS.guildId,
+      commandsChannelId: process.env.NOZEBOT_COMMANDS_CHANNEL_ID?.trim() || DEFAULTS.commandsChannelId,
+      lunaLive: {
+        baseUrl: process.env.BOT_API_BASE?.trim() || "https://lunalive-api.onrender.com",
+        internalKey: process.env.BOT_INTERNAL_KEY?.trim() || "",
+        guildId: process.env.NOZEBOT_GUILD_ID?.trim() || DEFAULTS.guildId,
+      },
     },
   };
 }
@@ -432,6 +448,7 @@ async function logMemberDeparture(member: GuildMember | PartialGuildMember, conf
 
 async function routeInteraction(interaction: Interaction, config: NozeBotConfig): Promise<void> {
   try {
+    if (await handleNozeBotCommand(interaction, config.commands)) return;
     if (await handleRulesAcceptance(interaction, config)) return;
     if (await handleNotificationSelection(interaction, config)) return;
     if (await handleTicketCreation(interaction, config)) return;
@@ -473,6 +490,9 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   client.on(Events.Error, (error) => console.error("[nozebot] client error", error));
 
   await client.login(config.token);
+  await registerNozeBotCommands(client, config.commands).catch((error) => {
+    console.error("[nozebot] enregistrement des commandes LunaLive impossible", error);
+  });
   let stopLiveAlerts: () => void = () => undefined;
   if (pool) {
     try {
