@@ -7,10 +7,15 @@ import {
   EmbedBuilder,
   Events,
   GatewayIntentBits,
+  ModalBuilder,
   PermissionFlagsBits,
+  TextInputBuilder,
+  TextInputStyle,
   type GuildMember,
   type Interaction,
+  type ModalSubmitInteraction,
   type PartialGuildMember,
+  type StringSelectMenuInteraction,
   type TextChannel,
 } from "discord.js";
 
@@ -36,6 +41,9 @@ const DEFAULTS = {
 const BUTTON_ACCEPT_RULES = "nozebot:rules:accept";
 const SELECT_NOTIFICATIONS = "nozebot:notifications";
 const SELECT_NEW_TICKET = "nozebot:tickets:new";
+const MODAL_OTHER_TICKET = "nozebot:tickets:other";
+const INPUT_OTHER_SUBJECT = "nozebot:tickets:other:subject";
+const INPUT_OTHER_DETAILS = "nozebot:tickets:other:details";
 const BUTTON_CLOSE_TICKET = "nozebot:tickets:close";
 
 const TICKET_LABELS: Record<string, { emoji: string; label: string; description: string }> = {
@@ -58,6 +66,11 @@ const TICKET_LABELS: Record<string, { emoji: string; label: string; description:
     emoji: "💎",
     label: "Demande VIP host",
     description: "Demande de mise en relation et d’accompagnement personnalisé.",
+  },
+  other: {
+    emoji: "📝",
+    label: "Autre demande",
+    description: "Demande libre ne correspondant pas aux autres catégories.",
   },
 };
 
@@ -161,37 +174,45 @@ function ticketOwnerFromTopic(topic: string | null): string | null {
   return topic?.match(/nozebot-ticket-owner:(\d+);status:(?:open|closed)/)?.[1] || null;
 }
 
-async function handleTicketCreation(interaction: Interaction, config: NozeBotConfig): Promise<boolean> {
-  if (!interaction.isStringSelectMenu() || interaction.customId !== SELECT_NEW_TICKET) return false;
-  if (!interaction.guild || interaction.guildId !== config.guildId) return true;
+type TicketOpenInteraction = StringSelectMenuInteraction | ModalSubmitInteraction;
 
-  await interaction.deferReply({ ephemeral: true });
-  const kind = interaction.values[0];
+async function openTicket(
+  interaction: TicketOpenInteraction,
+  config: NozeBotConfig,
+  kind: string,
+  customSubject?: string,
+  customDetails?: string
+): Promise<void> {
   const ticket = TICKET_LABELS[kind];
   if (!ticket) {
     await interaction.editReply("Ce type de demande n’existe plus. Recharge le salon et réessaie.");
-    return true;
+    return;
+  }
+  const guild = interaction.guild;
+  if (!guild) {
+    await interaction.editReply("Le ticket doit être ouvert depuis le serveur LeCasiNoze.");
+    return;
   }
 
-  const channels = await interaction.guild.channels.fetch();
+  const channels = await guild.channels.fetch();
   const existing = channels.find(
     (channel) => channel?.type === ChannelType.GuildText &&
       channel.topic?.includes(ticketMarker(interaction.user.id, "open"))
   );
   if (existing) {
     await interaction.editReply(`Tu as déjà un ticket ouvert : <#${existing.id}>.`);
-    return true;
+    return;
   }
 
   const suffix = interaction.user.id.slice(-6);
-  const channel = await interaction.guild.channels.create({
+  const channel = await guild.channels.create({
     name: `〈🎫〉┃𝗧𝗜𝗖𝗞𝗘𝗧-${suffix}`,
     type: ChannelType.GuildText,
     parent: config.supportCategoryId,
     topic: `${ticketMarker(interaction.user.id, "open")};type:${kind}`,
     permissionOverwrites: [
       {
-        id: interaction.guild.roles.everyone.id,
+        id: guild.roles.everyone.id,
         deny: [PermissionFlagsBits.ViewChannel],
       },
       {
@@ -233,13 +254,15 @@ async function handleTicketCreation(interaction: Interaction, config: NozeBotCon
       .setEmoji("🔒")
       .setStyle(ButtonStyle.Secondary)
   );
+  const description = customSubject
+    ? `**Sujet :** ${customSubject}\n\n${customDetails || "Aucun détail supplémentaire."}\n\n` +
+      "L’équipe te répondra directement dans ce salon privé."
+    : `${ticket.description}\n\nExplique ta demande avec les informations utiles. ` +
+      "L’équipe te répondra directement dans ce salon privé.";
   const embed = new EmbedBuilder()
     .setColor(0x4cc9f0)
     .setTitle(`${ticket.emoji} ${ticket.label}`)
-    .setDescription(
-      `${ticket.description}\n\nExplique ta demande avec les informations utiles. ` +
-      "L’équipe te répondra directement dans ce salon privé."
-    )
+    .setDescription(description)
     .addFields(
       { name: "Demandeur", value: `<@${interaction.user.id}>`, inline: true },
       { name: "Identifiant", value: `\`${interaction.user.id}\``, inline: true }
@@ -254,6 +277,55 @@ async function handleTicketCreation(interaction: Interaction, config: NozeBotCon
     allowedMentions: { users: [interaction.user.id], roles: [config.moderatorRoleId] },
   });
   await interaction.editReply(`✅ Ton ticket privé est ouvert : <#${channel.id}>.`);
+}
+
+async function handleTicketCreation(interaction: Interaction, config: NozeBotConfig): Promise<boolean> {
+  if (!interaction.isStringSelectMenu() || interaction.customId !== SELECT_NEW_TICKET) return false;
+  if (!interaction.guild || interaction.guildId !== config.guildId) return true;
+
+  const kind = interaction.values[0];
+  if (kind === "other") {
+    const modal = new ModalBuilder()
+      .setCustomId(MODAL_OTHER_TICKET)
+      .setTitle("Ouvrir une autre demande")
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId(INPUT_OTHER_SUBJECT)
+            .setLabel("Sujet de ta demande")
+            .setPlaceholder("Ex. Question concernant le serveur")
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(3)
+            .setMaxLength(100)
+            .setRequired(true)
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId(INPUT_OTHER_DETAILS)
+            .setLabel("Détails")
+            .setPlaceholder("Explique ta demande avec les informations utiles…")
+            .setStyle(TextInputStyle.Paragraph)
+            .setMaxLength(1500)
+            .setRequired(false)
+        )
+      );
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+  await openTicket(interaction, config, kind);
+  return true;
+}
+
+async function handleOtherTicketModal(interaction: Interaction, config: NozeBotConfig): Promise<boolean> {
+  if (!interaction.isModalSubmit() || interaction.customId !== MODAL_OTHER_TICKET) return false;
+  if (!interaction.guild || interaction.guildId !== config.guildId) return true;
+
+  await interaction.deferReply({ ephemeral: true });
+  const subject = interaction.fields.getTextInputValue(INPUT_OTHER_SUBJECT).trim();
+  const details = interaction.fields.getTextInputValue(INPUT_OTHER_DETAILS).trim();
+  await openTicket(interaction, config, "other", subject, details);
   return true;
 }
 
@@ -321,6 +393,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig)
     if (await handleRulesAcceptance(interaction, config)) return;
     if (await handleNotificationSelection(interaction, config)) return;
     if (await handleTicketCreation(interaction, config)) return;
+    if (await handleOtherTicketModal(interaction, config)) return;
     if (await handleTicketClosure(interaction, config)) return;
   } catch (error) {
     console.error("[nozebot] interaction failed", error);
