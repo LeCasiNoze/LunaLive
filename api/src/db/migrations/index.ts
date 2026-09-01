@@ -145,6 +145,7 @@ import { mig134_rumble_recruitment_monitoring } from "./mig134_rumble_recruitmen
 import { mig135_rumble_recruitment_chat_activity } from "./mig135_rumble_recruitment_chat_activity.js";
 import { mig136_seeded_rumble_chat_mirror } from "./mig136_seeded_rumble_chat_mirror.js";
 import { mig137_streamer_overlay_configs } from "./mig137_streamer_overlay_configs.js";
+import { mig138_nozebot_blackjack_sessions } from "./mig138_nozebot_blackjack_sessions.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -309,6 +310,7 @@ export async function migrateAll(pool: Pool) {
   await mig135_rumble_recruitment_chat_activity(pool);
   await mig136_seeded_rumble_chat_mirror(pool);
   await mig137_streamer_overlay_configs(pool);
+  await mig138_nozebot_blackjack_sessions(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

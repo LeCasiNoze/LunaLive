@@ -104,6 +104,11 @@ export type BJGame = {
 
   sidebetLines: string[];
   sidebetNet: number; // profit net (peut être négatif)
+  sidebetPayouts: {
+    pairsCredit: number;
+    plus3Credit: number;
+    plus3Kind: string | null;
+  };
   mainNet: number;    // profit net (peut être négatif)
 };
 
@@ -127,6 +132,7 @@ export function startGame(cfg: BJConfig, rng = Math.random): BJGame {
     finished: false,
     sidebetLines: [],
     sidebetNet: 0,
+    sidebetPayouts: { pairsCredit: 0, plus3Credit: 0, plus3Kind: null },
     mainNet: 0,
   };
 
@@ -209,6 +215,7 @@ function fmtSigned(n: number): string {
 export function resolveSideBets(g: BJGame): void {
   const lines: string[] = [];
   let net = 0;
+  const payouts = { pairsCredit: 0, plus3Credit: 0, plus3Kind: null as string | null };
 
   const p = g.hands[0].cards;
   const up = g.dealer[0];
@@ -218,6 +225,7 @@ export function resolveSideBets(g: BJGame): void {
     if (res) {
       const profit = g.cfg.pairsBet * res.ratio;
       net += profit;
+      payouts.pairsCredit = g.cfg.pairsBet * (res.ratio + 1);
       lines.push(`**Perfect Pairs** — ${res.kind} · ${res.ratio}:1 (profit ${fmtSigned(profit)})`);
     } else {
       net -= g.cfg.pairsBet;
@@ -230,6 +238,8 @@ export function resolveSideBets(g: BJGame): void {
     if (res) {
       const profit = g.cfg.plus3Bet * res.ratio;
       net += profit;
+      payouts.plus3Credit = g.cfg.plus3Bet * (res.ratio + 1);
+      payouts.plus3Kind = res.kind;
       lines.push(`**21+3** — ${res.kind} · ${res.ratio}:1 (profit ${fmtSigned(profit)})`);
     } else {
       net -= g.cfg.plus3Bet;
@@ -239,6 +249,7 @@ export function resolveSideBets(g: BJGame): void {
 
   g.sidebetLines = lines;
   g.sidebetNet = net;
+  g.sidebetPayouts = payouts;
 }
 
 export function nextHandOrEnd(g: BJGame): "next_hand" | "finish" {
@@ -279,6 +290,7 @@ export function settle(g: BJGame): BJFinish {
   const perHand: BJFinish["perHand"] = [];
 
   const isNatBJ = (g.hands.length === 1 && isBlackjack(g.hands[0].cards));
+  const dealerNatural = isBlackjack(g.dealer);
 
   for (let idx = 0; idx < g.hands.length; idx++) {
     const h = g.hands[idx];
@@ -292,6 +304,10 @@ export function settle(g: BJGame): BJFinish {
 
     // blackjack naturel (uniquement main unique)
     if (isNatBJ && idx === 0) {
+      if (dealerNatural) {
+        perHand.push({ i: 1, bet: g.cfg.mainBet, total: pt, doubled: false, kind: "push", net: 0 });
+        continue;
+      }
       const profit = Math.floor(g.cfg.mainBet * 1.5);
       mainNet += profit;
       perHand.push({ i: 1, bet: g.cfg.mainBet, total: pt, doubled: false, kind: "win", net: profit });

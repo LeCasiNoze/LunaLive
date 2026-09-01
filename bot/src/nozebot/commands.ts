@@ -1,21 +1,27 @@
 import {
   ActionRowBuilder,
+  AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
+  type ButtonInteraction,
   type Client,
   type Interaction,
 } from "discord.js";
 import {
   LunaLiveApiError,
+  actLunaLiveBlackjack,
   claimLunaLiveDaily,
   fetchLunaLiveProfile,
   requestLunaLiveLink,
+  startLunaLiveBlackjack,
+  type LunaLiveBlackjack,
   type LunaLiveApiConfig,
   type LunaLiveProfile,
 } from "./lunalive-api.js";
+import { renderBlackjackTable } from "./blackjack-renderer.js";
 
 export type NozeBotCommandConfig = {
   guildId: string;
@@ -29,6 +35,17 @@ const COMMANDS = [
   new SlashCommandBuilder().setName("solde").setDescription("Afficher tes Rubis et ton niveau LunaLive"),
   new SlashCommandBuilder().setName("profil").setDescription("Afficher ton profil LunaLive complet"),
   new SlashCommandBuilder().setName("succes").setDescription("Afficher tes succès LunaLive"),
+  new SlashCommandBuilder()
+    .setName("blackjack")
+    .setDescription("Jouer au blackjack avec tes Rubis LunaLive")
+    .addStringOption((option) => option
+      .setName("mode")
+      .setDescription("Classique (20 Rubis) ou Blackjack+ avec side bets (25 Rubis)")
+      .setRequired(false)
+      .addChoices(
+        { name: "Classique · 20 Rubis", value: "classic" },
+        { name: "Blackjack+ · 25 Rubis", value: "plus" }
+      )),
 ];
 
 const COMMAND_NAMES = new Set(COMMANDS.map((command) => command.name));
@@ -158,6 +175,108 @@ async function sendPrivateError(interaction: ChatInputCommandInteraction, messag
   await interaction.reply({ content: message, ephemeral: true });
 }
 
+function blackjackButtons(game: LunaLiveBlackjack): ActionRowBuilder<ButtonBuilder> {
+  const id = game.sessionId;
+  const locked = game.status === "finished";
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`nz:b:${id}:hit`).setLabel("Piocher").setEmoji("🃏").setStyle(ButtonStyle.Primary).setDisabled(locked || !game.actions.hit),
+    new ButtonBuilder().setCustomId(`nz:b:${id}:stand`).setLabel("Rester").setEmoji("✋").setStyle(ButtonStyle.Secondary).setDisabled(locked || !game.actions.stand),
+    new ButtonBuilder().setCustomId(`nz:b:${id}:double`).setLabel("Doubler").setEmoji("💎").setStyle(ButtonStyle.Success).setDisabled(locked || !game.actions.double),
+    new ButtonBuilder().setCustomId(`nz:b:${id}:split`).setLabel("Splitter").setEmoji("⚡").setStyle(ButtonStyle.Secondary).setDisabled(locked || !game.actions.split)
+  );
+}
+
+function blackjackResultText(game: LunaLiveBlackjack): string {
+  const result = game.result;
+  if (!result) return "À toi de jouer. La partie est enregistrée : tu peux reprendre avec ces boutons même après un redémarrage du bot.";
+  const net = `${result.totalNet >= 0 ? "+" : "−"}${fmt(Math.abs(result.totalNet))}`;
+  const hands = result.perHand.map((hand) => {
+    const label = hand.kind === "win" ? "Victoire" : hand.kind === "push" ? "Égalité" : hand.kind === "bust" ? "BUST" : "Défaite";
+    return `**Main ${hand.i}** · ${label} · ${hand.total}`;
+  }).join("\n");
+  return `${hands}\n\n## ${net} Rubis\nSolde : **${fmt(result.balance)} Rubis** · **+${result.xpGained} XP**`;
+}
+
+export async function buildBlackjackMessage(game: LunaLiveBlackjack, username: string) {
+  const imageName = `nozebot-blackjack-${game.sessionId}.png`;
+  const image = await renderBlackjackTable(game, username);
+  const color = !game.result ? 0x9d7cff : game.result.totalNet > 0 ? 0x45e0a8 : game.result.totalNet < 0 ? 0xff5470 : 0xe4c866;
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(game.status === "finished" ? "La table a tranché" : "Faites vos jeux")
+    .setDescription(blackjackResultText(game))
+    .setImage(`attachment://${imageName}`)
+    .addFields(
+      { name: "Mode", value: game.mode === "plus" ? "Blackjack+ · mise 25" : "Classique · mise 20", inline: true },
+      { name: "Cooldown partagé", value: discordTimestamp(game.cooldownEndsAt), inline: true }
+    )
+    .setFooter({ text: "LeCasiNoze × LunaLive • Rubis, XP et succès synchronisés" });
+  if (game.mode === "plus" && game.sideBetLines.length) {
+    embed.addFields({ name: "Side bets", value: game.sideBetLines.join("\n").slice(0, 1024), inline: false });
+  }
+  return {
+    embeds: [embed],
+    components: [blackjackButtons(game)],
+    files: [new AttachmentBuilder(image, { name: imageName })],
+  };
+}
+
+async function handleBlackjackCommand(
+  interaction: ChatInputCommandInteraction,
+  config: NozeBotCommandConfig
+): Promise<void> {
+  await interaction.deferReply();
+  try {
+    const selected = interaction.options.getString("mode");
+    const mode = selected === "plus" ? "plus" : "classic";
+    const game = await startLunaLiveBlackjack(config.lunaLive, interaction.user.id, mode);
+    await interaction.editReply(await buildBlackjackMessage(game, interaction.user.username));
+  } catch (error) {
+    if (error instanceof LunaLiveApiError && error.code === "cooldown") {
+      const nextAt = typeof error.details.nextAt === "string" ? error.details.nextAt : "";
+      await sendPrivateError(interaction, `⏳ Ta table LunaLive est en cooldown. Reviens ${discordTimestamp(nextAt)}.`);
+      return;
+    }
+    if (error instanceof LunaLiveApiError && error.code === "insufficient_rubis") {
+      await sendPrivateError(interaction, "💎 Tu n’as pas assez de Rubis pour cette mise.");
+      return;
+    }
+    if (error instanceof LunaLiveApiError && error.code === "not_linked") {
+      await sendPrivateError(interaction, "🔗 Lie d’abord ton compte LunaLive avec **/link**.");
+      return;
+    }
+    throw error;
+  }
+}
+
+async function handleBlackjackButton(
+  interaction: ButtonInteraction,
+  config: NozeBotCommandConfig
+): Promise<void> {
+  const match = /^nz:b:([0-9a-f-]{36}):(hit|stand|double|split)$/i.exec(interaction.customId);
+  if (!match) return;
+  await interaction.deferUpdate();
+  try {
+    const game = await actLunaLiveBlackjack(
+      config.lunaLive,
+      interaction.user.id,
+      match[1],
+      match[2] as "hit" | "stand" | "double" | "split"
+    );
+    await interaction.editReply({
+      ...(await buildBlackjackMessage(game, interaction.user.username)),
+      attachments: [],
+    });
+  } catch (error) {
+    const message = error instanceof LunaLiveApiError && error.code === "insufficient_rubis"
+      ? "💎 Il te manque des Rubis pour cette action."
+      : error instanceof LunaLiveApiError && error.code === "session_forbidden"
+        ? "⛔ Cette table appartient à un autre joueur."
+        : "NozeBot n’arrive pas à jouer cette action pour le moment.";
+    await interaction.followUp({ content: message, ephemeral: true }).catch(() => undefined);
+  }
+}
+
 async function handleLink(interaction: ChatInputCommandInteraction, config: NozeBotCommandConfig): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
   const result = await requestLunaLiveLink(config.lunaLive, interaction.user.id);
@@ -264,6 +383,10 @@ export async function handleNozeBotCommand(
   interaction: Interaction,
   config: NozeBotCommandConfig
 ): Promise<boolean> {
+  if (interaction.isButton() && interaction.customId.startsWith("nz:b:")) {
+    if (interaction.guildId === config.guildId) await handleBlackjackButton(interaction, config);
+    return true;
+  }
   if (!interaction.isChatInputCommand() || !COMMAND_NAMES.has(interaction.commandName)) return false;
   if (interaction.guildId !== config.guildId) return true;
 
@@ -277,6 +400,7 @@ export async function handleNozeBotCommand(
     }
     if (interaction.commandName === "link") await handleLink(interaction, config);
     else if (interaction.commandName === "claim") await handleClaim(interaction, config);
+    else if (interaction.commandName === "blackjack") await handleBlackjackCommand(interaction, config);
     else await handleProfileCommand(interaction, config);
   } catch (error) {
     console.error(`[nozebot] commande /${interaction.commandName} échouée`, error);

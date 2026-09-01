@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import test from "node:test";
-import { buildProfileEmbed } from "../src/nozebot/commands.js";
+import { buildBlackjackMessage, buildProfileEmbed } from "../src/nozebot/commands.js";
 import { buildMemberWelcomeMessage } from "../src/nozebot/discord.js";
 import { buildLiveAlertMessage, parseLunaLivePayload } from "../src/nozebot/live-alerts.js";
 import type { LunaLiveProfile } from "../src/nozebot/lunalive-api.js";
+import type { LunaLiveBlackjack } from "../src/nozebot/lunalive-api.js";
 
 const sourceConfig = {
   streamerSlug: "lecasinoze",
@@ -134,4 +136,37 @@ test("builds a rich profile from the shared LunaLive data", () => {
   assert.equal(embed.fields?.length, 6);
   assert.match(embed.fields?.[0]?.value || "", /1[\s ]?234 Rubis/);
   assert.match(embed.footer?.text || "", /Données synchronisées/);
+});
+
+test("renders a persistent blackjack table with real card artwork", async () => {
+  const game: LunaLiveBlackjack = {
+    sessionId: "12345678-1234-1234-1234-123456789abc",
+    status: "active",
+    mode: "plus",
+    dealer: { cards: [{ r: "K", s: "♠" }, null], total: null },
+    hands: [{
+      cards: [{ r: "A", s: "♥" }, { r: "7", s: "♦" }],
+      total: 18,
+      bet: 20,
+      doubled: false,
+      finished: false,
+      active: true,
+    }],
+    sideBetLines: ["**Perfect Pairs** — aucun gain (−3)", "**21+3** — aucun gain (−2)"],
+    actions: { hit: true, stand: true, double: true, split: false },
+    balance: 97553,
+    cooldownEndsAt: "2026-09-03T08:00:00.000Z",
+    result: null,
+  };
+  const message = await buildBlackjackMessage(game, "LeCasiNoze");
+  const attachment = message.files[0].attachment;
+  assert.ok(Buffer.isBuffer(attachment));
+  assert.deepEqual([...attachment.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(attachment.length > 20_000);
+  if (process.env.BLACKJACK_PREVIEW_PATH) {
+    await writeFile(process.env.BLACKJACK_PREVIEW_PATH, attachment);
+  }
+  const embed = message.embeds[0].toJSON();
+  assert.equal(embed.image?.url, `attachment://nozebot-blackjack-${game.sessionId}.png`);
+  assert.equal(message.components[0].components[3].data.disabled, true);
 });

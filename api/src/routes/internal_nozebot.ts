@@ -7,6 +7,12 @@ import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient } from "./bot/games_claim.js";
 import { getProfileStats } from "../services/profile_stats.js";
 import { a } from "../utils/async.js";
+import {
+  actOnNozeBotBlackjack,
+  NozeBotBlackjackError,
+  startNozeBotBlackjack,
+  type NozeBotBlackjackAction,
+} from "../services/nozebot_blackjack.js";
 
 export const internalNozeBotRouter = Router();
 
@@ -173,5 +179,61 @@ internalNozeBotRouter.post("/internal/bot/nozebot/claim", requireNozeBot, a(asyn
     res.status(500).json({ ok: false, error: "internal_error" });
   } finally {
     client.release();
+  }
+}));
+
+async function linkedIdentity(
+  req: Request,
+  res: Response
+): Promise<{ discordUserId: string; discordGuildId: string; userId: number } | null> {
+  const identity = readIdentity(req, res);
+  if (!identity) return null;
+  const linked = await getLinkedUser(identity.discordUserId);
+  if (!linked) {
+    res.status(409).json({ ok: false, error: "not_linked" });
+    return null;
+  }
+  return { ...identity, userId: Number(linked.id) };
+}
+
+function sendBlackjackError(res: Response, error: unknown): void {
+  if (error instanceof NozeBotBlackjackError) {
+    res.status(error.status).json({ ok: false, error: error.code, ...error.details });
+    return;
+  }
+  console.error("[nozebot-blackjack] request failed", error);
+  res.status(500).json({ ok: false, error: "internal_error" });
+}
+
+internalNozeBotRouter.post("/internal/bot/nozebot/blackjack/start", requireNozeBot, a(async (req, res) => {
+  const identity = await linkedIdentity(req, res);
+  if (!identity) return;
+  const mode = req.body?.mode === "plus" ? "plus" : req.body?.mode === "classic" ? "classic" : null;
+  if (!mode) {
+    res.status(400).json({ ok: false, error: "bad_mode" });
+    return;
+  }
+  try {
+    const game = await startNozeBotBlackjack({ ...identity, mode });
+    res.json({ ok: true, game });
+  } catch (error) {
+    sendBlackjackError(res, error);
+  }
+}));
+
+internalNozeBotRouter.post("/internal/bot/nozebot/blackjack/action", requireNozeBot, a(async (req, res) => {
+  const identity = await linkedIdentity(req, res);
+  if (!identity) return;
+  const sessionId = String(req.body?.sessionId || "").trim();
+  const action = String(req.body?.action || "") as NozeBotBlackjackAction;
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId) || !["hit", "stand", "double", "split"].includes(action)) {
+    res.status(400).json({ ok: false, error: "bad_action" });
+    return;
+  }
+  try {
+    const game = await actOnNozeBotBlackjack({ ...identity, sessionId, action });
+    res.json({ ok: true, game });
+  } catch (error) {
+    sendBlackjackError(res, error);
   }
 }));

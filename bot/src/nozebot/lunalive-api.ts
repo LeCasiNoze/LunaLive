@@ -52,6 +52,36 @@ export type LunaLiveClaim = {
   leveledUp: boolean;
 };
 
+export type LunaLiveBlackjackCard = { r: string; s: string };
+export type LunaLiveBlackjack = {
+  sessionId: string;
+  status: "active" | "finished";
+  mode: "classic" | "plus";
+  dealer: { cards: Array<LunaLiveBlackjackCard | null>; total: number | null };
+  hands: Array<{
+    cards: LunaLiveBlackjackCard[];
+    total: number;
+    bet: number;
+    doubled: boolean;
+    finished: boolean;
+    active: boolean;
+  }>;
+  sideBetLines: string[];
+  actions: { hit: boolean; stand: boolean; double: boolean; split: boolean };
+  balance: number;
+  cooldownEndsAt: string;
+  result: null | {
+    dealerTotal: number;
+    perHand: Array<{ i: number; bet: number; total: number; doubled: boolean; kind: "win" | "lose" | "push" | "bust"; net: number }>;
+    mainNet: number;
+    sideNet: number;
+    totalNet: number;
+    isNaturalBlackjack: boolean;
+    xpGained: number;
+    balance: number;
+  };
+};
+
 export class LunaLiveApiError extends Error {
   constructor(
     readonly code: string,
@@ -70,7 +100,8 @@ function cleanBaseUrl(value: string): string {
 async function post<T>(
   config: LunaLiveApiConfig,
   path: string,
-  discordUserId: string
+  discordUserId: string,
+  extraBody: Record<string, unknown> = {}
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -81,7 +112,7 @@ async function post<T>(
         "content-type": "application/json",
         "x-bot-key": config.internalKey,
       },
-      body: JSON.stringify({ discordUserId, discordGuildId: config.guildId }),
+      body: JSON.stringify({ discordUserId, discordGuildId: config.guildId, ...extraBody }),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -130,4 +161,33 @@ export async function claimLunaLiveDaily(
     discordUserId
   );
   return result.claim;
+}
+
+export async function startLunaLiveBlackjack(
+  config: LunaLiveApiConfig,
+  discordUserId: string,
+  mode: "classic" | "plus"
+): Promise<LunaLiveBlackjack> {
+  const result = await post<{ ok: true; game: LunaLiveBlackjack }>(
+    config,
+    "/internal/bot/nozebot/blackjack/start",
+    discordUserId,
+    { mode }
+  );
+  return result.game;
+}
+
+export async function actLunaLiveBlackjack(
+  config: LunaLiveApiConfig,
+  discordUserId: string,
+  sessionId: string,
+  action: "hit" | "stand" | "double" | "split"
+): Promise<LunaLiveBlackjack> {
+  const result = await post<{ ok: true; game: LunaLiveBlackjack }>(
+    config,
+    "/internal/bot/nozebot/blackjack/action",
+    discordUserId,
+    { sessionId, action }
+  );
+  return result.game;
 }
