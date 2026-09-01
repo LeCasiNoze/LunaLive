@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildMemberWelcomeMessage } from "../src/nozebot/discord.js";
 import { buildLiveAlertMessage, parseLunaLivePayload } from "../src/nozebot/live-alerts.js";
 
 const sourceConfig = {
@@ -68,6 +69,9 @@ test("builds a premium two-platform card and only authorizes the first ping", ()
   assert.deepEqual(update.allowedMentions, { parse: [] });
   assert.equal(embed.color, 0x9d7cff);
   assert.equal(embed.title, "🔴 Le grand retour");
+  assert.equal(embed.description, undefined);
+  assert.equal(embed.fields?.[0]?.value, "La plateforme pour les vrais bg");
+  assert.equal(embed.fields?.[1]?.value, "La classique");
   assert.equal(embed.image?.url, snapshot.thumbnailUrl);
   assert.equal(embed.author?.icon_url, snapshot.avatarUrl);
   assert.equal(row.components.length, 2);
@@ -75,4 +79,11 @@ test("builds a premium two-platform card and only authorizes the first ping", ()
     row.components.map((button) => "url" in button ? button.url : null),
     [messageConfig.lunaLiveUrl, messageConfig.rumbleUrl]
   );
+});
+
+test("builds the public welcome with only the new member mention enabled", () => {
+  assert.deepEqual(buildMemberWelcomeMessage("123456789"), {
+    content: "<@123456789>, bienvenue dans la maison !",
+    allowedMentions: { parse: [], users: ["123456789"] },
+  });
 });

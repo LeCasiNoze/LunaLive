@@ -149,19 +149,15 @@ export function buildLiveAlertMessage(
     })
     .setTitle(`🔴 ${snapshot.title}`)
     .setURL(config.lunaLiveUrl)
-    .setDescription(
-      "Le live vient de commencer. Choisis ta plateforme et rejoins-nous maintenant.\n\n" +
-      "**Deux plateformes, un seul direct : Rumble + LunaLive.**"
-    )
     .addFields(
       {
         name: "🌙 LunaLive",
-        value: "Le live, le chat et l’expérience communautaire.",
+        value: "La plateforme pour les vrais bg",
         inline: true,
       },
       {
         name: "🟢 Rumble",
-        value: "Retrouve directement la diffusion sur Rumble.",
+        value: "La classique",
         inline: true,
       },
       {

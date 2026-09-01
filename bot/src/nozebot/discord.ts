@@ -27,6 +27,7 @@ const DEFAULTS = {
   moderatorRoleId: "1188939890344329379",
   adminRoleId: "1188940226358415443",
   startHereChannelId: "1188914815561891990",
+  generalChannelId: "1188913389125255198",
   leaveLogChannelId: "1424038747950813234",
   botLogChannelId: "1193268118345240669",
   supportCategoryId: "1544429387754246185",
@@ -87,6 +88,7 @@ type NozeBotConfig = {
   moderatorRoleId: string;
   adminRoleId: string;
   startHereChannelId: string;
+  generalChannelId: string;
   leaveLogChannelId: string;
   botLogChannelId: string;
   supportCategoryId: string;
@@ -112,6 +114,7 @@ function loadConfig(): NozeBotConfig | null {
     moderatorRoleId: process.env.NOZEBOT_MODERATOR_ROLE_ID?.trim() || DEFAULTS.moderatorRoleId,
     adminRoleId: process.env.NOZEBOT_ADMIN_ROLE_ID?.trim() || DEFAULTS.adminRoleId,
     startHereChannelId: process.env.NOZEBOT_START_HERE_CHANNEL_ID?.trim() || DEFAULTS.startHereChannelId,
+    generalChannelId: process.env.NOZEBOT_GENERAL_CHANNEL_ID?.trim() || DEFAULTS.generalChannelId,
     leaveLogChannelId: process.env.NOZEBOT_LEAVE_LOG_CHANNEL_ID?.trim() || DEFAULTS.leaveLogChannelId,
     botLogChannelId: process.env.NOZEBOT_BOT_LOG_CHANNEL_ID?.trim() || DEFAULTS.botLogChannelId,
     supportCategoryId: process.env.NOZEBOT_SUPPORT_CATEGORY_ID?.trim() || DEFAULTS.supportCategoryId,
@@ -149,6 +152,22 @@ function hasStaffRole(member: GuildMember, config: NozeBotConfig): boolean {
   return member.roles.cache.has(config.moderatorRoleId) ||
     member.roles.cache.has(config.adminRoleId) ||
     member.permissions.has(PermissionFlagsBits.ManageChannels);
+}
+
+export function buildMemberWelcomeMessage(userId: string) {
+  return {
+    content: `<@${userId}>, bienvenue dans la maison !`,
+    allowedMentions: { parse: [] as never[], users: [userId] },
+  };
+}
+
+async function welcomeNewMember(member: GuildMember, config: NozeBotConfig): Promise<void> {
+  if (member.guild.id !== config.guildId || member.user.bot) return;
+  const channel = await member.guild.channels.fetch(config.generalChannelId).catch(() => null);
+  if (!channel || channel.type !== ChannelType.GuildText) return;
+
+  const message = await channel.send(buildMemberWelcomeMessage(member.id));
+  await message.react("🔥");
 }
 
 async function handleRulesAcceptance(interaction: Interaction, config: NozeBotConfig): Promise<boolean> {
@@ -445,6 +464,9 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     console.log(`[nozebot] connecté: ${readyClient.user.tag} (${readyClient.user.id})`);
   });
   client.on(Events.InteractionCreate, (interaction) => void routeInteraction(interaction, config));
+  client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
+    console.error("[nozebot] member welcome failed", error);
+  }));
   client.on(Events.GuildMemberRemove, (member) => void logMemberDeparture(member, config).catch((error) => {
     console.error("[nozebot] leave log failed", error);
   }));
