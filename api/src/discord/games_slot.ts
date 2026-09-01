@@ -59,7 +59,7 @@ export function fmtRemaining(ms: number) {
  *  - 777    :  1.00% (9880..9980)
  *  - max    :  0.20% (9980..10000)
  */
-export function rollSlotOutcome(rnd = Math.random()): SlotOutcome {
+export function rollSlotOutcome(rnd: () => number = Math.random): SlotOutcome {
   const x = Math.floor(rnd() * 10000);
   const pick = (from: number, to: number) => x >= from && x < to;
 
