@@ -7,6 +7,7 @@ import { Registry } from "./runtime/registry.js";
 import { logEvent } from "./log.js";
 import { YouTubeNotifier, type YouTubeNotifierConfig } from "./modules/notifications/youtube.js";
 import { InstagramNotifier, type InstagramNotifierConfig } from "./modules/notifications/instagram.js";
+import { startLeCasiNozeDiscordBot } from "./nozebot/discord.js";
 import {
   activeWorkers,
   waitingWorkers,
@@ -272,6 +273,8 @@ async function main() {
   console.log("[bot] Nivora Discord is hosted exclusively by the Nivora service");
   registry.start();
 
+  const stopLeCasiNozeDiscord = await startLeCasiNozeDiscordBot();
+
   const stopIpc = startLunaClipDbIpc(pool);
 
   // ✅ Démarrer le notificateur YouTube (plus besoin de variables d'environnement)
@@ -306,6 +309,7 @@ async function main() {
     console.log(`[bot] shutdown ${sig}`);
     try { stopIpc(); }               catch {}
     try { registry.stop(); }         catch {}
+    try { await stopLeCasiNozeDiscord(); } catch {}
     try { youtubeNotifier?.stop(); } catch {}
     try { instagramNotifier?.stop(); } catch {}
     try { await pool.end(); }        catch {}
