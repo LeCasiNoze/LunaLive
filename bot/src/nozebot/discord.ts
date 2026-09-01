@@ -18,6 +18,8 @@ import {
   type StringSelectMenuInteraction,
   type TextChannel,
 } from "discord.js";
+import type { Pool } from "pg";
+import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
 
 const DEFAULTS = {
   guildId: "1188913226990235800",
@@ -29,6 +31,11 @@ const DEFAULTS = {
   botLogChannelId: "1193268118345240669",
   supportCategoryId: "1544429387754246185",
   ticketOpenerChannelId: "1544429389415063604",
+  liveAlertsChannelId: "1188913451062534295",
+  liveRoleId: "1188926242519523328",
+  streamerSlug: "lecasinoze",
+  lunaLiveUrl: "https://lunalive.win/s/lecasinoze",
+  rumbleUrl: "https://rumble.com/user/LeCasiNoze/live",
   notificationRoleIds: [
     "1188926242519523328",
     "1188926088852799578",
@@ -85,7 +92,14 @@ type NozeBotConfig = {
   supportCategoryId: string;
   ticketOpenerChannelId: string;
   notificationRoleIds: readonly string[];
+  liveAlerts: LiveAlertConfig;
 };
+
+function livePollMs(): number {
+  const value = Number(process.env.NOZEBOT_LIVE_POLL_MS || 20_000);
+  if (!Number.isFinite(value)) return 20_000;
+  return Math.min(300_000, Math.max(10_000, Math.floor(value)));
+}
 
 function loadConfig(): NozeBotConfig | null {
   const token = process.env.NOZEBOT_DISCORD_TOKEN?.trim();
@@ -103,6 +117,16 @@ function loadConfig(): NozeBotConfig | null {
     supportCategoryId: process.env.NOZEBOT_SUPPORT_CATEGORY_ID?.trim() || DEFAULTS.supportCategoryId,
     ticketOpenerChannelId: process.env.NOZEBOT_TICKET_OPENER_CHANNEL_ID?.trim() || DEFAULTS.ticketOpenerChannelId,
     notificationRoleIds: DEFAULTS.notificationRoleIds,
+    liveAlerts: {
+      guildId: process.env.NOZEBOT_GUILD_ID?.trim() || DEFAULTS.guildId,
+      channelId: process.env.NOZEBOT_LIVE_ALERTS_CHANNEL_ID?.trim() || DEFAULTS.liveAlertsChannelId,
+      roleId: process.env.NOZEBOT_LIVE_ROLE_ID?.trim() || DEFAULTS.liveRoleId,
+      streamerSlug: process.env.NOZEBOT_LIVE_SLUG?.trim() || DEFAULTS.streamerSlug,
+      apiBase: process.env.NOZEBOT_LIVE_API_BASE?.trim() || process.env.BOT_API_BASE?.trim() || "https://lunalive-api.onrender.com",
+      lunaLiveUrl: process.env.NOZEBOT_LUNALIVE_URL?.trim() || DEFAULTS.lunaLiveUrl,
+      rumbleUrl: process.env.NOZEBOT_RUMBLE_URL?.trim() || DEFAULTS.rumbleUrl,
+      pollMs: livePollMs(),
+    },
   };
 }
 
@@ -406,7 +430,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig)
   }
 }
 
-export async function startLeCasiNozeDiscordBot(): Promise<() => Promise<void>> {
+export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Promise<void>> {
   const config = loadConfig();
   if (!config) {
     console.log("[nozebot] NOZEBOT_DISCORD_TOKEN absent, client LeCasiNoze désactivé");
@@ -427,7 +451,18 @@ export async function startLeCasiNozeDiscordBot(): Promise<() => Promise<void>> 
   client.on(Events.Error, (error) => console.error("[nozebot] client error", error));
 
   await client.login(config.token);
+  let stopLiveAlerts: () => void = () => undefined;
+  if (pool) {
+    try {
+      stopLiveAlerts = await startLeCasiNozeLiveAlerts(client, pool, config.liveAlerts);
+    } catch (error) {
+      console.error("[nozebot][live] démarrage impossible", error);
+    }
+  } else {
+    console.warn("[nozebot][live] pool PostgreSQL absent, alertes désactivées");
+  }
   return async () => {
+    stopLiveAlerts();
     client.destroy();
   };
 }

@@ -273,7 +273,7 @@ async function main() {
   console.log("[bot] Nivora Discord is hosted exclusively by the Nivora service");
   registry.start();
 
-  const stopLeCasiNozeDiscord = await startLeCasiNozeDiscordBot();
+  const stopLeCasiNozeDiscord = await startLeCasiNozeDiscordBot(pool);
 
   const stopIpc = startLunaClipDbIpc(pool);
 
