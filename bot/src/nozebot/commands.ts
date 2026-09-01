@@ -15,13 +15,16 @@ import {
   actLunaLiveBlackjack,
   claimLunaLiveDaily,
   fetchLunaLiveProfile,
+  playLunaLiveSlot,
   requestLunaLiveLink,
   startLunaLiveBlackjack,
   type LunaLiveBlackjack,
   type LunaLiveApiConfig,
   type LunaLiveProfile,
+  type LunaLiveSlot,
 } from "./lunalive-api.js";
 import { renderBlackjackTable } from "./blackjack-renderer.js";
+import { renderSlotMachine } from "./slot-renderer.js";
 
 export type NozeBotCommandConfig = {
   guildId: string;
@@ -46,6 +49,7 @@ const COMMANDS = [
         { name: "Classique · 20 Rubis", value: "classic" },
         { name: "Blackjack+ · 25 Rubis", value: "plus" }
       )),
+  new SlashCommandBuilder().setName("slot").setDescription("Lancer la machine à sous avec tes Rubis LunaLive"),
 ];
 
 const COMMAND_NAMES = new Set(COMMANDS.map((command) => command.name));
@@ -277,6 +281,52 @@ async function handleBlackjackButton(
   }
 }
 
+export async function buildSlotMessage(slot: LunaLiveSlot, username: string) {
+  const imageName = `nozebot-slot-${Date.now()}.png`;
+  const image = await renderSlotMachine(slot, username);
+  const color = slot.net > 0 ? 0x45e0a8 : slot.net < 0 ? 0xff5470 : 0xe4c866;
+  const net = `${slot.net >= 0 ? "+" : "−"}${fmt(Math.abs(slot.net))}`;
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(slot.net > 0 ? "La machine régale" : slot.net === 0 ? "Mise remboursée" : "La maison prend cette manche")
+    .setDescription(`## ${net} Rubis\nNouveau solde : **${fmt(slot.balance)} Rubis**`)
+    .setImage(`attachment://${imageName}`)
+    .addFields(
+      { name: "Mise", value: `**${fmt(slot.bet)}**`, inline: true },
+      { name: "Gain brut", value: `**${fmt(slot.payout)}**`, inline: true },
+      { name: "Prochain spin", value: discordTimestamp(slot.nextAt), inline: true }
+    )
+    .setFooter({ text: "LeCasiNoze × LunaLive • Solde et cooldown partagés" });
+  if (slot.penalty > 0) embed.addFields({ name: "Malus", value: `**−${fmt(slot.penalty)} Rubis**`, inline: true });
+  return { embeds: [embed], files: [new AttachmentBuilder(image, { name: imageName })] };
+}
+
+async function handleSlotCommand(
+  interaction: ChatInputCommandInteraction,
+  config: NozeBotCommandConfig
+): Promise<void> {
+  await interaction.deferReply();
+  try {
+    const slot = await playLunaLiveSlot(config.lunaLive, interaction.user.id);
+    await interaction.editReply(await buildSlotMessage(slot, interaction.user.username));
+  } catch (error) {
+    if (error instanceof LunaLiveApiError && error.code === "cooldown") {
+      const nextAt = typeof error.details.nextAt === "string" ? error.details.nextAt : "";
+      await sendPrivateError(interaction, `⏳ La machine recharge. Prochain spin ${discordTimestamp(nextAt)}.`);
+      return;
+    }
+    if (error instanceof LunaLiveApiError && error.code === "insufficient_rubis") {
+      await sendPrivateError(interaction, "💎 Il te faut **10 Rubis** pour lancer la machine.");
+      return;
+    }
+    if (error instanceof LunaLiveApiError && error.code === "not_linked") {
+      await sendPrivateError(interaction, "🔗 Lie d’abord ton compte LunaLive avec **/link**.");
+      return;
+    }
+    throw error;
+  }
+}
+
 async function handleLink(interaction: ChatInputCommandInteraction, config: NozeBotCommandConfig): Promise<void> {
   await interaction.deferReply({ ephemeral: true });
   const result = await requestLunaLiveLink(config.lunaLive, interaction.user.id);
@@ -401,6 +451,7 @@ export async function handleNozeBotCommand(
     if (interaction.commandName === "link") await handleLink(interaction, config);
     else if (interaction.commandName === "claim") await handleClaim(interaction, config);
     else if (interaction.commandName === "blackjack") await handleBlackjackCommand(interaction, config);
+    else if (interaction.commandName === "slot") await handleSlotCommand(interaction, config);
     else await handleProfileCommand(interaction, config);
   } catch (error) {
     console.error(`[nozebot] commande /${interaction.commandName} échouée`, error);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { settle, type BJGame, type Card } from "../src/discord/games_blackjack.js";
+import { rollSlotOutcome } from "../src/discord/games_slot.js";
 
 function game(player: Card[], dealer: Card[]): BJGame {
   return {
@@ -34,4 +35,11 @@ test("two natural blackjacks push instead of paying the player twice", () => {
   ));
   assert.equal(result.mainNet, 0);
   assert.equal(result.perHand[0].kind, "push");
+});
+
+test("slot outcome boundaries stay deterministic", () => {
+  assert.equal(rollSlotOutcome(() => 0).code, "fucked");
+  assert.equal(rollSlotOutcome(() => 0.05).code, "zero");
+  assert.equal(rollSlotOutcome(() => 0.988).code, "777");
+  assert.equal(rollSlotOutcome(() => 0.9999).code, "max");
 });

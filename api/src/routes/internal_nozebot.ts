@@ -13,6 +13,7 @@ import {
   startNozeBotBlackjack,
   type NozeBotBlackjackAction,
 } from "../services/nozebot_blackjack.js";
+import { NozeBotSlotError, playNozeBotSlot } from "../services/nozebot_slot.js";
 
 export const internalNozeBotRouter = Router();
 
@@ -235,5 +236,21 @@ internalNozeBotRouter.post("/internal/bot/nozebot/blackjack/action", requireNoze
     res.json({ ok: true, game });
   } catch (error) {
     sendBlackjackError(res, error);
+  }
+}));
+
+internalNozeBotRouter.post("/internal/bot/nozebot/slot", requireNozeBot, a(async (req, res) => {
+  const identity = await linkedIdentity(req, res);
+  if (!identity) return;
+  try {
+    const slot = await playNozeBotSlot(identity);
+    res.json({ ok: true, slot });
+  } catch (error) {
+    if (error instanceof NozeBotSlotError) {
+      res.status(error.status).json({ ok: false, error: error.code, ...error.details });
+      return;
+    }
+    console.error("[nozebot-slot] request failed", error);
+    res.status(500).json({ ok: false, error: "internal_error" });
   }
 }));

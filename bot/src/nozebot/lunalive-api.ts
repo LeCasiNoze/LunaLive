@@ -82,6 +82,18 @@ export type LunaLiveBlackjack = {
   };
 };
 
+export type LunaLiveSlot = {
+  code: string;
+  label: string;
+  art: string;
+  bet: number;
+  payout: number;
+  penalty: number;
+  net: number;
+  balance: number;
+  nextAt: string;
+};
+
 export class LunaLiveApiError extends Error {
   constructor(
     readonly code: string,
@@ -190,4 +202,16 @@ export async function actLunaLiveBlackjack(
     { sessionId, action }
   );
   return result.game;
+}
+
+export async function playLunaLiveSlot(
+  config: LunaLiveApiConfig,
+  discordUserId: string
+): Promise<LunaLiveSlot> {
+  const result = await post<{ ok: true; slot: LunaLiveSlot }>(
+    config,
+    "/internal/bot/nozebot/slot",
+    discordUserId
+  );
+  return result.slot;
 }

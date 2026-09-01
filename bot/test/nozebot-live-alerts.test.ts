@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
 import test from "node:test";
-import { buildBlackjackMessage, buildProfileEmbed } from "../src/nozebot/commands.js";
+import { buildBlackjackMessage, buildProfileEmbed, buildSlotMessage } from "../src/nozebot/commands.js";
 import { buildMemberWelcomeMessage } from "../src/nozebot/discord.js";
 import { buildLiveAlertMessage, parseLunaLivePayload } from "../src/nozebot/live-alerts.js";
 import type { LunaLiveProfile } from "../src/nozebot/lunalive-api.js";
@@ -169,4 +169,29 @@ test("renders a persistent blackjack table with real card artwork", async () => 
   const embed = message.embeds[0].toJSON();
   assert.equal(embed.image?.url, `attachment://nozebot-blackjack-${game.sessionId}.png`);
   assert.equal(message.components[0].components[3].data.disabled, true);
+});
+
+test("renders a premium slot result from the shared LunaLive wallet", async () => {
+  const message = await buildSlotMessage({
+    code: "777",
+    label: "[777 777] 100",
+    art: "777 777",
+    bet: 10,
+    payout: 100,
+    penalty: 0,
+    net: 90,
+    balance: 1068,
+    nextAt: "2026-09-03T08:00:00.000Z",
+  }, "LeCasiNoze");
+  const attachment = message.files[0].attachment;
+  assert.ok(Buffer.isBuffer(attachment));
+  assert.deepEqual([...attachment.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(attachment.length > 15_000);
+  if (process.env.SLOT_PREVIEW_PATH) {
+    await writeFile(process.env.SLOT_PREVIEW_PATH, attachment);
+  }
+  const embed = message.embeds[0].toJSON();
+  assert.equal(embed.color, 0x45e0a8);
+  assert.match(embed.description || "", /\+90 Rubis/);
+  assert.match(embed.image?.url || "", /^attachment:\/\/nozebot-slot-/);
 });
