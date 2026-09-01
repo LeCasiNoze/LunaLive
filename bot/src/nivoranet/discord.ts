@@ -481,7 +481,7 @@ async function completeRefillBatch(client: Client, env: NivoraDiscordEnv) {
   let count = 0;
   for (const notification of result.notifications ?? []) {
     const channel = await client.channels.fetch(notification.ticketChannelId).catch(() => null);
-    if (!channel?.isTextBased()) continue;
+    if (channel?.type !== ChannelType.GuildText) continue;
     await channel.send({
       content: `<@${notification.discordUserId}>`,
       embeds: [new EmbedBuilder().setColor(0x35D6B5).setTitle(t(notification.language).refillCompleted).setDescription(t(notification.language).refillCompletedText(notification.brandName, currency(notification.amount)))],
@@ -544,7 +544,7 @@ function startPerformanceNotifier(client: Client, env: NivoraDiscordEnv) {
       for (const notification of result.notifications ?? []) {
         if (!notification.enabled) { sentIds.push(notification.id); continue; }
         const channel = await client.channels.fetch(notification.ticketChannelId!).catch(() => null);
-        if (!channel?.isTextBased()) continue;
+        if (channel?.type !== ChannelType.GuildText) continue;
         const message = performanceMessage(notification);
         await channel.send({
           content: `<@${notification.discordUserId}>`,
@@ -731,7 +731,7 @@ export async function startNivoraDiscordBot(env: NivoraDiscordEnv): Promise<() =
         const language = nivoraLanguage(context.language);
         const when = new Intl.DateTimeFormat(language === "fr" ? "fr-FR" : language === "de" ? "de-DE" : "en-GB", { timeZone: "Europe/Paris", dateStyle: "medium", timeStyle: "short" }).format(new Date(result.cutoffAt));
         const channel = interaction.channel;
-        if (channel) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.refillRequested).setDescription(`**${result.brandName}** · **${currency(result.amount)}**\n${text.queued}: **${when} (Paris)**.`).setFooter({ text: text.dailyLimit })] });
+        if (channel?.type === ChannelType.GuildText) await channel.send({ embeds: [new EmbedBuilder().setColor(GOLD).setTitle(text.refillRequested).setDescription(`**${result.brandName}** · **${currency(result.amount)}**\n${text.queued}: **${when} (Paris)**.`).setFooter({ text: text.dailyLimit })] });
         return void interaction.editReply(text.refillSaved);
       }
       if (interaction.isButton() && interaction.customId.startsWith("nivora:approve:")) {
