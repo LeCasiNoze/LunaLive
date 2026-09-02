@@ -212,7 +212,13 @@ export async function buildBlackjackMessage(game: LunaLiveBlackjack, username: s
     .setImage(`attachment://${imageName}`)
     .addFields(
       { name: "Mode", value: game.mode === "plus" ? "Blackjack+ · mise 25" : "Classique · mise 20", inline: true },
-      { name: "Cooldown partagé", value: discordTimestamp(game.cooldownEndsAt), inline: true }
+      {
+        name: "Cooldown partagé",
+        value: new Date(game.cooldownEndsAt).getTime() <= Date.now()
+          ? "Désactivé pour les tests"
+          : discordTimestamp(game.cooldownEndsAt),
+        inline: true,
+      }
     )
     .setFooter({ text: "LeCasiNoze × LunaLive • Rubis, XP et succès synchronisés" });
   if (game.mode === "plus" && game.sideBetLines.length) {

@@ -24,6 +24,12 @@ import { earnRubisTx, spendRubisTx } from "../wallet_engine.js";
 const MAIN_BET = 20;
 const PAIRS_BET = 3;
 const PLUS3_BET = 2;
+const NO_COOLDOWN_DISCORD_USER_IDS = new Set(
+  (process.env.NOZEBOT_NO_COOLDOWN_DISCORD_IDS || "682472610868887567")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 
 export type NozeBotBlackjackAction = "hit" | "stand" | "double" | "split";
 
@@ -126,6 +132,9 @@ async function cooldownState(
   userId: number,
   touch: boolean
 ): Promise<{ cooldownMs: number; endsAt: string }> {
+  if (NO_COOLDOWN_DISCORD_USER_IDS.has(discordUserId)) {
+    return { cooldownMs: 0, endsAt: new Date(0).toISOString() };
+  }
   const user = await client.query(`SELECT xp::bigint AS xp FROM users WHERE id=$1 FOR UPDATE`, [userId]);
   if (!user.rows[0]) throw new NozeBotBlackjackError("user_not_found", 404);
   const level = getLevelInfo(Number(user.rows[0].xp || 0)).level;
