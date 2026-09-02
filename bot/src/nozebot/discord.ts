@@ -9,6 +9,7 @@ import {
   GatewayIntentBits,
   ModalBuilder,
   PermissionFlagsBits,
+  Routes,
   TextInputBuilder,
   TextInputStyle,
   type GuildMember,
@@ -527,6 +528,22 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   });
 
   await client.login(config.token);
+  try {
+    const application = await client.rest.get(Routes.currentApplication()) as {
+      interactions_endpoint_url?: string | null;
+    };
+    if (application.interactions_endpoint_url) {
+      console.warn("[nozebot] ancienne URL HTTP d'interactions détectée, retour au mode Gateway");
+      await client.rest.patch(Routes.currentApplication(), {
+        body: { interactions_endpoint_url: null },
+      });
+      console.log("[nozebot] URL HTTP d'interactions supprimée");
+    } else {
+      console.log("[nozebot] réception des interactions configurée sur la Gateway");
+    }
+  } catch (error) {
+    console.error("[nozebot] vérification du mode de réception des interactions impossible", error);
+  }
   await registerNozeBotCommands(client, config.commands).catch((error) => {
     console.error("[nozebot] enregistrement des commandes LunaLive impossible", error);
   });
