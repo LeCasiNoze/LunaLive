@@ -28,7 +28,7 @@ export function buildSlotSvg(slot: LunaLiveSlot, username: string): string {
       <text x="95" y="75" text-anchor="middle" fill="${special ? "#6e42c1" : "#211a31"}" font-size="${label.length > 3 ? 31 : 54}" font-weight="900">${label}</text>
     </g>`;
   }).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" font-family="Arial, Helvetica, sans-serif">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" font-family="DejaVu Sans, sans-serif">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0b0911"/><stop offset=".55" stop-color="#191126"/><stop offset="1" stop-color="#0a0810"/></linearGradient>
       <linearGradient id="machine" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#32224e"/><stop offset="1" stop-color="#171121"/></linearGradient>

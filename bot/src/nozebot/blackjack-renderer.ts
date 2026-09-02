@@ -3,6 +3,8 @@ import type { LunaLiveBlackjack, LunaLiveBlackjackCard } from "./lunalive-api.js
 
 const WIDTH = 1200;
 const HEIGHT = 720;
+const CARD_WIDTH = 126;
+const CARD_HEIGHT = 178;
 
 function xml(value: unknown): string {
   return String(value ?? "")
@@ -15,26 +17,28 @@ function xml(value: unknown): string {
 function cardSvg(card: LunaLiveBlackjackCard | null, x: number, y: number, hidden = false): string {
   if (!card || hidden) {
     return `<g transform="translate(${x} ${y})">
-      <rect width="108" height="150" rx="13" fill="#21163b" stroke="#b794ff" stroke-width="3"/>
-      <rect x="9" y="9" width="90" height="132" rx="9" fill="none" stroke="#7650c8" stroke-width="2"/>
-      <path d="M18 28 L90 122 M90 28 L18 122 M18 75 H90" stroke="#7650c8" stroke-width="5" opacity=".72"/>
-      <circle cx="54" cy="75" r="23" fill="#9d7cff"/><text x="54" y="84" text-anchor="middle" fill="#fff" font-size="24" font-weight="900">N</text>
+      <rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#7217e8" stroke="#b785ff" stroke-width="3" filter="url(#cardShadow)"/>
+      <path d="M0 134 L92 0 H126 V42 L34 178 H0Z" fill="#8c2bff" opacity=".9"/>
+      <rect x="8" y="8" width="${CARD_WIDTH - 16}" height="${CARD_HEIGHT - 16}" rx="7" fill="none" stroke="#d1b4ff" stroke-width="2" opacity=".7"/>
+      <path d="M43 74 H83 V104 H43Z M52 84 H74 M63 74 V104" fill="none" stroke="#220052" stroke-width="7" stroke-linecap="round"/>
     </g>`;
   }
   const red = card.s === "♥" || card.s === "♦";
-  const color = red ? "#ef4565" : "#171726";
+  const color = red ? "#bf1725" : "#090a0d";
   return `<g transform="translate(${x} ${y})">
-    <rect width="108" height="150" rx="13" fill="#fff" stroke="#dedbea" stroke-width="2" filter="url(#shadow)"/>
-    <text x="14" y="34" fill="${color}" font-size="25" font-weight="900">${xml(card.r)}</text>
-    <text x="14" y="60" fill="${color}" font-size="25">${xml(card.s)}</text>
-    <text x="54" y="100" text-anchor="middle" fill="${color}" font-size="54">${xml(card.s)}</text>
-    <g transform="rotate(180 54 75)"><text x="14" y="34" fill="${color}" font-size="25" font-weight="900">${xml(card.r)}</text><text x="14" y="60" fill="${color}" font-size="25">${xml(card.s)}</text></g>
-  </g>`;
+    <rect width="${CARD_WIDTH}" height="${CARD_HEIGHT}" rx="10" fill="#fff" stroke="#e2e4e9" stroke-width="2" filter="url(#cardShadow)"/>
+    <text x="63" y="77" text-anchor="middle" fill="${color}" font-size="49" font-weight="800">${xml(card.r)}</text>
+    <text x="63" y="137" text-anchor="middle" fill="${color}" font-size="57">${xml(card.s)}</text>
+    <text x="13" y="26" fill="${color}" font-size="18" font-weight="800">${xml(card.r)}</text>
+    <text x="14" y="45" fill="${color}" font-size="19">${xml(card.s)}</text>
+    </g>`;
 }
 
-function cardsRow(cards: Array<LunaLiveBlackjackCard | null>, startX: number, y: number): string {
-  const overlap = cards.length > 6 ? 58 : 76;
-  return cards.map((card, index) => cardSvg(card, startX + index * overlap, y, card === null)).join("");
+function cardsRow(cards: Array<LunaLiveBlackjackCard | null>, centerX: number, y: number, maxWidth = 760): string {
+  const gap = cards.length <= 4 ? 14 : Math.max(-45, Math.floor((maxWidth - cards.length * CARD_WIDTH) / Math.max(1, cards.length - 1)));
+  const rowWidth = cards.length * CARD_WIDTH + Math.max(0, cards.length - 1) * gap;
+  const startX = centerX - rowWidth / 2;
+  return cards.map((card, index) => cardSvg(card, Math.round(startX + index * (CARD_WIDTH + gap)), y, card === null)).join("");
 }
 
 function signed(value: number): string {
@@ -45,19 +49,17 @@ export function buildBlackjackSvg(game: LunaLiveBlackjack, username: string): st
   const finished = game.status === "finished";
   const result = game.result;
   const accent = !finished ? "#9d7cff" : (result?.totalNet || 0) > 0 ? "#45e0a8" : (result?.totalNet || 0) < 0 ? "#ff5470" : "#e4c866";
-  const dealerLabel = finished ? `CROUPIER · ${game.dealer.total ?? "—"}` : "CROUPIER · CARTE CACHÉE";
-  const handWidth = game.hands.length === 1 ? 1000 : 510;
-  const handStart = game.hands.length === 1 ? 100 : 72;
+  const dealerScore = finished ? String(game.dealer.total ?? "--") : "?";
 
   const hands = game.hands.map((hand, index) => {
-    const x = game.hands.length === 1 ? handStart : handStart + index * 550;
-    const activeStroke = hand.active ? "#b794ff" : "#48405e";
-    const title = game.hands.length === 1 ? `TA MAIN · ${hand.total}` : `MAIN ${index + 1} · ${hand.total}`;
+    const centerX = game.hands.length === 1 ? 600 : (index === 0 ? 330 : 870);
+    const scoreColor = hand.total > 21 ? "#ff334d" : hand.active ? "#8851ff" : "#343844";
+    const label = game.hands.length === 1 ? `TA MAIN · MISE ${hand.bet}` : `MAIN ${index + 1} · MISE ${hand.bet}`;
     return `<g>
-      <rect x="${x}" y="390" width="${handWidth}" height="245" rx="26" fill="#171324" stroke="${activeStroke}" stroke-width="${hand.active ? 4 : 2}"/>
-      <text x="${x + 28}" y="430" fill="#fff" font-size="23" font-weight="900" letter-spacing="1.5">${title}</text>
-      <text x="${x + handWidth - 28}" y="430" text-anchor="end" fill="#b9adc9" font-size="19">MISE ${hand.bet} RUBIS${hand.doubled ? " · DOUBLÉE" : ""}</text>
-      ${cardsRow(hand.cards, x + 28, 458)}
+      <text x="${centerX}" y="424" text-anchor="middle" fill="#858a96" font-size="16" font-weight="700" letter-spacing="1.2">${label}${hand.doubled ? " · DOUBLEE" : ""}</text>
+      ${cardsRow(hand.cards, centerX, 444, game.hands.length === 1 ? 800 : 500)}
+      <rect x="${centerX - 35}" y="635" width="70" height="40" rx="20" fill="${scoreColor}"/>
+      <text x="${centerX}" y="662" text-anchor="middle" fill="#fff" font-size="21" font-weight="900">${hand.total}</text>
     </g>`;
   }).join("");
 
@@ -65,26 +67,29 @@ export function buildBlackjackSvg(game: LunaLiveBlackjack, username: string): st
     ? `${result.isNaturalBlackjack && result.perHand[0]?.kind === "win" ? "BLACKJACK · " : ""}${signed(result.totalNet)} RUBIS`
     : game.mode === "plus" ? "BLACKJACK+ · 25 RUBIS" : "CLASSIQUE · 20 RUBIS";
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" font-family="Arial, Helvetica, sans-serif">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" font-family="DejaVu Sans, sans-serif">
     <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0c0913"/><stop offset=".5" stop-color="#171026"/><stop offset="1" stop-color="#09080f"/></linearGradient>
-      <radialGradient id="felt"><stop stop-color="#153f3b"/><stop offset="1" stop-color="#0a2424"/></radialGradient>
-      <filter id="shadow"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-opacity=".45"/></filter>
-      <filter id="glow"><feGaussianBlur stdDeviation="14"/></filter>
+      <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#111318"/><stop offset="1" stop-color="#0c0e12"/></linearGradient>
+      <filter id="cardShadow"><feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#000" flood-opacity=".55"/></filter>
     </defs>
-    <rect width="1200" height="720" rx="30" fill="url(#bg)"/>
-    <ellipse cx="600" cy="380" rx="540" ry="300" fill="url(#felt)" stroke="#332852" stroke-width="4"/>
-    <ellipse cx="600" cy="380" rx="522" ry="282" fill="none" stroke="#7e5bd1" stroke-width="2" opacity=".45"/>
-    <circle cx="1030" cy="90" r="90" fill="${accent}" opacity=".12" filter="url(#glow)"/>
-    <text x="52" y="65" fill="#fff" font-size="28" font-weight="900" letter-spacing="2">NOZEBOT BLACKJACK</text>
-    <text x="52" y="95" fill="#9d91ae" font-size="18">${xml(username)} · Solde ${game.balance.toLocaleString("fr-FR")} rubis</text>
-    <rect x="838" y="45" width="310" height="62" rx="18" fill="#211a31" stroke="${accent}" stroke-width="2"/>
-    <text x="993" y="72" text-anchor="middle" fill="#a99dbb" font-size="14" font-weight="700">${finished ? "RÉSULTAT" : "TABLE LUNALIVE"}</text>
-    <text x="993" y="94" text-anchor="middle" fill="${accent}" font-size="20" font-weight="900">${xml(statusText)}</text>
-    <text x="600" y="150" text-anchor="middle" fill="#d6cee2" font-size="20" font-weight="800" letter-spacing="1.5">${dealerLabel}</text>
-    ${cardsRow(game.dealer.cards, 505, 175)}
+    <rect width="1200" height="720" rx="22" fill="url(#bg)"/>
+    <path d="M0 365 H1200" stroke="#272a32" stroke-width="2"/>
+    <rect x="24" y="22" width="355" height="58" rx="12" fill="#1b1e25"/>
+    <text x="46" y="48" fill="#fff" font-size="18" font-weight="800">${xml(username)}</text>
+    <text x="46" y="70" fill="#9297a3" font-size="15">SOLDE · ${game.balance.toLocaleString("fr-FR")} RUBIS</text>
+    <rect x="821" y="22" width="355" height="58" rx="12" fill="#1b1e25" stroke="${accent}" stroke-width="2"/>
+    <text x="998" y="47" text-anchor="middle" fill="#9297a3" font-size="13" font-weight="700">${finished ? "RESULTAT" : "TABLE LUNALIVE"}</text>
+    <text x="998" y="69" text-anchor="middle" fill="${accent}" font-size="18" font-weight="900">${xml(statusText)}</text>
+    <text x="600" y="108" text-anchor="middle" fill="#858a96" font-size="15" font-weight="700" letter-spacing="1.4">CROUPIER</text>
+    <rect x="565" y="119" width="70" height="40" rx="20" fill="#343844"/>
+    <text x="600" y="146" text-anchor="middle" fill="#fff" font-size="21" font-weight="900">${dealerScore}</text>
+    ${cardsRow(game.dealer.cards, 600, 176)}
+    <g transform="translate(1032 92)">${cardSvg(null, 0, 0, true)}${cardSvg(null, 7, -7, true)}${cardSvg(null, 14, -14, true)}</g>
+    <path d="M493 345 H707 L693 365 L707 385 H493 L507 365Z" fill="#20232a"/>
+    <text x="600" y="370" text-anchor="middle" fill="#9196a2" font-size="13" font-weight="800">BLACKJACK PAIE 3 POUR 2</text>
     ${hands}
-    <text x="600" y="685" text-anchor="middle" fill="#776c88" font-size="15">LECASINOZE × LUNALIVE · PARTIE SYNCHRONISÉE</text>
+    <text x="25" y="700" fill="#606570" font-size="13">LECASINOZE × LUNALIVE</text>
+    <text x="1175" y="700" text-anchor="end" fill="#606570" font-size="13">PARTIE SYNCHRONISEE</text>
   </svg>`;
 }
 

@@ -16,6 +16,12 @@ FROM node:22-bookworm-slim
 WORKDIR /srv/lunalive-bot
 ENV NODE_ENV=production
 
+# sharp/librsvg needs an installed font at runtime. Without one, SVG text and
+# card suits are rendered as empty squares in Discord attachments.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fontconfig fonts-dejavu-core \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /repo/bot/package.json ./
 COPY --from=build /repo/bot/package-lock.json ./
 RUN npm ci --omit=dev
