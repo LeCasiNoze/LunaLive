@@ -477,10 +477,27 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   });
 
+  let stopped = false;
+  let gatewayUnavailableSince = 0;
+
   client.once(Events.ClientReady, (readyClient) => {
+    gatewayUnavailableSince = 0;
     console.log(`[nozebot] connecté: ${readyClient.user.tag} (${readyClient.user.id})`);
   });
-  client.on(Events.InteractionCreate, (interaction) => void routeInteraction(interaction, config));
+  client.on(Events.InteractionCreate, (interaction) => {
+    console.log("[nozebot] interaction reçue", {
+      id: interaction.id,
+      kind: interaction.type,
+      command: interaction.isChatInputCommand() ? interaction.commandName : undefined,
+      customId: interaction.isButton() || interaction.isAnySelectMenu() || interaction.isModalSubmit()
+        ? interaction.customId
+        : undefined,
+      guildId: interaction.guildId,
+      channelId: interaction.channelId,
+      userId: interaction.user.id,
+    });
+    void routeInteraction(interaction, config);
+  });
   client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
     console.error("[nozebot] member welcome failed", error);
   }));
@@ -488,6 +505,26 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     console.error("[nozebot] leave log failed", error);
   }));
   client.on(Events.Error, (error) => console.error("[nozebot] client error", error));
+  client.on(Events.Warn, (message) => console.warn("[nozebot] client warning", message));
+  client.on(Events.ShardDisconnect, (event, shardId) => {
+    if (!gatewayUnavailableSince) gatewayUnavailableSince = Date.now();
+    console.warn(`[nozebot] gateway déconnectée (shard=${shardId}, code=${event.code}, raison=${event.reason || "aucune"})`);
+  });
+  client.on(Events.ShardReconnecting, (shardId) => {
+    console.warn(`[nozebot] gateway en reconnexion (shard=${shardId})`);
+  });
+  client.on(Events.ShardError, (error, shardId) => {
+    if (!gatewayUnavailableSince) gatewayUnavailableSince = Date.now();
+    console.error(`[nozebot] erreur gateway (shard=${shardId})`, error);
+  });
+  client.on(Events.ShardReady, (shardId) => {
+    gatewayUnavailableSince = 0;
+    console.log(`[nozebot] gateway prête (shard=${shardId})`);
+  });
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    gatewayUnavailableSince = 0;
+    console.log(`[nozebot] gateway reprise (shard=${shardId}, événements rejoués=${replayedEvents})`);
+  });
 
   await client.login(config.token);
   await registerNozeBotCommands(client, config.commands).catch((error) => {
@@ -503,7 +540,23 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   } else {
     console.warn("[nozebot][live] pool PostgreSQL absent, alertes désactivées");
   }
+  const gatewayWatchdog = setInterval(() => {
+    if (stopped || client.isReady()) {
+      gatewayUnavailableSince = 0;
+      return;
+    }
+    if (!gatewayUnavailableSince) gatewayUnavailableSince = Date.now();
+    const unavailableForMs = Date.now() - gatewayUnavailableSince;
+    console.warn(`[nozebot] gateway indisponible depuis ${Math.round(unavailableForMs / 1000)}s`);
+    if (unavailableForMs >= 60_000) {
+      console.error("[nozebot] gateway indisponible depuis 60s, arrêt pour redémarrage automatique Render");
+      process.exitCode = 1;
+      void Promise.resolve().then(() => process.exit(1));
+    }
+  }, 15_000);
   return async () => {
+    stopped = true;
+    clearInterval(gatewayWatchdog);
     stopLiveAlerts();
     client.destroy();
   };
