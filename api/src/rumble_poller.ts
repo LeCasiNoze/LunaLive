@@ -81,9 +81,9 @@ const INTERVAL_MS = Number(process.env.RUMBLE_POLL_INTERVAL_MS || 30_000);
 
 type StreamerState = { isLive: boolean; title: string | null; offlineStreak: number };
 const lastState = new Map<number, StreamerState>();
-// Hystérésis désactivée (=1) : détection offline immédiate. Le check "no HLS"
-// dans fetchRumbleLiveInfoFromUsername est déjà fiable pour distinguer placeholder vs vraie fin.
-const OFFLINE_HYSTERESIS = 1;
+// Deux confirmations espacées de 30 s absorbent une panne CDN ponctuelle tout
+// en retirant un live terminé de LunaLive en une minute au maximum.
+const OFFLINE_HYSTERESIS = 2;
 
 async function updateRumbleInfo(
   streamerId: number,
@@ -105,7 +105,23 @@ async function updateRumbleInfo(
     : null;
 
   const room = `stream:${slug.toLowerCase()}`;
-  const prev = lastState.get(streamerId) ?? { isLive: false, title: null, offlineStreak: 0 };
+  let previousRumbleRow: any = null;
+  let prev = lastState.get(streamerId);
+  if (!prev) {
+    const persisted = await pool.query(
+      `SELECT is_live, title, live_id, live_video_id_numeric, thumbnail_url, live_started_at
+       FROM streamer_rumble_info
+       WHERE streamer_id = $1
+       LIMIT 1`,
+      [streamerId]
+    ).catch(() => null);
+    previousRumbleRow = persisted?.rows?.[0] || null;
+    prev = {
+      isLive: previousRumbleRow?.is_live === true,
+      title: previousRumbleRow?.title ? String(previousRumbleRow.title) : null,
+      offlineStreak: 0,
+    };
+  }
   const wasLive = prev.isLive;
 
   // Hystérésis : si on était live et qu'on reçoit un tick offline, on attend
@@ -179,6 +195,15 @@ async function updateRumbleInfo(
       });
     }
   } else {
+    if (wasLive && !previousRumbleRow) {
+      const previous = await pool.query(
+        `SELECT live_id, live_video_id_numeric, title, thumbnail_url, live_started_at
+         FROM streamer_rumble_info WHERE streamer_id = $1 LIMIT 1`,
+        [streamerId]
+      ).catch(() => null);
+      previousRumbleRow = previous?.rows?.[0] || null;
+    }
+
     await pool.query(
       `UPDATE streamers
        SET is_live = false,
@@ -211,13 +236,9 @@ async function updateRumbleInfo(
       console.log(`[rumble-poller] ${slug} went OFFLINE`);
 
       // Archive + programme la résolution du VOD permanent (5min, 15min, 45min, 2h)
-      // On lit l'état figé du live qui vient de finir avant qu'il soit overwrite par le tick offline.
-      const r = await pool.query(
-        `SELECT live_id, live_video_id_numeric, title, thumbnail_url, live_started_at
-         FROM streamer_rumble_info WHERE streamer_id = $1`,
-        [streamerId]
-      ).catch(() => null);
-      const row = r?.rows?.[0];
+      // L'état a été capturé avant l'UPDATE offline, afin de ne pas perdre les
+      // métadonnées nécessaires à la VOD et au clip final.
+      const row = previousRumbleRow;
       const lastVid = row?.live_id ? String(row.live_id) : null;
       if (lastVid) {
         await archiveAndResolveVod(

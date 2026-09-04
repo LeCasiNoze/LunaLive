@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { pool } from "../db.js";
 import { r2Enabled, buildPublicUrl } from "../clips/r2.js";
 import { fetchDliveLiveInfo } from "../dlive.js";
+import { tryWithFfmpegSlot } from "../utils/ffmpeg_gate.js";
 
 export const thumbsRouter = express.Router();
 
@@ -51,6 +52,7 @@ console.log(`[thumbs] ffmpeg selected bin=${FFMPEG_BIN} ok=${FFMPEG_OK}`);
 
 const LIVE_CACHE_MS = 60_000; // 1 min
 const LIVE_CACHE_SECONDS = Math.max(1, Math.floor(LIVE_CACHE_MS / 1000));
+const LIVE_CACHE_MAX_ENTRIES = 250;
 const cache = new Map<string, { exp: number; buf: Buffer; contentType: string }>();
 const inFlight = new Map<string, Promise<{ exp: number; buf: Buffer; contentType: string } | null>>();
 
@@ -209,7 +211,12 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
       SELECT
         COALESCE(LOWER(s.platform), '') AS platform,
         COALESCE(ri.thumbnail_url, s.thumb_url, latest_vod.thumbnail_url) AS fallback_thumb_url,
-        COALESCE(ri.is_live, FALSE) AS rumble_is_live,
+        COALESCE(
+          ri.is_live
+          AND ri.hls_url IS NOT NULL
+          AND ri.updated_at >= NOW() - INTERVAL '2 minutes',
+          FALSE
+        ) AS rumble_is_live,
         ri.hls_url AS rumble_hls_url
       FROM streamers s
       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
@@ -304,7 +311,7 @@ async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
   const latestSegment = await resolveLatestHlsSegment(hlsUrl);
   const inputUrl = latestSegment || hlsUrl;
 
-  return await new Promise<Buffer | null>((resolve) => {
+  return tryWithFfmpegSlot("live-thumbnail", () => new Promise<Buffer | null>((resolve) => {
     const hlsHeaders = "Origin: https://rumble.com\r\nReferer: https://rumble.com/\r\nUser-Agent: Mozilla/5.0\r\n";
     const args = [
       "-hide_banner",
@@ -322,14 +329,24 @@ async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
 
     const proc = spawn(FFMPEG_BIN, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     const out: Buffer[] = [];
+    let outputBytes = 0;
     let stderr = "";
     const timer = setTimeout(() => {
       try { proc.kill("SIGKILL"); } catch {}
     }, 15_000);
 
-    proc.stdout.on("data", (chunk) => out.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    proc.stdout.on("data", (chunk) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      outputBytes += buf.length;
+      if (outputBytes > 5 * 1024 * 1024) {
+        try { proc.kill("SIGKILL"); } catch {}
+        return;
+      }
+      out.push(buf);
+    });
     proc.stderr.on("data", (chunk) => {
       stderr += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+      if (stderr.length > 16_000) stderr = stderr.slice(-16_000);
     });
     proc.on("error", () => {
       clearTimeout(timer);
@@ -344,7 +361,7 @@ async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
       }
       resolve(null);
     });
-  });
+  }));
 }
 
 async function getOrCreateLiveThumb(
@@ -363,6 +380,17 @@ async function getOrCreateLiveThumb(
       if (!made) return null;
       const cached = { exp: Date.now() + LIVE_CACHE_MS, buf: made.buf, contentType: made.contentType };
       cache.set(key, cached);
+      if (cache.size > LIVE_CACHE_MAX_ENTRIES) {
+        const now = Date.now();
+        for (const [cacheKey, entry] of cache) {
+          if (entry.exp <= now) cache.delete(cacheKey);
+        }
+        while (cache.size > LIVE_CACHE_MAX_ENTRIES) {
+          const oldest = cache.keys().next().value as string | undefined;
+          if (!oldest) break;
+          cache.delete(oldest);
+        }
+      }
       return cached;
     } finally {
       inFlight.delete(key);

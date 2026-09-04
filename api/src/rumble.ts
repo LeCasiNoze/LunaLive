@@ -187,6 +187,7 @@ const RUMBLE_API_BASE = "https://rumble.com/-livestream-api/get-data";
 async function fetchRumbleData(apiKey: string) {
   const url = `${RUMBLE_API_BASE}?key=${encodeURIComponent(apiKey)}`;
   const r = await fetch(url, {
+    signal: AbortSignal.timeout(12_000),
     headers: {
       accept: "application/json",
       "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -231,6 +232,7 @@ async function isChunklistEnded(chunklistUrl: string): Promise<boolean> {
   try {
     const r = await fetch(chunklistUrl, {
       method: "GET",
+      signal: AbortSignal.timeout(10_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
@@ -250,6 +252,7 @@ async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
   try {
     const r = await fetch(chunklistUrl, {
       method: "GET",
+      signal: AbortSignal.timeout(10_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
@@ -309,6 +312,7 @@ async function resolveRedirectToCdn(liveHlsDvrUrl: string): Promise<ResolvedLive
     const r = await fetch(liveHlsDvrUrl, {
       method: "GET",
       redirect: "follow",
+      signal: AbortSignal.timeout(12_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*;q=0.9",
@@ -410,6 +414,7 @@ async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: strin
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
     const r = await fetch(url, {
+      signal: AbortSignal.timeout(12_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         accept: "application/json",
@@ -605,6 +610,7 @@ export async function resolveRumbleDvrPlaybackUrl(videoId: string): Promise<stri
   if (!url) return null;
   try {
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(12_000),
       headers: {
         accept: "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
         referer: "https://rumble.com/",
@@ -766,6 +772,7 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
     const r = await fetch(url, {
+      signal: AbortSignal.timeout(15_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         accept: "application/json",
@@ -825,7 +832,10 @@ async function findCurrentLiveSlugFromLivePage(username: string): Promise<string
   const workerBase = String(process.env.RUMBLE_WORKER_BASE || "https://lunalive-hls.lunalive.workers.dev").replace(/\/$/, "");
   const url = `${workerBase}/rumble-live?user=${encodeURIComponent(username)}`;
   try {
-    const r = await fetch(url, { headers: { "accept": "application/json" } });
+    const r = await fetch(url, {
+      signal: AbortSignal.timeout(12_000),
+      headers: { "accept": "application/json" },
+    });
     if (!r.ok) {
       console.log(`[rumble][live-page] ${username}: worker http=${r.status}`);
     } else {
@@ -900,10 +910,16 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
       : null;
   }
 
-  // 1. Tentative directe via /user/{name}/live
-  let vSlug: string | null = await findCurrentLiveSlugFromLivePage(username);
+  // 1. The category snapshot discovers all current gambling lives in one
+  // shared request. This avoids one Cloudflare Worker scrape per live channel.
+  const category = await fetchRumbleGamblingCategoryLives().catch(() => null);
+  const categoryLive = category?.lives.get(username.trim().toLowerCase()) || null;
 
-  // 2. Fallback : live_id pushé par le relay local
+  // 2. Fallback direct via /user/{name}/live when the category is incomplete
+  // or the channel is live under another category.
+  let vSlug: string | null = categoryLive?.videoId || await findCurrentLiveSlugFromLivePage(username);
+
+  // 3. Last resort: live_id pushed by the local relay.
   if (!vSlug) vSlug = cachedLiveId;
 
   if (!vSlug) {
@@ -914,6 +930,7 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
   const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${vSlug}&ad_wt=0`;
   try {
     const r2 = await fetch(url, {
+      signal: AbortSignal.timeout(12_000),
       headers: {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         accept: "application/json",
@@ -971,13 +988,13 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
     username,
     isLive: true,
     viewersCount: null,
-    title: `Live de ${username}`,
-    thumbnailUrl: null,
+    title: categoryLive?.title || `Live de ${username}`,
+    thumbnailUrl: categoryLive?.thumbnailUrl || null,
     videoUrl: `https://rumble.com/user/${username}/live`,
     hlsUrl: fallbackHls,
     videoId: vSlug,
-    videoIdNumeric: cachedVideoIdNumeric,
-    createdAt: null,
+    videoIdNumeric: categoryLive?.videoIdNumeric || cachedVideoIdNumeric,
+    createdAt: categoryLive?.createdAt || null,
   };
 }
 

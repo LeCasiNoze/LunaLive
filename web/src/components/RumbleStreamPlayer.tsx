@@ -64,11 +64,19 @@ function GearIcon({ size = 18 }: { size?: number }) {
 export type RumbleStreamPlayerProps = {
   hlsUrl?: string | null;
   thumbnailUrl?: string | null;
+  offlineImageUrl?: string | null;
   title?: string | null;
   isLive?: boolean;
+  onUnavailable?: () => void;
 };
 
-export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: RumbleStreamPlayerProps) {
+export default function RumbleStreamPlayer({
+  hlsUrl,
+  thumbnailUrl,
+  offlineImageUrl,
+  isLive,
+  onUnavailable,
+}: RumbleStreamPlayerProps) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const hlsRef = React.useRef<Hls | null>(null);
   const menuRef = React.useRef<HTMLDivElement>(null);
@@ -81,6 +89,15 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
   // d'un écran noir figé qui oblige le viewer à recharger toute la page.
   const [fatalError, setFatalError] = React.useState(false);
   const [reloadKey, setReloadKey] = React.useState(0);
+  const unavailableReportedRef = React.useRef(false);
+
+  React.useEffect(() => {
+    unavailableReportedRef.current = false;
+    if (!isLive || hlsUrl) return;
+    setFatalError(true);
+    unavailableReportedRef.current = true;
+    onUnavailable?.();
+  }, [hlsUrl, isLive, onUnavailable]);
 
   // Fermer le menu en cliquant dehors
   React.useEffect(() => {
@@ -117,6 +134,26 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     if (!video || !isLive || !hlsUrl) return;
     setFatalError(false);
 
+    let playbackStarted = false;
+    const reportUnavailable = () => {
+      setFatalError(true);
+      if (!unavailableReportedRef.current) {
+        unavailableReportedRef.current = true;
+        onUnavailable?.();
+      }
+    };
+    const onInitialPlaying = () => {
+      playbackStarted = true;
+      window.clearTimeout(startupTimer);
+    };
+    const startupTimer = window.setTimeout(() => {
+      if (playbackStarted) return;
+      try { hlsRef.current?.destroy(); } catch {}
+      hlsRef.current = null;
+      reportUnavailable();
+    }, 20_000);
+    video.addEventListener("playing", onInitialPlaying);
+
     const proxiedUrl = toProxiedHls(hlsUrl);
 
     // HLS.js en priorité — Chrome 130+ supporte HLS nativement mais son player DVR
@@ -132,12 +169,20 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           }
           safePlay(video);
         };
+        const onNativeError = () => reportUnavailable();
         video.addEventListener("loadedmetadata", onMeta, { once: true });
+        video.addEventListener("error", onNativeError, { once: true });
         return () => {
+          window.clearTimeout(startupTimer);
+          video.removeEventListener("playing", onInitialPlaying);
           video.removeEventListener("loadedmetadata", onMeta);
+          video.removeEventListener("error", onNativeError);
           video.pause(); video.removeAttribute("src"); video.load();
         };
       }
+      window.clearTimeout(startupTimer);
+      video.removeEventListener("playing", onInitialPlaying);
+      reportUnavailable();
       return;
     }
 
@@ -264,16 +309,23 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     });
 
     let mediaErrorRetries = 0;
+    let networkErrorRetries = 0;
     hls.on(Hls.Events.ERROR, (_e, data) => {
       if (!data.fatal) return;
       try {
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           if (mediaErrorRetries < 3) { mediaErrorRetries++; hls.recoverMediaError(); }
-          else { hls.destroy(); setFatalError(true); }
+          else { hls.destroy(); reportUnavailable(); }
         } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          hls.startLoad(-1);
+          if (networkErrorRetries < 2) {
+            networkErrorRetries++;
+            hls.startLoad(-1);
+          } else {
+            hls.destroy();
+            reportUnavailable();
+          }
         } else {
-          hls.destroy(); setFatalError(true);
+          hls.destroy(); reportUnavailable();
         }
       } catch {}
     });
@@ -319,14 +371,16 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
     }, 10000);
 
     return () => {
+      window.clearTimeout(startupTimer);
       window.clearInterval(tStall);
       window.clearInterval(tLiveEdge);
+      video.removeEventListener("playing", onInitialPlaying);
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("playing", onPlaying);
       try { hls.destroy(); } catch {}
       hlsRef.current = null;
     };
-  }, [isLive, hlsUrl, reloadKey]);
+  }, [isLive, hlsUrl, reloadKey, onUnavailable]);
 
   // Éviter la pause au fullscreen / visibilitychange
   React.useEffect(() => {
@@ -368,11 +422,15 @@ export default function RumbleStreamPlayer({ hlsUrl, thumbnailUrl, isLive }: Rum
           <div style={{
             position: "absolute", inset: 0, zIndex: 6,
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
-            background: "rgba(6,10,20,0.82)", backdropFilter: "blur(2px)",
+            backgroundColor: "rgba(6,10,20,0.88)",
+            backgroundImage: offlineImageUrl
+              ? `linear-gradient(rgba(6,5,20,.62),rgba(6,5,20,.84)),url(${offlineImageUrl})`
+              : undefined,
+            backgroundPosition: "center", backgroundSize: "cover", backdropFilter: "blur(2px)",
             textAlign: "center", padding: 20,
           }}>
             <div style={{ fontSize: 30 }} aria-hidden>📡</div>
-            <div style={{ color: "#dde8ff", fontWeight: 700, fontSize: 15 }}>Le flux s'est interrompu</div>
+            <div style={{ color: "#dde8ff", fontWeight: 700, fontSize: 15 }}>Le direct n'est plus disponible</div>
             <div style={{ color: "rgba(167,179,214,0.75)", fontSize: 13, maxWidth: 320, lineHeight: 1.5 }}>
               La connexion au direct a été perdue. Le stream est peut-être en train de revenir.
             </div>

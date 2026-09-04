@@ -350,7 +350,7 @@ export default function StreamerPageMobile() {
     };
   }, []);
 
-  const { loading, streamer, followsCount, setFollowsCount, isFollowing, notifyEnabled, followLoading, toggleFollow, toggleNotify } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
+  const { loading, streamer, followsCount, setFollowsCount, isFollowing, notifyEnabled, followLoading, toggleFollow, toggleNotify, markStreamUnavailable } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
   const handleFollowsCount = React.useCallback((n: number) => setFollowsCount(n), [setFollowsCount]);
 
   // Mesure de la hauteur du chat en live : le bas (composer) doit tomber
@@ -505,8 +505,10 @@ export default function StreamerPageMobile() {
         <RumbleStreamPlayer
           hlsUrl={streamer.rumbleHlsUrl}
           thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+          offlineImageUrl={streamer.offlineBgUrl}
           title={streamer.title}
           isLive={streamer.isLive}
+          onUnavailable={markStreamUnavailable}
         />
       ) : (
         <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />

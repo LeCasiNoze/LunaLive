@@ -25,6 +25,9 @@ import { sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 
 export function parseBangCommand(text: string): { cmd: string; arg: string } | null {
   const s = normText(text);
+  // `/watchtime` is the only slash command. Keeping the allow-list here
+  // avoids accidentally exposing moderation or streamer commands with `/`.
+  if (/^\/watchtime\s*$/i.test(s)) return { cmd: "watchtime", arg: "" };
   if (!s.startsWith("!")) return null;
   const m = s.match(/^!([a-z0-9_-]+)\s*(.*)$/i);
   if (!m) return null;
@@ -105,8 +108,11 @@ export async function sendBotChat(
   // ✅ broadcast Luna chat
   emitChatAll(io, opts.slug, "chat:message", msg);
 
-  // ✅ Mirror sur le chat Rumble du streamer si live actif
-  void mirrorBotMessageToRumble(pool, opts.streamerId, text);
+  // Imported channels mirror Rumble messages into LunaLive, but LunaBot must
+  // never speak back on their Rumble account. LeCasiNoze is the sole opt-in.
+  if (String(opts.slug || "").trim().toLowerCase() === "lecasinoze") {
+    void mirrorBotMessageToRumble(pool, opts.streamerId, text);
+  }
 }
 
 /**

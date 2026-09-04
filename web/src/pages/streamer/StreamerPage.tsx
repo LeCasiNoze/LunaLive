@@ -380,6 +380,7 @@ function StreamerPageDesktop() {
     followLoading,
     toggleFollow,
     toggleNotify,
+    markStreamUnavailable,
   } = useStreamerData(slug ?? null, token, () => setLoginOpen(true));
 
   const handleFollowsCount = React.useCallback((n: number) => setFollowsCount(n), [setFollowsCount]);
@@ -627,8 +628,10 @@ function StreamerPageDesktop() {
                   <RumbleStreamPlayer
                     hlsUrl={streamer.rumbleHlsUrl}
                     thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+                    offlineImageUrl={streamer.offlineBgUrl}
                     title={streamer.title}
                     isLive={streamer.isLive}
+                    onUnavailable={markStreamUnavailable}
                   />
                 ) : streamer.platform === "dlive" ? (
                   <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />
@@ -775,8 +778,10 @@ function StreamerPageDesktop() {
                 <RumbleStreamPlayer
                   hlsUrl={streamer.rumbleHlsUrl}
                   thumbnailUrl={streamer.rumbleThumbnailUrl || streamer.offlineBgUrl}
+                  offlineImageUrl={streamer.offlineBgUrl}
                   title={streamer.title}
                   isLive={streamer.isLive}
+                  onUnavailable={markStreamUnavailable}
                 />
               ) : streamer.platform === "dlive" ? (
                 <DlivePlayer channelSlug={streamer.channelSlug} channelUsername={streamer.channelUsername} isLive />

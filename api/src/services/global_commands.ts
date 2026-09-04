@@ -3,7 +3,7 @@
 // Commandes globales utilisables sur le chat de tout streamer LunaLive:
 //   !solde    — rubis + niveau + titre palier
 //   !profil   — fiche stats complète
-//   !watch    — temps cumul sur ce streamer + depuis follow
+//   !watch / /watchtime — temps cumul sur ce streamer
 //   !succes   — pills bronze/silver/gold/master (V1: total dispo, détail à venir)
 //
 // La commande peut être tapée par n'importe quel viewer, le bot LunaBot
@@ -15,7 +15,7 @@ import { sendBotChat } from "../calls/commands.js";
 import { getLevelInfo } from "../economy/xp.js";
 import { computeAchievementsSummary } from "../routes/achievements.js";
 
-const GLOBAL_CMDS = new Set(["solde", "profil", "watch", "succes", "succès"]);
+const GLOBAL_CMDS = new Set(["solde", "profil", "watch", "watchtime", "succes", "succès"]);
 
 export function isGlobalCommand(cmd: string): boolean {
   return GLOBAL_CMDS.has(String(cmd || "").toLowerCase());
@@ -137,6 +137,16 @@ export async function handleGlobalCommand(
       ctx.io,
       optsBot,
       `💎 ${u} → ${stats.rubis.toLocaleString("fr-FR")} rubis · Niveau ${stats.level} (${stats.title})`
+    );
+    return { handled: true };
+  }
+
+  if (cmd === "watchtime") {
+    await sendBotChat(
+      ctx.pool,
+      ctx.io,
+      optsBot,
+      `👁️ ${u} a regardé ${stats.streamerName} pendant ${fmtDuration(stats.watchMins * 60)}.`
     );
     return { handled: true };
   }

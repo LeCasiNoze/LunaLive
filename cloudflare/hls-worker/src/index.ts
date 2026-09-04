@@ -171,14 +171,15 @@ export default {
           lastStatus = r.status;
           if (!r.ok) continue;
           const html = await r.text();
-          const m = html.match(/"video":\s*"(v[a-z0-9]{6})"/);
+          const m = html.match(/"video":\s*"(v[a-z0-9]{5,12})"/i);
           if (m?.[1]) {
             foundSlug = m[1];
             foundPath = p;
             break;
           }
           foundPath = p;
-          break;
+          // A valid /user page without a live can coexist with the canonical
+          // /c page. Probe both before concluding that the channel is offline.
         } catch { /* try next */ }
       }
 
@@ -272,6 +273,7 @@ export default {
     if (range) headers.set("range", range);
 
     const playlist = isPlaylist(target);
+    const proxyOrigin = url.origin;
 
     // ✅ Cloudflare edge cache via fetch options
     let upstream = await fetch(target.toString(), {
@@ -299,8 +301,8 @@ export default {
           headers: withCors(outHeaders)
         });
       }
-      const origin = new URL(request.url).origin;
-      const rewritten = rewriteM3u8(text, target, origin);
+      const upstreamBase = new URL(upstream.url || target.toString());
+      const rewritten = rewriteM3u8(text, upstreamBase, proxyOrigin);
 
 
       const outHeaders = new Headers();
@@ -324,7 +326,8 @@ export default {
           headers: withCors(outHeaders)
         });
       }
-      const rewritten = rewriteM3u8(text, target, origin);
+      const upstreamBase = new URL(upstream.url || target.toString());
+      const rewritten = rewriteM3u8(text, upstreamBase, proxyOrigin);
 
       const outHeaders = new Headers();
       outHeaders.set("content-type", ct || "application/vnd.apple.mpegurl");

@@ -12,12 +12,18 @@ import { emitChatAll, emitChatAndStream, emitSpecialCard } from "../socket_emit.
 
 export const publicRouter = Router();
 const HEARTBEAT_TTL_SECONDS = 110;
+const DEFAULT_OFFLINE_BG_URL = "/stream-offline-default.webp";
+const configuredRumbleStaleSeconds = Number(process.env.RUMBLE_LIVE_STALE_SECONDS || 120);
+const RUMBLE_LIVE_STALE_SECONDS = Number.isFinite(configuredRumbleStaleSeconds)
+  ? Math.max(60, Math.min(600, Math.floor(configuredRumbleStaleSeconds)))
+  : 120;
 
 // Cache in-memory des réponses publiques identiques pour tous les visiteurs.
 // La home repoll /lives toutes les 20 s par visiteur : sous charge, sans ce
 // cache, chaque visiteur relance l'agrégat complet (COUNT DISTINCT sur les
 // sessions actives) → 1 requête DB toutes les 5 s au lieu de N/s.
 const PUBLIC_CACHE_TTL_MS = 5_000;
+const PUBLIC_CACHE_MAX_ENTRIES = 500;
 const publicCache = new Map<string, { body: unknown; ts: number }>();
 const publicCacheInflight = new Map<string, Promise<unknown>>();
 
@@ -50,6 +56,22 @@ function getPublicCache(key: string): unknown | null {
   return null;
 }
 
+function setPublicCache(key: string, body: unknown) {
+  publicCache.delete(key);
+  publicCache.set(key, { body, ts: Date.now() });
+  if (publicCache.size <= PUBLIC_CACHE_MAX_ENTRIES) return;
+
+  const cutoff = Date.now() - 60_000;
+  for (const [cacheKey, entry] of publicCache) {
+    if (entry.ts < cutoff) publicCache.delete(cacheKey);
+  }
+  while (publicCache.size > PUBLIC_CACHE_MAX_ENTRIES) {
+    const oldest = publicCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    publicCache.delete(oldest);
+  }
+}
+
 async function getOrLoadPublicCache<T>(
   key: string,
   ttlMs: number,
@@ -63,7 +85,7 @@ async function getOrLoadPublicCache<T>(
 
   const promise = loader()
     .then((body) => {
-      publicCache.set(key, { body, ts: Date.now() });
+      setPublicCache(key, body);
       return body;
     })
     .finally(() => {
@@ -155,7 +177,15 @@ WITH live_streamers AS (
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
   LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
-  WHERE s.is_live = TRUE
+  WHERE (
+      CASE
+        WHEN LOWER(COALESCE(s.platform, '')) = 'rumble' THEN
+          COALESCE(ri.is_live, FALSE)
+          AND ri.hls_url IS NOT NULL
+          AND ri.updated_at >= (NOW() - ($2::int * INTERVAL '1 second'))
+        ELSE s.is_live = TRUE
+      END
+    )
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
@@ -195,7 +225,7 @@ LEFT JOIN live_viewers v ON v.streamer_id = ls.id
 LEFT JOIN follower_counts fc ON fc.streamer_id = ls.id
 ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       `,
-      [HEARTBEAT_TTL_SECONDS]
+      [HEARTBEAT_TTL_SECONDS, RUMBLE_LIVE_STALE_SECONDS]
     );
 
     const payload = rows.map((r: any) => {
@@ -218,7 +248,7 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
       };
     });
 
-    publicCache.set("lives", { body: payload, ts: Date.now() });
+    setPublicCache("lives", payload);
     res.set("Cache-Control", "public, max-age=5");
     res.json(payload);
   })
@@ -281,6 +311,8 @@ rumble_lives AS (
   FROM streamers s
   LEFT JOIN streamer_rumble_info r ON s.id = r.streamer_id
   WHERE r.is_live = true
+    AND r.hls_url IS NOT NULL
+    AND r.updated_at >= (NOW() - ($2::int * INTERVAL '1 second'))
     AND (s.suspended_until IS NULL OR s.suspended_until < NOW())
 ),
 open_ls AS (
@@ -325,7 +357,10 @@ SELECT
   b."displayName",
   COALESCE(rl.rumble_title, b.title) AS title,
   COALESCE(rl.rumble_viewers, v.viewers, 0)::int AS viewers,
-  (b."isLive" OR COALESCE(rl.is_live, FALSE)) AS "isLive",
+  CASE
+    WHEN LOWER(COALESCE(b.platform, '')) = 'rumble' THEN COALESCE(rl.is_live, FALSE)
+    ELSE b."isLive"
+  END AS "isLive",
   b."liveStartedAt",
   COALESCE(rl.rumble_thumbnail_url, b."thumbUrlDb", lv.thumbnail_url) AS "thumbUrlDb",
   b."offlineBgPath",
@@ -343,7 +378,7 @@ LEFT JOIN last_sessions ls ON ls.streamer_id = b.id
 LEFT JOIN latest_vods lv ON lv.streamer_id = b.id
 ORDER BY LOWER(b."displayName") ASC
       `,
-      [HEARTBEAT_TTL_SECONDS]
+      [HEARTBEAT_TTL_SECONDS, RUMBLE_LIVE_STALE_SECONDS]
     );
 
     const payload = rows.map((row: any) => {
@@ -351,7 +386,7 @@ ORDER BY LOWER(b."displayName") ASC
       const isLive = row.isLive === true;
       const offlineBgUrl = row.offlineBgPath
         ? `/uploads/streamers/${encodeURIComponent(String(row.offlineBgPath))}`
-        : null;
+        : DEFAULT_OFFLINE_BG_URL;
 
       return {
         ...row,
@@ -364,7 +399,7 @@ ORDER BY LOWER(b."displayName") ASC
       };
     });
 
-    publicCache.set("streamers", { body: payload, ts: Date.now() });
+    setPublicCache("streamers", payload);
     res.set("Cache-Control", "public, max-age=5");
     res.json(payload);
   })
@@ -571,24 +606,27 @@ publicRouter.get(
         5_000,
         async () => {
           const rumbleInfo = await pool.query(
-            `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id
+            `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id,
+                    (is_live = TRUE
+                     AND hls_url IS NOT NULL
+                     AND updated_at >= (NOW() - ($2::int * INTERVAL '1 second'))) AS "freshIsLive"
              FROM streamer_rumble_info
              WHERE streamer_id = $1
              ORDER BY updated_at DESC
              LIMIT 1`,
-            [Number(row.id)]
+            [Number(row.id), RUMBLE_LIVE_STALE_SECONDS]
           );
           return rumbleInfo.rows[0] || null;
         }
       );
 
       if (rumble) {
-        row.isLive = !!rumble.is_live;
+        row.isLive = rumble.freshIsLive === true;
 
         (row as any).rumbleStaticVideoUrl = staticUrl;
         (row as any).streamProvider = "rumble";
 
-        if (rumble.is_live) {
+        if (row.isLive) {
           row.title = rumble.title || row.title;
           row.viewers = rumble.viewers_count || row.viewers;
 
@@ -642,7 +680,7 @@ publicRouter.get(
     const base = (process.env.PUBLIC_API_BASE || `${req.protocol}://${req.get("host")}`).replace(/\/$/, "");
     const offlineBgUrl = row.offlineBgPath
       ? `${base}/uploads/streamers/${encodeURIComponent(row.offlineBgPath)}`
-      : null;
+      : DEFAULT_OFFLINE_BG_URL;
 
     res.json({
       ...row,

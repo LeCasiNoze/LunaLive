@@ -3,6 +3,8 @@ import * as React from "react";
 import { enablePushNotifications } from "../../../lib/push";
 import { followStreamer, getStreamer, setFollowNotify, unfollowStreamer } from "../../../lib/api";
 
+const DEFAULT_OFFLINE_BG_URL = "/stream-offline-default.webp";
+
 export type StreamerNormalized = {
   // Core fields
   raw: any;
@@ -142,7 +144,7 @@ function normalizeStreamer(response: any): StreamerNormalized {
     viewers: Number(s?.viewers ?? s?.watchingCount ?? 0),
     channelSlug: (s?.channel_slug ?? s?.channelSlug) || null,
     channelUsername: (s?.channel_username ?? s?.channelUsername) || null,
-    offlineBgUrl: (s?.offlineBgUrl ?? s?.offline_bg_url) || null,
+    offlineBgUrl: (s?.offlineBgUrl ?? s?.offline_bg_url) || DEFAULT_OFFLINE_BG_URL,
     liveStartedAtMs,
     ownerUserId: Number(ownerRaw || 0),
 
@@ -249,6 +251,10 @@ export function useStreamerData(slug: string | null | undefined, token: string |
     }
   }, [token, slug, notifyEnabled, onRequireLogin]);
 
+  const markStreamUnavailable = React.useCallback(() => {
+    setStreamer((current) => current ? { ...current, isLive: false, viewers: 0 } : current);
+  }, []);
+
   return {
     loading,
     streamer,
@@ -259,5 +265,6 @@ export function useStreamerData(slug: string | null | undefined, token: string |
     followLoading,
     toggleFollow,
     toggleNotify,
+    markStreamUnavailable,
   };
 }
