@@ -215,39 +215,59 @@ function isRumbleMasterPlaylistUrl(url: string): boolean {
 
 /**
  * Valide le master live-hls-dvr côté serveur et extrait une sous-playlist CDN
- * pour la sonde ENDLIST. Le navigateur reçoit le master CORS afin que HLS.js
+ * pour la sonde d'activité. Le navigateur reçoit le master CORS afin que HLS.js
  * conserve toutes les qualités adaptatives.
  */
-/**
- * Check définitif "stream encore live ou terminé (DVR replay) ?" :
- * fetch la chunklist HLS et regarde la présence de #EXT-X-ENDLIST.
- * - Présent → stream finalisé, plus de nouveaux segments ajoutés → DVR/VOD
- * - Absent → stream encore actif (segments ajoutés en live)
- *
- * Plus fiable qu'embedJS qui peut continuer à reporter `live: 1` plusieurs
- * minutes après la fin réelle quand DVR est activé.
- */
-async function isChunklistEnded(chunklistUrl: string): Promise<boolean> {
-  if (!chunklistUrl) return false;
+const configuredChunklistStallMs = Number(process.env.RUMBLE_CHUNKLIST_STALL_MS || 45_000);
+const CHUNKLIST_STALL_MS = Number.isFinite(configuredChunklistStallMs)
+  ? Math.max(20_000, Math.min(180_000, Math.floor(configuredChunklistStallMs)))
+  : 45_000;
+const CHUNKLIST_PROGRESS_MAX_ENTRIES = 500;
+const chunklistProgress = new Map<string, { fingerprint: string; progressedAt: number; seenAt: number }>();
+
+function normalizeChunklistResource(value: string, base: string): string {
   try {
-    const r = await fetch(chunklistUrl, {
-      method: "GET",
-      signal: AbortSignal.timeout(10_000),
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "accept": "application/vnd.apple.mpegurl, application/x-mpegurl, */*",
-      },
-    });
-    if (!r.ok) return false;
-    const text = await r.text();
-    if (!text.startsWith("#EXTM3U")) return false;
-    return text.includes("#EXT-X-ENDLIST");
+    const url = new URL(value, base);
+    url.search = "";
+    url.hash = "";
+    return url.toString();
   } catch {
-    return false;
+    return value;
   }
 }
 
-async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
+function isChunklistProgressing(chunklistUrl: string, lines: string[], segments: string[]): boolean {
+  const mediaSequence = lines.find((line) => line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) || "";
+  const latestSegment = normalizeChunklistResource(segments.at(-1) || "", chunklistUrl);
+  const fingerprint = `${mediaSequence}|${latestSegment}`;
+  const key = normalizeChunklistResource(chunklistUrl, chunklistUrl);
+  const now = Date.now();
+  const previous = chunklistProgress.get(key);
+
+  if (!previous || previous.fingerprint !== fingerprint) {
+    chunklistProgress.delete(key);
+    chunklistProgress.set(key, { fingerprint, progressedAt: now, seenAt: now });
+  } else {
+    previous.seenAt = now;
+    chunklistProgress.delete(key);
+    chunklistProgress.set(key, previous);
+  }
+
+  const expiry = now - Math.max(CHUNKLIST_STALL_MS * 4, 10 * 60_000);
+  for (const [progressKey, state] of chunklistProgress) {
+    if (state.seenAt < expiry) chunklistProgress.delete(progressKey);
+  }
+  while (chunklistProgress.size > CHUNKLIST_PROGRESS_MAX_ENTRIES) {
+    const oldest = chunklistProgress.keys().next().value as string | undefined;
+    if (!oldest) break;
+    chunklistProgress.delete(oldest);
+  }
+
+  const current = chunklistProgress.get(key);
+  return !!current && now - current.progressedAt < CHUNKLIST_STALL_MS;
+}
+
+export async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
   if (!chunklistUrl) return false;
   try {
     const r = await fetch(chunklistUrl, {
@@ -272,6 +292,11 @@ async function isActiveChunklist(chunklistUrl: string): Promise<boolean> {
       .filter((line) => line && !line.startsWith("#"))
       .slice(-4);
     if (!segments.length) return false;
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (!isChunklistProgressing(chunklistUrl, lines, segments)) {
+      console.log(`[rumble][hls] playlist stalled for ${CHUNKLIST_STALL_MS}ms: ${chunklistUrl}`);
+      return false;
+    }
 
     const probes = await Promise.all(segments.map(async (segment) => {
       const controller = new AbortController();
@@ -505,14 +530,13 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
         liveProbeUrl = rawHls;
       }
 
-      // 3. Check définitif via la chunklist : si #EXT-X-ENDLIST → stream
-      //    finalisé (DVR replay), considérer offline. Rumble met parfois 5-10
-      //    minutes à passer `live: 1` → `live: 0` côté API, mais la chunklist
-      //    réagit immédiatement.
+      // 3. Check définitif via la chunklist. Rumble peut laisser un DVR sans
+      //    ENDLIST accessible pendant des heures, donc le dernier segment doit
+      //    aussi continuer à progresser.
       if (liveProbeUrl) {
-        const ended = await isChunklistEnded(liveProbeUrl);
-        if (ended) {
-          console.log(`[rumble] ${username}: ENDLIST détecté → stream terminé (DVR)`);
+        const active = await isActiveChunklist(liveProbeUrl);
+        if (!active) {
+          console.log(`[rumble] ${username}: chunklist terminée ou figée → stream terminé (DVR)`);
           isLiveFinal = false;
           hlsUrl = null;
         }
