@@ -204,6 +204,7 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
   fallbackThumbUrl: string | null;
   rumbleIsLive: boolean;
   rumbleHlsUrl: string | null;
+  rumbleLiveId: string | null;
 }> {
   try {
     const { rows } = await pool.query(
@@ -217,7 +218,8 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
           AND ri.updated_at >= NOW() - INTERVAL '2 minutes',
           FALSE
         ) AS rumble_is_live,
-        ri.hls_url AS rumble_hls_url
+        ri.hls_url AS rumble_hls_url,
+        ri.live_id AS rumble_live_id
       FROM streamers s
       LEFT JOIN streamer_rumble_info ri ON ri.streamer_id = s.id
       LEFT JOIN LATERAL (
@@ -240,6 +242,7 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
       fallbackThumbUrl: row?.fallback_thumb_url ? String(row.fallback_thumb_url) : null,
       rumbleIsLive: row?.rumble_is_live === true,
       rumbleHlsUrl: row?.rumble_hls_url ? String(row.rumble_hls_url) : null,
+      rumbleLiveId: row?.rumble_live_id ? String(row.rumble_live_id) : null,
     };
   } catch {
     return {
@@ -247,6 +250,7 @@ async function resolveThumbMetaFromSlug(slug: string): Promise<{
       fallbackThumbUrl: null,
       rumbleIsLive: false,
       rumbleHlsUrl: null,
+      rumbleLiveId: null,
     };
   }
 }
@@ -409,12 +413,16 @@ thumbsRouter.get("/thumbs/:slug.jpg", async (req: ExRequest, res: ExResponse) =>
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(400).end();
 
-  const key = `live:${slug.toLowerCase()}`;
+  const meta = await resolveThumbMetaFromSlug(slug);
+  const baseKey = `live:${slug.toLowerCase()}`;
+  // The LunaLive radio can change Rumble source without changing its slug.
+  // Versioning by live_id prevents a frame from the previous source being
+  // served for up to a minute after a rotation.
+  const sourceVersion = meta.rumbleLiveId || meta.rumbleHlsUrl || "offline";
+  const key = meta.platform === "rumble" ? `${baseKey}:${sourceVersion}` : baseKey;
 
   const hit = cache.get(key);
   if (hit && hit.exp > Date.now()) return sendCached(res, hit);
-
-  const meta = await resolveThumbMetaFromSlug(slug);
 
   if (meta.platform === "rumble") {
     const liveThumb = await getOrCreateLiveThumb(key, async () => {

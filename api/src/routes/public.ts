@@ -173,6 +173,7 @@ WITH live_streamers AS (
     s.title,
     -- thumb_url Rumble en priorité (live actuel), fallback sur s.thumb_url
     COALESCE(ri.thumbnail_url, s.thumb_url) AS "thumbUrlDb",
+    ri.live_id AS "liveId",
     s.live_started_at AS "liveStartedAt",
     ('/avatars/u/' || s.user_id::text) AS "avatarUrl"
   FROM streamers s
@@ -217,6 +218,7 @@ SELECT
   ls.title,
   COALESCE(v.viewers, 0)::int AS viewers,
   ls."thumbUrlDb",
+  ls."liveId",
   ls."liveStartedAt",
   ls."avatarUrl",
   COALESCE(fc.follows_count, 0)::int AS "followsCount"
@@ -230,7 +232,8 @@ ORDER BY COALESCE(v.viewers, 0) DESC, ls."liveStartedAt" DESC NULLS LAST
 
     const payload = rows.map((r: any) => {
       const slug = String(r.slug || "").trim();
-      const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg` : null;
+      const liveVersion = r.liveId ? `?live=${encodeURIComponent(String(r.liveId))}` : "";
+      const apiThumb = slug ? `/thumbs/${encodeURIComponent(slug)}.jpg${liveVersion}` : null;
       const platform = String(r.platform || "").trim().toLowerCase();
 
       return {
@@ -307,7 +310,8 @@ rumble_lives AS (
     r.is_live,
     r.title AS rumble_title,
     r.viewers_count AS rumble_viewers,
-    r.thumbnail_url AS rumble_thumbnail_url
+    r.thumbnail_url AS rumble_thumbnail_url,
+    r.live_id AS rumble_live_id
   FROM streamers s
   LEFT JOIN streamer_rumble_info r ON s.id = r.streamer_id
   WHERE r.is_live = true
@@ -363,6 +367,7 @@ SELECT
   END AS "isLive",
   b."liveStartedAt",
   COALESCE(rl.rumble_thumbnail_url, b."thumbUrlDb", lv.thumbnail_url) AS "thumbUrlDb",
+  rl.rumble_live_id AS "rumbleLiveId",
   b."offlineBgPath",
   lv.thumbnail_url AS "lastVodThumbUrl",
   COALESCE(GREATEST(ls.last_stream_at, lv.last_vod_at), ls.last_stream_at, lv.last_vod_at) AS "lastStreamAt",
@@ -392,7 +397,7 @@ ORDER BY LOWER(b."displayName") ASC
         ...row,
         isLive,
         thumbUrl: isLive && slug
-          ? `/thumbs/${encodeURIComponent(slug)}.jpg`
+          ? `/thumbs/${encodeURIComponent(slug)}.jpg${row.rumbleLiveId ? `?live=${encodeURIComponent(String(row.rumbleLiveId))}` : ""}`
           : (row.thumbUrlDb ? String(row.thumbUrlDb) : null),
         offlineBgUrl,
         lastStreamAt: row.lastStreamAt ? String(row.lastStreamAt) : null,

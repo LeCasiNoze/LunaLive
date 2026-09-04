@@ -384,6 +384,36 @@ async function findLiveRadioSource(usernames: string[], currentUsername: string 
   return null;
 }
 
+async function switchRadioSource(username: string) {
+  await pool.query(
+    `WITH switched AS (
+       UPDATE streamers
+       SET rumble_username = $1,
+           is_live = FALSE,
+           live_started_at = NULL,
+           title = 'Hors ligne',
+           viewers = 0,
+           updated_at = NOW()
+       WHERE id = $2
+       RETURNING id
+     )
+     UPDATE streamer_rumble_info
+     SET is_live = FALSE,
+         title = NULL,
+         viewers_count = 0,
+         hls_url = NULL,
+         video_url = NULL,
+         thumbnail_url = NULL,
+         live_id = NULL,
+         live_video_id_numeric = NULL,
+         live_started_at = NULL,
+         updated_at = NOW()
+     WHERE streamer_id IN (SELECT id FROM switched)`,
+    [username, RADIO_STREAMER_ID]
+  );
+  lastState.delete(RADIO_STREAMER_ID);
+}
+
 /**
  * Si la radio (id=32, slug=lunalive) est en mode platform=rumble,
  * - Si la radio est elle-même live (sa source est toujours en stream) → keep
@@ -442,10 +472,7 @@ async function rotateRadioTarget(io?: IOServer) {
   const liveSource = await findLiveRadioSource(usernames, currentUsername);
   if (liveSource) {
     if (liveSource.username.toLowerCase() !== (currentUsername || "").toLowerCase()) {
-      await pool.query(
-        `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
-        [liveSource.username, RADIO_STREAMER_ID]
-      );
+      await switchRadioSource(liveSource.username);
       console.log(`[rumble-poller] radio live pick: ${currentUsername || "(aucun)"} -> ${liveSource.username}`);
     }
 
@@ -475,20 +502,10 @@ async function rotateRadioTarget(io?: IOServer) {
   if (!newUsername) return;
   if (newUsername.toLowerCase() === (currentUsername || "").toLowerCase()) return;
 
-  await pool.query(
-    `UPDATE streamers SET rumble_username = $1, updated_at = NOW() WHERE id = $2`,
-    [newUsername, RADIO_STREAMER_ID]
-  );
-  // Clear stale live_id/HLS de la précédente source — sinon le fallback
-  // dans fetchRumbleLiveInfoFromUsername testerait l'ancien slug qui n'a
-  // rien à voir avec la nouvelle source, et ramènerait offline en boucle.
-  await pool.query(
-    `UPDATE streamer_rumble_info
-     SET live_id = NULL, live_video_id_numeric = NULL, hls_url = NULL,
-         is_live = false, updated_at = NOW()
-     WHERE streamer_id = $1`,
-    [RADIO_STREAMER_ID]
-  ).catch(() => {});
+  // Clear every source-specific field atomically with the username switch.
+  // Until the new probe succeeds the radio is cleanly offline, never a mix
+  // of the old preview and the new video.
+  await switchRadioSource(newUsername);
   console.log(`[rumble-poller] radio rotation: ${currentUsername || "(aucun)"} → ${newUsername}`);
 
   void pollOneScraped(RADIO_STREAMER_ID, RADIO_SLUG, newUsername, io);

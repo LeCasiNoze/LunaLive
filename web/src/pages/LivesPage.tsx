@@ -933,7 +933,8 @@ export default function LivesPage() {
     const prevMap = new Map(prev.map((x) => [String(x.slug || x.id), x] as const));
     return nextBase.map((x) => {
       const old = prevMap.get(String(x.slug || x.id));
-      return { ...x, thumbFinal: old?.thumbFinal || x.thumbFinal };
+      const sameSource = old?.thumbUrl === x.thumbUrl;
+      return { ...x, thumbFinal: sameSource ? (old?.thumbFinal || x.thumbFinal) : x.thumbFinal };
     });
   }, []);
 
