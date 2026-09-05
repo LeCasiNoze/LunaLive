@@ -25,9 +25,11 @@ type LiveState = {
 
 const states = new Map<number, LiveState>();
 const categoryAbsences = new Map<number, { count: number; snapshotAt: number }>();
-const OFFLINE_INTERVAL_MS = Math.max(60_000, Number(process.env.RUMBLE_RECRUITMENT_OFFLINE_INTERVAL_MS || 180_000));
+// Prospecting is not the site's live-status poller: offline prospects do not
+// need an expensive multi-provider discovery every three minutes, 24/7.
+const OFFLINE_INTERVAL_MS = Math.max(60_000, Number(process.env.RUMBLE_RECRUITMENT_OFFLINE_INTERVAL_MS || 900_000));
 const LIVE_INTERVAL_MS = Math.max(20_000, Number(process.env.RUMBLE_RECRUITMENT_LIVE_INTERVAL_MS || 30_000));
-const BATCH_SIZE = Math.max(1, Math.min(20, Number(process.env.RUMBLE_RECRUITMENT_BATCH_SIZE || 8)));
+const BATCH_SIZE = Math.max(1, Math.min(20, Number(process.env.RUMBLE_RECRUITMENT_BATCH_SIZE || 4)));
 const TICK_MS = 15_000;
 let lockClient: PoolClient | null = null;
 let running = false;

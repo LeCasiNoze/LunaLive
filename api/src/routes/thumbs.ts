@@ -8,6 +8,7 @@ import { pool } from "../db.js";
 import { r2Enabled, buildPublicUrl } from "../clips/r2.js";
 import { fetchDliveLiveInfo } from "../dlive.js";
 import { tryWithFfmpegSlot } from "../utils/ffmpeg_gate.js";
+import { encodeLiveThumbnail, MAX_THUMB_INPUT_BYTES } from "../utils/live_thumbnail.js";
 
 export const thumbsRouter = express.Router();
 
@@ -59,7 +60,8 @@ const inFlight = new Map<string, Promise<{ exp: number; buf: Buffer; contentType
 function sendCached(res: ExResponse, hit: { buf: Buffer; contentType: string }) {
   res.set("Content-Type", hit.contentType);
   res.set("Cache-Control", `public, max-age=${LIVE_CACHE_SECONDS}`);
-  return res.end(hit.buf);
+  // Express generates an ETag and handles conditional requests (304).
+  return res.send(hit.buf);
 }
 
 function sendSvg(res: ExResponse, svg: string) {
@@ -147,14 +149,24 @@ async function fetchImageToBuffer(
       },
     });
 
-    clearTimeout(t);
-
     const ct = r.headers.get("content-type") || "";
     const status = r.status;
-    if (!r.ok) return { ok: false, buf: Buffer.alloc(0), ct, status };
-
-    const ab = await r.arrayBuffer();
-    const buf = Buffer.from(ab);
+    if (!r.ok || !ct.startsWith("image/") || Number(r.headers.get("content-length")) > MAX_THUMB_INPUT_BYTES) {
+      await r.body?.cancel();
+      return { ok: false, buf: Buffer.alloc(0), ct, status };
+    }
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    if (!r.body) return { ok: false, buf: Buffer.alloc(0), ct, status };
+    for await (const chunk of r.body as any) {
+      bytes += chunk.length;
+      if (bytes > MAX_THUMB_INPUT_BYTES) {
+        ac.abort();
+        throw new Error("thumbnail_input_too_large");
+      }
+      chunks.push(Buffer.from(chunk));
+    }
+    const buf = Buffer.concat(chunks);
 
     // garde-fous: il faut une vraie image
     const looksImage = ct.startsWith("image/");
@@ -162,8 +174,9 @@ async function fetchImageToBuffer(
 
     return { ok: true, buf, ct, status };
   } catch {
-    clearTimeout(t);
     return { ok: false, buf: Buffer.alloc(0), ct: "", status: 0 };
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -325,7 +338,8 @@ async function captureLiveFrameFromHls(hlsUrl: string): Promise<Buffer | null> {
       "-i", inputUrl,
       "-an",
       "-frames:v", "1",
-      "-q:v", "3",
+      "-vf", "scale=640:-2",
+      "-q:v", "5",
       "-f", "image2pipe",
       "-vcodec", "mjpeg",
       "pipe:1",
@@ -382,7 +396,10 @@ async function getOrCreateLiveThumb(
     try {
       const made = await producer();
       if (!made) return null;
-      const cached = { exp: Date.now() + LIVE_CACHE_MS, buf: made.buf, contentType: made.contentType };
+      // Normalize provider fallbacks too: none should send full-HD originals
+      // to every visitor every minute. Cache only the small encoded image.
+      const buf = await encodeLiveThumbnail(made.buf);
+      const cached = { exp: Date.now() + LIVE_CACHE_MS, buf, contentType: "image/jpeg" };
       cache.set(key, cached);
       if (cache.size > LIVE_CACHE_MAX_ENTRIES) {
         const now = Date.now();
@@ -396,6 +413,9 @@ async function getOrCreateLiveThumb(
         }
       }
       return cached;
+    } catch (error: any) {
+      console.warn("[thumbs] thumbnail generation failed", String(error?.message || error).slice(0, 160));
+      return null;
     } finally {
       inFlight.delete(key);
     }

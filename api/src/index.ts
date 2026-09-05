@@ -6,6 +6,7 @@ import { Server as IOServer } from "socket.io";
 
 import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
+import { startOutboundHttpMetrics } from "./utils/outbound_http_metrics.js";
 import { attachChat } from "./chat_socket.js";
 // import { startDlivePoller } from "./dlive_poller.js"; // DLive shut down
 import { startRumblePoller } from "./rumble_poller.js";
@@ -174,6 +175,7 @@ function setupProcessCrashGuards() {
 
 (async () => {
   setupProcessCrashGuards();
+  startOutboundHttpMetrics();
 
   // ✅ Crée l'app vite
   const app = createApp();
