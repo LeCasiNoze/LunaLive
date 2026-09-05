@@ -24,7 +24,8 @@ profiles and refreshed the entire server-component tree every 30 seconds.
 This is a confirmed amplification defect, but historical per-path request logs
 are unavailable, so the whole September 3 peak cannot be attributed to it.
 Colocated Discord workers also called their own public Render URL every few
-seconds. Pagination (25 rows), opt-in refresh (2 minutes), and loopback calls
+seconds. Pagination (25 rows), automatic refresh reduced to 5 minutes at the
+owner's request, a manual refresh button, and loopback calls
 are corrected in the Nivoranet repository, without changing authentication.
 
 LunaLive corrections:
@@ -43,6 +44,11 @@ The database already uses Render's internal hostname. Do not migrate it or
 upgrade the paid plan based on this incident. No billing settings were changed.
 Usage already incurred cannot be undone by deploying these fixes. Check the
 next complete hourly Render samples before claiming a measured overall drop.
+
+Verification: API TypeScript check and 4 targeted tests passed; Nivoranet
+production build, 68 existing tests and 2 new regression tests passed.
+Production API returns 640x360 previews and conditional 304 responses with
+zero image bytes. Code commits: LunaLive 0c04f7a6; Nivoranet 46d8cc8 + 9eab4c5.
 
 References:
 - https://render.com/docs/outbound-bandwidth
