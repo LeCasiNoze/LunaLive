@@ -1,6 +1,8 @@
 // api/src/rumble.ts
 
 import { pool } from "./db.js";
+import { createDiscoveryCache } from "./utils/discovery_cache.js";
+import { hasReadableHlsSegment } from "./utils/hls_probe.js";
 
 export interface RumbleLiveInfo {
   username: string;
@@ -298,28 +300,7 @@ export async function isActiveChunklist(chunklistUrl: string): Promise<boolean> 
       return false;
     }
 
-    const probes = await Promise.all(segments.map(async (segment) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 6_000);
-      try {
-        const response = await fetch(new URL(segment, chunklistUrl), {
-          signal: controller.signal,
-          headers: {
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            accept: "video/mp2t,video/*,*/*",
-            referer: "https://rumble.com/",
-            range: "bytes=0-0",
-          },
-        });
-        await response.body?.cancel().catch(() => {});
-        return response.ok;
-      } catch {
-        return false;
-      } finally {
-        clearTimeout(timer);
-      }
-    }));
-    return probes.some(Boolean);
+    return hasReadableHlsSegment(chunklistUrl, segments);
   } catch {
     return false;
   }
@@ -848,7 +829,15 @@ export async function resolveRumbleVodFromVid(videoIdWithV: string): Promise<{
  * spécifique au live courant (pas la liste de VODs qui est CF-bloquée).
  * Renvoie null si pas de live actif ou si CF bloque.
  */
-async function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
+const cachedLiveDiscovery = createDiscoveryCache<string | null>(90_000);
+
+function findCurrentLiveSlugFromLivePage(username: string): Promise<string | null> {
+  // Share failed/cold discovery across the radio, prospecting and site pollers.
+  // Only the discovery slug is cached: HLS progress/end checks still run live.
+  return cachedLiveDiscovery(username.trim().toLowerCase(), () => discoverCurrentLiveSlug(username));
+}
+
+async function discoverCurrentLiveSlug(username: string): Promise<string | null> {
   // Cloudflare bloque les fetch standard depuis Render IPs.
   // Solution: passer par notre CF Worker (lunalive-hls.lunalive.workers.dev)
   // qui tourne dans le réseau Cloudflare → fetch interne CF→CF, pas de WAF anti-bot.

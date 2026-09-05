@@ -39,13 +39,19 @@ LunaLive corrections:
 - Outbound HTTP counters aggregate destination origins every five minutes.
   No paths, queries, credentials or message bodies are recorded. These counters
   estimate application bytes, NOT total billed traffic or incoming TCP ACKs.
+- The first production counter window recorded 735 Rumble, 506 CDN, 440 Jina
+  and 220 discovery Worker requests in five minutes. Canonical-page discovery
+  (including negative results) is now shared for 90 seconds across callers.
+  This does not cache HLS liveness: progress and ENDLIST checks still run.
+  Segment availability tests stop on the first successful segment rather than
+  always issuing four requests; all attempts share the existing 6-second budget.
 
 The database already uses Render's internal hostname. Do not migrate it or
 upgrade the paid plan based on this incident. No billing settings were changed.
 Usage already incurred cannot be undone by deploying these fixes. Check the
 next complete hourly Render samples before claiming a measured overall drop.
 
-Verification: API TypeScript check and 4 targeted tests passed; Nivoranet
+Verification: API TypeScript check and 9 targeted tests passed; Nivoranet
 production build, 68 existing tests and 2 new regression tests passed.
 Production API returns 640x360 previews and conditional 304 responses with
 zero image bytes. Code commits: LunaLive 0c04f7a6; Nivoranet 46d8cc8 + 9eab4c5.
