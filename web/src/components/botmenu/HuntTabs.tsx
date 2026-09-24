@@ -27,7 +27,6 @@ import {
 
 const fmtEur = (n: any) => `${(Number(n) || 0).toFixed(2)}€`;
 
-const API_BASE = ((import.meta as any).env?.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 function apiBase() {
   return (import.meta as any).env?.VITE_API_BASE || "https://lunalive-api.onrender.com";
 }
@@ -35,20 +34,6 @@ function apiBase() {
 const CALLS_QUEUE_CHANGED_EVT = "calls:queue-changed";
 
 type SlotItem = { name: string; provider: string | null; imageUrl?: string | null };
-
-// ✅ Best-effort: sync aussi le start côté Hunt2 (tableau Hunt)
-async function syncHunt2Start(token: string, startEur: number) {
-  try {
-    await fetch(`${API_BASE}/api/hunt2/set-start`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ start: startEur }),
-    });
-  } catch {}
-}
 
 function asArr<T>(v: any): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
@@ -560,7 +545,6 @@ async function doPass() {
     setBusy(true);
     try {
       await callsHuntSetStart(streamerSlug, token, v);
-      await syncHunt2Start(token, v);
 
       editingStartRef.current = false;
       setShowStartEdit(false);
