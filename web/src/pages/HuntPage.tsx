@@ -1,1706 +1,1163 @@
-// web/src/pages/HuntPage.tsx
-// ══════════════════════════════════════════════════════════════
-//  PURPLE VELVET DESKTOP — HuntPage
-//  Design : Glass morphism, gradient accents, smooth animations
-// ══════════════════════════════════════════════════════════════
-import * as React from "react";
-import { useAuth } from "../auth/AuthProvider";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  huntAdd,
-  huntClose,
-  huntDelete,
-  huntDeleteAll,
-  huntGetState,
-  huntLoad,
-  huntMyHunts,
-  huntNew,
-  huntOpen,
-  huntRemove,
-  huntRevert,
-  huntSave,
-  huntSetBet,
-  huntSetPay,
-  huntSetStart,
-  huntSuggest,
-} from "../lib/hunt_api";
-import type { HuntState, SuggestItem, SavedHunt } from "../lib/hunt_types";
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  History,
+  Layers3,
+  Plus,
+  Search,
+  ShieldCheck,
+  Target,
+  Trash2,
+  Wallet,
+  WifiOff,
+  X,
+} from "lucide-react";
+import { useAuth } from "../auth/AuthProvider";
+import { huntSuggest } from "../lib/hunt_api";
+import type {
+  HuntItem,
+  HuntState,
+  SavedHunt,
+  SuggestItem,
+} from "../lib/hunt_types";
+import { huntStats, parseHuntAmount } from "../lib/hunt_workspace";
+import { useHuntWorkspace } from "./hunt/useHuntWorkspace";
+import "./hunt/hunt-workspace.css";
 
-/* ─── Helpers ────────────────────────────────────────────────────────── */
-const fmtEur = (n: number) => `${(Number(n) || 0).toFixed(2)}€`;
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-
-function canUseCallsHunt(token: any, streamerSlug: any) {
-  return !!token && !!streamerSlug;
-}
-
-async function callsHuntGetState(slug: string, token: string) {
-  const payload = await callsHuntJson(slug, token, "state");
-  return { ok: true, state: mapCallsHuntToHuntState(payload), raw: payload };
-}
-
-async function callsHuntSetStart(slug: string, token: string, startEur: number) {
-  return callsHuntJson(slug, token, "start", { startEur, start: startEur });
-}
-
-async function callsHuntAddItem(slug: string, token: string, name: string) {
-  return callsHuntJson(slug, token, "add", { name });
-}
-
-async function callsHuntRemoveItem(slug: string, token: string, id: string) {
-  return callsHuntJson(slug, token, "remove", { id });
-}
-
-async function callsHuntSetBet(slug: string, token: string, id: string, betEur: number) {
-  return callsHuntJson(slug, token, "bet", { id, betEur, bet: betEur });
-}
-
-async function callsHuntSetPay(slug: string, token: string, _id: string, payEur: number) {
-  return callsHuntJson(slug, token, "pay", { payEur, pay: payEur });
-}
-
-async function callsHuntOpen(slug: string, token: string) {
-  return callsHuntJson(slug, token, "open", {});
-}
-
-async function callsHuntClose(slug: string, token: string) {
-  return callsHuntJson(slug, token, "close", {});
-}
-
-async function callsHuntRevert(slug: string, token: string) {
-  return callsHuntJson(slug, token, "revert", {});
-}
-
-async function callsHuntNew(slug: string, token: string) {
-  return callsHuntJson(slug, token, "reset", {});
-}
-
-async function callsHuntLoad(slug: string, token: string, _huntId: number) {
-  return callsHuntJson(slug, token, "reset", {});
-}
-
-async function callsHuntJson(slug: string, token: string, path: string, body?: any) {
-  const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/hunt/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const j = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(j?.error || j?.message || `API ${r.status}`);
-  return j;
-}
-
-function mapCallsHuntToHuntState(payload: any): HuntState {
-  const phase = (payload?.opening || payload?.mode === "open") ? "open" : "edit";
-  const start = payload?.startEur ?? payload?.hunt?.start ?? null;
-
-  const rawBonus =
-    (Array.isArray(payload?.bonusDrops) && payload.bonusDrops) ||
-    (Array.isArray(payload?.queue) ? payload.queue.filter((x: any) => (Number(x?.betEur) || 0) > 0) : []) ||
-    [];
-
-  const items = rawBonus.map((it: any) => ({
-    id: String(it?.id ?? ""),
-    name: String(it?.slotName ?? it?.name ?? ""),
-    provider: it?.provider ?? null,
-    image_url: it?.imageUrl ?? it?.image_url ?? null,
-    pos: Number.isFinite(Number(it?.pos)) ? Number(it.pos) : null,
-    bet: (it?.betEur ?? it?.bet ?? null),
-    pay: (it?.payEur ?? it?.pay ?? null),
-    caller: it?.username ?? it?.caller ?? null,
-  }));
-
-  return {
-    phase,
-    opened: phase === "open",
-    start: start == null ? null : Number(start),
-    items,
-  } as any;
-}
-
-function apiBase() {
-  const envBase = (import.meta as any).env?.VITE_API_BASE;
-  const base = envBase ? String(envBase) : "https://lunalive-api.onrender.com";
-  return base.replace(/\/+$/, "");
-}
-
-function pickImageUrl(x: any): string | null {
-  const u = x?.image_url ?? x?.imageUrl ?? x?.imageURL ?? x?.thumb_url ?? x?.thumbUrl ?? null;
-  const s = String(u || "").trim();
-  return s ? s : null;
-}
-
-function pickProvider(x: any): string | null {
-  const p = x?.provider ?? x?.provider_name ?? x?.providerName ?? null;
-  const s = String(p || "").trim();
-  return s ? s : null;
-}
-
-type CallQueueItem = {
-  id: string;
-  slotName: string;
-  provider: string | null;
-  username: string;
-  pos: number;
-  imageUrl?: string | null;
-};
-
-function pickStreamerSlugFromUser(u: any): string | null {
-  const cands = [u?.streamer?.slug, u?.streamerSlug, u?.streamer_slug, u?.slug];
-  for (const x of cands) {
-    const s = String(x || "").trim();
-    if (s) return s;
-  }
-  return null;
-}
-
-function pickHuntSyncEnabled(cfg: any): boolean {
-  const v =
-    cfg?.huntSync ??
-    cfg?.hunt_sync ??
-    cfg?.huntSyncEnabled ??
-    cfg?.hunt_sync_enabled ??
-    cfg?.syncHunt ??
-    cfg?.sync_hunt ??
-    false;
-  return !!v;
-}
-
-function isProfitable(h: SavedHunt) {
-  const start = Number((h as any).start) || 0;
-  const pay = Number((h as any).total_pay) || 0;
-  if (start <= 0) return null;
-  return pay >= start;
-}
-
-function StatPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="pill">
-      <span>{label}</span>
-      <b className="tabular-nums">{value}</b>
-    </div>
+const money = (value: number) =>
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(
+    value,
   );
-}
+const multi = (value: number | null) =>
+  value == null
+    ? "—"
+    : `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(value)}×`;
 
-function createdLabel(h: any) {
-  const v = h?.created_at ?? h?.createdAt ?? null;
-  if (!v) return "—";
-  const t = new Date(String(v));
-  if (!Number.isFinite(t.getTime())) return "—";
-  return t.toLocaleString();
-}
-
-function SlotThumb({ url, size = 42 }: { url?: string | null; size?: number }) {
-  const [broken, setBroken] = React.useState(false);
-
-  const boxStyle: React.CSSProperties = {
-    width: size,
-    height: size,
-    borderRadius: 12,
-    flex: "0 0 auto",
-    border: "1px solid rgba(124,92,252,0.18)",
-    background: "rgba(124,92,252,0.06)",
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-  };
-
-  if (!url || broken) {
-    return (
-      <div style={boxStyle} aria-hidden="true" title="🎰">
-        <span style={{ fontSize: 16, opacity: 0.9 }}>🎰</span>
-      </div>
-    );
-  }
-
-  return (
-    <div style={boxStyle} aria-hidden="true">
-      <img
-        src={url}
-        alt=""
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        onError={() => setBroken(true)}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          display: "block",
-        }}
-      />
-    </div>
-  );
-}
-
-function GlassCard({ children, style, className }: {
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-  className?: string;
+function Thumb({
+  item,
+  large = false,
+}: {
+  item: Pick<HuntItem, "image_url" | "name">;
+  large?: boolean;
 }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [item.image_url]);
   return (
-    <div className={className} style={{
-      position: "relative", borderRadius: 20,
-      border: "1px solid rgba(124,92,252,0.14)",
-      background: "rgba(13,11,24,0.82)",
-      boxShadow: "0 18px 55px rgba(0,0,0,0.38)",
-      backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
-      overflow: "hidden", ...style,
-    }}>
-      <div aria-hidden style={{
-        position: "absolute", top: 0, left: "8%", right: "8%", height: 1,
-        background: "linear-gradient(90deg, transparent, rgba(167,139,250,0.35) 40%, rgba(91,142,248,0.25) 60%, transparent)",
-        pointerEvents: "none", zIndex: 2,
-      }} />
-      {children}
+    <div className={`hw-thumb ${large ? "hw-thumb-large" : ""}`}>
+      {item.image_url && !broken ? (
+        <img
+          src={item.image_url}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <Layers3 aria-hidden="true" />
+      )}
     </div>
   );
 }
 
-/* ─── Component ──────────────────────────────────────────────────────── */
-export default function HuntPage() {
-  const { user, token } = useAuth() as any;
-
-  const streamerSlug = React.useMemo(() => pickStreamerSlugFromUser(user), [user]);
-  const [huntSyncEnabled, setHuntSyncEnabled] = React.useState(false);
-
-  const [loading, setLoading] = React.useState(true);
-  const [busy, setBusy] = React.useState(false);
-
-  const [debugOn, setDebugOn] = React.useState(false);
-  const [debugStateRaw, setDebugStateRaw] = React.useState<any>(null);
-  const [debugLastPay, setDebugLastPay] = React.useState<any>(null);
-  const [debugLastAction, setDebugLastAction] = React.useState<string>("");
-
-  const [state, setState] = React.useState<HuntState>(
-    {
-      phase: "edit",
-      opened: false,
-      items: [],
-      start: null,
-    } as any
-  );
-
-  const phase = (state?.phase || ((state as any)?.opened ? "open" : "edit")) as HuntState["phase"];
-  const items = (state?.items || []) as any[];
-
-  const itemsRef = React.useRef<any[]>([]);
-  React.useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
-
-  const busyRef = React.useRef(false);
-  React.useEffect(() => {
-    busyRef.current = busy;
-  }, [busy]);
-
-  const syncInFlightRef = React.useRef(false);
-  const processedCallIdRef = React.useRef<Record<string, true>>({});
-  const editingStartRef = React.useRef(false);
-
-  const itemsEdit = React.useMemo(() => {
-    const arr = Array.isArray(items) ? [...items] : [];
-    return arr.reverse();
-  }, [items]);
-
-  const [myHunts, setMyHunts] = React.useState<SavedHunt[]>([]);
-  const [startInput, setStartInput] = React.useState<string>("");
-
-  const [q, setQ] = React.useState("");
-  const [suggestions, setSuggestions] = React.useState<SuggestItem[]>([]);
-  const [suggLoading, setSuggLoading] = React.useState(false);
-  const [suggError, setSuggError] = React.useState<string | null>(null);
-  const [showSugg, setShowSugg] = React.useState(false);
-  const [sel, setSel] = React.useState(0);
-
-  const [slotMetaByName, setSlotMetaByName] = React.useState<
-    Record<string, { imageUrl: string | null; provider: string | null }>
-  >({});
-
-  function keyName(n: any) {
-    return String(n || "").trim().toLowerCase();
-  }
-
-  function pickItemImage(x: any): string | null {
-    return pickImageUrl(x) ?? slotMetaByName[keyName(x?.name)]?.imageUrl ?? null;
-  }
-
-  function pickItemProvider(x: any): string | null {
-    return pickProvider(x) ?? slotMetaByName[keyName(x?.name)]?.provider ?? null;
-  }
-
-  const suggReqRef = React.useRef(0);
-  const betRefs = React.useRef<Record<string, HTMLInputElement | null>>({});
-  const [pendingFocusId, setPendingFocusId] = React.useState<string | null>(null);
-
-  const [deckIndex, setDeckIndex] = React.useState(0);
-  const [draftPay, setDraftPay] = React.useState<Record<string, string>>({});
-  const [confirmed, setConfirmed] = React.useState<Record<string, boolean>>({});
-
-  const startValue = Number((state as any)?.start) || 0;
-
-  const totalBetAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0), [items]);
-  const totalPayAll = React.useMemo(() => items.reduce((s: number, it: any) => s + (Number(it.pay) || 0), 0), [items]);
-  const profit = React.useMemo(() => totalPayAll - startValue, [totalPayAll, startValue]);
-  const globalMulti = React.useMemo(() => (totalBetAll > 0 ? totalPayAll / totalBetAll : 0), [totalBetAll, totalPayAll]);
-
-  const remainingBet = React.useMemo(
-    () =>
-      items
-        .filter((it: any) => it.pay === null || typeof it.pay === "undefined")
-        .reduce((s: number, it: any) => s + (Number(it.bet) || 0), 0),
-    [items]
-  );
-
-  const remainingToRecoup = React.useMemo(() => {
-    const left = startValue - totalPayAll;
-    return left > 0 ? left : 0;
-  }, [startValue, totalPayAll]);
-
-  const beBase = React.useMemo(() => {
-    if (startValue <= 0 || totalBetAll <= 0) return 0;
-    return startValue / totalBetAll;
-  }, [startValue, totalBetAll]);
-
-  const beLive = React.useMemo(() => {
-    if (remainingToRecoup <= 0) return 0;
-    if (remainingBet <= 0) return 0;
-    return remainingToRecoup / remainingBet;
-  }, [remainingToRecoup, remainingBet]);
-
-  const canOpen = React.useMemo(() => {
-    const useCalls = canUseCallsHunt(token, streamerSlug);
-    if (useCalls) return startValue > 0 && items.length > 0;
-    return phase === "edit" && startValue > 0 && items.length > 0 && items.every((it: any) => Number(it.bet) > 0);
-  }, [phase, startValue, items, token, streamerSlug]);
-
-  React.useEffect(() => {
-    if (items?.length) setDeckIndex((i) => Math.max(0, Math.min(i, items.length - 1)));
-    else setDeckIndex(0);
-  }, [items.length]);
-
-  const metaInFlight = React.useRef<Record<string, boolean>>({});
-
-  async function ensureMetaForName(name: string) {
-    const k = keyName(name);
-    if (!k) return;
-
-    const already = slotMetaByName[k];
-    if (already?.imageUrl || already?.provider) return;
-
-    if (metaInFlight.current[k]) return;
-    metaInFlight.current[k] = true;
-
-    try {
-      const r = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(name)}&limit=8`);
-      const j = await r.json().catch(() => null);
-      if (!j?.ok || !Array.isArray(j.items) || !j.items.length) return;
-
-      const want = k;
-      const best = j.items.find((x: any) => keyName(x?.name) === want) ?? j.items[0];
-
-      const img = pickImageUrl(best) ?? (best?.imageUrl ? String(best.imageUrl) : null);
-      const prov = pickProvider(best);
-
-      if (img || prov) {
-        setSlotMetaByName((prev) => {
-          const cur = prev[k];
-          const next = {
-            imageUrl: cur?.imageUrl ?? (img || null),
-            provider: cur?.provider ?? (prov || null),
-          };
-          return { ...prev, [k]: next };
-        });
-      }
-    } catch {
-    } finally {
-      metaInFlight.current[k] = false;
-    }
-  }
-
-  function hydrateMetaForItems(list: any[]) {
-    setSlotMetaByName((prev) => {
-      let changed = false;
-      const next = { ...prev };
-
-      for (const it of list || []) {
-        const k = keyName(it?.name);
-        if (!k) continue;
-
-        const img = pickImageUrl(it);
-        const prov = pickProvider(it);
-
-        if (!next[k]) {
-          if (img || prov) {
-            next[k] = { imageUrl: img ?? null, provider: prov ?? null };
-            changed = true;
-          }
-        } else {
-          const cur = next[k];
-          const ni = cur.imageUrl || !img ? cur.imageUrl : img;
-          const np = cur.provider || !prov ? cur.provider : prov;
-          if (ni !== cur.imageUrl || np !== cur.provider) {
-            next[k] = { imageUrl: ni ?? null, provider: np ?? null };
-            changed = true;
-          }
-        }
-      }
-
-      return changed ? next : prev;
-    });
-
-    for (const it of list || []) {
-      const name = String(it?.name || "").trim();
-      if (!name) continue;
-      const k = keyName(name);
-      if (!k) continue;
-
-      const known = slotMetaByName[k];
-      const hasInline = !!pickImageUrl(it) || !!pickProvider(it);
-      if (hasInline) continue;
-      if (known?.imageUrl || known?.provider) continue;
-
-      ensureMetaForName(name).catch(() => {});
-    }
-  }
-
-  React.useEffect(() => {
-    if (!items?.length) return;
-    hydrateMetaForItems(items);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
-
-  async function refreshState(opts?: { preserveStartInput?: boolean }) {
-    const useCalls = canUseCallsHunt(token, streamerSlug);
-
-    const s = useCalls
-      ? await callsHuntGetState(String(streamerSlug), String(token))
-      : await huntGetState();
-
-    if (useCalls) {
-      setDebugStateRaw((s as any)?.raw ?? null);
-    }
-
-    if (s?.ok && (s as any).state) {
-      const nextState = (s as any).state as any;
-      setState(nextState);
-
-      if (!opts?.preserveStartInput && !editingStartRef.current) {
-        setStartInput(nextState?.start != null ? String(nextState.start) : "");
-      }
-
-      try {
-        const list = Array.isArray(nextState?.items) ? nextState.items : [];
-        if (list.length) hydrateMetaForItems(list);
-      } catch {}
-    }
-  }
-
-  async function refreshAll() {
-    await refreshState();
-    const h = await huntMyHunts().catch(() => null);
-    if (h?.ok) setMyHunts(h.items || []);
-  }
-
-  React.useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true);
-        await refreshAll();
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    if (!token || !streamerSlug) return;
-
-    const slug = streamerSlug;
-    let alive = true;
-
-    async function loadCfg() {
-      try {
-        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/config`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const j = await r.json().catch(() => null);
-        if (!alive) return;
-
-        const cfg = j?.config ?? j;
-        setHuntSyncEnabled(pickHuntSyncEnabled(cfg));
-      } catch {
-      }
-    }
-
-    void loadCfg();
-    const t = window.setInterval(() => void loadCfg(), 15000);
-    return () => {
-      alive = false;
-      window.clearInterval(t);
-    };
-  }, [token, streamerSlug]);
-
-  const syncActive = huntSyncEnabled && startValue > 0 && (phase === "edit" || phase === "open");
-
-  React.useEffect(() => {
-    if (!token || !streamerSlug || !syncActive) return;
-
-    const slug = streamerSlug;
-    let stop = false;
-
-    async function tick() {
-      if (stop) return;
-      if (busyRef.current) return;
-      if (syncInFlightRef.current) return;
-
-      syncInFlightRef.current = true;
-      try {
-        const r = await fetch(`${apiBase()}/calls/${encodeURIComponent(slug)}/list?limit=80`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const j = await r.json().catch(() => null);
-        if (!j?.ok || !Array.isArray(j.items)) return;
-
-        const queue = j.items as CallQueueItem[];
-
-        const currentItems = itemsRef.current || [];
-        const existingNames = new Set(currentItems.map((it: any) => String(it?.name || "").trim().toLowerCase()));
-
-        const toAdd: CallQueueItem[] = [];
-        for (const c of queue) {
-          const callId = String(c?.id || "").trim();
-          if (!callId) continue;
-
-          if (processedCallIdRef.current[callId]) continue;
-
-          const nm = String(c?.slotName || "").trim();
-          const k = nm.toLowerCase();
-
-          if (!k || existingNames.has(k)) {
-            processedCallIdRef.current[callId] = true;
-            continue;
-          }
-
-          toAdd.push(c);
-          if (toAdd.length >= 5) break;
-        }
-
-        if (!toAdd.length) return;
-
-        for (const c of toAdd) {
-          const callId = String(c.id || "").trim();
-          const nm = String(c.slotName || "").trim();
-          const k = nm.toLowerCase();
-
-          setSlotMetaByName((prev) => ({
-            ...prev,
-            [k]: {
-              imageUrl: (c.imageUrl ?? prev[k]?.imageUrl ?? null) as any,
-              provider: c.provider ?? prev[k]?.provider ?? null,
-            },
-          }));
-
-          processedCallIdRef.current[callId] = true;
-          const useCalls = canUseCallsHunt(token, streamerSlug);
-          if (useCalls) await callsHuntAddItem(String(streamerSlug), String(token), nm);
-          else await huntAdd(nm);
-        }
-
-        await refreshState();
-      } catch {
-      } finally {
-        syncInFlightRef.current = false;
-      }
-    }
-
-    void tick();
-    const t = window.setInterval(() => void tick(), 2500);
-    return () => {
-      stop = true;
-      window.clearInterval(t);
-    };
-  }, [token, streamerSlug, syncActive]);
-
-  React.useEffect(() => {
-    if (!token) return;
-
-    const shouldPoll = phase === "open" || syncActive;
-    if (!shouldPoll) return;
-
-    let stop = false;
-
-    async function tick() {
-      if (stop) return;
-      if (busyRef.current) return;
-      if (syncInFlightRef.current) return;
-      await refreshState({ preserveStartInput: true }).catch(() => {});
-    }
-
-    void tick();
-
-    const ms = phase === "open" ? 1000 : 2500;
-    const t = window.setInterval(() => void tick(), ms);
-
-    return () => {
-      stop = true;
-      window.clearInterval(t);
-    };
-  }, [token, phase, syncActive]);
-
-  async function fetchSuggestions(text: string) {
-    const s = String(text || "").trim();
-    const reqId = ++suggReqRef.current;
-
-    if (s.length < 2) {
-      setSuggestions([]);
-      setSuggError(null);
-      setSuggLoading(false);
+function MoneyField({
+  value,
+  label,
+  disabled,
+  positive,
+  onSave,
+  onDirty,
+  autoSave = false,
+  action = "Enregistrer",
+}: {
+  value: number | null | undefined;
+  label: string;
+  disabled: boolean;
+  positive?: boolean;
+  autoSave?: boolean;
+  action?: string;
+  onSave: (value: number, expected: number | null) => Promise<boolean>;
+  onDirty: (dirty: boolean) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState(false);
+  const base = useRef<number | null>(null);
+  const saving = useRef(false);
+  const dirty = draft !== null;
+  const remoteChanged = dirty && (value ?? null) !== base.current;
+  // A refresh never replaces a draft. The server checks its original value.
+  async function save() {
+    if (draft === null || saving.current || disabled) return;
+    const parsed = parseHuntAmount(draft);
+    if (parsed == null || (positive && parsed <= 0)) {
+      setInvalid(true);
       return;
     }
-
-    setSuggLoading(true);
-    setSuggError(null);
-
+    if (parsed === value && !remoteChanged) {
+      setDraft(null);
+      onDirty(false);
+      return;
+    }
+    saving.current = true;
     try {
-      let raw: any[] = [];
-      try {
-        const r = await huntSuggest(s, 12);
-        raw = Array.isArray((r as any)?.items) ? (r as any).items : [];
-      } catch (e: any) {
-        raw = [];
-        setSuggError(String(e?.message || "hunt_suggest_failed"));
+      if (await onSave(parsed, base.current)) {
+        setDraft(null);
+        onDirty(false);
+        setInvalid(false);
       }
-
-      if (!raw.length) {
-        try {
-          const r2 = await fetch(`${apiBase()}/slots/search?q=${encodeURIComponent(s)}&limit=12`);
-          const j2 = await r2.json().catch(() => null);
-          if (j2?.ok && Array.isArray(j2.items)) {
-            raw = j2.items.map((x: any) => ({
-              name: String(x?.name || ""),
-              provider: x?.provider ?? null,
-              image_url: x?.imageUrl ?? null,
-              score: 0,
-            }));
-            setSuggError(null);
-          }
-        } catch (e: any) {
-          setSuggError((prev) => prev ?? String(e?.message || "slots_search_failed"));
-        }
-      }
-
-      if (reqId !== suggReqRef.current) return;
-
-      const already = new Set(items.map((it: any) => String(it.name || "").trim().toLowerCase()));
-      const seen = new Set<string>();
-
-      const filtered = raw.filter((x: any) => {
-        const key = String(x?.name || "").trim().toLowerCase();
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return !already.has(key);
-      });
-
-      setSlotMetaByName((prev) => {
-        const next = { ...prev };
-        for (const x of filtered) {
-          const k = keyName((x as any)?.name);
-          if (!k) continue;
-          const img = pickImageUrl(x);
-          const prov = pickProvider(x);
-          if (!next[k]) next[k] = { imageUrl: img ?? null, provider: prov ?? null };
-          else {
-            if (!next[k].imageUrl && img) next[k].imageUrl = img;
-            if (!next[k].provider && prov) next[k].provider = prov;
-          }
-        }
-        return next;
-      });
-
-      setSuggestions(filtered);
-      setSel(0);
     } finally {
-      if (reqId === suggReqRef.current) setSuggLoading(false);
+      saving.current = false;
     }
   }
+  return (
+    <form
+      className="hw-money"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save();
+      }}
+    >
+      <label>
+        <span>{label}</span>
+        <div className="hw-amount-input">
+          <input
+            aria-label={label}
+            inputMode="decimal"
+            autoComplete="off"
+            value={draft ?? (value == null ? "" : String(value))}
+            placeholder="0,00"
+            disabled={disabled}
+            aria-invalid={invalid || remoteChanged}
+            onChange={(e) => {
+              if (!dirty) base.current = value ?? null;
+              setDraft(e.target.value);
+              setInvalid(false);
+              onDirty(true);
+            }}
+            onBlur={() => {
+              if (autoSave) void save();
+            }}
+          />
+          <span aria-hidden="true">€</span>
+        </div>
+      </label>
+      {!autoSave && (
+        <button
+          className="hw-btn hw-primary"
+          type="submit"
+          disabled={disabled || !dirty}
+        >
+          <Check size={16} />
+          {action}
+        </button>
+      )}
+      {dirty && (
+        <button
+          className="hw-btn hw-icon"
+          type="button"
+          aria-label={`Annuler la saisie : ${label}`}
+          disabled={disabled}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setDraft(null);
+            setInvalid(false);
+            onDirty(false);
+          }}
+        >
+          <X size={15} />
+        </button>
+      )}
+      {(invalid || remoteChanged) && (
+        <small className="hw-field-error">
+          {remoteChanged
+            ? `Modifié ailleurs : ${money(Number(value) || 0)}. Annule ta saisie pour reprendre cette valeur.`
+            : "Saisis un montant valide, avec deux décimales maximum."}
+        </small>
+      )}
+    </form>
+  );
+}
 
-  React.useEffect(() => {
-    const t = window.setTimeout(() => {
-      fetchSuggestions(q).catch(() => {});
-    }, 120);
-    return () => window.clearTimeout(t);
-  }, [q, items]);
+function HuntDialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+  return createPortal(
+    <dialog
+      className="hw-dialog"
+      ref={ref}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      aria-label={title}
+    >
+      <header>
+        <h2>{title}</h2>
+        <button
+          className="hw-btn hw-icon"
+          onClick={onClose}
+          aria-label="Fermer"
+        >
+          <X size={20} />
+        </button>
+      </header>
+      {children}
+    </dialog>,
+    document.body,
+  );
+}
 
-  React.useEffect(() => {
-    if (!pendingFocusId) return;
-    const el = betRefs.current[pendingFocusId];
-    if (el) {
-      el.focus();
+function Results({ state }: { state: HuntState }) {
+  return (
+    <div className="hw-results">
+      {state.items.map((item, index) => (
+        <div className="hw-result" key={item.id}>
+          <span className="hw-order">{String(index + 1).padStart(2, "0")}</span>
+          <Thumb item={item} />
+          <div className="hw-slot-name">
+            <strong>{item.name}</strong>
+            <small>{item.provider || "Machine"}</small>
+          </div>
+          <span>
+            {money(Number(item.bet) || 0)}
+            <small>Mise</small>
+          </span>
+          <strong>
+            {item.pay == null ? "À ouvrir" : money(Number(item.pay))}
+            <small>
+              {item.pay == null
+                ? ""
+                : multi(
+                    Number(item.bet) > 0
+                      ? Number(item.pay) / Number(item.bet)
+                      : null,
+                  )}
+            </small>
+          </strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function HuntPage() {
+  const { user, token } = useAuth();
+  const account = user as any;
+  const slug =
+    String(
+      account?.streamer?.slug ||
+        account?.streamerSlug ||
+        account?.streamer_slug ||
+        account?.slug ||
+        "",
+    ) || null;
+  // Preserve the existing backend selection: no migration of the active hunt.
+  const workspace = useHuntWorkspace(user ? token : null, slug);
+  const { state: serverState, loading, busy, online, error } = workspace;
+  const [tab, setTab] = useState<"session" | "history">("session");
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<SuggestItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
+  const [draftSnapshot, setDraftSnapshot] = useState<HuntState | null>(null);
+  const [confirmation, setConfirmation] = useState<
+    "new" | "close" | HuntItem | null
+  >(null);
+  const [archive, setArchive] = useState<SavedHunt | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const hasDraft = Object.values(dirty).some(Boolean);
+  const changedDuringDraft =
+    hasDraft &&
+    draftSnapshot !== null &&
+    (serverState.phase !== draftSnapshot.phase ||
+      Object.entries(dirty).some(
+        ([key, active]) =>
+          active &&
+          key !== "start" &&
+          !serverState.items.some((item) => item.id === key.slice(4)),
+      ));
+  const state = changedDuringDraft ? draftSnapshot! : serverState;
+  const stats = huntStats(state);
+  // Keep an edited form mounted if another screen changes mode or removes it.
+  const act = (action: Parameters<typeof workspace.act>[0]) =>
+    changedDuringDraft ? Promise.resolve(false) : workspace.act(action);
+  const locked = busy || loading || !online;
+  const phase = state.phase;
+  const current =
+    state.items.find((it) => it.id === selectedId) ??
+    state.items.find((it) => it.pay == null) ??
+    state.items[0];
+  const currentIndex = state.items.findIndex((it) => it.id === current?.id);
+  const canOpen =
+    stats.start > 0 &&
+    state.items.length > 0 &&
+    state.items.every((it) => Number(it.bet) > 0);
+  const missingBets = state.items.filter((it) => !(Number(it.bet) > 0)).length;
+  const setFieldDirty = (id: string) => (value: boolean) => {
+    if (value && !hasDraft) setDraftSnapshot(state);
+    if (value && id.startsWith("pay-")) setSelectedId(id.slice(4));
+    setDirty((previous) => ({ ...previous, [id]: value }));
+  };
+
+  useEffect(() => {
+    setDirty({});
+    setSelectedId(null);
+    setQuery("");
+    setArchive(null);
+    setConfirmation(null);
+    setDraftSnapshot(null);
+  }, [token, slug]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 4500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => {
+    let active = true;
+    setSearchError(false);
+    if (query.trim().length < 2) {
+      setSuggestions([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
       try {
-        (el as any).select?.();
-      } catch {}
-      setPendingFocusId(null);
-    }
-  }, [pendingFocusId, itemsEdit]);
-
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (phase !== "open") return;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setDeckIndex((i) => Math.max(0, i - 1));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setDeckIndex((i) => Math.min((items?.length || 1) - 1, i + 1));
+        const result = await huntSuggest(query.trim(), 8);
+        if (active) setSuggestions(result.items || []);
+      } catch {
+        if (active) {
+          setSearchError(true);
+          setSuggestions([]);
+        }
+      } finally {
+        if (active) setSearching(false);
       }
+    }, 250);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [query]);
+  useEffect(() => {
+    if (!hasDraft) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasDraft]);
+
+  async function add(name: string) {
+    if (locked || !name.trim() || stats.start <= 0) return;
+    if (await act((api) => api.add(name.trim()))) {
+      setQuery("");
+      setNotice("Machine ajoutée au hunt.");
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [phase, items]);
-
-  React.useEffect(() => {
-    if (phase !== "open") return;
-    if (!items?.length) return;
-
-    const cur = items[deckIndex];
-    const curPaid = cur && cur.pay !== null && typeof cur.pay !== "undefined";
-    if (!cur || curPaid) {
-      const firstUnpaid = items.findIndex((it: any) => it && (it.pay === null || typeof it.pay === "undefined"));
-      if (firstUnpaid >= 0) setDeckIndex(firstUnpaid);
-      else setDeckIndex(Math.min(deckIndex, items.length - 1));
+  }
+  async function confirmAction() {
+    const action = confirmation;
+    if (!action) return;
+    const ok = await act(async (api) => {
+      if (action === "new") {
+        if (state.items.length) await api.save("Avant nouveau hunt");
+        await api.reset();
+      } else if (action === "close") await api.close();
+      else await api.remove(action.id);
+    });
+    if (ok) {
+      setConfirmation(null);
+      setDirty({});
+      setSelectedId(null);
+      setNotice(
+        action === "new"
+          ? "Nouveau hunt prêt. Le précédent est dans l'historique."
+          : "Modification enregistrée.",
+      );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, items, items.length]);
-
-  if (!user) {
+  }
+  async function showHistory() {
+    if (hasDraft) return;
+    setTab("history");
+    setArchiveLoading(true);
+    try {
+      await workspace.loadArchives();
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+  if (!user)
     return (
-      <main className="page huntPage">
-        <div className="huntLayout" style={{ gridTemplateColumns: "1fr" }}>
-          <section className="huntPanel">
-            <div className="huntPanelInner">
-              <h1 className="huntTitle">Hunt</h1>
-              <div className="huntSubtitle">Connecte-toi pour créer et gérer ton hunt.</div>
-            </div>
-          </section>
+      <main className="hw-page">
+        <div className="hw-empty hw-panel">
+          <Target size={36} />
+          <h1>Ton espace Hunt</h1>
+          <p>Connecte-toi pour retrouver ton hunt et le gérer à plusieurs.</p>
         </div>
       </main>
     );
-  }
-
-  async function saveStart() {
-    const v = Number(startInput);
-    if (!(v > 0)) return;
-
-    const useCalls = canUseCallsHunt(token, streamerSlug);
-
-    setBusy(true);
-    try {
-      if (useCalls) await callsHuntSetStart(String(streamerSlug), String(token), Number(v.toFixed(2)));
-      else await huntSetStart(v);
-
-      await refreshState();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addItemFromSelection(item: SuggestItem | null) {
-    if (!(startValue > 0)) {
-      alert("Définis d'abord le Start du hunt.");
-      return;
-    }
-    const nm = (item?.name || q || "").trim();
-    if (!nm) return;
-
-    if (item?.name) {
-      const k = keyName(item.name);
-      const img = pickImageUrl(item);
-      const prov = pickProvider(item);
-      setSlotMetaByName((prev) => ({
-        ...prev,
-        [k]: {
-          imageUrl: img ?? prev[k]?.imageUrl ?? null,
-          provider: prov ?? prev[k]?.provider ?? null,
-        },
-      }));
-    }
-
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      const j = useCalls
-        ? await callsHuntAddItem(String(streamerSlug), String(token), nm)
-        : await huntAdd(nm);
-
-      setQ("");
-      setSuggestions([]);
-      setSuggError(null);
-      setSuggLoading(false);
-      setShowSugg(false);
-      setSel(0);
-
-      if (j?.ok && (j as any).id) setPendingFocusId(String((j as any).id));
-
-      await refreshState();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeItem(id: string) {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-      if (useCalls) await callsHuntRemoveItem(String(streamerSlug), String(token), String(id));
-      else await huntRemove(id);
-
-      await refreshState();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setBet(id: string, bet: number) {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-      const b = Math.max(0, Number((Number(bet) || 0).toFixed(2)));
-
-      if (useCalls) await callsHuntSetBet(String(streamerSlug), String(token), String(id), b);
-      else await huntSetBet(id, b);
-
-      await refreshState();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setPay(id: string, pay: number) {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-      const p = Math.max(0, Number((Number(pay) || 0).toFixed(2)));
-
-      setDebugLastAction(`pay(${p})`);
-
-      if (useCalls) {
-        const resp = await callsHuntSetPay(String(streamerSlug), String(token), String(id), p);
-        setDebugLastPay(resp);
-      } else {
-        const resp = await huntSetPay(id, p);
-        setDebugLastPay(resp);
-      }
-
-      await refreshState();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doOpen() {
-    if (!canOpen) return;
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      if (useCalls) await callsHuntOpen(String(streamerSlug), String(token));
-      else await huntOpen();
-
-      await refreshState();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doClose() {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      if (useCalls) await callsHuntClose(String(streamerSlug), String(token));
-      else await huntClose();
-
-      await refreshAll();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doRevert() {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      if (useCalls) await callsHuntRevert(String(streamerSlug), String(token));
-      else await huntRevert();
-
-      await refreshState();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doNew() {
-    setBusy(true);
-    try {
-
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      if (useCalls) await callsHuntNew(String(streamerSlug), String(token));
-      else await huntNew();
-
-      setDraftPay({});
-      setConfirmed({});
-      processedCallIdRef.current = {};
-
-      await refreshAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doLoad(id: number) {
-    setBusy(true);
-    try {
-      const useCalls = canUseCallsHunt(token, streamerSlug);
-
-      if (useCalls) await callsHuntLoad(String(streamerSlug), String(token), id);
-      else await huntLoad(id);
-
-      setDraftPay({});
-      setConfirmed({});
-      processedCallIdRef.current = {};
-
-      await refreshState();
-
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doSaveCopy() {
-    const title = prompt("Titre (optionnel) :", "") || undefined;
-    setBusy(true);
-    try {
-      await huntSave(title);
-      await refreshAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteSaved(id: number) {
-    setBusy(true);
-    try {
-      await huntDelete(id);
-      await refreshAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteAllSaved() {
-    const ok = confirm("Supprimer TOUTES tes sauvegardes ?");
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await huntDeleteAll();
-      await refreshAll();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const progressPct = startValue > 0 ? clamp01(totalPayAll / startValue) * 100 : 0;
-
-  const current = phase === "open" ? items[deckIndex] : null;
-  const currentId = current ? String(current.id) : null;
-  const currentKey = currentId || "";
-  const isConfirmed = currentId ? !!confirmed[currentKey] : false;
-
-  const currentImg = current ? pickItemImage(current) : null;
-  const currentProv = current ? pickItemProvider(current) : null;
-
-  async function validateCurrentPay() {
-    if (!currentId) return;
-    const raw = String(draftPay[currentKey] ?? "").trim();
-    if (!raw) return;
-    const v = Math.max(0, Number((Number(raw) || 0).toFixed(2)));
-
-    await setPay(currentId, v);
-    setConfirmed((p) => ({ ...p, [currentKey]: true }));
-
-    const nextUnpaid = items.findIndex((it: any, idx: number) => {
-      if (idx <= deckIndex) return false;
-      return it && (it.pay === null || typeof it.pay === "undefined");
-    });
-    if (nextUnpaid >= 0) setDeckIndex(nextUnpaid);
-    else if (deckIndex < items.length - 1) setDeckIndex((x) => Math.min(items.length - 1, x + 1));
-
-  }
-
-  function goNext() {
-    setDeckIndex((x) => Math.min(items.length - 1, x + 1));
-  }
-
-  const primaryDeckLabel =
-    phase === "open" && current
-      ? isConfirmed
-        ? deckIndex >= items.length - 1
-          ? "Terminer"
-          : "Next"
-        : "Valider"
-      : "Valider";
 
   return (
-    <main className="page huntPage">
-      <div className="huntLayout">
-        <aside className="huntPanel">
-          <div className="huntPanelInner">
-            <div className="huntSidebarHeader">
-              <div className="huntSidebarTitle">Mes Hunts</div>
-              <div className="huntRow">
-                <button className="btn" onClick={refreshAll} disabled={busy} title="Rafraîchir">
-                  ↻
-                </button>
-                <button className="btn btnDanger" onClick={deleteAllSaved} disabled={busy} title="Tout supprimer">
-                  ✕
-                </button>
-              </div>
+    <main className="hw-page">
+      <header className="hw-header">
+        <div className="hw-heading">
+          <span className="hw-emblem">
+            <Target size={25} />
+          </span>
+          <div>
+            <span className="hw-eyebrow">BONUS HUNT</span>
+            <h1>Ton espace Hunt</h1>
+          </div>
+        </div>
+        <div className="hw-header-actions">
+          <span
+            className={`hw-sync ${online ? "" : "is-offline"}`}
+            role="status"
+            title={
+              workspace.savedAt
+                ? `Dernière lecture à ${workspace.savedAt.toLocaleTimeString("fr-FR")}. Actualisation toutes les 3 secondes.`
+                : "Connexion au serveur"
+            }
+          >
+            {online ? <CheckCheck size={16} /> : <WifiOff size={16} />}
+            {busy
+              ? "Enregistrement…"
+              : loading
+                ? "Connexion…"
+                : online
+                  ? "Synchronisé"
+                  : "Connexion interrompue"}
+          </span>
+          <button
+            className="hw-btn"
+            disabled={locked || hasDraft}
+            onClick={() => setConfirmation("new")}
+          >
+            <Plus size={16} />
+            Nouveau hunt
+          </button>
+        </div>
+      </header>
+      <nav className="hw-nav" aria-label="Navigation du hunt">
+        <button
+          className={tab === "session" ? "is-active" : ""}
+          aria-current={tab === "session" ? "page" : undefined}
+          onClick={() => setTab("session")}
+        >
+          <Layers3 size={17} />
+          Hunt en cours
+        </button>
+        <button
+          className={tab === "history" ? "is-active" : ""}
+          aria-current={tab === "history" ? "page" : undefined}
+          disabled={hasDraft}
+          onClick={() => void showHistory()}
+        >
+          <History size={17} />
+          Historique
+        </button>
+        <span className="hw-account">{user.username}</span>
+      </nav>
+      {changedDuringDraft && (
+        <div className="hw-alert" role="alert">
+          Le hunt a changé sur un autre écran. Ta saisie reste affichée mais ne
+          peut plus être envoyée. Annule-la pour retrouver la version à jour.
+        </div>
+      )}
+      {error && (
+        <div className="hw-alert" role="alert">
+          {error}
+        </div>
+      )}
+      {!online && !loading && (
+        <div className="hw-alert" role="status">
+          Les dernières données restent affichées. Les modifications reprendront
+          au retour de la connexion.
+          <button className="hw-btn" onClick={() => void workspace.refresh()}>
+            Réessayer
+          </button>
+        </div>
+      )}
+      {notice && (
+        <div className="hw-notice" role="status">
+          <Check size={15} />
+          {notice}
+          <button
+            aria-label="Masquer le message"
+            onClick={() => setNotice(null)}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+      {loading ? (
+        <div className="hw-panel hw-empty" aria-busy="true">
+          <div className="hw-loader" />
+          <h2>On retrouve ton hunt…</h2>
+          <p>Aucune donnée n'est remplacée au chargement.</p>
+        </div>
+      ) : tab === "history" ? (
+        <section className="hw-panel">
+          <div className="hw-section-head">
+            <div>
+              <span className="hw-eyebrow">TES SESSIONS</span>
+              <h2>Historique des hunts</h2>
             </div>
-
-            {!myHunts.length ? (
-              <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                Aucun hunt sauvegardé pour l'instant.
-              </div>
-            ) : (
-              <div className="huntList">
-                {myHunts.map((h) => {
-                  const prof = isProfitable(h);
-                  const tone =
-                    prof === true
-                      ? "border:1px solid rgba(16,185,129,0.35)"
-                      : prof === false
-                      ? "border:1px solid rgba(244,63,94,0.35)"
-                      : "";
-                  return (
-                    <div key={h.id} className="huntListItem" style={tone ? ({ border: tone as any } as any) : undefined}>
-                      <div className="huntListTop">
-                        <div className="huntListTitle">
-                          <button
-                            onClick={async () => {
-                              await doLoad(h.id);
-                            }}
-                            disabled={busy}
-                          >
-                            {h.title ? h.title : `Hunt #${h.id}`}
-                          </button>
-                        </div>
-                        <button className="btn btnDanger" onClick={() => deleteSaved(h.id)} disabled={busy} title="Supprimer">
-                          ✕
-                        </button>
-                      </div>
-
-                      <div className="huntListMeta">
-                        {createdLabel(h)} • {(h as any).items_count ?? 0} items
-                        <br />
-                        start {fmtEur(Number((h as any).start || 0))} • total pay {fmtEur(Number((h as any).total_pay || 0))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
-                Commencer un nouveau Hunt
-              </button>
+            <span className="hw-muted">
+              Consultation sans modifier le hunt en cours
+            </span>
+          </div>
+          {archiveLoading ? (
+            <div className="hw-empty">Chargement des sauvegardes…</div>
+          ) : !workspace.archives.length ? (
+            <div className="hw-empty">
+              <History size={32} />
+              <h3>Les prochains bilans t'attendent ici.</h3>
+              <p>Termine ton hunt ou enregistre une copie pour le retrouver.</p>
+            </div>
+          ) : (
+            <div className="hw-archives">
+              {workspace.archives.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => setArchive(h)}
+                  className="hw-archive"
+                >
+                  <span className="hw-archive-icon">
+                    <History size={20} />
+                  </span>
+                  <span>
+                    <strong>{h.title || `Hunt #${h.id}`}</strong>
+                    <small>
+                      {h.created_at
+                        ? new Date(h.created_at).toLocaleDateString("fr-FR", {
+                            day: "numeric",
+                            month: "long",
+                            year: "numeric",
+                          })
+                        : "Sauvegarde"}{" "}
+                      · {h.items_count ?? h.snapshot?.items.length ?? 0}{" "}
+                      machines
+                    </small>
+                  </span>
+                  <span>
+                    <strong
+                      className={
+                        Number(h.total_pay) >= Number(h.start)
+                          ? "hw-positive"
+                          : ""
+                      }
+                    >
+                      {money(Number(h.total_pay) || 0)}
+                    </strong>
+                    <small>Start {money(Number(h.start) || 0)}</small>
+                  </span>
+                  <ChevronRight size={18} />
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          <div className="hw-stats">
+            <div>
+              <span>
+                <Wallet size={16} />
+                Budget de départ
+              </span>
+              <strong>{money(stats.start)}</strong>
+              <small>Le montant à récupérer</small>
+            </div>
+            <div>
+              <span>
+                <Layers3 size={16} />
+                {phase === "edit" ? "Bonus récoltés" : "Bonus ouverts"}
+              </span>
+              <strong>
+                {phase === "edit" ? (
+                  state.items.length
+                ) : (
+                  <>
+                    {stats.paid}
+                    <em> / {state.items.length}</em>
+                  </>
+                )}
+              </strong>
+              <small>
+                {phase === "edit"
+                  ? `${money(stats.totalBet)} de mises cumulées`
+                  : `${stats.unpaid} encore à ouvrir`}
+              </small>
+            </div>
+            <div>
+              <span>
+                <Target size={16} />
+                {phase === "edit" ? "Seuil de rentabilité" : "Total récupéré"}
+              </span>
+              <strong>
+                {phase === "edit"
+                  ? multi(stats.breakEven)
+                  : money(stats.totalPay)}
+              </strong>
+              <small>
+                {phase === "edit"
+                  ? "Multiplicateur moyen nécessaire"
+                  : `${Math.round(stats.recovered)} % du budget de départ`}
+              </small>
+            </div>
+            <div className="hw-stat-accent">
+              <span>
+                <ShieldCheck size={16} />
+                {phase === "edit"
+                  ? "Prêt pour l'ouverture"
+                  : phase === "closed"
+                    ? "Résultat final"
+                    : "Reste à réaliser"}
+              </span>
+              <strong
+                className={
+                  phase === "closed" && stats.profit >= 0 ? "hw-positive" : ""
+                }
+              >
+                {phase === "edit"
+                  ? missingBets
+                    ? `${missingBets} mise${missingBets > 1 ? "s" : ""}`
+                    : state.items.length
+                      ? "Tout est prêt"
+                      : "À préparer"
+                  : phase === "closed"
+                    ? money(stats.profit)
+                    : multi(stats.remainingMulti)}
+              </strong>
+              <small>
+                {phase === "edit"
+                  ? missingBets
+                    ? "À renseigner dans la liste"
+                    : "Ajoute tes bonus, puis lance l'ouverture"
+                  : phase === "closed"
+                    ? "Gains moins budget de départ"
+                    : "Moyenne nécessaire sur les bonus restants"}
+              </small>
             </div>
           </div>
-        </aside>
-
-        <section style={{ display: "grid", gap: 14 }}>
-          <GlassCard>
-            <div className="huntPanelInner">
-              <h1 className="huntTitle" style={{
-                background: "linear-gradient(105deg, #c4b5fd 0%, #7c5cfc 35%, #5b8ef8 70%, #93c5fd 100%)",
-                WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent",
-                filter: "drop-shadow(0 0 14px rgba(124,92,252,0.55))",
-              }}>
-                Hunt
-              </h1>
-              <div className="huntSubtitle">Gère ton hunt avec sync automatique et statistiques en temps réel.</div>
-
-              <div className="huntRow" style={{ marginTop: 12 }}>
-                <div className="huntRow" style={{ gap: 8 }}>
-                  <span className="huntSmallMuted">Start</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={startInput}
-                    onFocus={() => (editingStartRef.current = true)}
-                    onBlur={() => (editingStartRef.current = false)}
-                    onChange={(e) => setStartInput(e.target.value)}
-                    placeholder="ex: 100"
-                    style={{ width: 160 }}
-                    disabled={busy}
-                  />
-                  <button className="btn btnPrimary" onClick={saveStart} disabled={busy || !(Number(startInput) > 0)}>
-                    Valider Start
-                  </button>
-                </div>
-
-                <div style={{ marginLeft: "auto" }} className="huntRow">
-                  {phase === "edit" && (
-                    <button className="btn btnPrimary" onClick={doOpen} disabled={busy || !canOpen}>
-                      Ouvrir le hunt
-                    </button>
-                  )}
-
-                  {phase === "open" && (
-                    <>
-                      <button className="btn" onClick={doRevert} disabled={busy}>
-                        Revenir en édition
-                      </button>
-                      <button className="btn btnPrimary" onClick={doClose} disabled={busy}>
-                        Terminer le hunt
-                      </button>
-                    </>
-                  )}
-
-                  {phase === "closed" && (
-                    <>
-                      <button className="btn" onClick={doRevert} disabled={busy}>
-                        Revenir en édition
-                      </button>
-                      <button className="btn" onClick={doSaveCopy} disabled={busy}>
-                        Sauvegarder (copie)
-                      </button>
-                      <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
-                        Nouveau Hunt
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="huntPills">
-                <StatPill label="Phase" value={String(phase)} />
-                <StatPill label="Items" value={String(items.length)} />
-                <StatPill label="Total bet" value={fmtEur(totalBetAll)} />
-                <StatPill label="Total pay" value={fmtEur(totalPayAll)} />
-                <StatPill label="Profit" value={fmtEur(profit)} />
-                <StatPill label="Multi" value={`x${globalMulti.toFixed(2)}`} />
-                <StatPill label="BE base" value={`x${beBase.toFixed(2)}`} />
-                <StatPill label="BE reste" value={`x${beLive.toFixed(2)}`} />
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                  <span className="huntSmallMuted">Récupéré</span>
-                  <span className="huntSmallMuted">
-                    {fmtEur(totalPayAll)} / {fmtEur(startValue)}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    marginTop: 6,
-                    height: 10,
-                    borderRadius: 999,
-                    border: "1px solid rgba(124,92,252,0.16)",
-                    background: "rgba(0,0,0,0.25)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${progressPct}%`,
-                      background: progressPct >= 100
-                        ? "linear-gradient(90deg, rgba(16,185,129,0.70), rgba(52,211,153,0.70))"
-                        : "linear-gradient(90deg, rgba(124,92,252,0.70), rgba(91,142,248,0.70))",
-                      transition: "width 200ms ease",
-                    }}
-                  />
-                </div>
-              </div>
+          <div className="hw-modebar">
+            <div className="hw-mode-tabs" aria-label="Mode du hunt">
+              <button
+                aria-pressed={phase === "edit"}
+                disabled={locked || hasDraft || phase === "edit"}
+                onClick={() => void act((api) => api.revert())}
+              >
+                <span>01</span>Farm
+              </button>
+              <button
+                aria-pressed={phase === "open"}
+                disabled={locked || hasDraft || phase === "open" || !canOpen}
+                onClick={() => void act((api) => api.open())}
+              >
+                <span>02</span>Ouverture
+              </button>
+              {phase === "closed" && (
+                <span className="hw-closed-tag">
+                  <CheckCheck size={16} />
+                  Terminé
+                </span>
+              )}
             </div>
-          </GlassCard>
-
+            <span className="hw-muted">
+              <ShieldCheck size={14} />
+              {hasDraft
+                ? "Saisie en cours"
+                : "Modifications enregistrées sur le compte"}
+            </span>
+          </div>
           {phase === "edit" && (
-            <>
-              <GlassCard>
-                <div className="huntPanelInner">
-                  <div style={{ fontWeight: 900, marginBottom: 8 }}>Ajouter une machine</div>
-
-                  <div className="huntRow">
-                    <input
-                      value={q}
-                      onChange={(e) => {
-                        setQ(e.target.value);
-                        if (!showSugg) setShowSugg(true);
-                      }}
-                      placeholder="Tape un nom de machine…"
-                      style={{ width: 460, maxWidth: "100%" }}
-                      disabled={busy}
-                      onFocus={() => setShowSugg(true)}
-                      onBlur={() => setTimeout(() => setShowSugg(false), 160)}
-                      onKeyDown={(e) => {
-                        const visible = showSugg && q.trim().length >= 2;
-                        if (!visible) {
-                          if (e.key === "Enter") addItemFromSelection(null);
-                          return;
-                        }
-
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          if (suggestions.length) setSel((i) => Math.min(suggestions.length - 1, i + 1));
-                        } else if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          if (suggestions.length) setSel((i) => Math.max(0, i - 1));
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (suggestions.length) addItemFromSelection(suggestions[sel] || null);
-                          else addItemFromSelection(null);
-                        } else if (e.key === "Escape") {
-                          setShowSugg(false);
-                        }
-                      }}
-                    />
-
-                    <button className="btn btnPrimary" disabled={busy || !q.trim()} onClick={() => addItemFromSelection(null)}>
-                      Ajouter
-                    </button>
+            <div className="hw-farm-layout">
+              <section className="hw-panel hw-machines">
+                <div className="hw-section-head">
+                  <div>
+                    <span className="hw-eyebrow">LA RÉCOLTE</span>
+                    <h2>
+                      Tes machines{" "}
+                      <span className="hw-count">{state.items.length}</span>
+                    </h2>
                   </div>
-
-                  {showSugg && q.trim().length >= 2 ? (
-                    <div style={{ marginTop: 10 }}>
-                      {suggLoading ? <div className="huntSmallMuted">Suggestions…</div> : null}
-
-                      {suggestions.length ? (
-                        <div className="suggGrid">
-                          {suggestions.map((s, i) => {
-                            const img = pickImageUrl(s);
-                            const prov = pickProvider(s);
+                  <span className="hw-muted">Derniers ajouts en haut</span>
+                </div>
+                {!state.items.length ? (
+                  <div className="hw-empty">
+                    <Layers3 size={40} />
+                    <h3>Le premier bonus ouvre le bal.</h3>
+                    <p>
+                      Définis ton budget et ajoute une machine pour commencer.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="hw-table-head">
+                      <span>Machine</span>
+                      <span>Mise du bonus</span>
+                      <span />
+                    </div>
+                    <div className="hw-machine-list">
+                      {[...state.items].reverse().map((item, index) => (
+                        <div key={item.id} className="hw-machine-row">
+                          <div className="hw-machine-identity">
+                            <span className="hw-order">
+                              {String(state.items.length - index).padStart(
+                                2,
+                                "0",
+                              )}
+                            </span>
+                            <Thumb item={item} />
+                            <div className="hw-slot-name">
+                              <strong>{item.name}</strong>
+                              <small>
+                                {item.provider || "Machine personnalisée"}
+                                {item.caller ? ` · ${item.caller}` : ""}
+                              </small>
+                            </div>
+                          </div>
+                          <MoneyField
+                            label={`Mise de ${item.name}`}
+                            value={item.bet}
+                            disabled={locked}
+                            positive
+                            autoSave
+                            onDirty={setFieldDirty(`bet-${item.id}`)}
+                            onSave={(value, expected) =>
+                              act((api) => api.bet(item.id, value, expected))
+                            }
+                          />
+                          <button
+                            className="hw-btn hw-icon hw-delete"
+                            aria-label={`Retirer ${item.name}`}
+                            title="Retirer la machine"
+                            disabled={locked || hasDraft}
+                            onClick={() => setConfirmation(item)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <footer className="hw-list-footer">
+                  <span>
+                    {state.items.length} bonus ·{" "}
+                    <strong>{money(stats.totalBet)}</strong> de mises
+                  </span>
+                  <button
+                    className="hw-btn hw-primary"
+                    disabled={locked || hasDraft || !canOpen}
+                    onClick={() => {
+                      setSelectedId(null);
+                      void act((api) => api.open());
+                    }}
+                  >
+                    Passer à l'ouverture
+                    <ArrowRight size={16} />
+                  </button>
+                </footer>
+              </section>
+              <aside className="hw-setup">
+                <section className="hw-panel hw-budget">
+                  <span className="hw-eyebrow">POINT DE DÉPART</span>
+                  <h2>Le budget du hunt</h2>
+                  <MoneyField
+                    label="Budget de départ"
+                    value={state.start}
+                    positive
+                    disabled={locked}
+                    onDirty={setFieldDirty("start")}
+                    onSave={(value, expected) =>
+                      act((api) => api.start(value, expected))
+                    }
+                  />
+                  <p className="hw-muted">
+                    Le start sert de référence à ton bilan.
+                  </p>
+                </section>
+                <section className="hw-panel hw-add">
+                  <span className="hw-eyebrow">PROCHAIN BONUS</span>
+                  <h2>Ajouter une machine</h2>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void add(query);
+                    }}
+                  >
+                    <label className="hw-search">
+                      <Search size={17} />
+                      <input
+                        aria-label="Rechercher une machine"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Nom de la machine…"
+                        disabled={locked}
+                      />
+                    </label>
+                    {searching ? (
+                      <p className="hw-muted" role="status">
+                        Recherche…
+                      </p>
+                    ) : (
+                      query.trim().length >= 2 && (
+                        <div className="hw-suggestions">
+                          {suggestions.map((item) => {
+                            const exists = state.items.some(
+                              (it) =>
+                                it.name.toLowerCase() ===
+                                item.name.toLowerCase(),
+                            );
                             return (
                               <button
-                                key={`${s.name}-${prov || ""}-${i}`}
-                                className="suggItem"
-                                onMouseDown={(e) => e.preventDefault()}
-                                onClick={() => addItemFromSelection(s)}
-                                disabled={busy}
-                                style={i === sel ? ({ outline: "2px solid rgba(167,139,250,0.55)", outlineOffset: 2 } as any) : undefined}
+                                key={item.name}
+                                type="button"
+                                disabled={locked || stats.start <= 0 || exists}
+                                onClick={() => void add(item.name)}
                               >
-                                <div className="suggRow">
-                                  <SlotThumb url={img} size={42} />
-                                  <div style={{ minWidth: 0, flex: 1 }}>
-                                    <div className="suggName">{s.name}</div>
-                                    <div className="suggSub">{prov ? prov : "—"}</div>
-                                  </div>
-                                </div>
+                                <Thumb item={item} />
+                                <span>
+                                  <strong>{item.name}</strong>
+                                  <small>{item.provider || "Machine"}</small>
+                                </span>
+                                {exists ? (
+                                  <Check size={16} />
+                                ) : (
+                                  <Plus size={16} />
+                                )}
                               </button>
                             );
                           })}
-                        </div>
-                      ) : !suggLoading ? (
-                        <div className="huntSmallMuted">{suggError ? `Aucune suggestion. (${suggError})` : "Aucune suggestion."}</div>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {startValue <= 0 ? (
-                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                      ⚠️ Tu peux chercher des machines, mais pour <b>ajouter</b> il faut définir un <b>Start</b>.
-                    </div>
-                  ) : null}
-                </div>
-              </GlassCard>
-
-              <GlassCard>
-                <div className="huntPanelInner">
-                  <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                    <div className="huntSmallMuted">
-                      {items.length} machine{items.length > 1 ? "s" : ""} • total bet <b>{fmtEur(totalBetAll)}</b>
-                    </div>
-                    <button className="btn btnPrimary" onClick={doOpen} disabled={busy || !canOpen}>
-                      Ouvrir le hunt
-                    </button>
-                  </div>
-
-                  {!items.length ? (
-                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                      Aucune machine pour l'instant.
-                    </div>
-                  ) : (
-                    <div className="itemsGrid" style={{ marginTop: 10 }}>
-                      {itemsEdit.map((it: any) => {
-                        const img = pickItemImage(it);
-                        const prov = pickItemProvider(it);
-                        return (
-                          <div key={it.id} className="itemRow">
-                            <div className="itemImg">
-                              <SlotThumb url={img} size={46} />
-                            </div>
-
-                            <div style={{ minWidth: 0 }}>
-                              <div className="itemName">{it.name}</div>
-                              <div className="itemProvider">{prov ?? "—"}</div>
-                            </div>
-
-                            <input
-                              ref={(el) => {
-                                betRefs.current[String(it.id)] = el;
-                              }}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="bet"
-                              defaultValue={it.bet ?? ""}
-                              disabled={busy}
-                              onBlur={(e) => {
-                                const v = Number(e.currentTarget.value || "0");
-                                if (!Number.isFinite(v)) return;
-                                setBet(String(it.id), Math.max(0, Number(v.toFixed(2))));
-                              }}
-                            />
-
-                            <input type="number" placeholder="pay (lock)" disabled value={it.pay ?? ""} />
-
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                              <button className="btn btnDanger" disabled={busy} onClick={() => removeItem(String(it.id))}>
-                                Supprimer
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {!canOpen && items.length > 0 && (
-                    <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                      ⚠️ Pour ouvrir : Start &gt; 0, au moins 1 machine, et chaque machine doit avoir une mise (bet) &gt; 0.
-                    </div>
-                  )}
-                </div>
-              </GlassCard>
-            </>
-          )}
-
-          {phase === "open" && (
-            <GlassCard>
-              <div className="huntPanelInner">
-                <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontWeight: 900 }}>Ouverture des bonus</div>
-                    <div className="huntSmallMuted">{items.length ? `${deckIndex + 1} / ${items.length}` : "—"}</div>
-                  </div>
-                  <div className="huntRow">
-                    <button className="btn" onClick={doRevert} disabled={busy}>
-                      Revenir en édition
-                    </button>
-                    <button className="btn btnPrimary" onClick={doClose} disabled={busy}>
-                      Terminer le hunt
-                    </button>
-                  </div>
-                </div>
-
-                {!current ? (
-                  <div className="huntSmallMuted" style={{ marginTop: 10 }}>
-                    Aucune machine.
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-                    <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                      <button className="btn" onClick={() => setDeckIndex((i) => Math.max(0, i - 1))} disabled={busy || deckIndex === 0}>
-                        ◀ Précédent
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={() => setDeckIndex((i) => Math.min(items.length - 1, i + 1))}
-                        disabled={busy || deckIndex >= items.length - 1}
-                      >
-                        Suivant ▶
-                      </button>
-                    </div>
-
-                    <div
-                      className="huntPanel"
-                      style={{
-                        borderRadius: 18,
-                        overflow: "hidden",
-                        border: "1px solid rgba(124,92,252,0.16)",
-                        background: "rgba(124,92,252,0.06)",
-                      }}
-                    >
-                      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 0 }}>
-                        <div
-                          style={{
-                            height: 260,
-                            minHeight: 260,
-                            maxHeight: 260,
-                            background: "rgba(0,0,0,0.25)",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {currentImg ? (
-                            <img
-                              src={currentImg}
-                              alt={current.name}
-                              referrerPolicy="no-referrer"
-                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                            />
-                          ) : (
-                            <div style={{ height: "100%", display: "grid", placeItems: "center", opacity: 0.7 }}>—</div>
+                          {!suggestions.length && (
+                            <p className="hw-muted">
+                              {searchError
+                                ? "Catalogue indisponible. L'ajout par nom reste possible."
+                                : "Aucun résultat. Tu peux ajouter ce nom manuellement."}
+                            </p>
                           )}
                         </div>
-
-                        <div style={{ padding: 14, display: "grid", gap: 10 }}>
-                          <div>
-                            <div style={{ fontWeight: 900, fontSize: 18, lineHeight: 1.2 }}>{current.name}</div>
-                            <div className="huntSmallMuted">{currentProv ?? "—"}</div>
-                          </div>
-
-                          <div className="huntPills" style={{ marginTop: 0 }}>
-                            <StatPill label="Bet" value={fmtEur(Number(current.bet) || 0)} />
-                            <StatPill label="Pay" value={fmtEur(Number(current.pay) || 0)} />
-                            <StatPill
-                              label="Multi"
-                              value={`x${
-                                Number(current.bet) > 0 ? ((Number(current.pay) || 0) / Number(current.bet)).toFixed(2) : "0.00"
-                              }`}
-                            />
-                          </div>
-
-                          <div style={{ display: "grid", gap: 6 }}>
-                            <div className="huntSmallMuted">Entrer le gain</div>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={draftPay[currentKey] ?? (current.pay != null ? String(current.pay) : "")}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setDraftPay((p) => ({ ...p, [currentKey]: val }));
-                                setConfirmed((p) => ({ ...p, [currentKey]: false }));
-                              }}
-                              disabled={busy}
-                              onKeyDown={async (e) => {
-                                if (e.key === "Enter") {
-                                  await validateCurrentPay();
-                                }
-                              }}
-                            />
-                          </div>
-
-                          <div className="huntRow" style={{ justifyContent: "space-between", marginTop: 6 }}>
-                            <button
-                              className="btn btnPrimary"
-                              disabled={busy || !currentId || (!isConfirmed && !String(draftPay[currentKey] ?? "").trim())}
-                              onClick={async () => {
-                                if (!currentId) return;
-
-                                if (!isConfirmed) {
-                                  await validateCurrentPay();
-                                  return;
-                                }
-
-                                if (deckIndex >= items.length - 1) {
-                                  await doClose();
-                                  return;
-                                }
-
-                                goNext();
-                              }}
-                            >
-                              {primaryDeckLabel}
-                            </button>
-
-                            <div className="huntSmallMuted" style={{ marginLeft: "auto" }}>
-                              Astuce : flèches clavier ◀ ▶ pour naviguer.
-                            </div>
-                          </div>
+                      )
+                    )}
+                    <button
+                      type="submit"
+                      className="hw-btn hw-primary hw-wide"
+                      disabled={locked || stats.start <= 0 || !query.trim()}
+                    >
+                      <Plus size={17} />
+                      Ajouter au hunt
+                    </button>
+                  </form>
+                  {stats.start <= 0 && (
+                    <p className="hw-hint">
+                      Renseigne d'abord ton budget de départ.
+                    </p>
+                  )}
+                </section>
+              </aside>
+            </div>
+          )}
+          {phase === "open" && (
+            <div className="hw-opening-layout">
+              <section className="hw-panel hw-opening">
+                <div className="hw-section-head">
+                  <div>
+                    <span className="hw-eyebrow">LE MOMENT DES RÉSULTATS</span>
+                    <h2>Ouverture des bonus</h2>
+                  </div>
+                  <span className="hw-count">
+                    {stats.paid} / {state.items.length}
+                  </span>
+                </div>
+                {current ? (
+                  <>
+                    <div className="hw-bonus-stage">
+                      <Thumb item={current} large />
+                      <div className="hw-bonus-copy">
+                        <span className="hw-eyebrow">
+                          BONUS {String(currentIndex + 1).padStart(2, "0")}
+                        </span>
+                        <h3>{current.name}</h3>
+                        <p>{current.provider || "Machine personnalisée"}</p>
+                        <div className="hw-bonus-numbers">
+                          <span>
+                            Mise
+                            <strong>{money(Number(current.bet) || 0)}</strong>
+                          </span>
+                          <span>
+                            Multiplicateur
+                            <strong>
+                              {multi(
+                                current.pay == null || !Number(current.bet)
+                                  ? null
+                                  : Number(current.pay) / Number(current.bet),
+                              )}
+                            </strong>
+                          </span>
                         </div>
                       </div>
                     </div>
-                  </div>
+                    <div className="hw-pay-entry">
+                      <MoneyField
+                        key={current.id}
+                        label={`Gain de ${current.name}`}
+                        value={current.pay}
+                        disabled={locked}
+                        action={
+                          current.pay == null
+                            ? "Valider le gain"
+                            : "Corriger le gain"
+                        }
+                        onDirty={setFieldDirty(`pay-${current.id}`)}
+                        onSave={async (value, expected) => {
+                          const ok = await act((api) =>
+                            api.pay(current.id, value, expected),
+                          );
+                          if (ok) {
+                            const next = state.items.find(
+                              (it, i) => i > currentIndex && it.pay == null,
+                            );
+                            setSelectedId(next?.id ?? current.id);
+                          }
+                          return ok;
+                        }}
+                      />
+                      <p className="hw-muted">
+                        Un bonus sans gain ? Saisis 0, puis valide. Entrée
+                        fonctionne aussi.
+                      </p>
+                    </div>
+                    <div className="hw-opening-nav">
+                      <button
+                        className="hw-btn"
+                        aria-label="Bonus précédent"
+                        disabled={locked || hasDraft || currentIndex <= 0}
+                        onClick={() =>
+                          setSelectedId(state.items[currentIndex - 1].id)
+                        }
+                      >
+                        <ArrowLeft size={16} />
+                        Précédent
+                      </button>
+                      <span>
+                        {currentIndex + 1} sur {state.items.length}
+                      </span>
+                      <button
+                        className="hw-btn"
+                        aria-label="Bonus suivant"
+                        disabled={
+                          locked ||
+                          hasDraft ||
+                          currentIndex >= state.items.length - 1
+                        }
+                        onClick={() =>
+                          setSelectedId(state.items[currentIndex + 1].id)
+                        }
+                      >
+                        Suivant
+                        <ArrowRight size={16} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="hw-empty">Aucun bonus à ouvrir.</div>
                 )}
-              </div>
-            </GlassCard>
+              </section>
+              <aside className="hw-panel hw-opening-queue">
+                <div className="hw-section-head">
+                  <h2>Fil de l'ouverture</h2>
+                  <span className="hw-count">{state.items.length}</span>
+                </div>
+                <div className="hw-queue-list">
+                  {state.items.map((item, index) => (
+                    <button
+                      key={item.id}
+                      className={item.id === current?.id ? "is-current" : ""}
+                      aria-pressed={item.id === current?.id}
+                      disabled={hasDraft || busy}
+                      onClick={() => setSelectedId(item.id)}
+                    >
+                      <span className="hw-order">
+                        {item.pay == null ? (
+                          String(index + 1).padStart(2, "0")
+                        ) : (
+                          <Check size={15} />
+                        )}
+                      </span>
+                      <Thumb item={item} />
+                      <span className="hw-slot-name">
+                        <strong>{item.name}</strong>
+                        <small>{money(Number(item.bet) || 0)} de mise</small>
+                      </span>
+                      <b>
+                        {item.pay == null
+                          ? "À ouvrir"
+                          : money(Number(item.pay))}
+                      </b>
+                    </button>
+                  ))}
+                </div>
+                <div className="hw-recovery">
+                  <div>
+                    <span>Budget récupéré</span>
+                    <strong>{Math.round(stats.recovered)} %</strong>
+                  </div>
+                  <progress
+                    max="100"
+                    value={stats.recovered}
+                    aria-label="Budget récupéré"
+                  />
+                  <small>
+                    {money(stats.totalPay)} sur {money(stats.start)}
+                  </small>
+                </div>
+                <button
+                  className="hw-btn hw-wide"
+                  disabled={locked || hasDraft}
+                  onClick={() => setConfirmation("close")}
+                >
+                  <CheckCheck size={17} />
+                  Terminer et sauvegarder
+                </button>
+              </aside>
+            </div>
           )}
-
           {phase === "closed" && (
-            <GlassCard>
-              <div className="huntPanelInner">
-                <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 900 }}>Hunt terminé</div>
-                  <div className="huntRow">
-                    <button className="btn" onClick={doRevert} disabled={busy}>
-                      Revenir en édition
-                    </button>
-                    <button className="btn" onClick={doSaveCopy} disabled={busy}>
-                      Sauvegarder (copie)
-                    </button>
-                    <button className="btn btnPrimary" onClick={doNew} disabled={busy}>
-                      Nouveau Hunt
-                    </button>
-                  </div>
+            <section className="hw-panel hw-finish">
+              <div className="hw-section-head">
+                <div>
+                  <span className="hw-eyebrow">SESSION TERMINÉE</span>
+                  <h2>Le bilan de ton hunt</h2>
                 </div>
-
-                <div className="huntPills" style={{ marginTop: 12 }}>
-                  <StatPill label="Start" value={fmtEur(startValue)} />
-                  <StatPill label="Total pay" value={fmtEur(totalPayAll)} />
-                  <StatPill label="Global multi" value={`x${globalMulti.toFixed(2)}`} />
-                  <StatPill label="Profit" value={fmtEur(profit)} />
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <div className="huntRow" style={{ justifyContent: "space-between" }}>
-                    <span className="huntSmallMuted">Récupéré</span>
-                    <span className="huntSmallMuted">
-                      {fmtEur(totalPayAll)} / {fmtEur(startValue)}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      marginTop: 6,
-                      height: 10,
-                      borderRadius: 999,
-                      border: "1px solid rgba(124,92,252,0.16)",
-                      background: "rgba(0,0,0,0.25)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${progressPct}%`,
-                        background: progressPct >= 100
-                          ? "linear-gradient(90deg, rgba(16,185,129,0.70), rgba(52,211,153,0.70))"
-                          : "linear-gradient(90deg, rgba(124,92,252,0.70), rgba(91,142,248,0.70))",
-                        transition: "width 200ms ease",
-                      }}
-                    />
-                  </div>
-                </div>
+                <span className="hw-sync">
+                  <ShieldCheck size={16} />
+                  Hunt sauvegardé
+                </span>
               </div>
-            </GlassCard>
+              <Results state={state} />
+              <footer className="hw-list-footer">
+                <span>Tu peux consulter le détail dans l'historique.</span>
+                <button
+                  className="hw-btn hw-primary"
+                  disabled={locked || hasDraft}
+                  onClick={() => setConfirmation("new")}
+                >
+                  <Plus size={16} />
+                  Préparer le prochain hunt
+                </button>
+              </footer>
+            </section>
           )}
-
-          {loading ? <div className="huntSmallMuted">Chargement…</div> : null}
-        </section>
-      </div>
-
-      {user?.role === "admin" && (
-      <div
-        style={{
-          position: "fixed",
-          right: 14,
-          bottom: 14,
-          zIndex: 9999,
-          display: "grid",
-          gap: 8,
-          pointerEvents: "auto",
-        }}
-      >
-        <button
-          className="btn"
-          onClick={() => setDebugOn((v) => !v)}
-          title="Debug"
-          style={{ width: 46, justifyContent: "center" }}
+          <footer className="hw-footnote">
+            <span>
+              <CheckCheck size={15} />
+              Même compte, même hunt. Les autres écrans se mettent à jour
+              automatiquement.
+            </span>
+            <button
+              disabled={locked || hasDraft || !state.items.length}
+              onClick={async () => {
+                if (await act((api) => api.save()))
+                  setNotice("Copie enregistrée dans l'historique.");
+              }}
+            >
+              Enregistrer une copie
+            </button>
+          </footer>
+        </>
+      )}
+      {confirmation && (
+        <HuntDialog
+          title={
+            confirmation === "new"
+              ? "Commencer un nouveau hunt ?"
+              : confirmation === "close"
+                ? "Terminer ce hunt ?"
+                : "Retirer cette machine ?"
+          }
+          onClose={() => {
+            if (!busy) setConfirmation(null);
+          }}
         >
-          🐛
-        </button>
-
-        {debugOn ? (
-          <div
-            style={{
-              width: 420,
-              maxWidth: "92vw",
-              maxHeight: "70vh",
-              overflow: "auto",
-              borderRadius: 14,
-              border: "1px solid rgba(124,92,252,0.18)",
-              background: "rgba(0,0,0,0.72)",
-              padding: 12,
-              backdropFilter: "blur(16px)",
-            }}
-          >
-            <div style={{ fontWeight: 900, marginBottom: 8 }}>Debug Hunt</div>
-
-            <div className="huntSmallMuted" style={{ marginBottom: 10 }}>
-              action: <b>{debugLastAction || "—"}</b>
-            </div>
-
-            <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-              <div className="huntSmallMuted">
-                phase: <b>{String(phase)}</b> • opening(raw):{" "}
-                <b>{String(debugStateRaw?.opening ?? debugStateRaw?.mode ?? "—")}</b>
-              </div>
-              <div className="huntSmallMuted">
-                start: <b>{String(debugStateRaw?.startEur ?? state?.start ?? "—")}</b> • items: <b>{items.length}</b>
-              </div>
-              <div className="huntSmallMuted">
-                deckIndex: <b>{deckIndex}</b> • currentId: <b>{currentId ?? "—"}</b>
-              </div>
-
-              <div className="huntSmallMuted">
-                unpaidIds:{" "}
-                <b>
-                  {items
-                    .filter((it: any) => it && (it.pay === null || typeof it.pay === "undefined"))
-                    .map((it: any) => String(it.id))
-                    .join(", ") || "—"}
-                </b>
-              </div>
-            </div>
-
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>Last PAY response</div>
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                fontSize: 12,
-                lineHeight: 1.25,
-                margin: 0,
-                padding: 10,
-                borderRadius: 12,
-                border: "1px solid rgba(124,92,252,0.14)",
-                background: "rgba(124,92,252,0.06)",
-              }}
+          <p>
+            {confirmation === "new"
+              ? "Une copie du hunt actuel sera sauvegardée dans l'historique avant de repartir de zéro. Cette action concerne aussi les autres écrans connectés au compte."
+              : confirmation === "close"
+                ? `${stats.unpaid ? `${stats.unpaid} bonus n'ont pas encore de gain renseigné. ` : "Tous les gains sont renseignés. "}Le bilan sera sauvegardé dans l'historique.`
+                : `${confirmation.name} sera retirée du hunt sur tous les écrans.`}
+          </p>
+          <footer>
+            <button
+              className="hw-btn"
+              disabled={busy}
+              onClick={() => setConfirmation(null)}
             >
-              {JSON.stringify(debugLastPay, null, 2)}
-            </pre>
-
-            <div style={{ fontWeight: 800, marginTop: 10, marginBottom: 6 }}>Raw state (/calls/.../hunt/state)</div>
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                fontSize: 12,
-                lineHeight: 1.25,
-                margin: 0,
-                padding: 10,
-                borderRadius: 12,
-                border: "1px solid rgba(124,92,252,0.14)",
-                background: "rgba(124,92,252,0.06)",
-              }}
+              Annuler
+            </button>
+            <button
+              className={`hw-btn ${typeof confirmation === "object" ? "hw-danger" : "hw-primary"}`}
+              disabled={locked}
+              onClick={() => void confirmAction()}
             >
-              {JSON.stringify(debugStateRaw, null, 2)}
-            </pre>
+              {busy ? "Enregistrement…" : "Confirmer"}
+            </button>
+          </footer>
+        </HuntDialog>
+      )}
+      {archive && (
+        <HuntDialog
+          title={archive.title || `Hunt #${archive.id}`}
+          onClose={() => setArchive(null)}
+        >
+          <div className="hw-archive-summary">
+            <span>
+              Budget<strong>{money(Number(archive.start) || 0)}</strong>
+            </span>
+            <span>
+              Total récupéré
+              <strong>{money(Number(archive.total_pay) || 0)}</strong>
+            </span>
+            <span>
+              Résultat
+              <strong>
+                {money(
+                  (Number(archive.total_pay) || 0) -
+                    (Number(archive.start) || 0),
+                )}
+              </strong>
+            </span>
           </div>
-        ) : null}
-      </div>
+          {archive.snapshot ? (
+            <Results state={archive.snapshot} />
+          ) : (
+            <p>Le détail de cette ancienne sauvegarde n'est pas disponible.</p>
+          )}
+          <p className="hw-muted">
+            Lecture seule : ton hunt en cours reste intact.
+          </p>
+        </HuntDialog>
       )}
     </main>
   );

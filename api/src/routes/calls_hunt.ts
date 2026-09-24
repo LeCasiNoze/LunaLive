@@ -2,12 +2,15 @@
 import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
+import { expectedAmount, onceSchema } from "../hunt2/amount.js";
+import { keyText } from "../calls/normalize.js";
+import { ensureHuntArchiveSchema } from "./hunt2.js";
 
 type AuthedReq = any;
 
 type StreamerRow = { id: number; ownerUserId: number };
 
-async function ensureSchema() {
+const ensureSchema = onceSchema(async () => {
   // table session
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calls_hunt_sessions (
@@ -26,14 +29,14 @@ async function ensureSchema() {
     ALTER TABLE calls_hunt_sessions
     ADD COLUMN IF NOT EXISTS bet_default NUMERIC NULL;
   `);
-}
+});
 
-async function ensureCallsQueueIsBonusCol() {
+const ensureCallsQueueIsBonusCol = onceSchema(async () => {
   await pool.query(`
     ALTER TABLE calls_queue
     ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
   `);
-}
+});
 
 async function getStreamerBySlug(slug: string): Promise<StreamerRow | null> {
   const r = await pool.query(
@@ -89,7 +92,7 @@ async function getSession(streamerId: number) {
   );
   const row = r.rows?.[0] || {};
 
-  const mode = (row.mode === "open" ? "open" : "farm") as "farm" | "open";
+  const mode = (row.mode === "closed" ? "closed" : row.mode === "open" ? "open" : "farm") as "farm" | "open" | "closed";
   const opened = !!row.opened;
 
   const start =
@@ -113,7 +116,7 @@ async function getSession(streamerId: number) {
 async function setSession(
   streamerId: number,
   patch: Partial<{
-    mode: "farm" | "open";
+    mode: "farm" | "open" | "closed";
     opened: boolean;
     start: number | null;
     betDefault: number | null;
@@ -121,22 +124,12 @@ async function setSession(
   }>
 ) {
   await ensureSession(streamerId);
-  const cur = await getSession(streamerId);
-
-  const nextMode = patch.mode ?? cur.mode;
-  const nextOpened = typeof patch.opened === "boolean" ? patch.opened : cur.opened;
-  const nextStart = typeof patch.start !== "undefined" ? patch.start : cur.start;
-  const nextBetDefault =
-    typeof patch.betDefault !== "undefined" ? patch.betDefault : cur.betDefault;
-  const nextArchiveId =
-    typeof patch.archive_id !== "undefined" ? patch.archive_id : cur.archive_id;
-
-  await pool.query(
-    `UPDATE calls_hunt_sessions
-     SET mode=$2, opened=$3, start=$4, bet_default=$5, archive_id=$6, updated_at=NOW()
-     WHERE streamer_id=$1`,
-    [streamerId, nextMode, nextOpened, nextStart, nextBetDefault, nextArchiveId]
-  );
+  // Update only requested fields, never stale values read by another session.
+  const columns = { mode: "mode", opened: "opened", start: "start", betDefault: "bet_default", archive_id: "archive_id" } as const;
+  const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
+  if (!entries.length) return;
+  await pool.query(`UPDATE calls_hunt_sessions SET ${entries.map(([key], index) => `${columns[key as keyof typeof columns]}=$${index + 2}`).join(", ")}, updated_at=NOW() WHERE streamer_id=$1`,
+    [streamerId, ...entries.map(([, value]) => value)]);
 }
 
 async function loadQueue(streamerId: number) {
@@ -193,11 +186,75 @@ function isUnpaid(it: any) {
 
 export const callsHuntRouter = express.Router();
 callsHuntRouter.use(requireAuth);
+callsHuntRouter.use(express.json());
+
+async function archiveCallsHunt(streamer: StreamerRow, title?: string, close = false) {
+  await ensureHuntArchiveSchema();
+  await ensureSession(streamer.id);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const session = (await client.query(`SELECT * FROM calls_hunt_sessions WHERE streamer_id=$1 FOR UPDATE`, [streamer.id])).rows[0];
+    if (close && session.mode === "closed" && session.archive_id) {
+      await client.query("COMMIT");
+      return Number(session.archive_id);
+    }
+    const bonus = (await loadQueue(streamer.id)).filter(isBonus);
+    const snapshot = { phase: close ? "closed" : session.mode === "open" ? "open" : "edit", opened: !close && session.opened,
+      start: session.start == null ? null : Number(session.start), items: bonus.map(it => ({ id: it.id, name: it.slotName,
+        provider: it.provider, image_url: it.imageUrl, bet: it.betEur, pay: it.payEur, caller: it.username })) };
+    const total = bonus.reduce((sum, it) => sum + (Number(it.payEur) || 0), 0);
+    const result = await client.query(`INSERT INTO hunt_archives(user_id,title,start,total_pay,items_count,snapshot)
+      VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, [streamer.ownerUserId, title || null, snapshot.start, total, bonus.length, JSON.stringify(snapshot)]);
+    const id = Number(result.rows[0].id);
+    if (close) await client.query(`UPDATE calls_hunt_sessions SET mode='closed',opened=FALSE,archive_id=$2,updated_at=NOW() WHERE streamer_id=$1`, [streamer.id, id]);
+    await client.query("COMMIT");
+    return id;
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
+}
+
+callsHuntRouter.post("/:slug/hunt/save", async (req: AuthedReq, res) => {
+  try {
+    const streamer = await getStreamerBySlug(String(req.params.slug));
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    if (!await canControlStreamer(streamer.id, streamer.ownerUserId, req.user)) return res.status(403).json({ ok: false, error: "forbidden" });
+    const id = await archiveCallsHunt(streamer, String(req.body?.title || "").slice(0, 160));
+    return res.json({ ok: true, id });
+  } catch (error) { console.error(error); return res.status(500).json({ ok: false, error: "server_error" }); }
+});
+
+callsHuntRouter.post("/:slug/hunt/add", async (req: AuthedReq, res) => {
+  try {
+    const streamer = await getStreamerBySlug(String(req.params.slug));
+    if (!streamer) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    if (!await canControlStreamer(streamer.id, streamer.ownerUserId, req.user)) return res.status(403).json({ ok: false, error: "forbidden" });
+    const session = await getSession(streamer.id);
+    if (!(Number(session.start) > 0)) return res.status(400).json({ ok: false, error: "start_required" });
+    const name = String(req.body?.name || "").trim().slice(0, 180);
+    if (!name) return res.status(400).json({ ok: false, error: "bad_name" });
+    await ensureCallsQueueIsBonusCol();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [streamer.id]);
+      const exists = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND slot_key=$2`, [streamer.id, keyText(name)]);
+      if (exists.rowCount) { await client.query("ROLLBACK"); return res.status(409).json({ ok: false, error: "already_in_queue" }); }
+      const result = await client.query(`INSERT INTO calls_queue(streamer_id,slot_name,slot_key,provider,user_id,username,pos,is_bonus)
+        VALUES($1,$2,$3,(SELECT provider FROM slots_catalog WHERE name_key=$3 LIMIT 1),$4,$5,
+          (SELECT COALESCE(MAX(pos),0)+1 FROM calls_queue WHERE streamer_id=$1),TRUE) RETURNING id`,
+        [streamer.id, name, keyText(name), Number(req.user.id), String(req.user.username)]);
+      await client.query("COMMIT");
+      return res.json({ ok: true, id: String(result.rows[0].id) });
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
+  } catch (error) { console.error(error); return res.status(500).json({ ok: false, error: "server_error" }); }
+});
 
 /**
  * GET /calls/:slug/hunt/state
  */
 callsHuntRouter.get("/:slug/hunt/state", async (req: AuthedReq, res) => {
+  res.setHeader("Cache-Control", "private, no-cache");
   try {
     const slug = String(req.params.slug || "");
     const streamer = await getStreamerBySlug(slug);
@@ -299,8 +356,8 @@ callsHuntRouter.post("/:slug/hunt/close", async (req: AuthedReq, res) => {
     const okCtl = await canControlStreamer(streamer.id, streamer.ownerUserId, req.user);
     if (!okCtl) return res.status(403).json({ ok: false, error: "forbidden" });
 
-    await setSession(streamer.id, { opened: false, mode: "farm" });
-    return res.json({ ok: true, opening: false });
+    const archiveId = await archiveCallsHunt(streamer, undefined, true);
+    return res.json({ ok: true, opening: false, archiveId });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ ok: false, error: "server_error" });
@@ -344,6 +401,13 @@ callsHuntRouter.post("/:slug/hunt/open", async (req: AuthedReq, res) => {
     const cur = await getSession(streamer.id);
     const currentlyOpen = cur.mode === "open" || cur.opened === true;
 
+    if (req.body?.opening === true) {
+      const bonus = (await loadQueue(streamer.id)).filter(isBonus);
+      if (!(Number(cur.start) > 0) || !bonus.length || bonus.some(it => !(Number(it.betEur) > 0))) return res.status(400).json({ ok: false, error: "bet_required" });
+      await setSession(streamer.id, { opened: true, mode: "open" });
+      return res.json({ ok: true, opening: true });
+    }
+
     if (currentlyOpen) {
       await setSession(streamer.id, { opened: false, mode: "farm" });
       return res.json({ ok: true, opening: false });
@@ -374,7 +438,11 @@ callsHuntRouter.post("/:slug/hunt/start", async (req: AuthedReq, res) => {
       return res.status(400).json({ ok: false, error: "bad_start" });
     }
 
-    await setSession(streamer.id, { start: startEur });
+    await ensureSession(streamer.id);
+    const expected = expectedAmount(req.body);
+    const updated = await pool.query(`UPDATE calls_hunt_sessions SET start=$2, updated_at=NOW() WHERE streamer_id=$1
+      AND (NOT $3::boolean OR start IS NOT DISTINCT FROM $4::numeric) RETURNING streamer_id`, [streamer.id, startEur, expected.guarded, expected.value]);
+    if (!updated.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
     return res.json({ ok: true });
   } catch (e) {
     console.error(e);
@@ -591,6 +659,7 @@ callsHuntRouter.patch("/:slug/hunt/bonus/:id", express.json(), async (req: Authe
 
     await ensureCallsQueueIsBonusCol();
 
+    const expected = expectedAmount(req.body);
     const r = await pool.query(
       `
       UPDATE calls_queue
@@ -598,13 +667,14 @@ callsHuntRouter.patch("/:slug/hunt/bonus/:id", express.json(), async (req: Authe
 WHERE streamer_id=$1
   AND id=$2
   AND (COALESCE(is_bonus,FALSE)=TRUE OR (bet IS NOT NULL AND bet > 0))
+  AND (NOT $4::boolean OR bet IS NOT DISTINCT FROM $5::numeric)
       RETURNING id::text AS id
       `,
-      [streamer.id, id, betEur]
+      [streamer.id, id, betEur, expected.guarded, expected.value]
     );
 
     if ((r.rowCount ?? 0) === 0) {
-      return res.status(404).json({ ok: false, error: "bonus_not_found" });
+      return res.status(expected.guarded ? 409 : 404).json({ ok: false, error: expected.guarded ? "conflict" : "bonus_not_found" });
     }
 
     return res.json({ ok: true, id });
@@ -661,6 +731,17 @@ callsHuntRouter.post("/:slug/hunt/pay", async (req: AuthedReq, res) => {
     const payEur = Number(req.body?.payEur);
     if (!Number.isFinite(payEur) || payEur < 0) {
       return res.status(400).json({ ok: false, error: "bad_pay" });
+    }
+
+    // The workspace submits an explicit bonus ID. Never apply a stale gain to
+    // the next unpaid bonus after another operator has already submitted it.
+    if (req.body?.id) {
+      const expected = expectedAmount(req.body);
+      const result = await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2
+        AND (is_bonus=TRUE OR bet>0) AND (NOT $4::boolean OR pay IS NOT DISTINCT FROM $5::numeric) RETURNING id`,
+        [streamer.id, String(req.body.id), payEur, expected.guarded, expected.value]);
+      if (!result.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+      return res.json({ ok: true, paid: true, paidId: String(req.body.id), payEur });
     }
 
     const items = await loadQueue(streamer.id);

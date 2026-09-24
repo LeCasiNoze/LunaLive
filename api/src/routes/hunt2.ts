@@ -3,6 +3,7 @@ import express from "express";
 import crypto from "crypto";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
+import { expectedAmount, onceSchema } from "../hunt2/amount.js";
 import { searchSlots as searchSlotsCatalog } from "../calls/catalog.js";
 import {
   addCall,
@@ -87,7 +88,7 @@ function scoreName(q: string, name: string) {
   return Math.round(clamp(ratio * 70, 0, 70));
 }
 
-async function ensureSchema() {
+const ensureSchema = onceSchema(async () => {
   // tables
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hunt_sessions (
@@ -141,7 +142,9 @@ async function ensureSchema() {
     ALTER TABLE hunt_sessions
     ADD COLUMN IF NOT EXISTS bet_default NUMERIC NULL;
   `);
-}
+});
+
+export const ensureHuntArchiveSchema = ensureSchema;
 
 async function ensureSession(userId: number) {
   await ensureSchema();
@@ -257,10 +260,12 @@ async function getState(userId: number): Promise<HuntState> {
 
   // fallback (old hunt2 local list)
   const itemsQ = await pool.query(
-    `SELECT id, pos, name, provider, image_url, bet, pay, bounty, caller
-     FROM hunt_session_items
-     WHERE user_id=$1
-     ORDER BY pos ASC, id ASC`,
+    `SELECT h.id, h.pos, h.name, COALESCE(h.provider,sc.provider) AS provider,
+       COALESCE(h.image_url,sc.image_url) AS image_url, h.bet, h.pay, h.bounty, h.caller
+     FROM hunt_session_items h
+     LEFT JOIN slots_catalog sc ON sc.name_key=LOWER(h.name)
+     WHERE h.user_id=$1
+     ORDER BY h.pos ASC, h.id ASC`,
     [userId]
   );
 
@@ -292,23 +297,11 @@ async function writeSessionMeta(
   patch: Partial<{ phase: HuntPhase; opened: boolean; start: number | null; archive_id: number | null }>
 ) {
   await ensureSession(userId);
-  const cur = await pool.query(
-    `SELECT phase, opened, start, archive_id FROM hunt_sessions WHERE user_id=$1`,
-    [userId]
-  );
-  const row = cur.rows[0] || {};
-  const phase = patch.phase ?? (row.phase as HuntPhase) ?? "edit";
-  const opened = typeof patch.opened === "boolean" ? patch.opened : !!row.opened;
-  const start = typeof patch.start !== "undefined" ? patch.start : num(row.start);
-  const archiveId =
-    typeof patch.archive_id !== "undefined" ? patch.archive_id : row.archive_id ? Number(row.archive_id) : null;
-
-  await pool.query(
-    `UPDATE hunt_sessions
-     SET phase=$2, opened=$3, start=$4, archive_id=$5, updated_at=NOW()
-     WHERE user_id=$1`,
-    [userId, phase, opened, start, archiveId]
-  );
+  const columns = { phase: "phase", opened: "opened", start: "start", archive_id: "archive_id" } as const;
+  const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
+  if (!entries.length) return;
+  await pool.query(`UPDATE hunt_sessions SET ${entries.map(([key], index) => `${columns[key as keyof typeof columns]}=$${index + 2}`).join(", ")}, updated_at=NOW() WHERE user_id=$1`,
+    [userId, ...entries.map(([, value]) => value)]);
 }
 
 async function suggestSlots(q: string, limit = 12): Promise<SuggestItem[]> {
@@ -776,6 +769,7 @@ hunt2Router.get("/api/hunt2/share/state", async (req, res) => {
 hunt2Router.use("/api/hunt2", requireAuth);
 
 hunt2Router.get("/api/hunt2/state", async (req: any, res) => {
+  res.setHeader("Cache-Control", "private, no-cache");
   try {
     const userId = Number(req.user!.id);
     const state = await getState(userId);
@@ -804,7 +798,14 @@ hunt2Router.post("/api/hunt2/set-start", async (req: any, res) => {
     const start = Number(req.body?.start);
     if (!(start > 0)) return res.status(400).json({ ok: false, error: "bad_start" });
 
-    await writeSessionMeta(userId, { start, phase: "edit", opened: false, archive_id: null });
+    await ensureSession(userId);
+    const expected = expectedAmount(req.body);
+    const updated = await pool.query(
+      `UPDATE hunt_sessions SET start=$2, updated_at=NOW() WHERE user_id=$1
+       AND (NOT $3::boolean OR start IS NOT DISTINCT FROM $4::numeric) RETURNING user_id`,
+      [userId, start, expected.guarded, expected.value]
+    );
+    if (!updated.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
     const state = await getState(userId);
     res.json({ ok: true, state });
   } catch (e) {
@@ -871,9 +872,17 @@ hunt2Router.post("/api/hunt2/set-bet", async (req: any, res) => {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
     const bet = Number(req.body?.bet);
-    if (!id || !(bet >= 0)) return res.status(400).json({ ok: false, error: "bad_input" });
+    if (!id || !Number.isFinite(bet) || !(bet >= 0)) return res.status(400).json({ ok: false, error: "bad_input" });
 
     const sync = await isSyncActiveForUser(userId);
+    const expected = expectedAmount(req.body);
+    if (expected.guarded) {
+      const result = sync.ok
+        ? await pool.query(`UPDATE calls_queue SET bet=$3 WHERE streamer_id=$1 AND id=$2 AND bet IS NOT DISTINCT FROM $4::numeric RETURNING id`, [sync.streamerId, id, bet, expected.value])
+        : await pool.query(`UPDATE hunt_session_items SET bet=$3 WHERE user_id=$1 AND id=$2 AND bet IS NOT DISTINCT FROM $4::numeric RETURNING id`, [userId, id, bet, expected.value]);
+      if (!result.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+      return res.json({ ok: true });
+    }
     if (sync.ok) {
       await setCallBet(pool, sync.streamerId, id, bet);
       return res.json({ ok: true });
@@ -892,10 +901,16 @@ hunt2Router.post("/api/hunt2/set-pay", async (req: any, res) => {
     const userId = Number(req.user!.id);
     const id = String(req.body?.id || "");
     const pay = Number(req.body?.pay);
-    if (!id || !(pay >= 0)) return res.status(400).json({ ok: false, error: "bad_input" });
+    if (!id || !Number.isFinite(pay) || !(pay >= 0)) return res.status(400).json({ ok: false, error: "bad_input" });
 
     const sync = await isSyncActiveForUser(userId);
-    if (sync.ok) {
+    const expected = expectedAmount(req.body);
+    if (expected.guarded) {
+      const result = sync.ok
+        ? await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 AND pay IS NOT DISTINCT FROM $4::numeric RETURNING id`, [sync.streamerId, id, pay, expected.value])
+        : await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2 AND pay IS NOT DISTINCT FROM $4::numeric RETURNING id`, [userId, id, pay, expected.value]);
+      if (!result.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+    } else if (sync.ok) {
       await setCallPay(pool, sync.streamerId, id, pay);
     } else {
       await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2`, [userId, id, pay]);
@@ -908,7 +923,7 @@ hunt2Router.post("/api/hunt2/set-pay", async (req: any, res) => {
     const after = await getState(userId);
     const allPaid =
       after.items.length > 0 && after.items.every((it) => it.pay != null && Number(it.pay) >= 0);
-    if (after.phase === "open" && allPaid) {
+    if (!expected.guarded && after.phase === "open" && allPaid) {
       try {
         const { archiveId, state: closed } = await closeHunt(userId);
         return res.json({ ok: true, autoArchived: true, archiveId, state: closed });
@@ -1028,15 +1043,22 @@ async function closeHunt(userId: number): Promise<{ archiveId: number; state: Hu
     archive_id: null,
   };
 
-  const ins = await pool.query(
-    `INSERT INTO hunt_archives(user_id, title, start, total_pay, items_count, snapshot)
-     VALUES($1,$2,$3,$4,$5,$6)
-     RETURNING id`,
-    [userId, null, start || null, totalPay, itemsCount, snapshot]
-  );
-
-  const archiveId = Number(ins.rows[0].id);
-  await writeSessionMeta(userId, { phase: "closed", opened: false, archive_id: archiveId });
+  const client = await pool.connect();
+  let archiveId: number;
+  try {
+    await client.query("BEGIN");
+    const current = (await client.query(`SELECT phase,archive_id FROM hunt_sessions WHERE user_id=$1 FOR UPDATE`, [userId])).rows[0];
+    if (current?.phase === "closed" && current.archive_id) {
+      await client.query("COMMIT");
+      return { archiveId: Number(current.archive_id), state };
+    }
+    const ins = await client.query(`INSERT INTO hunt_archives(user_id,title,start,total_pay,items_count,snapshot)
+      VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, [userId, null, start || null, totalPay, itemsCount, snapshot]);
+    archiveId = Number(ins.rows[0].id);
+    await client.query(`UPDATE hunt_sessions SET phase='closed',opened=FALSE,archive_id=$2,updated_at=NOW() WHERE user_id=$1`, [userId, archiveId]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
 
   // ✅ if sync active => reset calls_queue too
   const sync = await isSyncActiveForUser(userId);
