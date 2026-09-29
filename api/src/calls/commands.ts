@@ -584,7 +584,7 @@ export async function handleCallsCommand(opts: {
     await setPcallCooldown(pool, scopeId, actorUserId, Date.now() + pcallCooldownMs(channelSub));
   }
 
-  if (settings.showAcceptPublic) {
+  if (settings.showAcceptPublic || actorUserId === 0) {
     await sendBotChat(
       pool,
       io,

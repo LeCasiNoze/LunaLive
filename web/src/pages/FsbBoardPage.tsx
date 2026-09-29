@@ -25,6 +25,7 @@ import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
 import { FsbScoutSection } from "./fsb/FsbScoutSection";
 import { FsbRumbleOutreachSection } from "./fsb/FsbRumbleOutreachSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
+import { getAutomodControl, setAutomodControl } from "../lib/api_automod";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -1045,6 +1046,10 @@ function ExpensesPanel({
 
 export default function FsbBoardPage() {
   const { user, token } = useAuth();
+  const [automodEnabled,setAutomodEnabled]=React.useState(false);
+  const [automodBusy,setAutomodBusy]=React.useState(false);
+  React.useEffect(()=>{void getAutomodControl().then(r=>setAutomodEnabled(r.enabled)).catch(()=>{});},[]);
+  const toggleAutomod=async()=>{setAutomodBusy(true);try{const r=await setAutomodControl(!automodEnabled);setAutomodEnabled(r.enabled);}finally{setAutomodBusy(false);}};
   const [searchParams, setSearchParams] = useSearchParams();
   const section = normalizeSection(searchParams.get("section"));
   const canAccess = canAccessFsbBoard(user);
@@ -1347,6 +1352,10 @@ export default function FsbBoardPage() {
         {section === "home" ? (
           <>
             <section className="fsb-grid-3">
+              <div className="fsb-card fsb-module" style={{gridColumn:"1 / -1",borderColor:automodEnabled?"rgba(16,185,129,.55)":"rgba(168,85,247,.5)",background:"linear-gradient(120deg,rgba(99,102,241,.16),rgba(14,29,56,.96))"}}>
+                <div className="fsb-sectionhead"><div style={{display:"flex",alignItems:"center",gap:14}}><span className="fsb-module-icon" style={{background:automodEnabled?"rgba(16,185,129,.18)":"rgba(168,85,247,.18)"}}>🤖</span><div><strong style={{fontSize:20}}>Automod du stream</strong><div className="fsb-copy">Pilote la rotation automatique des slots depuis le VPS.</div></div></div><span className={`fsb-pill ${automodEnabled?"":"fsb-pill-bad"}`}>{automodEnabled?"ACTIF":"ARRÊTÉ"}</span></div>
+                <div className="fsb-actions" style={{marginTop:8}}><button className={`fsb-btn ${automodEnabled?"":"fsb-btn-primary"}`} onClick={toggleAutomod} disabled={automodBusy} style={{minWidth:220,fontSize:16}}>{automodBusy?"Transmission…":automodEnabled?"Désactiver l’Automod":"Activer l’Automod"}</button><span className="fsb-copy">La commande est reprise automatiquement par le contrôleur du VPS.</span></div>
+              </div>
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
