@@ -163,7 +163,10 @@ async function updateRumbleInfo(
          video_url = EXCLUDED.video_url,
          thumbnail_url = EXCLUDED.thumbnail_url,
          live_id = EXCLUDED.live_id,
-         live_video_id_numeric = EXCLUDED.live_video_id_numeric,
+         -- Some Rumble discovery paths identify the live slug but temporarily
+         -- omit the numeric chat id. Keep the last confirmed id while the live
+         -- remains active so command replies do not lose their destination.
+         live_video_id_numeric = COALESCE(EXCLUDED.live_video_id_numeric, streamer_rumble_info.live_video_id_numeric),
          live_started_at = EXCLUDED.live_started_at,
          updated_at = NOW()`,
       [streamerId, isLive, title, viewersCount, hlsUrl, videoUrl, thumbnailUrl, videoId, videoIdNumeric, liveStartedAtMs]
