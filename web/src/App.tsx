@@ -35,6 +35,7 @@ const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage")
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const FsbBoardPage = React.lazy(() => import("./pages/FsbBoardPage"));
+const AutomodDashboardPage = React.lazy(() => import("./pages/AutomodDashboardPage"));
 const ExtensionInstallPage = React.lazy(() => import("./pages/ExtensionInstallPage"));
 const AgencyPortalPage = React.lazy(() => import("./pages/AgencyPortalPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
@@ -355,6 +356,10 @@ function AppInner() {
                 <FsbBoardPage />
               </React.Suspense>
             }
+          />
+          <Route
+            path="/FSB_Board/automod"
+            element={<React.Suspense fallback={<LoadingFallback />}><AutomodDashboardPage /></React.Suspense>}
           />
           <Route
             path="/extension"
