@@ -36,7 +36,6 @@ const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const FsbBoardPage = React.lazy(() => import("./pages/FsbBoardPage"));
 const AutomodDashboardPage = React.lazy(() => import("./pages/AutomodDashboardPage"));
-const RumbleCallsManagePage = React.lazy(() => import("./pages/RumbleCallsManagePage"));
 const ExtensionInstallPage = React.lazy(() => import("./pages/ExtensionInstallPage"));
 const AgencyPortalPage = React.lazy(() => import("./pages/AgencyPortalPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
@@ -361,10 +360,6 @@ function AppInner() {
           <Route
             path="/FSB_Board/automod"
             element={<React.Suspense fallback={<LoadingFallback />}><AutomodDashboardPage /></React.Suspense>}
-          />
-          <Route
-            path="/rumble-calls"
-            element={<React.Suspense fallback={<LoadingFallback />}><RumbleCallsManagePage /></React.Suspense>}
           />
           <Route
             path="/extension"

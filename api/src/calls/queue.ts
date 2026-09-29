@@ -512,6 +512,53 @@ export async function deleteCallById(pool: Pool, streamerId: number, id: string)
   return !!r.rows?.[0];
 }
 
+export async function removeLatestRumbleCall(
+  pool: Pool,
+  streamerId: number,
+  rumbleUserId: string,
+  rumbleUsername: string,
+): Promise<{ slotName: string; pos: number } | null> {
+  const userId = String(rumbleUserId || "").trim();
+  const username = String(rumbleUsername || "").trim().slice(0, 80);
+  if (!userId || !username) return null;
+  await ensureCallsSchema(pool);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+    const latest = await client.query(
+      `SELECT id, slot_name AS "slotName", pos::int AS pos
+         FROM calls_queue
+        WHERE streamer_id=$1
+          AND (rumble_user_id=$2 OR (rumble_user_id IS NULL AND user_id=0 AND lower(username)=lower($3)))
+          AND bet IS NULL AND pay IS NULL AND COALESCE(is_bonus,FALSE)=FALSE
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1 FOR UPDATE`,
+      [streamerId, userId, username],
+    );
+    const row = latest.rows?.[0];
+    if (!row) {
+      await client.query("COMMIT");
+      return null;
+    }
+    const removed = await client.query(
+      `DELETE FROM calls_queue
+        WHERE id=$1 AND streamer_id=$2
+          AND (rumble_user_id=$3 OR (rumble_user_id IS NULL AND user_id=0 AND lower(username)=lower($4)))
+          AND bet IS NULL AND pay IS NULL AND COALESCE(is_bonus,FALSE)=FALSE
+        RETURNING id`,
+      [row.id, streamerId, userId, username],
+    );
+    await client.query("COMMIT");
+    return removed.rows?.[0] ? { slotName: String(row.slotName), pos: Number(row.pos) } : null;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function setCallBet(pool: Pool, streamerId: number, id: string, bet: number): Promise<boolean> {
   await ensureCallsSchema(pool);
   const b = Number(bet);

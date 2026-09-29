@@ -10,7 +10,7 @@ import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
-import { redeemRumbleCallLinkCode } from "./calls/rumble_call_link.js";
+import { removeLatestRumbleCall } from "./calls/queue.js";
 
 type Bridge = {
   stop: () => void;
@@ -477,13 +477,17 @@ export function ensureRumbleBridge(opts: {
     const bang = parseBangCommand(m.text);
     if (bang) {
       console.log(`[rumble_chat] command received slug=${opts.slug} cmd=${bang.cmd} user=${m.userId}`);
-      if (bang.cmd === "lier") {
-        const linked = await redeemRumbleCallLinkCode(opts.pool, opts.streamerId, m.userId, m.username, bang.arg);
-        const reply = linked
-          ? `✅ @${m.username} : compte Rumble lié. Tu peux maintenant gérer tes calls en attente sur LunaLive.`
-          : `❌ @${m.username} : code invalide ou expiré. Génère un nouveau code sur LunaLive.`;
+      if (bang.cmd === "mcall" && opts.slug === "lecasinoze") {
+        const removed = await removeLatestRumbleCall(opts.pool, opts.streamerId, m.userId, m.username);
+        const reply = removed
+          ? `✅ @${m.username}, ton dernier call « ${removed.slotName.slice(0, 110)} » a bien été supprimé.`
+          : `@${m.username}, tu n’as aucun call en attente à supprimer.`;
         const result = await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", reply);
-        console.log(`[rumble_chat] link reply slug=${opts.slug} sent=${result.sent} queued=${result.queued}`);
+        if (removed) {
+          opts.io.to(`obsview:${opts.slug}`).emit("calls:changed", { action: "remove", source: "rumble" });
+          opts.io.to(`chat:${opts.slug}`).emit("calls:changed", { action: "remove", source: "rumble" });
+        }
+        console.log(`[rumble_chat] mcall slug=${opts.slug} user=${m.userId} removed=${Boolean(removed)} sent=${result.sent} queued=${result.queued}`);
         return;
       }
       // !clip: dispatché directement vers createClipForStreamer
