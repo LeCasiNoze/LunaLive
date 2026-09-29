@@ -71,7 +71,7 @@ function emitChatAll(io: Server, slug: string, event: string, payload?: any) {
 export async function sendBotChat(
   pool: Pool,
   io: Server,
-  opts: { streamerId: number; slug: string },
+  opts: { streamerId: number; slug: string; rumbleVideoIdNumeric?: string | null },
   body: string
 ) {
   const botUserId = Number(process.env.BOT_USER_ID || 0);
@@ -111,7 +111,7 @@ export async function sendBotChat(
   // Imported channels mirror Rumble messages into LunaLive, but LunaBot must
   // never speak back on their Rumble account. LeCasiNoze is the sole opt-in.
   if (String(opts.slug || "").trim().toLowerCase() === "lecasinoze") {
-    void mirrorBotMessageToRumble(pool, opts.streamerId, text);
+    void mirrorBotMessageToRumble(pool, opts.streamerId, text, opts.rumbleVideoIdNumeric);
   }
 }
 
@@ -119,7 +119,12 @@ export async function sendBotChat(
  * Si le streamer est en live sur Rumble, tente l'envoi depuis Render puis
  * utilise automatiquement le relay résidentiel si Rumble refuse l'IP serveur.
  */
-async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: string) {
+async function mirrorBotMessageToRumble(
+  pool: Pool,
+  streamerId: number,
+  text: string,
+  preferredVideoIdNumeric?: string | null,
+) {
   try {
     const r = await pool.query(
       `SELECT s.platform, ri.is_live, ri.live_video_id_numeric
@@ -132,7 +137,9 @@ async function mirrorBotMessageToRumble(pool: Pool, streamerId: number, text: st
     if (!row) return;
     if (String(row.platform || "").toLowerCase() !== "rumble") return;
     if (!row.is_live) return;
-    const vid = row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
+    const vid = preferredVideoIdNumeric
+      ? String(preferredVideoIdNumeric)
+      : row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
 
     await sendRumbleMessageReliable(pool, vid, String(text || "").slice(0, 200));
@@ -249,6 +256,7 @@ export async function handleCallsCommand(opts: {
 
   cmd: string;
   arg: string;
+  rumbleVideoIdNumeric?: string | null;
 }): Promise<{ handled: true; showOriginalInChat: boolean } | { handled: false }> {
   const {
     pool,
@@ -262,6 +270,7 @@ export async function handleCallsCommand(opts: {
     canMod,
     cmd,
     arg,
+    rumbleVideoIdNumeric,
   } = opts;
 
   // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
@@ -389,7 +398,7 @@ export async function handleCallsCommand(opts: {
     await sendBotChat(
       pool,
       io,
-      { streamerId, slug },
+      { streamerId, slug, rumbleVideoIdNumeric },
       `💰 Pay: "${cur.slotName}"${cur.provider ? ` (${cur.provider})` : ""} — ${pay}€`
     );
 
@@ -588,7 +597,7 @@ export async function handleCallsCommand(opts: {
     await sendBotChat(
       pool,
       io,
-      { streamerId, slug },
+      { streamerId, slug, rumbleVideoIdNumeric },
       `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`
     );
   }

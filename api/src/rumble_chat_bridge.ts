@@ -509,6 +509,7 @@ export function ensureRumbleBridge(opts: {
           canMod: false,
           cmd: bang.cmd,
           arg: bang.arg,
+          rumbleVideoIdNumeric: videoIdNumeric,
         }).catch((e: any) =>
           console.warn("[rumble_chat] handleCallsCommand error", opts.slug, e?.message || e)
         );
