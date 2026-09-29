@@ -10,6 +10,7 @@ import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
+import { redeemRumbleCallLinkCode } from "./calls/rumble_call_link.js";
 
 type Bridge = {
   stop: () => void;
@@ -475,6 +476,16 @@ export function ensureRumbleBridge(opts: {
 
     const bang = parseBangCommand(m.text);
     if (bang) {
+      console.log(`[rumble_chat] command received slug=${opts.slug} cmd=${bang.cmd} user=${m.userId}`);
+      if (bang.cmd === "lier") {
+        const linked = await redeemRumbleCallLinkCode(opts.pool, opts.streamerId, m.userId, m.username, bang.arg);
+        const reply = linked
+          ? `✅ @${m.username} : compte Rumble lié. Tu peux maintenant gérer tes calls en attente sur LunaLive.`
+          : `❌ @${m.username} : code invalide ou expiré. Génère un nouveau code sur LunaLive.`;
+        const result = await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", reply);
+        console.log(`[rumble_chat] link reply slug=${opts.slug} sent=${result.sent} queued=${result.queued}`);
+        return;
+      }
       // !clip: dispatché directement vers createClipForStreamer
       // (pas géré par handleCallsCommand qui ne fait que call/pcall/etc.)
       if (bang.cmd === "clip") {
@@ -505,6 +516,7 @@ export function ensureRumbleBridge(opts: {
           streamerOwnerUserId: opts.streamerOwnerUserId,
           actorUserId: 0,
           actorUsername: m.username,
+          rumbleUserId: m.userId,
           actorRole: "viewer",
           canMod: false,
           cmd: bang.cmd,

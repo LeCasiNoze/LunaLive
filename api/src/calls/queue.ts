@@ -91,6 +91,13 @@ async function ensureCallsSchema(pool: Pool) {
         ) THEN
           ALTER TABLE calls_queue ADD COLUMN bounty BOOLEAN NULL;
         END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema='public' AND table_name='calls_queue' AND column_name='rumble_user_id'
+        ) THEN
+          ALTER TABLE calls_queue ADD COLUMN rumble_user_id TEXT NULL;
+        END IF;
       END IF;
     END $$;
   `);
@@ -300,7 +307,7 @@ export async function addCall(
   username: string,
   slotNameRaw: string,
   provider: string | null,
-  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string }
+  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string; rumbleUserId?: string | null }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   await ensureCallsSchema(pool);
 
@@ -409,11 +416,11 @@ export async function addCall(
 
     const ins = await client.query(
       `
-      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE)
+      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus, rumble_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE,$8)
       RETURNING id, created_at AS "createdAt"
       `,
-      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos]
+      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos, opts?.rumbleUserId || null]
     );
 
     // ✅ NEW: log pour les quêtes welcome (compte un call ajouté, peu importe la source)

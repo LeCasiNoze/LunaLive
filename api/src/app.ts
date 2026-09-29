@@ -74,6 +74,7 @@ import { botClipsRouter } from "./bot_clips/router.js";
 import { clipsPublicRouter } from "./routes/clips_public.js";
 import { slotsRouter } from "./routes/slots.js";
 import { callsRouter } from "./routes/calls.js";
+import { rumbleCallSelfRouter } from "./routes/rumble_call_self.js";
 import { callsPcallRouter } from "./routes/calls_pcall.js";
 import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
@@ -323,6 +324,7 @@ export function createApp() {
   app.use("/api/public/slots", publicSlotsRouter);
   app.use("/calls", callsHuntRouter);
   app.use("/calls", callsRouter);
+  app.use("/me/calls/rumble", requireAuth, rumbleCallSelfRouter);
   app.use("/calls", callsPcallRouter);
   app.use(hunt2Router);
 
