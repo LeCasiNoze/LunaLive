@@ -25,7 +25,7 @@ import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
 import { FsbScoutSection } from "./fsb/FsbScoutSection";
 import { FsbRumbleOutreachSection } from "./fsb/FsbRumbleOutreachSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
-import { getAutomodControl, setAutomodControl } from "../lib/api_automod";
+import { getAutomodCaptchaAccess, getAutomodControl, setAutomodControl } from "../lib/api_automod";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -1047,8 +1047,12 @@ function ExpensesPanel({
 export default function FsbBoardPage() {
   const { user, token } = useAuth();
   const [automodEnabled,setAutomodEnabled]=React.useState(false);
+  const [automodCaptcha,setAutomodCaptcha]=React.useState<{active:boolean;available:boolean}>({active:false,available:false});
+  const [automodCaptchaError,setAutomodCaptchaError]=React.useState("");
+  const [automodCaptchaBusy,setAutomodCaptchaBusy]=React.useState(false);
   const [automodBusy,setAutomodBusy]=React.useState(false);
-  React.useEffect(()=>{void getAutomodControl().then(r=>setAutomodEnabled(r.enabled)).catch(()=>{});},[]);
+  React.useEffect(()=>{const refresh=()=>void getAutomodControl().then(r=>{setAutomodEnabled(r.enabled);setAutomodCaptcha({active:r.captchaActive,available:r.captchaAvailable});}).catch(()=>{});refresh();const timer=window.setInterval(refresh,10000);return()=>window.clearInterval(timer);},[]);
+  const openAutomodCaptcha=()=>{const popup=window.open("about:blank","_blank");if(popup)popup.opener=null;setAutomodCaptchaBusy(true);setAutomodCaptchaError("");void getAutomodCaptchaAccess().then(r=>{if(popup)popup.location.href=r.url;else window.location.href=r.url;}).catch(()=>{popup?.close();setAutomodCaptchaError("Impossible d’ouvrir le bureau CAPTCHA. Réessaie ou reconnecte-toi à LunaLive.");}).finally(()=>setAutomodCaptchaBusy(false));};
   const toggleAutomod=async()=>{setAutomodBusy(true);try{const r=await setAutomodControl(!automodEnabled);setAutomodEnabled(r.enabled);}finally{setAutomodBusy(false);}};
   const [searchParams, setSearchParams] = useSearchParams();
   const section = normalizeSection(searchParams.get("section"));
@@ -1354,7 +1358,7 @@ export default function FsbBoardPage() {
             <section className="fsb-grid-3">
               <div className="fsb-card fsb-module" style={{gridColumn:"1 / -1",borderColor:automodEnabled?"rgba(16,185,129,.55)":"rgba(168,85,247,.5)",background:"linear-gradient(120deg,rgba(99,102,241,.16),rgba(14,29,56,.96))"}}>
                 <div className="fsb-sectionhead"><div style={{display:"flex",alignItems:"center",gap:14}}><span className="fsb-module-icon" style={{background:automodEnabled?"rgba(16,185,129,.18)":"rgba(168,85,247,.18)"}}>🤖</span><div><strong style={{fontSize:20}}>Automod du stream</strong><div className="fsb-copy">Pilote la rotation automatique des slots depuis le VPS.</div></div></div><span className={`fsb-pill ${automodEnabled?"":"fsb-pill-bad"}`}>{automodEnabled?"ACTIF":"ARRÊTÉ"}</span></div>
-                <div className="fsb-actions" style={{marginTop:8}}><button className={`fsb-btn ${automodEnabled?"":"fsb-btn-primary"}`} onClick={toggleAutomod} disabled={automodBusy} style={{minWidth:220,fontSize:16}}>{automodBusy?"Transmission…":automodEnabled?"Désactiver l’Automod":"Activer l’Automod"}</button><span className="fsb-copy">La commande est reprise automatiquement par le contrôleur du VPS.</span></div>
+                <div className="fsb-actions" style={{marginTop:8,flexWrap:"wrap"}}><button className={`fsb-btn ${automodEnabled?"":"fsb-btn-primary"}`} onClick={toggleAutomod} disabled={automodBusy} style={{minWidth:220,fontSize:16}}>{automodBusy?"Transmission…":automodEnabled?"Désactiver l’Automod":"Activer l’Automod"}</button>{automodCaptcha.available&&<button className={`fsb-btn ${automodCaptcha.active?"fsb-btn-primary":""}`} onClick={openAutomodCaptcha} disabled={automodCaptchaBusy} style={{minWidth:220,fontSize:16}}>{automodCaptchaBusy?"Ouverture…":automodCaptcha.active?"⚠️ Valider le CAPTCHA":"Ouvrir le bureau CAPTCHA"}</button>}<span className="fsb-copy">{automodCaptchaError|| (automodCaptcha.active?"L’Automod attend ta validation et ne rafraîchira pas la page.":"Accessible depuis téléphone ou ordinateur. Le lien sécurisé expire après dix minutes et un e-mail sera envoyé au besoin.")}</span></div>
               </div>
               <div className="fsb-card fsb-module">
                 <div className="fsb-sectionhead">
