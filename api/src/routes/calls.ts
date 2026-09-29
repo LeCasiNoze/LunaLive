@@ -3,12 +3,41 @@ import express from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 
-import { getCallsSettings, resetCalls, deleteCallById, effectiveLimit } from "../calls/queue.js";
+import { getCallsSettings, resetCalls, deleteCallById, effectiveLimit, addCall } from "../calls/queue.js";
 import { normText, keyText } from "../calls/normalize.js";
 import { normalizeProvider } from "../calls/provider_aliases.js";
 import { resolveSlot } from "../calls/catalog.js";
 
 export const callsRouter = express.Router();
+
+// Automod uses the normal authenticated channel-management token, never a
+// caller-supplied username. A retry keeps the same requestId and cannot create
+// another call, even if a moderator already removed the previous one.
+callsRouter.post("/:slug/automod", requireAuth, express.json(), async (req: any, res) => {
+  try {
+    const meta = await getStreamerBySlug(String(req.params.slug));
+    if (!meta) return res.status(404).json({ ok: false, error: "streamer_not_found" });
+    if (!await canModOnStreamer(req.user, meta)) return res.status(403).json({ ok: false, error: "forbidden" });
+    const requestId = req.body?.requestId, slotName = req.body?.slotName, provider = req.body?.provider;
+    if (typeof requestId !== "string" || !/^[a-zA-Z0-9-]{16,80}$/.test(requestId) || typeof slotName !== "string" || slotName.length > 180 || typeof provider !== "string") {
+      return res.status(400).json({ ok: false, error: "bad_input" });
+    }
+    const slot = await resolveSlot(pool, slotName);
+    if (!slot || keyText(slot.name) !== keyText(slotName) || normalizeProvider(slot.provider ?? "") !== normalizeProvider(provider)) {
+      return res.status(400).json({ ok: false, error: "slot_mismatch" });
+    }
+    const providerKey = String(normalizeProvider(slot.provider ?? "")).toLowerCase().replace(/[^a-z]/g, "");
+    if (!["hacksaw", "hacksawgaming", "pragmatic", "pragmaticplay", "nolimit", "nolimitcity"].includes(providerKey)) {
+      return res.status(400).json({ ok: false, error: "unsupported_provider" });
+    }
+    const result = await addCall(pool, meta.id, 0, "Automod", slot.name, slot.provider, { bypassLimit: true, automodRequestId: requestId });
+    if (!result.ok) return res.status(["queue_not_empty", "automod_call_finished"].includes(result.error) ? 409 : 400).json(result);
+    return res.json({ ...result, item: { ...result.item, imageUrl: slot.imageUrl ?? null } });
+  } catch (error) {
+    console.error("[calls/automod] insertion failed", error instanceof Error ? error.message : "unknown");
+    return res.status(500).json({ ok: false, error: "automod_insert_failed" });
+  }
+});
 
 /**
  * ✅ Soft auth:
@@ -215,6 +244,7 @@ callsRouter.get("/:slug/list", softAuth, async (req: any, res) => {
         q.slot_name AS "slotName",
         q.provider AS provider,
         q.username AS username,
+        q.user_id AS "userId",
         q.pos AS pos,
         sc.image_url AS "imageUrl",
 
@@ -239,6 +269,7 @@ callsRouter.get("/:slug/list", softAuth, async (req: any, res) => {
       slotName: String(r.slotName),
       provider: r.provider ? String(r.provider) : null,
       username: r.username != null ? String(r.username) : "",
+      userId: Number(r.userId),
       pos: Number(r.pos) || 0,
       imageUrl: r.imageUrl ? String(r.imageUrl) : null,
 

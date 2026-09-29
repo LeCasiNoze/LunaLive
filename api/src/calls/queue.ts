@@ -300,9 +300,13 @@ export async function addCall(
   username: string,
   slotNameRaw: string,
   provider: string | null,
-  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean }
+  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   await ensureCallsSchema(pool);
+
+  if (opts?.automodRequestId) {
+    if (!/^[a-zA-Z0-9-]{16,80}$/.test(opts.automodRequestId) || userId !== 0 || username !== "Automod") return { ok: false, error: "invalid_automod_request" };
+  }
 
   const slotName = normText(slotNameRaw);
   if (!slotName) return { ok: false, error: "bad_slot" };
@@ -342,6 +346,25 @@ export async function addCall(
 
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+
+    if (opts?.automodRequestId) {
+      const previous = await client.query(`SELECT r.item, q.id AS pending_id
+        FROM calls_automod_requests r LEFT JOIN calls_queue q ON q.id=r.call_id AND q.streamer_id=r.streamer_id
+        WHERE r.streamer_id=$1 AND r.request_id=$2`, [streamerId, opts.automodRequestId]);
+      if (previous.rows.length) {
+        await client.query("COMMIT");
+        const row = previous.rows[0];
+        if (!row.pending_id) return { ok: false, error: "automod_call_finished" };
+        return { ok: true, item: row.item as CallItem, position: Number(row.item.pos) };
+      }
+      // Same lock as viewer addCall: a viewer who got here first keeps priority.
+      // Bonus-hunt rows also prevent an automatic insertion.
+      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 LIMIT 1`, [streamerId]);
+      if (existing.rows.length) {
+        await client.query("COMMIT");
+        return { ok: false, error: "queue_not_empty" };
+      }
+    }
 
     // position par défaut = append
     let nextPos = 0;
@@ -394,21 +417,15 @@ export async function addCall(
     );
 
     // ✅ NEW: log pour les quêtes welcome (compte un call ajouté, peu importe la source)
-    await client.query(
+    if (!opts?.automodRequestId) await client.query(
       `INSERT INTO calls_actions(user_id, streamer_id, action)
        VALUES ($1,$2,'call_add')`,
       [userId, streamerId]
     );
 
-    await client.query("COMMIT");
-
     const row = ins.rows?.[0];
     const id = String(row.id);
-
-    return {
-      ok: true,
-      position: nextPos,
-      item: {
+    const item: CallItem = {
         id,
         slotName,
         provider: providerLower ?? null,
@@ -419,8 +436,11 @@ export async function addCall(
         bet: null,
         pay: null,
         bounty: null,
-      },
     };
+    if (opts?.automodRequestId) await client.query(`INSERT INTO calls_automod_requests(streamer_id,request_id,call_id,item)
+      VALUES($1,$2,$3,$4::jsonb)`, [streamerId, opts.automodRequestId, id, JSON.stringify(item)]);
+    await client.query("COMMIT");
+    return { ok: true, position: nextPos, item };
   } catch (e: any) {
     try {
       await client.query("ROLLBACK");

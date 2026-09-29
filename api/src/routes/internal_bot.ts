@@ -9,6 +9,12 @@ import { sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 
 export const internalBotRouter = express.Router();
 
+// Read-only credential check: does not depend on optional bot settings tables.
+internalBotRouter.get("/internal/bot/auth-check", (req, res) => {
+  if (!requireBotKey(req, res)) return;
+  res.json({ ok: true });
+});
+
 // ─── Dédoublonnage central des envois bot ────────────────────────────────────
 // Plusieurs sources peuvent appeler /internal/bot/chat/send pour le même
 // (streamerId, body) en quasi-simultané : multi-instance bot, redeploys qui

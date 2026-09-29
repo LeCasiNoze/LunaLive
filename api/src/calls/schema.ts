@@ -36,6 +36,14 @@ export async function ensureCallsSchema(pool: Pool) {
   `);
 
   // Settings
+  // Keep request identities after moderation/removal so network retries never
+  // resurrect a finished automatic call. There is deliberately no queue FK.
+  await pool.query(`CREATE TABLE IF NOT EXISTS calls_automod_requests (
+    streamer_id BIGINT NOT NULL, request_id TEXT NOT NULL, call_id BIGINT NOT NULL,
+    item JSONB NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(streamer_id, request_id)
+  )`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS calls_settings (
       streamer_id BIGINT PRIMARY KEY,
