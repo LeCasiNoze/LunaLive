@@ -147,6 +147,7 @@ import { mig136_seeded_rumble_chat_mirror } from "./mig136_seeded_rumble_chat_mi
 import { mig137_streamer_overlay_configs } from "./mig137_streamer_overlay_configs.js";
 import { mig138_nozebot_blackjack_sessions } from "./mig138_nozebot_blackjack_sessions.js";
 import { mig139_rumble_call_undo } from "./mig139_rumble_call_undo.js";
+import { mig140_automod_service } from "./mig140_automod_service.js";
 
 // Rumble migrations
 import { mig040_rumble_info } from "./mig040_rumble_info.js";
@@ -313,6 +314,7 @@ export async function migrateAll(pool: Pool) {
   await mig137_streamer_overlay_configs(pool);
   await mig138_nozebot_blackjack_sessions(pool);
   await mig139_rumble_call_undo(pool);
+  await mig140_automod_service(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
