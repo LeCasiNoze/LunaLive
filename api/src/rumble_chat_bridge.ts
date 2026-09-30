@@ -10,6 +10,7 @@ import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
+import { removeLatestRumbleCall } from "./calls/queue.js";
 
 type Bridge = {
   stop: () => void;
@@ -475,6 +476,20 @@ export function ensureRumbleBridge(opts: {
 
     const bang = parseBangCommand(m.text);
     if (bang) {
+      console.log(`[rumble_chat] command received slug=${opts.slug} cmd=${bang.cmd} user=${m.userId}`);
+      if (bang.cmd === "mcall" && opts.slug === "lecasinoze") {
+        const removed = await removeLatestRumbleCall(opts.pool, opts.streamerId, m.userId, m.username);
+        const reply = removed
+          ? `✅ @${m.username}, ton dernier call « ${removed.slotName.slice(0, 110)} » a bien été supprimé.`
+          : `@${m.username}, tu n’as aucun call en attente à supprimer.`;
+        const result = await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", reply);
+        if (removed) {
+          opts.io.to(`obsview:${opts.slug}`).emit("calls:changed", { action: "remove", source: "rumble" });
+          opts.io.to(`chat:${opts.slug}`).emit("calls:changed", { action: "remove", source: "rumble" });
+        }
+        console.log(`[rumble_chat] mcall slug=${opts.slug} user=${m.userId} removed=${Boolean(removed)} sent=${result.sent} queued=${result.queued}`);
+        return;
+      }
       // !clip: dispatché directement vers createClipForStreamer
       // (pas géré par handleCallsCommand qui ne fait que call/pcall/etc.)
       if (bang.cmd === "clip") {
@@ -505,6 +520,7 @@ export function ensureRumbleBridge(opts: {
           streamerOwnerUserId: opts.streamerOwnerUserId,
           actorUserId: 0,
           actorUsername: m.username,
+          rumbleUserId: m.userId,
           actorRole: "viewer",
           canMod: false,
           cmd: bang.cmd,

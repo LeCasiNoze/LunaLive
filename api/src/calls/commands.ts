@@ -78,6 +78,11 @@ export async function sendBotChat(
   const botUsername = String(process.env.BOT_USERNAME || "LunaBot");
   if (!botUserId) {
     console.warn("[calls] BOT_USER_ID missing, skip bot chat:", body);
+    // Rumble viewer replies must not depend on the LunaLive overlay bot account.
+    // The public Rumble response is sent/queued independently when a live ID exists.
+    if (String(opts.slug || "").trim().toLowerCase() === "lecasinoze") {
+      await mirrorBotMessageToRumble(pool, opts.streamerId, body, opts.rumbleVideoIdNumeric);
+    }
     return;
   }
 
@@ -142,7 +147,8 @@ async function mirrorBotMessageToRumble(
       : row.live_video_id_numeric ? String(row.live_video_id_numeric) : null;
     if (!vid) return;
 
-    await sendRumbleMessageReliable(pool, vid, String(text || "").slice(0, 200));
+    const delivery = await sendRumbleMessageReliable(pool, vid, String(text || "").slice(0, 200));
+    console.log(`[calls] rumble reply streamer=${streamerId} vid=${vid} sent=${delivery.sent} queued=${delivery.queued}`);
   } catch (e: any) {
     console.warn("[calls] mirrorBotMessageToRumble error", e?.message || e);
   }
@@ -257,6 +263,7 @@ export async function handleCallsCommand(opts: {
   cmd: string;
   arg: string;
   rumbleVideoIdNumeric?: string | null;
+  rumbleUserId?: string | null;
 }): Promise<{ handled: true; showOriginalInChat: boolean } | { handled: false }> {
   const {
     pool,
@@ -271,6 +278,7 @@ export async function handleCallsCommand(opts: {
     cmd,
     arg,
     rumbleVideoIdNumeric,
+    rumbleUserId,
   } = opts;
 
   // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
@@ -567,6 +575,7 @@ export async function handleCallsCommand(opts: {
     bypassLimit,
     perUserLimit: lim,
     insertAfterCurrent: cmd === "pcall",
+    rumbleUserId,
   });
 
   if (!add.ok) {
