@@ -58,7 +58,8 @@ function observe(name, callback) {
 
 if (process.env.BANDWIDTH_AUDIT !== "0") {
   observe("http.server.request.start", ({ request, response }) => {
-    const label = `response:${feature(request.url)}`;
+    const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(request.socket?.remoteAddress);
+    const label = `${local ? "response-loopback" : "response"}:${feature(request.url)}`;
     add(label, 0, 1);
     let nested = false;
     for (const method of ["write", "end"]) {
@@ -77,19 +78,23 @@ if (process.env.BANDWIDTH_AUDIT !== "0") {
     }
   });
 
-  const sentChunks = new WeakSet();
-  observe("undici:request:create", ({ request }) => add(`fetch:${destination(request.origin)}`, 0, 1));
-  observe("undici:request:bodyChunkSent", ({ request, chunk }) => {
-    sentChunks.add(request);
-    add(`fetch:${destination(request.origin)}`, size(chunk));
-  });
-  observe("undici:request:bodySent", ({ request }) => {
-    if (sentChunks.has(request)) return;
-    // Older bundled Undici versions lack bodyChunkSent. Mark missing sizes
-    // explicitly instead of interpreting unmeasured stream uploads as zero.
-    const known = Number.isFinite(request.contentLength) && request.contentLength >= 0;
-    add(`fetch:${destination(request.origin)}`, known ? request.contentLength : 0, 0,
-      !known && !["GET", "HEAD"].includes(request.method) ? 1 : 0);
+  const sockets = new WeakMap();
+  observe("undici:client:sendHeaders", ({ request, socket }) => {
+    const label = `fetch:${destination(request.origin)}`;
+    add(label, 0, 1);
+    let state = sockets.get(socket);
+    if (state) { state.label = label; return; }
+    state = { label };
+    sockets.set(socket, state);
+    // Count plaintext supplied to the socket, without consuming or cloning
+    // bodies. TLS/TCP overhead is excluded. Includes HTTP headers and
+    // streamed uploads on Node versions without bodyChunkSent diagnostics.
+    const original = socket.write;
+    socket.write = function (chunk, encoding, ...rest) {
+      const result = original.call(this, chunk, encoding, ...rest);
+      try { add(state.label, size(chunk, encoding)); } catch { /* no delivery impact */ }
+      return result;
+    };
   });
   observe("http.client.request.start", ({ request }) => {
     // Native HTTP clients (e.g. S3 SDK): declared payload size after completion.

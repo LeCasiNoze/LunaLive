@@ -813,7 +813,7 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
     logsPending.current = true;
     try {
       const slug = filter !== "all" ? `&slug=${filter}` : "";
-      const r = await fetch(`${API}/logs?limit=150${slug}`, { headers:authH });
+      const r = await fetch(`${API}/logs?limit=150${slug}`, { headers:authH, signal: AbortSignal.timeout(15_000) });
       const d = await r.json();
       if (d.ok) setLogs(d.logs ?? []);
     } catch {} finally { logsPending.current = false; }
@@ -1035,7 +1035,7 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
     if (document.visibilityState !== "visible" || statusPending.current) return;
     statusPending.current = true;
     try {
-      const r = await fetch(`${API}/status`, { headers:authH });
+      const r = await fetch(`${API}/status`, { headers:authH, signal: AbortSignal.timeout(15_000) });
       const d = await r.json() as GlobalStatus;
       if (d.ok) setStatus(d);
     } catch {} finally { statusPending.current = false; }
