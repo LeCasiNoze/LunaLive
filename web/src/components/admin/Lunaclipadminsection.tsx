@@ -807,14 +807,16 @@ function TabLogs({ adminKey, workers }: { adminKey: string; workers: WorkerInfo[
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const authH = { "x-admin-key": adminKey };
 
+  const logsPending = React.useRef(false);
   const fetchLogs = React.useCallback(async () => {
-    if (paused) return;
+    if (paused || document.visibilityState !== "visible" || logsPending.current) return;
+    logsPending.current = true;
     try {
       const slug = filter !== "all" ? `&slug=${filter}` : "";
       const r = await fetch(`${API}/logs?limit=150${slug}`, { headers:authH });
       const d = await r.json();
       if (d.ok) setLogs(d.logs ?? []);
-    } catch {}
+    } catch {} finally { logsPending.current = false; }
   }, [adminKey, filter, paused]);
 
   React.useEffect(() => {
@@ -1027,13 +1029,16 @@ export function LunaClipAdminSection({ adminKey }: { adminKey: string }) {
   const [ctrlMsg,   setCtrlMsg]   = React.useState<string|null>(null);
   const authH   = { "x-admin-key": adminKey };
   const pollRef = React.useRef<ReturnType<typeof setInterval>|null>(null);
+  const statusPending = React.useRef(false);
 
   const fetchStatus = React.useCallback(async () => {
+    if (document.visibilityState !== "visible" || statusPending.current) return;
+    statusPending.current = true;
     try {
       const r = await fetch(`${API}/status`, { headers:authH });
       const d = await r.json() as GlobalStatus;
       if (d.ok) setStatus(d);
-    } catch {}
+    } catch {} finally { statusPending.current = false; }
   }, [adminKey]);
 
   React.useEffect(() => {

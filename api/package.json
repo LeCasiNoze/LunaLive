@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "npm --prefix ../bot ci --include=dev && npm --prefix ../bot run build && tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node --import ./scripts/bandwidth-audit.mjs dist/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.971.0",

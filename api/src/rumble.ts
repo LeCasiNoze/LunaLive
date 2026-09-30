@@ -39,7 +39,7 @@ export type RumbleCategorySnapshot = {
 const RUMBLE_GAMBLING_CATEGORY_URL = "https://rumble.com/category/gambling-slots";
 const CATEGORY_CACHE_MS = 20_000;
 const CATEGORY_MAX_PAGES = 5;
-let categoryCache: { expiresAt: number; snapshot: RumbleCategorySnapshot } | null = null;
+let categoryCache: { expiresAt: number; snapshot: RumbleCategorySnapshot | null } | null = null;
 let categoryRequest: Promise<RumbleCategorySnapshot | null> | null = null;
 
 type RumbleCategoryPage = {
@@ -174,6 +174,10 @@ export async function fetchRumbleGamblingCategoryLives(): Promise<RumbleCategory
       console.log(`[rumble][category] ${snapshot.lives.size} live(s), complete=${snapshot.complete}`);
       return snapshot;
     } catch (error: any) {
+      // Share failures too: otherwise each subsequent streamer immediately
+      // retries the same blocked category and its Nivora relay. Returning null
+      // preserves per-streamer fallback discovery; retry on the next cache cycle.
+      categoryCache = { expiresAt: Date.now() + CATEGORY_CACHE_MS, snapshot: null };
       console.warn("[rumble][category] fetch failed", error?.message || error);
       return null;
     } finally {
