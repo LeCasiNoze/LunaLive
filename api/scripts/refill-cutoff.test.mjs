@@ -13,7 +13,7 @@ function bridge(fetch, enabled = true) {
   context.run.verify = context.verify;
   return context.run;
 }
-const response = (data, ok = true) => ({ ok, status: ok ? 200 : 503, json: async () => data });
+const response = (data, ok = true) => ({ ok, status: ok ? 200 : 503, json: async () => ({ cutoffHour: 4, timeZone: "Europe/Paris", ...data }) });
 
 test("startup preflight validates deployed authentication and 4am schedule without claiming a batch", async () => {
   const actions = [];
@@ -25,15 +25,26 @@ test("startup preflight validates deployed authentication and 4am schedule witho
 });
 
 test("bridge asks for due batches only and bounds request time", async () => {
+  const actions = [];
   const pending = bridge(async (_url, init) => {
     const body = JSON.parse(init.body);
+    actions.push(body.action);
+    assert.ok(init.signal instanceof AbortSignal);
+    if (body.action === "refill-schedule") return response({});
     assert.equal(body.action, "refill-batch");
     assert.equal(body.includeFuture, false);
-    assert.ok(init.signal instanceof AbortSignal);
     return response({ empty: true });
   });
   assert.equal(await pending(), null);
+  assert.deepEqual(actions, ["refill-schedule", "refill-batch"]);
   assert.equal(await bridge(() => assert.fail("disabled bridge must not fetch"), false)(), null);
+});
+
+test("cold-start preflight timeout never reaches the mutating batch claim", async () => {
+  const actions = [];
+  const pending = bridge(async (_url, init) => { actions.push(JSON.parse(init.body).action); throw new Error("cold start timeout"); });
+  await assert.rejects(pending, /cold start timeout/);
+  assert.deepEqual(actions, ["refill-schedule"]);
 });
 
 test("bridge errors and malformed JSON are never an empty queue", async () => {
@@ -50,7 +61,7 @@ test("a claimed zero-request batch is explicitly discarded, not left locked", as
     return response(body.action === "refill-batch" ? { batch: { id: "batch" }, requests: [] } : { ok: true });
   });
   assert.equal(await pending(), null);
-  assert.deepEqual(actions, ["refill-batch", "discard-empty-refill-batch"]);
+  assert.deepEqual(actions, ["refill-schedule", "refill-batch", "discard-empty-refill-batch"]);
 });
 
 function cutoffFixture({ failBridge = false, noStaff = false, noGuild = false, noRequests = false } = {}) {

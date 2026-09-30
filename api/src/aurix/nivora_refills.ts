@@ -54,6 +54,9 @@ async function request<T>(body: Record<string, unknown>): Promise<T> {
 
 export async function pendingNivoraRefills(): Promise<NivoraRefillBatch | null> {
   if (!enabled()) return null;
+  // Warm the free Render service using a non-mutating request first. A cold
+  // start timeout must not leave an unseen batch claimed by the API.
+  await verifyNivoraRefillBridge();
   const result = await request<NivoraBatchResponse>({ action: "refill-batch", includeFuture: false });
   if (result.empty === true) return null;
   // An invalid response is a bridge failure, not proof that the queue is empty.
