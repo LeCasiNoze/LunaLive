@@ -718,6 +718,12 @@ async function tickCutoff(client: Client): Promise<void> {
 }
 
 async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
+  const env = loadEnv();
+  let guild: Guild | undefined;
+  if (env.GUILD_ID) guild = client.guilds.cache.get(env.GUILD_ID);
+  if (!guild) guild = client.guilds.cache.first();
+  if (!guild) return;
+
   const claimed = await one<{ id: number }>(
     "UPDATE aurix_refill_batches SET status='locked' WHERE id=$1 AND status='open' RETURNING id",
     [batch.id]
@@ -727,25 +733,22 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
   // This Discord board update is cosmetic and must never delay Telegram.
   void refreshBatchMessage(client, batch);
 
-  const env = loadEnv();
-  let guild: Guild | undefined;
-  if (env.GUILD_ID) guild = client.guilds.cache.get(env.GUILD_ID);
-  if (!guild) guild = client.guilds.cache.first();
-  if (!guild) return;
-
-  // Injecte les auto-refills dus pour ce batch (non-Discord users : dealjb, etc).
-  await injectAutoRefills(batch);
-
-  // Si aucune demande dans le batch -> aucun message envoye (ni staff-chat
-  // ni Telegram). On auto-mark 'sent' pour pas laisser le batch en
-  // 'locked' eternel.
-  const reqsCount = await getRequests(batch.id);
+  let reqsCount: Req[];
   let nivoraBatch = null;
   try {
+    // All preparation is before any Telegram send, so a failed bridge/read can
+    // safely reopen this batch for the next 30-second scheduler tick.
+    await injectAutoRefills(batch);
+    reqsCount = await getRequests(batch.id);
     nivoraBatch = await pendingNivoraRefills();
   } catch (error) {
-    log("Nivora refill bridge unavailable; continuing with Aurix requests only.", error);
+    await query("UPDATE aurix_refill_batches SET status='open' WHERE id=$1 AND status='locked' AND sent_at IS NULL", [batch.id]);
+    batch.status = "open";
+    log(`Cutoff: batch #${batch.id} retained for retry; refill preparation failed.`, error);
+    return;
   }
+  // Only a successful bridge response can establish that the shared queue is
+  // empty. Never advance to tomorrow after a failed request.
   if (reqsCount.length === 0 && !nivoraBatch) {
     log(`Cutoff: batch #${batch.id} vide -> aucun message envoye.`);
     await query("UPDATE aurix_refill_batches SET status='sent', sent_at=NOW() WHERE id=$1", [batch.id]);
@@ -755,21 +758,20 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     return;
   }
 
+  const managerMention = (await kvGet("manager_mention")) ?? "*(à configurer via /config manager)*";
+  const reqs = reqsCount;
+  const enriched: (Req & { email: string | null })[] = [];
+  for (const r of reqs) {
+    const acc = await getAccount(r.user_id);
+    enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
+  }
   const staffChatId = await kvGet("channel_staff_chat_id");
   const staffChat = staffChatId ? guild.channels.cache.get(staffChatId) : null;
   if (!staffChat || staffChat.type !== 0) {
-    log("staff-chat introuvable pour cutoff.");
+    log("staff-chat introuvable pour cutoff; Telegram reste actif.");
   } else {
     const roleDirectionId = await kvGet("role_direction_id");
     const roleModerateurId = await kvGet("role_moderateur_id");
-    const managerMention = (await kvGet("manager_mention")) ?? "*(à configurer via /config manager)*";
-
-    const reqs = reqsCount;
-    const enriched: (Req & { email: string | null })[] = [];
-    for (const r of reqs) {
-      const acc = await getAccount(r.user_id);
-      enriched.push({ ...r, email: r.email ?? acc?.email ?? null });
-    }
     const plain = buildPlainListForManager(enriched);
 
     const mentions: string[] = [];
@@ -810,7 +812,10 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     } catch (e) {
       log(`Staff message batch #${batch.id} ignore:`, e);
     }
+  }
 
+    // Telegram is the delivery destination; the cosmetic staff channel must
+    // never determine whether the shared batch can be sent.
     // Construit la liste enrichie avec displayName Discord (nickname > globalName > username).
     const guildForCutoff = guild;
     const items = await Promise.all(
@@ -883,8 +888,6 @@ async function triggerCutoff(client: Client, batch: Batch): Promise<void> {
     } catch (e) {
       log("Telegram send failed:", e);
     }
-  }
-
   await ensureOpenBatch(guild);
 }
 

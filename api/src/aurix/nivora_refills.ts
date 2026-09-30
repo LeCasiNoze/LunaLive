@@ -45,16 +45,23 @@ async function request<T>(body: Record<string, unknown>): Promise<T> {
     method: "POST",
     headers: { "content-type": "application/json", "x-nivora-bot-key": cfg.key },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
-  const data = await response.json().catch(() => ({})) as { error?: string };
+  const data = await response.json() as { error?: string };
   if (!response.ok) throw new Error(data.error ?? `Nivora API returned ${response.status}.`);
   return data as T;
 }
 
 export async function pendingNivoraRefills(): Promise<NivoraRefillBatch | null> {
   if (!enabled()) return null;
-  const result = await request<NivoraBatchResponse>({ action: "refill-batch" });
-  if (result.empty || !result.batch || !result.requests?.length) return null;
+  const result = await request<NivoraBatchResponse>({ action: "refill-batch", includeFuture: false });
+  if (result.empty === true) return null;
+  // An invalid response is a bridge failure, not proof that the queue is empty.
+  if (!result.batch?.id || !Array.isArray(result.requests)) throw new Error("Invalid Nivora refill batch response.");
+  if (!result.requests.length) {
+    await request({ action: "discard-empty-refill-batch", batchId: result.batch.id });
+    return null;
+  }
   return { id: result.batch.id, requests: result.requests };
 }
 
