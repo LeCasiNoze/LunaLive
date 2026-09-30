@@ -9,10 +9,20 @@ function bridge(fetch, enabled = true) {
   const context = { fetch, AbortSignal, console, process: { env: {
     NIVORA_REFILLS_VIA_AURIX: enabled ? "1" : "0", NIVORA_API_BASE: "https://nivora.test", NIVORA_BOT_INTERNAL_KEY: "test",
   } } };
-  vm.runInNewContext(source + "\nglobalThis.run = pendingNivoraRefills;", context);
+  vm.runInNewContext(source + "\nglobalThis.run = pendingNivoraRefills; globalThis.verify = verifyNivoraRefillBridge;", context);
+  context.run.verify = context.verify;
   return context.run;
 }
 const response = (data, ok = true) => ({ ok, status: ok ? 200 : 503, json: async () => data });
+
+test("startup preflight validates deployed authentication and 4am schedule without claiming a batch", async () => {
+  const actions = [];
+  const run = bridge(async (_url, init) => { actions.push(JSON.parse(init.body).action); return response({ cutoffHour: 4, timeZone: "Europe/Paris" }); });
+  await run.verify();
+  assert.deepEqual(actions, ["refill-schedule"]);
+  await assert.rejects(bridge(async () => response({ cutoffHour: 10, timeZone: "Europe/Paris" })).verify, /does not match/);
+  await assert.rejects(bridge(async () => response({ error: "Unauthorized" }, false)).verify, /Unauthorized/);
+});
 
 test("bridge asks for due batches only and bounds request time", async () => {
   const pending = bridge(async (_url, init) => {

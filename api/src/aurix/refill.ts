@@ -21,6 +21,7 @@ import {
   completeNivoraBatchAndNotify,
   markNivoraBatchSent,
   pendingNivoraRefills,
+  verifyNivoraRefillBridge,
 } from "./nivora_refills.js";
 
 const log = (...a: unknown[]) => console.log("[aurix.refill]", ...a);
@@ -698,6 +699,7 @@ let cutoffTimer: NodeJS.Timeout | null = null;
 
 export function startCutoffTask(client: Client): void {
   if (cutoffTimer) return;
+  void verifyNivoraRefillBridge().catch((e) => console.error("[aurix.refill] Nivora bridge preflight failed", e));
   void tickCutoff(client).catch((e) => console.error("[aurix.refill] initial cutoff tick error", e));
   cutoffTimer = setInterval(() => {
     void tickCutoff(client).catch((e) => console.error("[aurix.refill] cutoff tick error", e));

@@ -65,6 +65,15 @@ export async function pendingNivoraRefills(): Promise<NivoraRefillBatch | null> 
   return { id: result.batch.id, requests: result.requests };
 }
 
+export async function verifyNivoraRefillBridge(): Promise<void> {
+  if (!enabled()) return;
+  const schedule = await request<{ cutoffHour: number; timeZone: string }>({ action: "refill-schedule" });
+  if (schedule.cutoffHour !== 4 || schedule.timeZone !== "Europe/Paris") {
+    throw new Error("Nivora refill schedule does not match the shared 04:00 Europe/Paris cutoff.");
+  }
+  log("Nivora bridge verified: daily cutoff 04:00 Europe/Paris (read-only preflight).");
+}
+
 export async function markNivoraBatchSent(batchId: string): Promise<void> {
   if (!enabled()) return;
   await request({ action: "mark-refill-batch-sent", batchId });
