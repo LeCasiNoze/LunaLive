@@ -4,6 +4,8 @@ import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { addCall, deleteCallById, getCallsSettings } from "../calls/queue.js";
+import { ensureDashboardSchema } from "./automod_control.js";
+import { publicAutomodRuntime } from "./automod_runtime.js";
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -35,7 +37,7 @@ automodServiceRouter.post(`${API}/credentials/:slug`, requireAuth, noStore, asyn
     const serviceId = randomUUID();
     const secret = randomBytes(48).toString("base64url");
     await pool.query(`INSERT INTO automod_service_credentials(service_id,streamer_id,secret_hash) VALUES($1,$2,$3)`, [serviceId, streamer.id, digest(secret)]);
-    return res.status(201).json({ ok: true, serviceId, secret, streamerSlug: streamer.slug, scopes: ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read"] });
+    return res.status(201).json({ ok: true, serviceId, secret, streamerSlug: streamer.slug, scopes: ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read", "automod:runtime:write"] });
   } catch { return res.status(500).json({ ok: false, error: "credential_create_failed" }); }
 });
 
@@ -68,7 +70,7 @@ automodServiceRouter.post(`${API}/token`, noStore, async (req, res) => {
     const found = await pool.query(`SELECT c.secret_hash,c.credential_version,c.streamer_id,s.slug FROM automod_service_credentials c JOIN streamers s ON s.id=c.streamer_id WHERE c.service_id=$1 AND c.active=TRUE LIMIT 1`, [serviceId]);
     const row = found.rows[0];
     if (!row || !timingSafeHex(String(row.secret_hash).trim(), digest(secret))) return res.status(401).json({ ok: false, error: "service_auth_failed" });
-    const scopes = ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read"];
+    const scopes = ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read", "automod:runtime:write"];
     const accessToken = jwt.sign({ sid: serviceId, ver: Number(row.credential_version), streamerId: Number(row.streamer_id), slug: row.slug, scope: scopes, typ: "automod-service" }, signingSecret(), { expiresIn: "15m", issuer: "lunalive-api", audience: "automod" });
     return res.json({ ok: true, accessToken, expiresIn: 900, tokenType: "Bearer" });
   } catch { return res.status(503).json({ ok: false, error: "service_token_unavailable" }); }
@@ -104,7 +106,14 @@ automodServiceRouter.get(`${API}/v1/settings`, async (req: any, res) => {
   return res.json({ ok: true, config: await getCallsSettings(pool, req.automodService.streamerId) });
 });
 
-automodServiceRouter.get(`${API}/v1/control`, async (req: any, res) => {
+function runtimeRoute(handler: (req: any, res: Response) => Promise<unknown>) {
+  return (req: any, res: Response) => {
+    void handler(req, res).catch(() => {
+      if (!res.headersSent) res.status(503).json({ ok: false, error: "runtime_temporarily_unavailable" });
+    });
+  };
+}
+automodServiceRouter.get(`${API}/v1/control`, runtimeRoute(async (req: any, res) => {
   if (!hasScope(req, "automod:control:read")) return res.status(403).json({ ok: false, error: "scope_required" });
   await pool.query(`CREATE TABLE IF NOT EXISTS automod_control (
     streamer_id BIGINT PRIMARY KEY REFERENCES streamers(id) ON DELETE CASCADE,
@@ -112,9 +121,41 @@ automodServiceRouter.get(`${API}/v1/control`, async (req: any, res) => {
     updated_by BIGINT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
-  const row = await pool.query(`SELECT desired_enabled FROM automod_control WHERE streamer_id=$1`, [req.automodService.streamerId]);
-  return res.json({ ok: true, enabled: row.rows[0]?.desired_enabled === true });
-});
+  await ensureDashboardSchema();
+  const row = await pool.query(`SELECT desired_enabled,dashboard_settings,settings_revision,applied_settings_revision FROM automod_control WHERE streamer_id=$1`, [req.automodService.streamerId]);
+  return res.json({ ok: true, enabled: row.rows[0]?.desired_enabled === true, settings: row.rows[0]?.dashboard_settings ?? null,
+    settingsRevision: Number(row.rows[0]?.settings_revision ?? 0), appliedSettingsRevision: Number(row.rows[0]?.applied_settings_revision ?? 0) });
+}));
+
+// Credential scope is restricted to its own streamer; no personal JWT is needed.
+automodServiceRouter.post(`${API}/v1/control/status`, runtimeRoute(async (req: any, res) => {
+  if (!hasScope(req, "automod:runtime:write")) return res.status(403).json({ ok:false, error:"scope_required" });
+  const input=req.body, runtime=publicAutomodRuntime(input);
+  if(!runtime)return res.status(400).json({ok:false,error:"invalid_status"});
+  const revision=Number.isSafeInteger(input.appliedSettingsRevision)&&input.appliedSettingsRevision>=0?input.appliedSettingsRevision:0;
+  await ensureDashboardSchema();
+  await pool.query(`INSERT INTO automod_control(streamer_id,runtime_status,runtime_seen_at,applied_settings_revision) VALUES($1,$2,NOW(),$3)
+    ON CONFLICT(streamer_id) DO UPDATE SET runtime_status=EXCLUDED.runtime_status,runtime_seen_at=NOW(),applied_settings_revision=GREATEST(automod_control.applied_settings_revision,EXCLUDED.applied_settings_revision)`,[req.automodService.streamerId,JSON.stringify(runtime),revision]);
+  return res.json({ok:true});
+}));
+
+automodServiceRouter.post(`${API}/v1/control/commands/claim`, runtimeRoute(async(req:any,res)=>{
+  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false,error:"scope_required"});
+  await ensureDashboardSchema();
+  const result=await pool.query(`UPDATE automod_control_commands SET status='claimed',claimed_at=NOW() WHERE id=(
+    SELECT id FROM automod_control_commands WHERE streamer_id=$1 AND status='pending' AND created_at>NOW()-INTERVAL '5 minutes' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
+  ) RETURNING id,kind`,[req.automodService.streamerId]);
+  return res.json({ok:true,command:result.rows[0]?{id:String(result.rows[0].id),kind:result.rows[0].kind}:null});
+}));
+
+automodServiceRouter.post(`${API}/v1/control/commands/:id/complete`, runtimeRoute(async(req:any,res)=>{
+  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false,error:"scope_required"});
+  if(!/^\d+$/.test(String(req.params.id)))return res.status(400).json({ok:false,error:"invalid_id"});
+  await ensureDashboardSchema();
+  const updated=await pool.query(`UPDATE automod_control_commands SET status=$3,finished_at=NOW(),result=$4 WHERE streamer_id=$1 AND id=$2 AND status='claimed' RETURNING id`,
+    [req.automodService.streamerId,req.params.id,req.body?.ok===true?"done":"failed",String(req.body?.result||"").slice(0,400)]);
+  return res.json({ok:updated.rowCount===1});
+}));
 
 automodServiceRouter.delete(`${API}/v1/calls/:id`, async (req: any, res) => {
   if (!hasScope(req, "calls:sync")) return res.status(403).json({ ok: false, error: "scope_required" });

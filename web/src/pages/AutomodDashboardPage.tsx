@@ -56,8 +56,8 @@ export default function AutomodDashboardPage(){
   const phase=!fresh?"Hors connexion":runtime?.phase==="running"?"En rotation":runtime?.phase==="starting"?"Démarrage":runtime?.phase==="stopping"?"Arrêt en cours":runtime?.phase==="error"?"Erreur":"À l’arrêt";
   const live=fresh&&runtime?.publisherActive===true;
   const playing=fresh&&runtime?.phase==="running";
-  const remaining=runtime?.slotDeadlineAt?runtime.slotDeadlineAt-now:null;
-  const timer=remaining===null?"En attente du premier spin":remaining<=0&&runtime?.bonusActive?"En attente du bonus":clock(remaining);
+  const remaining=runtime?.slotDeadlineAt?runtime.slotDeadlineAt-(runtime.recoveryPausedAt??now):null;
+  const timer=remaining===null?"En attente du premier spin":remaining<=0&&runtime?.bonusActive?"En attente du bonus":`${runtime?.recoveryPausedAt?"Pause · ":""}${clock(remaining)}`;
   const latestCommand=dashboard?.commands[0];
   return <main className="amd-page">
     <div className="amd-wrap">

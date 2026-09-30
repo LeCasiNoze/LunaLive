@@ -36,7 +36,7 @@ function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(typeof row.goldenEnabled!=="boolean")return null;
   return {allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled};
 }
-function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSchema().then(()=>pool.query(`
+export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSchema().then(()=>pool.query(`
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS dashboard_settings JSONB NULL;
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS settings_revision BIGINT NOT NULL DEFAULT 0;
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS applied_settings_revision BIGINT NOT NULL DEFAULT 0;
