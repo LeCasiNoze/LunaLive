@@ -35,7 +35,7 @@ automodServiceRouter.post(`${API}/credentials/:slug`, requireAuth, noStore, asyn
     const serviceId = randomUUID();
     const secret = randomBytes(48).toString("base64url");
     await pool.query(`INSERT INTO automod_service_credentials(service_id,streamer_id,secret_hash) VALUES($1,$2,$3)`, [serviceId, streamer.id, digest(secret)]);
-    return res.status(201).json({ ok: true, serviceId, secret, streamerSlug: streamer.slug, scopes: ["calls:read", "settings:read", "calls:sync", "session:stats:write"] });
+    return res.status(201).json({ ok: true, serviceId, secret, streamerSlug: streamer.slug, scopes: ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read"] });
   } catch { return res.status(500).json({ ok: false, error: "credential_create_failed" }); }
 });
 
@@ -68,7 +68,7 @@ automodServiceRouter.post(`${API}/token`, noStore, async (req, res) => {
     const found = await pool.query(`SELECT c.secret_hash,c.credential_version,c.streamer_id,s.slug FROM automod_service_credentials c JOIN streamers s ON s.id=c.streamer_id WHERE c.service_id=$1 AND c.active=TRUE LIMIT 1`, [serviceId]);
     const row = found.rows[0];
     if (!row || !timingSafeHex(String(row.secret_hash).trim(), digest(secret))) return res.status(401).json({ ok: false, error: "service_auth_failed" });
-    const scopes = ["calls:read", "settings:read", "calls:sync", "session:stats:write"];
+    const scopes = ["calls:read", "settings:read", "calls:sync", "session:stats:write", "automod:control:read"];
     const accessToken = jwt.sign({ sid: serviceId, ver: Number(row.credential_version), streamerId: Number(row.streamer_id), slug: row.slug, scope: scopes, typ: "automod-service" }, signingSecret(), { expiresIn: "15m", issuer: "lunalive-api", audience: "automod" });
     return res.json({ ok: true, accessToken, expiresIn: 900, tokenType: "Bearer" });
   } catch { return res.status(503).json({ ok: false, error: "service_token_unavailable" }); }
@@ -102,6 +102,18 @@ automodServiceRouter.get(`${API}/v1/calls`, async (req: any, res) => {
 automodServiceRouter.get(`${API}/v1/settings`, async (req: any, res) => {
   if (!hasScope(req, "settings:read")) return res.status(403).json({ ok: false, error: "scope_required" });
   return res.json({ ok: true, config: await getCallsSettings(pool, req.automodService.streamerId) });
+});
+
+automodServiceRouter.get(`${API}/v1/control`, async (req: any, res) => {
+  if (!hasScope(req, "automod:control:read")) return res.status(403).json({ ok: false, error: "scope_required" });
+  await pool.query(`CREATE TABLE IF NOT EXISTS automod_control (
+    streamer_id BIGINT PRIMARY KEY REFERENCES streamers(id) ON DELETE CASCADE,
+    desired_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by BIGINT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const row = await pool.query(`SELECT desired_enabled FROM automod_control WHERE streamer_id=$1`, [req.automodService.streamerId]);
+  return res.json({ ok: true, enabled: row.rows[0]?.desired_enabled === true });
 });
 
 automodServiceRouter.delete(`${API}/v1/calls/:id`, async (req: any, res) => {
