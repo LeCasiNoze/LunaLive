@@ -25,7 +25,7 @@ import { FsbTikTokOutreachSection } from "./fsb/FsbTikTokOutreachSection";
 import { FsbScoutSection } from "./fsb/FsbScoutSection";
 import { FsbRumbleOutreachSection } from "./fsb/FsbRumbleOutreachSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
-import { getAutomodControl } from "../lib/api_automod";
+import { getAutomodControl, setAutomodControl } from "../lib/api_automod";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -1047,7 +1047,22 @@ function ExpensesPanel({
 export default function FsbBoardPage() {
   const { user, token } = useAuth();
   const [automodEnabled,setAutomodEnabled]=React.useState(false);
-  React.useEffect(()=>{const refresh=()=>void getAutomodControl().then(r=>setAutomodEnabled(r.enabled)).catch(()=>{});refresh();const timer=window.setInterval(refresh,10000);return()=>window.clearInterval(timer);},[]);
+  const [automodReady,setAutomodReady]=React.useState(false);
+  const [automodBusy,setAutomodBusy]=React.useState(false);
+  const [automodError,setAutomodError]=React.useState("");
+  React.useEffect(()=>{
+    let mounted=true;
+    void getAutomodControl().then(r=>{if(mounted)setAutomodEnabled(r.enabled);})
+      .catch(()=>{if(mounted)setAutomodError("État Automod indisponible.");})
+      .finally(()=>{if(mounted)setAutomodReady(true);});
+    return()=>{mounted=false;};
+  },[]);
+  const toggleAutomod=async()=>{
+    setAutomodBusy(true);setAutomodError("");
+    try{const r=await setAutomodControl(!automodEnabled);setAutomodEnabled(r.enabled);}
+    catch(e){setAutomodError(e instanceof Error?e.message:"Commande Automod refusée.");}
+    finally{setAutomodBusy(false);}
+  };
   const [searchParams, setSearchParams] = useSearchParams();
   const section = normalizeSection(searchParams.get("section"));
   const canAccess = canAccessFsbBoard(user);
@@ -1350,6 +1365,22 @@ export default function FsbBoardPage() {
         {section === "home" ? (
           <>
             <section className="fsb-grid-3">
+              <div className="fsb-card fsb-module" style={{ gridColumn:"1 / -1", borderColor:automodEnabled?"rgba(16,185,129,.55)":"rgba(168,85,247,.5)", background:"linear-gradient(120deg,rgba(99,102,241,.16),rgba(14,29,56,.96))" }}>
+                <div className="fsb-sectionhead">
+                  <div style={{display:"flex",alignItems:"center",gap:14}}>
+                    <span className="fsb-module-icon" style={{background:automodEnabled?"rgba(16,185,129,.18)":"rgba(168,85,247,.18)"}}>🤖</span>
+                    <div><strong style={{fontSize:20}}>Automod + stream Rumble</strong><div className="fsb-copy">Le VPS démarre ou arrête ensemble la rotation Automod et le publisher Rumble.</div></div>
+                  </div>
+                  <span className={"fsb-pill "+(automodEnabled?"":"fsb-pill-bad")}>{automodEnabled?"ACTIVATION DEMANDÉE":"ARRÊTÉ"}</span>
+                </div>
+                <div className="fsb-actions" style={{marginTop:8}}>
+                  <button className={"fsb-btn "+(automodEnabled?"":"fsb-btn-primary")} onClick={toggleAutomod} disabled={automodBusy||!automodReady} style={{minWidth:250,fontSize:16}}>
+                    {automodBusy?"Transmission…":automodEnabled?"Arrêter Automod + stream":"Démarrer Automod + stream"}
+                  </button>
+                  <span className="fsb-copy">La demande est traitée par le VPS sous quelques secondes. En cas d’échec, désactive puis réactive pour réessayer.</span>
+                </div>
+                {automodError&&<div role="alert" className="fsb-copy" style={{color:"#fca5a5",marginTop:8}}>{automodError}</div>}
+              </div>
               <div className="fsb-card fsb-module" style={{gridColumn:"1 / -1",borderColor:automodEnabled?"rgba(16,185,129,.55)":"rgba(168,85,247,.5)",background:"linear-gradient(120deg,rgba(99,102,241,.16),rgba(14,29,56,.96))"}}>
                 <div className="fsb-sectionhead"><div style={{display:"flex",alignItems:"center",gap:14}}><span className="fsb-module-icon" style={{background:automodEnabled?"rgba(16,185,129,.18)":"rgba(168,85,247,.18)"}}>🤖</span><div><strong style={{fontSize:20}}>Automod du stream</strong><div className="fsb-copy">Pilote la rotation automatique des slots depuis le VPS.</div></div></div><span className={`fsb-pill ${automodEnabled?"":"fsb-pill-bad"}`}>{automodEnabled?"ACTIF":"ARRÊTÉ"}</span></div>
                 <div className="fsb-actions" style={{marginTop:8,flexWrap:"wrap"}}><Link className="fsb-btn fsb-btn-primary" to="/FSB_Board/automod" style={{minWidth:280,fontSize:16,textDecoration:"none",textAlign:"center"}}>Ouvrir le studio Automod →</Link><span className="fsb-copy">Commandes du direct, accès VPS, providers et paramètres de session sur une page dédiée.</span></div>
