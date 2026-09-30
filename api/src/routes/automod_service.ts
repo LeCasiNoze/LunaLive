@@ -115,12 +115,6 @@ function runtimeRoute(handler: (req: any, res: Response) => Promise<unknown>) {
 }
 automodServiceRouter.get(`${API}/v1/control`, runtimeRoute(async (req: any, res) => {
   if (!hasScope(req, "automod:control:read")) return res.status(403).json({ ok: false, error: "scope_required" });
-  await pool.query(`CREATE TABLE IF NOT EXISTS automod_control (
-    streamer_id BIGINT PRIMARY KEY REFERENCES streamers(id) ON DELETE CASCADE,
-    desired_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-    updated_by BIGINT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  )`);
   await ensureDashboardSchema();
   const row = await pool.query(`SELECT desired_enabled,dashboard_settings,settings_revision,applied_settings_revision FROM automod_control WHERE streamer_id=$1`, [req.automodService.streamerId]);
   return res.json({ ok: true, enabled: row.rows[0]?.desired_enabled === true, settings: row.rows[0]?.dashboard_settings ?? null,
