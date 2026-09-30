@@ -26,7 +26,6 @@ import { FsbScoutSection } from "./fsb/FsbScoutSection";
 import { FsbRumbleOutreachSection } from "./fsb/FsbRumbleOutreachSection";
 import { FsbTodoWidget } from "../components/FsbTodoWidget";
 import { getAutomodControl, setAutomodControl } from "../lib/api_automod";
-import { getAutomodControl } from "../lib/api_automod";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   giveaway: "Giveaway",
@@ -1064,8 +1063,6 @@ export default function FsbBoardPage() {
     catch(e){setAutomodError(e instanceof Error?e.message:"Commande Automod refusée.");}
     finally{setAutomodBusy(false);}
   };
-  const [automodEnabled,setAutomodEnabled]=React.useState(false);
-  React.useEffect(()=>{const refresh=()=>void getAutomodControl().then(r=>setAutomodEnabled(r.enabled)).catch(()=>{});refresh();const timer=window.setInterval(refresh,10000);return()=>window.clearInterval(timer);},[]);
   const [searchParams, setSearchParams] = useSearchParams();
   const section = normalizeSection(searchParams.get("section"));
   const canAccess = canAccessFsbBoard(user);
