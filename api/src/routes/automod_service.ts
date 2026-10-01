@@ -6,6 +6,7 @@ import { requireAuth } from "../auth.js";
 import { addCall, deleteCallById, getCallsSettings } from "../calls/queue.js";
 import { ensureDashboardSchema } from "./automod_control.js";
 import { publicAutomodRuntime } from "./automod_runtime.js";
+import { sessionCallCount } from "../calls/automod_session_count.js";
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -180,6 +181,10 @@ automodServiceRouter.put(`${API}/v1/session-stats/:sessionId`, async (req: any, 
   const sessionId = String(req.params.sessionId);
   const payload = req.body;
   if (!/^[A-Za-z0-9-]{8,100}$/.test(sessionId) || !payload || payload.sessionId !== sessionId || !Array.isArray(payload.topGains) || payload.topGains.length > 5 || !Number.isSafeInteger(payload.bonusCount) || payload.bonusCount < 0 || JSON.stringify(payload).length > 65_536) return res.status(400).json({ ok: false, error: "invalid_session_stats" });
+  const startedAt = Date.parse(payload.sessionStartedAt);
+  if (!Number.isFinite(startedAt) || startedAt > Date.now()) return res.status(400).json({ok:false,error:"invalid_session_start"});
+  const count = await sessionCallCount(pool, req.automodService.streamerId, sessionId, new Date(startedAt).toISOString());
+  Object.assign(payload, count);
   await pool.query(`INSERT INTO automod_session_sync(streamer_id,session_id,payload) VALUES($1,$2,$3::jsonb) ON CONFLICT(streamer_id,session_id) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`, [req.automodService.streamerId, sessionId, JSON.stringify(payload)]);
-  return res.json({ ok: true, sessionId, synced: true });
+  return res.json({ ok: true, sessionId, synced: true, callCount: count.callCount });
 });

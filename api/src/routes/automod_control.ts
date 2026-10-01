@@ -25,7 +25,7 @@ async function streamerForSlug(slug:string){ const r=await pool.query(`SELECT id
 async function canControl(user:any,streamer:any){ if(!user||!streamer)return false; if(user.role==="admin"||Number(user.id)===Number(streamer.user_id))return true;
   const r=await pool.query(`SELECT 1 FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL LIMIT 1`,[streamer.id,user.id]); return Boolean(r.rowCount); }
 function canAccessCaptcha(user:any,streamer:any){return Boolean(user&&streamer&&(user.role==="admin"||Number(user.id)===Number(streamer.user_id)));}
-type DashboardSettings = { allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean };
+type DashboardSettings = { allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean; audioMode?: "spotify"|"game" };
 function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!value||typeof value!=="object"||Array.isArray(value))return null;
   const row=value as Record<string,unknown>;
@@ -34,7 +34,8 @@ function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!Number.isSafeInteger(row.stakeCents)||Number(row.stakeCents)<1||Number(row.stakeCents)>10_000)return null;
   if(!Number.isSafeInteger(row.slotDurationMs)||Number(row.slotDurationMs)<60_000||Number(row.slotDurationMs)>120*60_000)return null;
   if(typeof row.goldenEnabled!=="boolean")return null;
-  return {allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled};
+  if(row.audioMode!==undefined&&row.audioMode!=="spotify"&&row.audioMode!=="game")return null;
+  return {allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled,audioMode:row.audioMode==="game"?"game":"spotify"};
 }
 export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSchema().then(()=>pool.query(`
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS dashboard_settings JSONB NULL;
@@ -99,6 +100,18 @@ automodControlRouter.put("/fsb/automod/settings",requireAuth,requireFsbAccess,as
   return res.json({ok:true,settings,settingsRevision:Number(result.rows[0].settings_revision)});
 });
 
+automodControlRouter.put("/fsb/automod/audio",requireAuth,requireFsbAccess,async(req:any,res)=>{
+  const s=await dashboardStreamer(req,res);if(!s)return;
+  const audioMode=req.body?.audioMode;
+  if(audioMode!=="spotify"&&audioMode!=="game")return res.status(400).json({ok:false,error:"invalid_audio_mode"});
+  const existing=await pool.query(`SELECT dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`,[s.id]);
+  const row=existing.rows[0];
+  const settings=parseDashboardSettings({...row?.runtime_status?.config,...row?.dashboard_settings,audioMode});
+  if(!settings)return res.status(409).json({ok:false,error:"Enregistre les paramètres de session avant de choisir l’audio."});
+  await pool.query(`UPDATE automod_control SET dashboard_settings=$2::jsonb,settings_revision=settings_revision+1 WHERE streamer_id=$1`,[s.id,JSON.stringify(settings)]);
+  return res.json({ok:true,audioMode});
+});
+
 automodControlRouter.post("/fsb/automod/commands",requireAuth,requireFsbAccess,async(req:any,res)=>{
   const s=await dashboardStreamer(req,res);if(!s)return;
   const kind=req.body?.kind;
@@ -118,8 +131,8 @@ automodControlRouter.post("/automod/status/:slug",requireAuth,async(req:any,res)
   const slot=input.slot&&typeof input.slot==="object"?{name:String(input.slot.name||"").slice(0,120),provider:String(input.slot.provider||"").slice(0,30),callId:String(input.slot.callId||"").slice(0,40),requestedBy:String(input.slot.requestedBy||"").slice(0,80)}:null;
   const logs=Array.isArray(input.logs)?input.logs.slice(-12).map((entry:any)=>({at:String(entry?.at||"").slice(0,40),message:String(entry?.message||"").slice(0,350)})):[];
   const runtime={phase,publisherActive:input.publisherActive===true,queueWritable:input.queueWritable===true,slot,slotPhase:String(input.slotPhase||"").slice(0,40),roundsPlayed:Number.isSafeInteger(input.roundsPlayed)?input.roundsPlayed:0,
-    slotDeadlineAt:Number.isSafeInteger(input.slotDeadlineAt)?input.slotDeadlineAt:null,bonusActive:input.bonusActive===true,lastError:String(input.lastError||"").slice(0,500),logs,
-    config:input.config&&typeof input.config==="object"?{allowedProviders:input.config.allowedProviders,stakeCents:input.config.stakeCents,slotDurationMs:input.config.slotDurationMs,goldenEnabled:input.config.goldenEnabled}:null};
+    slotDeadlineAt:Number.isSafeInteger(input.slotDeadlineAt)?input.slotDeadlineAt:null,recoveryPausedAt:Number.isSafeInteger(input.recoveryPausedAt)?input.recoveryPausedAt:null,bonusActive:input.bonusActive===true,lastError:String(input.lastError||"").slice(0,500),logs,
+    config:input.config&&typeof input.config==="object"?{allowedProviders:input.config.allowedProviders,stakeCents:input.config.stakeCents,slotDurationMs:input.config.slotDurationMs,goldenEnabled:input.config.goldenEnabled,audioMode:input.config.audioMode==="game"?"game":"spotify"}:null};
   const revision=Number.isSafeInteger(input.appliedSettingsRevision)&&input.appliedSettingsRevision>=0?input.appliedSettingsRevision:0;
   await pool.query(`INSERT INTO automod_control(streamer_id,runtime_status,runtime_seen_at,applied_settings_revision) VALUES($1,$2,NOW(),$3)
     ON CONFLICT(streamer_id) DO UPDATE SET runtime_status=EXCLUDED.runtime_status,runtime_seen_at=NOW(),applied_settings_revision=GREATEST(automod_control.applied_settings_revision,EXCLUDED.applied_settings_revision)`,[s.id,JSON.stringify(runtime),revision]);

@@ -18,6 +18,7 @@ import {
   setCallPay,
 } from "./queue.js";
 import { normText } from "./normalize.js";
+import { automodCallWaitSuffix } from "./automod_eta.js";
 
 // ✅ NEW: pour envoyer un vrai message bot (DB + broadcast)
 import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
@@ -607,7 +608,7 @@ export async function handleCallsCommand(opts: {
       pool,
       io,
       { streamerId, slug, rumbleVideoIdNumeric },
-      `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}`
+      `🎰 Call ajouté : "${add.item.slotName}"${add.item.provider ? ` (${add.item.provider})` : ""} — @${actorUsername}${await automodCallWaitSuffix(pool, streamerId, add.item.id)}`
     );
   }
 

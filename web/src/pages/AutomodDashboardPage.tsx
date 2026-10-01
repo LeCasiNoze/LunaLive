@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, CircleHelp, Clock3, ExternalLink, Headphones, ListRestart, MonitorPlay, Play, Radio, RefreshCw, Settings2, ShieldCheck, SkipForward, Sparkles, Square, Zap } from "lucide-react";
 import { useAuth } from "../auth/AuthProvider";
 import { canAccessFsbBoard } from "../lib/fsb_access";
-import { getAutomodCaptchaAccess, getAutomodDashboard, saveAutomodDashboardSettings, sendAutomodCommand, setAutomodControl,
+import { getAutomodCaptchaAccess, getAutomodDashboard, saveAutomodDashboardSettings, sendAutomodCommand, setAutomodControl, setAutomodAudioMode,
   type AutomodDashboard, type AutomodDashboardSettings, type AutomodProvider } from "../lib/api_automod";
 import "./AutomodDashboardPage.css";
 
@@ -101,6 +101,12 @@ export default function AutomodDashboardPage(){
               <button className="amd-action" disabled={!dashboard?.captchaAvailable||!!busy} onClick={openRemote}><span className="amd-action-icon mint"><ExternalLink size={22}/></span><strong>Accéder au VPS</strong><small>Valide un CAPTCHA ou débloque l’écran depuis ton appareil.</small><ArrowRight className="amd-action-arrow" size={17}/></button>
             </div>
             {dashboard?.captchaActive&&<div className="amd-captcha-banner"><ShieldCheck size={20}/><div><strong>CAPTCHA à valider</strong><span>L’Automod attend sur la page actuelle. Ouvre le bureau distant pour intervenir.</span></div><button onClick={openRemote}>Ouvrir</button></div>}
+          </section>
+
+          <section className="amd-panel"><div className="amd-panel-heading"><div><span className="amd-kicker">AUDIO</span><h2>Source du son</h2></div><Headphones size={21}/></div>
+            <div className="amd-provider-grid">{(["spotify","game"] as const).map(mode=><button key={mode} className={`amd-provider mint ${(dashboard?.settings?.audioMode??runtime?.config?.audioMode??"spotify")===mode?"selected":""}`} disabled={!!busy} aria-pressed={(dashboard?.settings?.audioMode??runtime?.config?.audioMode??"spotify")===mode} onClick={()=>void perform("audio",()=>setAutomodAudioMode(mode),"Changement audio demandé au VPS.")}><strong>{mode==="spotify"?"Spotify":"Son des slots"}</strong></button>)}</div>
+            <p className="amd-heading-note">Le son des slots libère ton compte Spotify. Le choix reste enregistré pour les prochaines sessions.</p>
+            <p className="amd-heading-note">Source confirmée par le VPS : {fresh?(runtime?.config?.audioMode==="game"?"slots":"Spotify"):"en attente"}.</p>
           </section>
 
           <section className="amd-panel"><div className="amd-panel-heading"><div><span className="amd-kicker">PARAMÈTRES DE SESSION</span><h2>Règles de rotation</h2></div><Settings2 size={21}/></div>
