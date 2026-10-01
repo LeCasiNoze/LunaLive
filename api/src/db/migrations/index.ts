@@ -1,5 +1,6 @@
 // api/src/db/migrations/index.ts (ou ton fichier migrateAll)
 import type { Pool } from "pg";
+import { mig141_automod_feedback } from './mig141_automod_feedback.js';
 
 import { mig001_core } from "./mig001_core.js";
 import { mig002_chat_tables } from "./mig002_chat_tables.js";
@@ -315,8 +316,10 @@ export async function migrateAll(pool: Pool) {
   await mig138_nozebot_blackjack_sessions(pool);
   await mig139_rumble_call_undo(pool);
   await mig140_automod_service(pool);
+  await mig141_automod_feedback(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
   await mig041_rumble_accounts(pool);
 }
+

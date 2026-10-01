@@ -62,6 +62,7 @@ import { overlayApiRouter } from "./routes/overlay_api.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
 import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
 import { automodControlRouter } from "./routes/automod_control.js";
+import { automodFeedbackRouter } from './routes/automod_feedback.js';
 import { automodServiceRouter } from "./routes/automod_service.js";
 import { internalNozeBotRouter } from "./routes/internal_nozebot.js";
 
@@ -225,6 +226,7 @@ export function createApp() {
   app.use("/api", fsbTodosRouter);
   app.use("/api", automodControlRouter);
   app.use("/api", automodServiceRouter);
+  app.use('/api', automodFeedbackRouter);
   app.use("/api", twitchScoutRouter);
   app.use("/api", rumbleOutreachRouter);
   app.use("/api", tiktokOutreachRouter);
@@ -335,3 +337,4 @@ export function createApp() {
 
   return app;
 }
+
