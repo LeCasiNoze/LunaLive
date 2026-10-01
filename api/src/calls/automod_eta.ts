@@ -12,10 +12,15 @@ export async function automodCallWaitSuffix(pool: Pool, streamerId: number, call
     const { rows } = await pool.query(`SELECT desired_enabled,runtime_status,runtime_seen_at,dashboard_settings FROM automod_control WHERE streamer_id=$1`, [streamerId]);
     const control = rows[0], runtime = control?.runtime_status;
     if (!control?.desired_enabled || !runtime || runtime.phase !== "running" || Date.now() - new Date(control.runtime_seen_at).getTime() > 30_000) return "";
-    const queue = await pool.query(`SELECT id::text AS id FROM calls_queue WHERE streamer_id=$1 ORDER BY pos,id`, [streamerId]);
+    const queue = await pool.query(`SELECT id::text AS id,provider FROM calls_queue WHERE streamer_id=$1 ORDER BY pos,id`, [streamerId]);
+    const allowed = runtime.config?.allowedProviders;
+    if (Array.isArray(allowed) && allowed.length > 0) queue.rows = queue.rows.filter(row => {
+      const label = String(row.provider ?? "").toLowerCase().replace(/[^a-z]/g, "");
+      return allowed.some((provider:string) => label.includes(provider));
+    });
     const index = queue.rows.findIndex(row => row.id === callId);
     if (index < 0) return "";
-    const durationMs = Number(control.dashboard_settings?.slotDurationMs ?? runtime.config?.slotDurationMs);
+    const durationMs = Number(runtime.config?.slotDurationMs ?? control.dashboard_settings?.slotDurationMs);
     if (!Number.isSafeInteger(durationMs) || durationMs <= 0) return "";
     if (!runtime.slot?.callId) return ` — dans ~${Math.ceil(index * durationMs / 60_000)} min`;
     const currentIncluded = queue.rows.slice(0, index).some(row => row.id === String(runtime.slot.callId));
