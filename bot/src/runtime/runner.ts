@@ -25,6 +25,7 @@ export class StreamerRunner {
 
   private commands: Map<string, BotCommand> = new Map();
   private autoposts: { message: string; everySec: number }[] = [];
+  private autopostIndex = 0;
   private autopostTimer: NodeJS.Timeout | null = null;
   private cfgReloadTimer: NodeJS.Timeout | null = null;
 
@@ -308,7 +309,10 @@ export class StreamerRunner {
     // autoposts minimal (round-robin)
     const autopostTick = async () => {
       if (!this.alive) return;
-      if (!this.autoposts.length) return;
+      if (!this.autoposts.length) {
+        this.autopostTimer = setTimeout(autopostTick, 30_000);
+        return;
+      }
 
       // ✅ GARDE-FOU RENFORCÉ: vérification live systématique
       const live = await isLiveNow();
@@ -328,8 +332,9 @@ export class StreamerRunner {
         return;
       }
 
-      const it = this.autoposts.shift()!;
-      this.autoposts.push(it);
+      // Configuration reloads every 10 seconds; keep the rotation cursor separate.
+      const it = this.autoposts[this.autopostIndex % this.autoposts.length];
+      this.autopostIndex = (this.autopostIndex + 1) % this.autoposts.length;
 
       try {
         await sendBotText(it.message, "autopost");

@@ -21,6 +21,7 @@ export class StreamerRunner {
     cooldowns = new Cooldowns();
     commands = new Map();
     autoposts = [];
+    autopostIndex = 0;
     autopostTimer = null;
     cfgReloadTimer = null;
     constructor(pool, env, streamer, settings) {
@@ -284,8 +285,10 @@ export class StreamerRunner {
         const autopostTick = async () => {
             if (!this.alive)
                 return;
-            if (!this.autoposts.length)
+            if (!this.autoposts.length) {
+                this.autopostTimer = setTimeout(autopostTick, 30_000);
                 return;
+            }
             // ✅ GARDE-FOU RENFORCÉ: vérification live systématique
             const live = await isLiveNow();
             if (!live) {
@@ -303,8 +306,9 @@ export class StreamerRunner {
                 this.autopostTimer = setTimeout(autopostTick, 30_000);
                 return;
             }
-            const it = this.autoposts.shift();
-            this.autoposts.push(it);
+            // Configuration reloads every 10 seconds; keep the rotation cursor separate.
+            const it = this.autoposts[this.autopostIndex % this.autoposts.length];
+            this.autopostIndex = (this.autopostIndex + 1) % this.autoposts.length;
             try {
                 await sendBotText(it.message, "autopost");
             }
