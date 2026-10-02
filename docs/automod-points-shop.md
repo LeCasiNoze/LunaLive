@@ -4,7 +4,7 @@
 
 API et site déployés le 2 octobre 2026. API : PR #8, commit main `38dc325eaca407546f50e6dd14dbadc5d0bec571` ; migration `mig142_automod_points`. Site : PR #1 du dépôt NozeBet, branche de déploiement `codex/lecasinoze-hub`, commit `b2b1916dc77cab33a30dd0b52312492a5c362ba1`. Shop : https://lecasinoze.onrender.com/automod-shop/ .
 
-Worker VPS : version consolidée `points-20261002-intro-proof`, contrôlée par les treize empreintes de `worker-current-manifest.json`. Les correctifs incrémentaux et sauvegardes restent conservés. Le journal de recette détaillé est `automod-points-20261002/LIVRAISON-ET-VALIDATION.md` dans le dossier de travail LeCasiNoze. Le déploiement n'est pas une preuve de toutes les familles de machines : les limites de recette ci-dessous restent applicables.
+Worker VPS : version consolidée `points-20261002-intro-proof`, contrôlée par les quatorze empreintes de `worker-current-manifest.json`. Les correctifs incrémentaux et sauvegardes restent conservés. Le journal de recette détaillé est `automod-points-20261002/LIVRAISON-ET-VALIDATION.md` dans le dossier de travail LeCasiNoze. Le déploiement n'est pas une preuve de toutes les familles de machines : les limites de recette ci-dessous restent applicables.
 
 ## Identité et stockage
 

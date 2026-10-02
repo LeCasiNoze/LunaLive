@@ -1,8 +1,8 @@
 # Livraison VPS points-20261002-intro-proof
 
-Cette archive contient uniquement les 13 sources modifiées du worker installé, pas un projet autonome. L'exécution exige la base Automod existante et ses dépendances. Le manifeste donne leurs empreintes et le commit API/site. Aucun profil navigateur, credential, fichier runtime ni clé RTMP n'est inclus.
+Cette archive contient uniquement les 14 sources modifiées du worker installé, pas un projet autonome. L'exécution exige la base Automod existante et ses dépendances. Le manifeste donne leurs empreintes et le commit API/site. Aucun profil navigateur, credential, fichier runtime ni clé RTMP n'est inclus.
 
-Archive worker-points-current.tar.gz : SHA256 689aa6433fb85c1f3e5f086af77e620040e3bfa9cc9f8655579f728b6480abac.
+Archive worker-points-current.tar.gz : SHA256 dee249b496446aed7a3080b12d75981c02354ce88ff542b39c334b7de2fbf4d9.
 
 Ne pas extraire directement sur un worker actif. Arrêter le publisher et le superviseur, vérifier désir Automod false, sauvegarder les sources, contrôler les empreintes avant remplacement atomique et compiler TypeScript strict. Restaurer la sauvegarde si compilation ou retour base échoue. Le pipeline de capture/encodage stable et le chat statique ne sont pas inclus dans ce patch.
 

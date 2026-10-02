@@ -67,6 +67,11 @@
       "path": "pragmatic-recap-ocr.ts",
       "sha256": "4b593e63e980ac0820f33e7fe4b05fdaeb5821515317601be472edbaeac242d1",
       "beforeSha256": "e1bc402871e6094d99bdb5bb3b0ea3e34d5faa15d4e13ad44389a3a57d49c4ad"
+    },
+    {
+      "path": "pragmatic-free-spin-start.ts",
+      "sha256": "617cdc460fde2a17eef45d411b36165a334f494d8ac5f8bcd394066dabe0d61b",
+      "beforeSha256": "416be7bf49b877c8f555038f01e5fe75ac07c801273b62381eac21dfa6de406b"
     }
   ],
   "stableBackupSha256": "42878e684cc49b990d890c1b14ae65d6b9cb049f27926a11bec0ead7ebdba61a",

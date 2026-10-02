@@ -23,13 +23,13 @@ Cet audit distingue code déployé, tests simulés et comportements observés su
 | Intent durable avant action, jamais double achat ambigu | Tests SQL purchase-sent/uncertain, unité53 une seule intention | Validé |
 | Reprise après panne et journaux persistants | Tests outbox et transactions idempotentes ; source/install contrôlées | Validé au niveau tests, pas de panne forcée au clic irréversible |
 | Crédit Lucas | Crédit initial20000 unique ; solde natif final19070 | Validé |
-| FPS/Chrome/VPN/queue viewers préservés | Pipeline stable inchangé, manifeste13hashes ; vérificateur natif unité58 confirme baseline de file intacte et seul call1029 retiré | Validé |
-| Documentation/version/rollback | Guide repo actualisé ; journal de recette, manifestes, backups, archives sans secret | Versionné et poussé : PR9, archive sources13, manifestes et vérificateurs |
+| FPS/Chrome/VPN/queue viewers préservés | Pipeline stable inchangé, manifeste14hashes ; vérificateur natif unité58 confirme baseline de file intacte et seul call1029 retiré | Validé |
+| Documentation/version/rollback | Guide repo actualisé ; journal de recette, manifestes, backups, archives sans secret | Versionné et poussé : PR9, archive sources14, manifestes et vérificateurs |
 
 
 
 
 
-Contrôle final en production : Render SQL confirme balance19070/réservé0, crédit initial20000 unique ; quatre ordresdone et deuxrefunded, aucun autre statut pour le propriétaire. API shop répondHTTP200 avec les règles et le cache LeBandit. Worker13/overlay5empreintes concordantes, sauvegardes vérifiées, phaseidle, desired_enabled=false, publisherActive=false ; services web/navigateur manuel/FSB actifs. Vérificateur verify-final-delivery.py exécuté avec succès. Documentation/source versionnées dans https://github.com/LeCasiNoze/LunaLive/pull/9 ; API/site et worker sont déjà déployés indépendamment de la fusion documentaire.
+Contrôle final en production : Render SQL confirme balance19070/réservé0, crédit initial20000 unique ; quatre ordresdone et deuxrefunded, aucun autre statut pour le propriétaire. API shop répondHTTP200 avec les règles et le cache LeBandit. Worker14/overlay5empreintes concordantes, sauvegardes vérifiées, phaseidle, desired_enabled=false, publisherActive=false ; services web/navigateur manuel/FSB actifs. Vérificateur verify-final-delivery.py exécuté avec succès. Documentation/source versionnées dans https://github.com/LeCasiNoze/LunaLive/pull/9 ; API/site et worker sont déjà déployés indépendamment de la fusion documentaire.
 
 Les preuves automatisées établissent les transitions de cooldown, non-réponse, panne et boost global ; elles ne doivent pas être décrites comme des scénarios supplémentaires joués en production. Le périmètre est prêt pour les tests utilisateur. Aucune promesse de toutes les slots validées, de stockage éternel indépendant de l'hébergeur, de24FPS réels ni de stabilité24/24. Le stockage métier n'a pas de purge programmée ; une restauration Render n'a pas été essayée.
