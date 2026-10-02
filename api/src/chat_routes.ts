@@ -3,6 +3,9 @@ import type { Express, Request, Response } from "express";
 import { pool } from "./db.js";
 import { chatStore } from "./chat_store.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
+import { createChatPointsReader } from "./automod-shop/chat-points.js";
+
+const readAutomodChatPoints = createChatPointsReader(pool);
 
 const HISTORY_TTL_MS = 2_000;
 const historyCache = new Map<string, { at: number; messages: any[] }>();
@@ -163,7 +166,10 @@ export function registerChatRoutes(app: Express) {
         });
       });
 
-      return res.json({ ok: true, messages });
+      // Ordinary LunaLive chats retain their payload and rendering unchanged.
+      const overlayMessages = slug.toLowerCase() === 'lecasinoze' && req.query.automod === '1'
+        ? await readAutomodChatPoints(streamerId, messages) : messages;
+      return res.json({ ok: true, messages: overlayMessages });
     } catch (e) {
       return res.status(500).json({ ok: false, error: "chat_messages_failed" });
     }
