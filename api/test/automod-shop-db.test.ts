@@ -65,6 +65,20 @@ test('idempotent credit survives a username change without creating a second acc
  assert.equal((await pool.query(`SELECT username FROM automod_points_accounts WHERE streamer_id=2`)).rows[0].username,'After');
  await assert.rejects(creditPoints(pool,2,'103','Other','credit',100,'test'),/wallet_event_conflict/);
 });
+
+test('rain credits once per native identity, expires, and balance replies reflect the ledger',async()=>{
+ await streamer(13);const rain=randomUUID();
+ await pool.query(`INSERT INTO automod_points_rains(id,streamer_id,points,closes_at) VALUES($1,13,20,NOW()+INTERVAL '2 minutes')`,[rain]);
+ const replies=await Promise.all(Array.from({length:3},()=>chat(13,'112','!rain')));
+ assert.equal(replies.filter(r=>r?.includes('+20 points')).length,1);
+ assert.deepEqual(await readWallet(pool,13,'112'),{balance:20,reserved:0,available:20});
+ assert.match((await chat(13,'112','!points'))!,/20 points disponibles/);
+ await pool.query(`UPDATE automod_points_rains SET closes_at=NOW()-INTERVAL '1 second' WHERE id=$1`,[rain]);
+ assert.match((await chat(13,'113','!rain'))!,/Pas de rain/);
+ assert.equal((await readWallet(pool,13,'113')).balance,0);
+ await pool.query(`UPDATE automod_control SET desired_enabled=FALSE WHERE streamer_id=13`);
+ assert.match((await chat(13,'112','!rain'))!,/pendant l’Automod/);
+});
 test('only one concurrent intent can authorize the irreversible buy; an uncertain buy stays reserved',async()=>{
  const o=await order(3,'chosen');
  const intents=await Promise.all([mutateOrder(pool,3,o.id,'intent',{offer:o.quote}),mutateOrder(pool,3,o.id,'intent',{offer:o.quote})]);
