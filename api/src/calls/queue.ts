@@ -280,7 +280,7 @@ async function ensureProviderPolicyRow(pool: Pool, streamerId: number) {
   );
 }
 
-async function isProviderAllowedByPolicy(pool: Pool, streamerId: number, providerNormLower: string | null): Promise<boolean> {
+export async function isProviderAllowedByPolicy(pool: Pool, streamerId: number, providerNormLower: string | null): Promise<boolean> {
   // si pas de provider => on laisse passer (tu peux rendre strict si tu veux)
   if (!providerNormLower) return true;
 

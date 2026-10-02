@@ -11,6 +11,8 @@ import { getRumbleBotSession, hasRumbleBotSession } from "./rumble_chat_session.
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
 import { removeLatestRumbleCall } from "./calls/queue.js";
+import { handleShopChat } from "./automod-shop/commands.js";
+import { shopReplyChunks } from "./automod-shop/rules.js";
 
 type Bridge = {
   stop: () => void;
@@ -473,6 +475,19 @@ export function ensureRumbleBridge(opts: {
     // Le miroir du chat reste actif même si le bot est coupé. Les commandes
     // restent indépendantes pour les comptes importés et pour la radio.
     if (opts.slug === "lunalive" || !commandsOn) return;
+
+    if (opts.slug === "lecasinoze" && (/^!(?:points|shop|rain|achat|duree|mise)(?:\s|$)/i.test(m.text)
+      || /^!call\s+\+[123]\s/i.test(m.text) || /^(?:[1-9]|1[0-6])$/.test(m.text.trim()))) {
+      const reply = await handleShopChat(opts.pool, { streamerId: opts.streamerId, userId: m.userId,
+        username: m.username, messageId: m.msgId, text: m.text, createdAt: m.createdAt });
+      if (reply) {
+        for (const chunk of shopReplyChunks(reply)) await sendRumbleMessageReliable(opts.pool, videoIdNumeric || "", chunk);
+        opts.io.to(`obsview:${opts.slug}`).emit("calls:changed", { action: "shop", source: "rumble" });
+        opts.io.to(`chat:${opts.slug}`).emit("calls:changed", { action: "shop", source: "rumble" });
+      }
+      // A replayed shop command must never fall through to the classic call parser.
+      if (reply || m.text.startsWith("!")) return;
+    }
 
     const bang = parseBangCommand(m.text);
     if (bang) {
