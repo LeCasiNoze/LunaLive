@@ -64,6 +64,7 @@ import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streame
 import { automodControlRouter } from "./routes/automod_control.js";
 import { automodFeedbackRouter } from './routes/automod_feedback.js';
 import { automodServiceRouter } from "./routes/automod_service.js";
+import { automodShopRouter } from "./routes/automod_shop.js";
 import { internalNozeBotRouter } from "./routes/internal_nozebot.js";
 
 // Bot module (clean)
@@ -226,6 +227,7 @@ export function createApp() {
   app.use("/api", fsbTodosRouter);
   app.use("/api", automodControlRouter);
   app.use("/api", automodServiceRouter);
+  app.use("/api", automodShopRouter);
   app.use('/api', automodFeedbackRouter);
   app.use("/api", twitchScoutRouter);
   app.use("/api", rumbleOutreachRouter);

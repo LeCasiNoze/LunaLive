@@ -7,6 +7,9 @@ import { addCall, deleteCallById, getCallsSettings } from "../calls/queue.js";
 import { ensureDashboardSchema } from "./automod_control.js";
 import { publicAutomodRuntime } from "./automod_runtime.js";
 import { sessionCallCount } from "../calls/automod_session_count.js";
+import { ordersForCall,mutateOrder,ingestPointsEvent } from "../automod-shop/runtime.js";
+import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
+import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -96,9 +99,52 @@ async function serviceAuth(req: any, res: Response, next: NextFunction) {
 function hasScope(req: any, scope: string): boolean { return req.automodService?.scope?.has(scope) === true; }
 automodServiceRouter.use(`${API}/v1`, serviceAuth);
 
+automodServiceRouter.get(`${API}/v1/shop/orders`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
+ const callId=String(req.query.callId??'');if(!/^(?:\d+)?$/.test(callId))return res.status(400).json({ok:false});
+ return res.json({ok:true,orders:await ordersForCall(pool,req.automodService.streamerId,callId)});
+}));
+automodServiceRouter.post(`${API}/v1/shop/orders/:id/:action`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
+ if(!/^[a-f0-9-]{36}$/.test(req.params.id)||JSON.stringify(req.body??{}).length>16000)return res.status(400).json({ok:false});
+ try{
+  const out:any=await mutateOrder(pool,req.automodService.streamerId,req.params.id,req.params.action,req.body??{});
+  if(out.changed&&req.params.action==='menu'&&out.status==='offered'){
+   await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Choisis ton bonus :`);
+   for(let i=0;i<out.offers.length;i++){
+    const f=out.offers[i];await notifyShop(pool,req.automodService.streamerId,`${i+1} : ${f.label} — ${(f.costCents/100).toFixed(2)} € (${Math.ceil(f.costCents*35/100)} points).`);
+   }
+   await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Réponds avec le numéro avant la fin du call. Sans réponse : ${out.reservedPoints} points pour le passage prioritaire.`);
+  }
+  if(out.changed&&req.params.action==='complete')await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Bonus terminé : ${(out.result.gainCents/100).toFixed(2)} €, +${out.result.rebatePoints} points récupérés ! ${walletSummary(out.wallet)}`);
+  if(out.changed&&['confirmed','boost-applied','expire','failure'].includes(req.params.action))await notifyShop(pool,req.automodService.streamerId,`@${out.username} — ${out.status==='uncertain'?'Achat à vérifier ; aucune nouvelle tentative automatique.':out.status==='refunded'?'Réservation libérée.':out.status==='expired'?`Choix expiré : ${out.result.feePoints} points débités pour le passage prioritaire.`:`${out.spentPoints??out.result?.spentPoints??0} points débités.`} ${walletSummary(out.wallet)}`);
+  return res.json({ok:true,...out});
+ }catch(e){return res.status(409).json({ok:false,error:e instanceof Error?e.message:'shop_update_failed'});}
+}));
+automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,"session:stats:write"))return res.status(403).json({ok:false});
+ if(!Array.isArray(req.body?.events)||req.body.events.length>50)return res.status(400).json({ok:false});
+ const accepted=[];
+ for(const event of req.body.events){
+  const result=await ingestPointsEvent(pool,req.automodService.streamerId,event);accepted.push(event.id);
+  if(result.points>0&&'wallet' in result&&result.wallet)await notifyShop(pool,req.automodService.streamerId,`@${result.username} — +${result.points} points Automod ! ${walletSummary(result.wallet)}`);
+ }
+ return res.json({ok:true,accepted});
+}));
+automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
+ return res.json({ok:true,rain:await tickPointsRain(pool,req.automodService.streamerId)});
+}));
+// Maintenance credit is restricted to the verified channel owner's Rumble identity.
+// It is idempotent and unavailable to viewers or public site callers.
+automodServiceRouter.post(`${API}/v1/shop/test-credit`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,"automod:runtime:write")||req.automodService.slug.toLowerCase()!=='lecasinoze')return res.status(403).json({ok:false});
+ return res.json({ok:true,wallet:await creditPoints(pool,req.automodService.streamerId,'284177710','LeCasiNoze','maintenance-test-credit:20261002',20000,'authorized-test-credit')});
+}));
+
 automodServiceRouter.get(`${API}/v1/calls`, async (req: any, res) => {
   if (!hasScope(req, "calls:read")) return res.status(403).json({ ok: false, error: "scope_required" });
-  const r = await pool.query(`SELECT q.id::text AS id,q.slot_name AS "slotName",q.provider,q.username,q.user_id::int AS "userId",q.pos,sc.image_url AS "imageUrl" FROM calls_queue q LEFT JOIN slots_catalog sc ON sc.name_key=q.slot_key WHERE q.streamer_id=$1 AND COALESCE(q.is_bonus,FALSE)=FALSE AND (q.bet IS NULL OR q.bet<=0) ORDER BY q.pos LIMIT 200`, [req.automodService.streamerId]);
+  const r = await pool.query(`SELECT q.id::text AS id,q.slot_name AS "slotName",q.provider,q.username,q.user_id::int AS "userId",q.rumble_user_id AS "rumbleUserId",q.pos,sc.image_url AS "imageUrl" FROM calls_queue q LEFT JOIN slots_catalog sc ON sc.name_key=q.slot_key WHERE q.streamer_id=$1 AND COALESCE(q.is_bonus,FALSE)=FALSE AND (q.bet IS NULL OR q.bet<=0) ORDER BY q.pos LIMIT 200`, [req.automodService.streamerId]);
   return res.json({ ok: true, items: r.rows });
 });
 
