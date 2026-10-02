@@ -101,3 +101,11 @@ Les essais utilisent uniquement un publisher privé borné et un vrai live non r
 ### Résolution de l'assertion de mise
 
 Diagnostic natif unité62, sans spin ni achat : le palier immédiatement supérieur à20c est40c. La cible30c est donc correctement arrondie à20c, avec Golden60c. Journal /opt/automod/.runtime/points-stake-grid-1790967886961/grid.json. Le vérificateur indépendant verify-native-boosts.mts, exécuté sur ce journal et celui de l'unité58, confirme les deux ordresdone, durée90s, spins terminés, bonus attendu/collecté et fileviewer intacte. L'unité58 initiale conserve son erreur historique d'assertion ; sa preuve métier est maintenant validée indépendamment. Aucune nouvelle dépense pour cette vérification.
+
+## Achat connu et récompense positive — unité63
+
+Même live privé v7gakqm/446974600 repris et confirmé EN DIRECT/non répertorié. Commande native !achat B:fs_consume Le Bandit : réserve350 immédiate sur solde19200, call1030, ordreba77eecd-374e-4ed0-a6d8-5dff801e6a01. Menu réel revalidé identifiantfs_consume/prix10€/base10c ; achat avant tout round payé, sans second choix du viewer.
+Bonus réellement terminé gain2257c ; débit350, rebate210 (60% pour gain>=2×prix), aucune récompense naturelle sur le bonus acheté. Spins payants repris Golden30c/base10c, first-spin+10. Solde annoncé19070, réserve0 =19200-350+210+10.
+Unité63 terminalcode0 19:17:24UTC, journal /opt/automod/.runtime/points-fullchain-1790968274329/validation.jsonl. Deux vérificateurs indépendants en lecture seule réussissent : intentunique, achatconnuavantspins, résultat/rebate, roundsaprèsachat, filetierspréservée. Fin de timer autoplay coupé puis dernierround réglé avant sortie.
+Manifeste actuel13sources contrôlé allMatchtrue. Nettoyage APIshopfalse, Chrome/web/superviseuractifs, publicpublisherfailed/inactif, privéstoppé ; modèlePUBLICsauvegardé et toastconfirmé. Screenshots native-known-buy-chat-proof.png et rumble-public-restored-after-known-buy.png. Aucun achat100€/gamble ni livepublic.
+Le parcours connu/cache et la récompensepositive sont maintenant prouvés en natif. Reste notamment achatPragmaticlegacy et clôture documentaire/versionnée ; ne pas marquer le goal terminé tant que l'audit final conserve un élément requis non validé.
