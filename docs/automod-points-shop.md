@@ -4,7 +4,7 @@
 
 API et site déployés le 2 octobre 2026. API : PR #8, commit main `38dc325eaca407546f50e6dd14dbadc5d0bec571` ; migration `mig142_automod_points`. Site : PR #1 du dépôt NozeBet, branche de déploiement `codex/lecasinoze-hub`, commit `b2b1916dc77cab33a30dd0b52312492a5c362ba1`. Shop : https://lecasinoze.onrender.com/automod-shop/ .
 
-Worker VPS : version consolidée `points-20261002-scroll-safe`, contrôlée par les treize empreintes de `worker-current-manifest.json`. Les correctifs incrémentaux et sauvegardes restent conservés. Le journal de recette détaillé est `automod-points-20261002/LIVRAISON-ET-VALIDATION.md` dans le dossier de travail LeCasiNoze. Le déploiement n'est pas une preuve de toutes les familles de machines : les limites de recette ci-dessous restent applicables.
+Worker VPS : version consolidée `points-20261002-intro-proof`, contrôlée par les treize empreintes de `worker-current-manifest.json`. Les correctifs incrémentaux et sauvegardes restent conservés. Le journal de recette détaillé est `automod-points-20261002/LIVRAISON-ET-VALIDATION.md` dans le dossier de travail LeCasiNoze. Le déploiement n'est pas une preuve de toutes les familles de machines : les limites de recette ci-dessous restent applicables.
 
 ## Identité et stockage
 
@@ -108,4 +108,8 @@ Même live privé v7gakqm/446974600 repris et confirmé EN DIRECT/non répertori
 Bonus réellement terminé gain2257c ; débit350, rebate210 (60% pour gain>=2×prix), aucune récompense naturelle sur le bonus acheté. Spins payants repris Golden30c/base10c, first-spin+10. Solde annoncé19070, réserve0 =19200-350+210+10.
 Unité63 terminalcode0 19:17:24UTC, journal /opt/automod/.runtime/points-fullchain-1790968274329/validation.jsonl. Deux vérificateurs indépendants en lecture seule réussissent : intentunique, achatconnuavantspins, résultat/rebate, roundsaprèsachat, filetierspréservée. Fin de timer autoplay coupé puis dernierround réglé avant sortie.
 Manifeste actuel13sources contrôlé allMatchtrue. Nettoyage APIshopfalse, Chrome/web/superviseuractifs, publicpublisherfailed/inactif, privéstoppé ; modèlePUBLICsauvegardé et toastconfirmé. Screenshots native-known-buy-chat-proof.png et rumble-public-restored-after-known-buy.png. Aucun achat100€/gamble ni livepublic.
-Le parcours connu/cache et la récompensepositive sont maintenant prouvés en natif. Reste notamment achatPragmaticlegacy et clôture documentaire/versionnée ; ne pas marquer le goal terminé tant que l'audit final conserve un élément requis non validé.
+Le parcours connu/cache et la récompensepositive sont maintenant prouvés en natif. Hot Fiesta legacy est désormais validé (achat25€, récupération73, 10→0, gain1,68€, retour base25c). Reste la clôture documentaire/versionnée ; ne pas marquer le goal terminé tant que l'audit final conserve un élément requis non validé.
+
+
+### Transition legacy Hot Fiesta validée
+L'achat déclenche une phase de piñatas avant l'introduction des free spins. Le compteur serveur peut déjà valoir 10 pendant cette phase, tandis que les UILabel FSStart sont encore inactifs. Une capture HUD `clear` ne prouve donc pas le lancement du bonus. Le worker acquitte `bonusStartAdvanced` seulement après une progression réelle, puis reconnaît l'introduction profonde `FSStartWindow_BuyFS` sous `FSStartWindow_HOFI` (ancêtre le plus proche, profondeur12). Les labels actifs, titres complets, handler natif et gardes anti-gamble restent obligatoires. La récupération73 a confirmé 10→0, gain168c, fermeture du récap et retour base25c sans nouvel achat. 50 tests ciblés et compilation stricte passent. Backup : `.runtime/backups/points-20261002/before-intro-proof-<fichier>` ; manifeste version `points-20261002-intro-proof`.
