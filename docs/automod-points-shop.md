@@ -113,4 +113,3 @@ Le parcours connu/cache et la récompensepositive sont maintenant prouvés en na
 
 ### Transition legacy Hot Fiesta validée
 L'achat déclenche une phase de piñatas avant l'introduction des free spins. Le compteur serveur peut déjà valoir 10 pendant cette phase, tandis que les UILabel FSStart sont encore inactifs. Une capture HUD `clear` ne prouve donc pas le lancement du bonus. Le worker acquitte `bonusStartAdvanced` seulement après une progression réelle, puis reconnaît l'introduction profonde `FSStartWindow_BuyFS` sous `FSStartWindow_HOFI` (ancêtre le plus proche, profondeur12). Les labels actifs, titres complets, handler natif et gardes anti-gamble restent obligatoires. La récupération73 a confirmé 10→0, gain168c, fermeture du récap et retour base25c sans nouvel achat. 50 tests ciblés et compilation stricte passent. Backup : `.runtime/backups/points-20261002/before-intro-proof-<fichier>` ; manifeste version `points-20261002-intro-proof`.
-
