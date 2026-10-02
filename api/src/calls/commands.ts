@@ -581,6 +581,12 @@ export async function handleCallsCommand(opts: {
 
   if (!add.ok) {
     const m = add.error;
+    if (m === "automod_provider_not_allowed") {
+      const message = `Call refusé : le provider de « ${resolved.name} » (${resolved.provider ?? "inconnu"}) n’est pas autorisé pendant cette session Automod.`;
+      emitUserToast(io, actorUserId, { kind: "error", title: "Call refusé", message });
+      await sendBotChat(pool, io, { streamerId, slug, rumbleVideoIdNumeric }, `@${actorUsername} — ${message}`);
+      return { handled: true, showOriginalInChat };
+    }
     if (m === "already_in_queue")
       emitUserToast(io, actorUserId, { kind: "error", title: "Déjà en file", message: "Cette machine est déjà call." });
     else if (m === "limit_reached")

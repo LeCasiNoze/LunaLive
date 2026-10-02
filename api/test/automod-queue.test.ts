@@ -10,6 +10,7 @@ function database() {
   const query = async (sql: string, args: any[] = []) => {
     const q = sql.replace(/\s+/g, ' ').trim(); log.push(q);
     const rows = (r: any[] = []) => ({ rows: r });
+    if (q.includes('FROM automod_control')) return rows([{ desired_enabled: false }]);
     if (q.startsWith('DO $$') || q.startsWith('CREATE TABLE') || q.startsWith('INSERT INTO calls_provider_policy')) return rows();
     if (q.startsWith('SELECT enabled')) return rows([{ enabled: true, per_user_limit: 2 }]);
     if (q.includes('FROM calls_bans')) return rows();

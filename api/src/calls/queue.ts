@@ -2,6 +2,7 @@
 import type { Pool } from "pg";
 import { keyText, normText } from "./normalize.js";
 import { normalizeProvider } from "./provider_aliases.js";
+import { automodCallProviderAllowed } from "./automod_provider_policy.js";
 
 export type CallItem = {
   id: string;
@@ -331,6 +332,7 @@ export async function addCall(
 
   const settings = await getCallsSettings(pool, streamerId);
   if (!settings.enabled) return { ok: false, error: "calls_disabled" };
+  if (!(await automodCallProviderAllowed(pool, streamerId, providerRaw))) return { ok: false, error: "automod_provider_not_allowed" };
 
   // bans / policy / limits
   if (await isUserBannedFromCalls(pool, streamerId, userId, username)) return { ok: false, error: "user_banned" };
