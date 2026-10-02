@@ -116,8 +116,10 @@ automodServiceRouter.post(`${API}/v1/shop/orders/:id/:action`,runtimeRoute(async
    }
    await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Réponds avec le numéro avant la fin du call. Sans réponse : ${out.reservedPoints} points pour le passage prioritaire.`);
   }
-  if(out.changed&&req.params.action==='complete')await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Bonus terminé : ${(out.result.gainCents/100).toFixed(2)} €, +${out.result.rebatePoints} points récupérés ! ${walletSummary(out.wallet)}`);
-  if(out.changed&&['confirmed','boost-applied','expire','failure'].includes(req.params.action))await notifyShop(pool,req.automodService.streamerId,`@${out.username} — ${out.status==='uncertain'?'Achat à vérifier ; aucune nouvelle tentative automatique.':out.status==='refunded'?'Réservation libérée.':out.status==='expired'?`Choix expiré : ${out.result.feePoints} points débités pour le passage prioritaire.`:`${out.spentPoints??out.result?.spentPoints??0} points débités.`} ${walletSummary(out.wallet)}`);
+  // The command already acknowledges the reservation: routine debit and small
+  // rewards stay in the ledger/!points instead of producing another chat reply.
+  if(out.changed&&req.params.action==='complete'&&out.result.rebatePoints>=100)await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Bonus : ${(out.result.gainCents/100).toFixed(2)} € ; +${out.result.rebatePoints} points ! ${walletSummary(out.wallet)}`);
+  if(out.changed&&['expire','failure'].includes(req.params.action))await notifyShop(pool,req.automodService.streamerId,`@${out.username} — ${out.status==='uncertain'?'Achat à vérifier ; aucune nouvelle tentative automatique.':out.status==='refunded'?'Réservation libérée.':out.status==='expired'?`Choix expiré : ${out.result.feePoints} points débités pour le passage prioritaire.`:`${out.spentPoints??out.result?.spentPoints??0} points débités.`} ${walletSummary(out.wallet)}`);
   return res.json({ok:true,...out});
  }catch(e){return res.status(409).json({ok:false,error:e instanceof Error?e.message:'shop_update_failed'});}
 }));
@@ -127,7 +129,7 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
  const accepted=[];
  for(const event of req.body.events){
   const result=await ingestPointsEvent(pool,req.automodService.streamerId,event);accepted.push(event.id);
-  if(result.points>0&&'wallet' in result&&result.wallet)await notifyShop(pool,req.automodService.streamerId,`@${result.username} — +${result.points} points Automod ! ${walletSummary(result.wallet)}`);
+  if(result.points>=100&&'wallet' in result&&result.wallet)await notifyShop(pool,req.automodService.streamerId,`@${result.username} — +${result.points} points Automod ! ${walletSummary(result.wallet)}`);
  }
  return res.json({ok:true,accepted});
 }));
