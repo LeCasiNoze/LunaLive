@@ -10,6 +10,7 @@ import { inTransaction,lockWallet,walletEntry,readWallet,walletSummary } from ".
 import {effectiveShopStake} from './effective-stake.js';
 import {requirePurchaseSlotAvailable} from './purchase-queue.js';
 import {castHuntVote} from './hunt-votes.js';
+import {findObservedBonusMenu} from './catalog.js';
 
 export interface ShopChatMessage { streamerId:number; userId:string; username:string; messageId:string; text:string; createdAt:Date; }
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
@@ -109,7 +110,8 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       if(cmd.kind==='stake'&&await effectiveShopStake(c,m.streamerId,sessionBase)>=sessionBase*SHOP_RULES.stake[cmd.tier-1]!.factor)throw Error('boost_already_covered');
       let points=0,offer:any=null;
       if(cmd.kind==='buy'){
-        const cache=await c.query(`SELECT offers FROM automod_bonus_catalog WHERE streamer_id=$1 AND slot_key=$2 AND base_stake_cents=$3`,[m.streamerId,keyText(slot.name),base]);
+        const knownMenu=await findObservedBonusMenu(c,m.streamerId,keyText(slot.name),base);
+        const cache={rows:knownMenu?[knownMenu]:[]};
         if(cmd.offerId){
           offer=cache.rows[0]?validateOffers(cache.rows[0].offers).find(o=>o.id===cmd.offerId):null;
           if(!offer)throw Error('bonus_menu_changed');points=bonusPointPrice(offer.costCents);
