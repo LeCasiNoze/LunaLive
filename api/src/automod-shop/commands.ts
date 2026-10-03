@@ -4,6 +4,7 @@ import { resolveSlot } from "../calls/catalog.js";
 import { keyText } from "../calls/normalize.js";
 import { normalizeProvider } from "../calls/provider_aliases.js";
 import { automodProviderAllowed } from "../calls/automod_provider_policy.js";
+import { huntSlotReserved } from '../calls/automod_hunt_reservations.js';
 import { getCallsSettings,isUserBannedFromCalls,isSlotBanned,isProviderBanned,isProviderAllowedByPolicy } from "../calls/queue.js";
 import { SHOP_RULES,parseShopCommand,bonusPointPrice,validateOffers,validRumbleIdentity } from "./rules.js";
 import { inTransaction,lockWallet,walletEntry,readWallet,walletSummary } from "./wallet.js";
@@ -122,6 +123,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
           points=Math.ceil(bonusPointPrice(cheapest)/2);
         }
       }else points=(cmd.kind==='stake'?SHOP_RULES.stake:SHOP_RULES.duration)[cmd.tier-1]!.points;
+      if(await huntSlotReserved(c,m.streamerId,slot.name))throw Error('automod_bonus_pending');
       const existing=await c.query(`SELECT id::text,pos FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND slot_key=$3 ORDER BY pos LIMIT 1 FOR UPDATE`,[m.streamerId,m.userId,keyText(slot.name)]);
       let call=existing.rows[0];
       const runtimeCall=String(mode.rows[0].runtime_status?.slot?.callId??'');
@@ -164,6 +166,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
     });
   }catch(error){
     const key=error instanceof Error?error.message:'';
+    if(key==='automod_bonus_pending')return `@${m.username} — Cette machine a un bonus en attente d’ouverture. Réessaie après son ouverture ; aucun point réservé.`;
     if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé. Ils ne se cumulent pas.`;
     if(key==='boost_already_covered')return `@${m.username} — Le boost de session couvre déjà cette mise. Aucun point réservé ; choisis un palier supérieur.`;
     if(key==='buy_slot_already_waiting')return `@${m.username} — Cette machine est déjà en cours ou en attente. Attends la fin de son call avant de demander un achat dessus. Aucun point réservé.`;

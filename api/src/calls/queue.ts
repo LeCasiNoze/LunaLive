@@ -3,6 +3,7 @@ import type { Pool } from "pg";
 import { keyText, normText } from "./normalize.js";
 import { normalizeProvider } from "./provider_aliases.js";
 import { automodCallProviderAllowed } from "./automod_provider_policy.js";
+import { huntSlotReserved } from './automod_hunt_reservations.js';
 
 export type CallItem = {
   id: string;
@@ -355,6 +356,11 @@ export async function addCall(
 
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
+
+    if(await huntSlotReserved(client,streamerId,slotName)){
+      await client.query('COMMIT');
+      return {ok:false,error:'automod_bonus_pending'};
+    }
 
     if (opts?.automodRequestId) {
       const previous = await client.query(`SELECT r.item, q.id AS pending_id
