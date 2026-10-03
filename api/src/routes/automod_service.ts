@@ -10,6 +10,7 @@ import { sessionCallCount } from "../calls/automod_session_count.js";
 import { ordersForCall,mutateOrder,ingestPointsEvent } from "../automod-shop/runtime.js";
 import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
 import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
+import { observeBonusCatalog } from "../automod-shop/catalog.js";
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -98,6 +99,16 @@ async function serviceAuth(req: any, res: Response, next: NextFunction) {
 }
 function hasScope(req: any, scope: string): boolean { return req.automodService?.scope?.has(scope) === true; }
 automodServiceRouter.use(`${API}/v1`, serviceAuth);
+
+automodServiceRouter.post(`${API}/v1/shop/catalog`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ if(JSON.stringify(req.body??{}).length>16000)return res.status(400).json({ok:false,error:'catalog_too_large'});
+ try{return res.json(await observeBonusCatalog(pool,req.automodService.streamerId,req.body));}
+ catch(error){
+  const message=error instanceof Error?error.message:'';
+  return res.status(message.startsWith('invalid_')?400:503).json({ok:false,error:message.startsWith('invalid_')?message:'catalog_save_failed'});
+ }
+}));
 
 automodServiceRouter.get(`${API}/v1/shop/orders`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
