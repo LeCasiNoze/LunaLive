@@ -8,6 +8,7 @@ import { getCallsSettings,isUserBannedFromCalls,isSlotBanned,isProviderBanned,is
 import { SHOP_RULES,parseShopCommand,bonusPointPrice,validateOffers,validRumbleIdentity } from "./rules.js";
 import { inTransaction,lockWallet,walletEntry,readWallet,walletSummary } from "./wallet.js";
 import {effectiveShopStake} from './effective-stake.js';
+import {requirePurchaseSlotAvailable} from './purchase-queue.js';
 
 export interface ShopChatMessage { streamerId:number; userId:string; username:string; messageId:string; text:string; createdAt:Date; }
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
@@ -85,6 +86,9 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       if(!automodProviderAllowed(provider,currentAllowed))throw Error('provider_not_allowed');
       const previous=await c.query(`SELECT id,status FROM automod_shop_orders WHERE streamer_id=$1 AND request_key=$2`,[m.streamerId,`rumble:${m.messageId}`]);
       if(previous.rows[0])return null;
+      if(cmd.kind==='buy'){
+        await requirePurchaseSlotAvailable(c,m.streamerId,keyText(slot.name));
+      }
       const wallet=await lockWallet(c,m.streamerId,m.userId,m.username);
       if(cmd.kind==='buy'){
         const pending=await c.query(`SELECT 1 FROM automod_shop_orders WHERE streamer_id=$1 AND rumble_user_id=$2 AND kind='buy' AND status NOT IN ('done','expired','refunded') LIMIT 1`,[m.streamerId,m.userId]);
@@ -152,6 +156,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
     const key=error instanceof Error?error.message:'';
     if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé. Ils ne se cumulent pas.`;
     if(key==='boost_already_covered')return `@${m.username} — Le boost de session couvre déjà cette mise. Aucun point réservé ; choisis un palier supérieur.`;
+    if(key==='buy_slot_already_waiting')return `@${m.username} — Cette machine est déjà en cours ou en attente. Attends la fin de son call avant de demander un achat dessus. Aucun point réservé.`;
     const labels:Record<string,string>={insufficient_points:'Points disponibles insuffisants.',buy_already_pending:'Tu as déjà un achat en attente.',bonus_menu_changed:'Menu du bonus non connu à cette mise. Utilise !achat + nom complet pour le découvrir.',call_limit:'Tu as déjà deux calls en attente.',call_already_started:'Cette amélioration doit être choisie avant le début du call.',boost_already_set:'Cette amélioration est déjà réservée pour ce call.',automod_disabled:'L’Automod est arrêté.'};
     return `@${m.username} — ${key.startsWith('cooldown:')?`Prochain achat possible dans ${key.split(':')[1]} min.`:labels[key]??'Demande non enregistrée. Réessaie dans un instant ; aucun débit partiel.'}`;
   }
