@@ -45,6 +45,7 @@ const DEFAULTS = {
   lunaLiveUrl: "https://lunalive.win/s/lecasinoze",
   rumbleUrl: "https://rumble.com/user/LeCasiNoze/live",
   notificationRoleIds: [
+    "1556031808603291689", // AutoMod: opt-in AutoMod / Auto Hunt announcements.
     "1188926242519523328",
     "1188926088852799578",
     "1217875557631393923",
