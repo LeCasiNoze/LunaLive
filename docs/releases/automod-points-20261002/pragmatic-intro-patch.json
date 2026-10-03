@@ -1,0 +1,14 @@
+{
+  "files": [
+    {
+      "before": "c200b1fb6b97368d299dbcc6de45bbf9d5e5ddcf698ffb90552ddb47c12f1ded",
+      "after": "0450fefb8853faf15c9fdd68e76ebde1c10d0c175dd277bab633f2fb594e210f",
+      "path": "browser-slot-executor.ts"
+    },
+    {
+      "before": "416be7bf49b877c8f555038f01e5fe75ac07c801273b62381eac21dfa6de406b",
+      "after": "617cdc460fde2a17eef45d411b36165a334f494d8ac5f8bcd394066dabe0d61b",
+      "path": "pragmatic-free-spin-start.ts"
+    }
+  ]
+}

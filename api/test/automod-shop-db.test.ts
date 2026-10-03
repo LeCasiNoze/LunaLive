@@ -150,3 +150,59 @@ test('natural rewards are business-event idempotent and bought bonuses earn no n
  await ingestPointsEvent(pool,12,{...base,id:'bought',kind:'bonus-ended',visitId:'bought',data:{baseStakeCents:20,purchaseOrderId:randomUUID(),bonus:{startedAt:2000,gainCents:100000}}});
  assert.equal((await readWallet(pool,12,'113')).balance,110);
 });
+
+// Cross-component contract: real SQL wallet/order transitions with the deployed
+// worker class. Provider actions below are fixtures, not proof of a real bonus.
+const workerPath=process.env.AUTOMOD_POINTS_WORKER_MODULE;
+async function workerFixture(sid:number){
+ const {AutomodShop}=await import(workerPath!);
+ const uid=await buyer(sid);
+ assert.match(await chat(sid,uid,'!achat Wanted Dead or a Wild')??'',/réservés/);
+ const row=(await pool.query(`SELECT id,call_id::text AS "callId" FROM automod_shop_orders WHERE streamer_id=$1`,[sid])).rows[0];
+ const item={key:`call:${row.callId}`,callId:row.callId,slotName:'Wanted Dead or a Wild',provider:'hacksaw',source:'lunalive',requestedBy:'RenamedUser',requestedByRumbleId:uid};
+ let clock=10000;
+ const state:any={active:item,shopVisit:null,roundsPlayed:0,slotDeadlineAt:430000,bonus:null};
+ const transport={async shopRequest(method:string,path:string,body:any){
+  if(method==='GET')return {orders:await ordersForCall(pool,sid,new URLSearchParams(path.split('?')[1]).get('callId')??'')};
+  const [,id,action]=path.split('/');return mutateOrder(pool,sid,id,action,body??{});
+ }};
+ const shop=new AutomodShop(transport,()=>clock);
+ const config:any={stakeCents:20,slotDurationMs:420000,enhancedSpins:Object.fromEntries(['hacksaw','pragmatic','nolimit'].map(p=>[p,{enabled:true,maxTotalStakeCents:100}]))};
+ const configured=await shop.config(item,config,state);
+ const offers=[{id:'normal',label:'Normal',costCents:2000,baseStakeCents:20}];
+ return {sid,uid,row,state,shop,configured,offers,advance(ms:number){clock+=ms;}};
+}
+const idle:any={idle:true,roundsPlayed:0,events:[],bonusActive:false,autoplayActive:false,roundActive:false};
+test('SQL plus worker: unknown menu, native-owner choice, one intent/debit/rebate and paused timer', {skip:!workerPath},async()=>{
+ const f=await workerFixture(21);let purchased=0;
+ const executor:any={inspectBonusShop:async()=>f.offers,purchaseBonusShop:async()=>{
+  assert.equal((await pool.query(`SELECT status FROM automod_shop_orders WHERE id=$1`,[f.row.id])).rows[0].status,'purchase-sent');
+  assert.deepEqual(await readWallet(pool,f.sid,f.uid),{balance:10000,reserved:700,available:9300});purchased++;
+ }};
+ await f.shop.prepare(executor,f.state,f.configured);
+ assert.equal((await readWallet(pool,f.sid,f.uid)).reserved,350);
+ assert.equal(await chat(f.sid,'999','1'),null);
+ assert.match(await chat(f.sid,f.uid,'1')??'',/Normal sélectionné/);
+ await f.shop.load(f.state.active);
+ await f.shop.tick(executor,f.state,idle,async()=>{},false,async()=>{f.state.bonus={startedAt:10000,endedAt:null,gainCents:null,purchaseOrderId:f.row.id};});
+ assert.equal(purchased,1);assert.equal((await readWallet(pool,f.sid,f.uid)).balance,9300);
+ f.advance(60000);f.state.bonus.endedAt=70000;f.state.bonus.gainCents=6000;
+ await f.shop.tick(executor,f.state,idle,async()=>{});
+ assert.equal(f.state.slotDeadlineAt,490000);
+ assert.deepEqual(await readWallet(pool,f.sid,f.uid),{balance:10070,reserved:0,available:10070});
+ await f.shop.tick(executor,f.state,idle,async()=>{});
+ assert.equal(purchased,1);assert.equal((await readWallet(pool,f.sid,f.uid)).balance,10070);
+ assert.match(await chat(f.sid,f.uid,'!achat Wanted Dead or a Wild')??'',/Prochain achat possible/);
+});
+test('SQL plus worker: actual menu minimum sets no-response fee after played deadline', {skip:!workerPath},async()=>{
+ const f=await workerFixture(22);await f.shop.prepare({inspectBonusShop:async()=>f.offers} as any,f.state,f.configured);
+ f.state.roundsPlayed=2;f.advance(430000);await f.shop.finish(f.state);
+ assert.deepEqual(await readWallet(pool,f.sid,f.uid),{balance:9650,reserved:0,available:9650});
+ assert.equal((await pool.query(`SELECT status FROM automod_shop_orders WHERE id=$1`,[f.row.id])).rows[0].status,'expired');
+});
+test('SQL plus worker: failed discovery releases reservation and does not buy or charge priority', {skip:!workerPath},async()=>{
+ const f=await workerFixture(23);await f.shop.prepare({inspectBonusShop:async()=>{throw Error('provider-menu-unavailable');}} as any,f.state,f.configured);
+ assert.deepEqual(await readWallet(pool,f.sid,f.uid),{balance:10000,reserved:0,available:10000});
+ f.state.roundsPlayed=2;f.advance(430000);await f.shop.finish(f.state);
+ assert.equal((await readWallet(pool,f.sid,f.uid)).balance,10000);
+});
