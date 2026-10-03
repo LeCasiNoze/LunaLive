@@ -9,16 +9,23 @@ import { SHOP_RULES,parseShopCommand,bonusPointPrice,validateOffers,validRumbleI
 import { inTransaction,lockWallet,walletEntry,readWallet,walletSummary } from "./wallet.js";
 import {effectiveShopStake} from './effective-stake.js';
 import {requirePurchaseSlotAvailable} from './purchase-queue.js';
+import {castHuntVote} from './hunt-votes.js';
 
 export interface ShopChatMessage { streamerId:number; userId:string; username:string; messageId:string; text:string; createdAt:Date; }
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
 export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string|null> {
   if(!validRumbleIdentity(m.userId) || !m.messageId) return null;
+  const vote=/^!hunt\s+(ouvrir|continuer)\s*$/i.exec(m.text.trim());
+  if(vote){
+    if(Date.now()-m.createdAt.getTime()>120_000||m.createdAt.getTime()>Date.now()+30_000)return null;
+    return castHuntVote(pool,m.streamerId,m.userId,m.username,vote[1]!.toLowerCase()==='ouvrir'?'open':'continue');
+  }
   const open=await pool.query(`SELECT id FROM automod_shop_orders WHERE streamer_id=$1 AND rumble_user_id=$2 AND status='offered' LIMIT 1`,[m.streamerId,m.userId]);
   const cmd=parseShopCommand(m.text,Boolean(open.rowCount));
   if(!cmd)return null;
   const control=await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`,[m.streamerId]);
   if(control.rows[0]?.desired_enabled!==true)return `@${m.username} — Le shop et les points sont disponibles pendant l’Automod.`;
+  if(cmd.kind==='duration'&&control.rows[0].dashboard_settings?.mode==='auto-hunt'&&control.rows[0].dashboard_settings?.hunt?.jail===true)return `@${m.username} — La durée est désactivée en Jail Hunt : la machine reste jusqu’au bonus ou à la limite de spins. Aucun point réservé.`;
   // SSE init replays old messages: do not turn them into new orders or rain joins.
   if(Date.now()-m.createdAt.getTime()>120_000 || m.createdAt.getTime()>Date.now()+30_000)return null;
   try{
@@ -82,6 +89,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       await c.query(`SELECT pg_advisory_xact_lock($1)`,[m.streamerId]);
       const mode=await c.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1 FOR UPDATE`,[m.streamerId]);
       if(!mode.rows[0]?.desired_enabled)throw Error('automod_disabled');
+      if(cmd.kind==='duration'&&mode.rows[0].dashboard_settings?.mode==='auto-hunt'&&mode.rows[0].dashboard_settings?.hunt?.jail===true)throw Error('jail_duration_disabled');
       const currentAllowed=mode.rows[0].dashboard_settings?.allowedProviders??mode.rows[0].runtime_status?.config?.allowedProviders??['hacksaw','pragmatic'];
       if(!automodProviderAllowed(provider,currentAllowed))throw Error('provider_not_allowed');
       const previous=await c.query(`SELECT id,status FROM automod_shop_orders WHERE streamer_id=$1 AND request_key=$2`,[m.streamerId,`rumble:${m.messageId}`]);

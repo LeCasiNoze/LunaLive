@@ -25,7 +25,7 @@ async function streamerForSlug(slug:string){ const r=await pool.query(`SELECT id
 async function canControl(user:any,streamer:any){ if(!user||!streamer)return false; if(user.role==="admin"||Number(user.id)===Number(streamer.user_id))return true;
   const r=await pool.query(`SELECT 1 FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL LIMIT 1`,[streamer.id,user.id]); return Boolean(r.rowCount); }
 function canAccessCaptcha(user:any,streamer:any){return Boolean(user&&streamer&&(user.role==="admin"||Number(user.id)===Number(streamer.user_id)));}
-type DashboardSettings = { allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean; audioMode?: "spotify"|"game" };
+type DashboardSettings = { mode?: "automod"|"auto-hunt"; fastSpins?:boolean; hunt?: {jail:boolean;jailSpinLimit:number;openingCondition:"count"|"balance"|"vote";targetBonuses:number;balanceFloorCents:number;voteFromBonuses:number;voteEveryBonuses:number}; allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean; audioMode?: "spotify"|"game" };
 function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!value||typeof value!=="object"||Array.isArray(value))return null;
   const row=value as Record<string,unknown>;
@@ -35,7 +35,14 @@ function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!Number.isSafeInteger(row.slotDurationMs)||Number(row.slotDurationMs)<60_000||Number(row.slotDurationMs)>120*60_000)return null;
   if(typeof row.goldenEnabled!=="boolean")return null;
   if(row.audioMode!==undefined&&row.audioMode!=="spotify"&&row.audioMode!=="game")return null;
-  return {allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled,audioMode:row.audioMode==="game"?"game":"spotify"};
+  if(row.mode!==undefined&&row.mode!=="automod"&&row.mode!=="auto-hunt")return null;
+  if(row.fastSpins!==undefined&&typeof row.fastSpins!=="boolean")return null;
+  const h=(row.hunt??{}) as Record<string,unknown>;
+  if(!h||typeof h!=="object"||Array.isArray(h))return null;
+  const check=(v:unknown,fallback:number,min:number,max:number)=>v===undefined?fallback:Number.isSafeInteger(v)&&Number(v)>=min&&Number(v)<=max?Number(v):null;
+  const jailSpinLimit=check(h.jailSpinLimit,1000,1,10000),targetBonuses=check(h.targetBonuses,20,1,1000),balanceFloorCents=check(h.balanceFloorCents,0,0,100000000),voteFromBonuses=check(h.voteFromBonuses,10,1,1000),voteEveryBonuses=check(h.voteEveryBonuses,5,1,1000);
+  if([jailSpinLimit,targetBonuses,balanceFloorCents,voteFromBonuses,voteEveryBonuses].some(n=>n===null)||(h.openingCondition!==undefined&&!['count','balance','vote'].includes(String(h.openingCondition)))||(h.jail!==undefined&&typeof h.jail!=='boolean'))return null;
+  return {mode:row.mode==='auto-hunt'?'auto-hunt':'automod',fastSpins:row.fastSpins===true,hunt:{jail:h.jail===true,jailSpinLimit:jailSpinLimit!,targetBonuses:targetBonuses!,balanceFloorCents:balanceFloorCents!,voteFromBonuses:voteFromBonuses!,voteEveryBonuses:voteEveryBonuses!,openingCondition:h.openingCondition==='balance'?'balance':h.openingCondition==='vote'?'vote':'count'},allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled,audioMode:row.audioMode==="game"?"game":"spotify"};
 }
 export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSchema().then(()=>pool.query(`
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS dashboard_settings JSONB NULL;
@@ -54,6 +61,8 @@ export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSche
     finished_at TIMESTAMPTZ NULL,
     result TEXT NULL
   );
+  ALTER TABLE automod_control_commands DROP CONSTRAINT IF EXISTS automod_control_commands_kind_check;
+  ALTER TABLE automod_control_commands ADD CONSTRAINT automod_control_commands_kind_check CHECK (kind IN ('restart_chrome','skip_call','open_hunt'));
   CREATE INDEX IF NOT EXISTS automod_control_commands_pending ON automod_control_commands(streamer_id,id) WHERE status='pending';
 `));}
 async function dashboardStreamer(req:any,res:any){const s=await streamerForSlug("lecasinoze");if(!s){res.status(404).json({ok:false,error:"streamer_not_found"});return null;}if(!canAccessCaptcha(req.user,s)){res.status(403).json({ok:false,error:"forbidden"});return null;}await ensureDashboardSchema();return s;}
@@ -80,15 +89,16 @@ automodControlRouter.post("/automod/captcha/:slug",requireAuth,async(req:any,res
 
 automodControlRouter.get("/fsb/automod/dashboard",requireAuth,requireFsbAccess,async(req:any,res)=>{
   const s=await dashboardStreamer(req,res);if(!s)return;
-  const [control,commands]=await Promise.all([
+  const [control,commands,calls]=await Promise.all([
     pool.query(`SELECT desired_enabled,updated_at,captcha_active,captcha_detected_at,dashboard_settings,settings_revision,applied_settings_revision,runtime_status,runtime_seen_at FROM automod_control WHERE streamer_id=$1`,[s.id]),
     pool.query(`SELECT id,kind,status,created_at,finished_at,result FROM automod_control_commands WHERE streamer_id=$1 ORDER BY id DESC LIMIT 12`,[s.id]),
+    pool.query(`SELECT q.id::text AS id,q.slot_name AS "slotName",q.provider,q.username,sc.image_url AS "imageUrl" FROM calls_queue q LEFT JOIN slots_catalog sc ON sc.name_key=q.slot_key WHERE q.streamer_id=$1 ORDER BY q.pos ASC LIMIT 100`,[s.id]),
   ]);
   const row=control.rows[0];
   res.setHeader("Cache-Control","private, no-store");
   return res.json({ok:true,enabled:row?.desired_enabled===true,updatedAt:row?.updated_at??null,captchaActive:row?.captcha_active===true,captchaDetectedAt:row?.captcha_detected_at??null,captchaAvailable:captchaConfig()!==null,
     settings:row?.dashboard_settings??null,settingsRevision:Number(row?.settings_revision??0),appliedSettingsRevision:Number(row?.applied_settings_revision??0),
-    runtime:row?.runtime_status??null,runtimeSeenAt:row?.runtime_seen_at??null,commands:commands.rows.map(c=>({id:String(c.id),kind:c.kind,status:c.status,createdAt:c.created_at,finishedAt:c.finished_at,result:c.result}))});
+    calls:calls.rows,runtime:row?.runtime_status??null,runtimeSeenAt:row?.runtime_seen_at??null,commands:commands.rows.map(c=>({id:String(c.id),kind:c.kind,status:c.status,createdAt:c.created_at,finishedAt:c.finished_at,result:c.result}))});
 });
 
 automodControlRouter.put("/fsb/automod/settings",requireAuth,requireFsbAccess,async(req:any,res)=>{
@@ -115,7 +125,7 @@ automodControlRouter.put("/fsb/automod/audio",requireAuth,requireFsbAccess,async
 automodControlRouter.post("/fsb/automod/commands",requireAuth,requireFsbAccess,async(req:any,res)=>{
   const s=await dashboardStreamer(req,res);if(!s)return;
   const kind=req.body?.kind;
-  if(kind!=="restart_chrome"&&kind!=="skip_call")return res.status(400).json({ok:false,error:"Commande Automod inconnue."});
+  if(kind!=="restart_chrome"&&kind!=="skip_call"&&kind!=="open_hunt")return res.status(400).json({ok:false,error:"Commande Automod inconnue."});
   const pending=await pool.query(`SELECT id FROM automod_control_commands WHERE streamer_id=$1 AND kind=$2 AND status IN ('pending','claimed') AND created_at>NOW()-INTERVAL '3 minutes' LIMIT 1`,[s.id,kind]);
   if(pending.rowCount)return res.status(409).json({ok:false,error:"Cette commande est déjà en cours."});
   const result=await pool.query(`INSERT INTO automod_control_commands(streamer_id,kind,requested_by) VALUES($1,$2,$3) RETURNING id`,[s.id,kind,req.user.id]);
