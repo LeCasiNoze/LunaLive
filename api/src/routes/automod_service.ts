@@ -12,6 +12,7 @@ import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
 import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
 import { observeBonusCatalog } from "../automod-shop/catalog.js";
 import { pollHuntVote } from "../automod-shop/hunt-votes.js";
+import { syncHuntReservations } from '../calls/automod_hunt_reservations.js';
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -89,7 +90,7 @@ async function serviceAuth(req: any, res: Response, next: NextFunction) {
     if (!token) return res.status(401).json({ ok: false, error: "service_auth_required" });
     const claims = jwt.verify(token, signingSecret(), { issuer: "lunalive-api", audience: "automod" }) as ServiceClaims;
     if (claims.typ !== "automod-service" || !Array.isArray(claims.scope)) return res.status(401).json({ ok: false, error: "service_auth_invalid" });
-    serviceAuthReady ??= pool.query(`SELECT 1 FROM automod_service_credentials LIMIT 0`).then(() => undefined);
+    serviceAuthReady ??= pool.query(`SELECT 1 FROM automod_service_credentials LIMIT 0`).then(() => undefined).catch(error=>{serviceAuthReady=null;throw error;});
     await serviceAuthReady;
     const active = await pool.query(`SELECT c.streamer_id,c.credential_version,s.slug FROM automod_service_credentials c JOIN streamers s ON s.id=c.streamer_id WHERE c.service_id=$1 AND c.active=TRUE`, [claims.sid]);
     const row = active.rows[0];
@@ -152,6 +153,27 @@ automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=
 automodServiceRouter.post(`${API}/v1/shop/hunt-vote`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
  return res.json(await pollHuntVote(pool,req.automodService.streamerId,req.body));
+}));
+automodServiceRouter.post(`${API}/v1/shop/hunt-state`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ try{return res.json(await syncHuntReservations(pool,req.automodService.streamerId,req.body?.entries));}
+ catch(error){if(String(error).includes('invalid_hunt'))return res.status(400).json({ok:false,error:'invalid_hunt_entries'});throw error;}
+}));
+automodServiceRouter.post(`${API}/v1/shop/hunt-report`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ const {id,summary:s,final}=req.body??{};
+ const cents=(v:unknown)=>v===null||Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<100_000_000;
+ if(typeof id!=='string'||id.length>300||!s||!['startBalanceCents','initialBECents','remainingBECents','totalGainCents'].every(k=>cents(s[k]))||!['bonusCount','openedCount','failedCount'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<=300)||s.averageMultiplier!==null&&(!Number.isFinite(s.averageMultiplier)||s.averageMultiplier<0)||s.best&&(typeof s.best.slotName!=='string'||s.best.slotName.length>200||typeof s.best.caller!=='string'||s.best.caller.length>100||!Number.isFinite(s.best.multiplier)))return res.status(400).json({ok:false,error:'invalid_hunt_report'});
+ const sid=req.automodService.streamerId;
+ await pool.query(`INSERT INTO automod_hunt_reports(streamer_id,report_id,payload) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[sid,id,JSON.stringify(s)]);
+ const row=await pool.query(`SELECT sent FROM automod_hunt_reports WHERE streamer_id=$1 AND report_id=$2`,[sid,id]);
+ if(!row.rows[0]?.sent){
+  const euro=(n:number|null)=>n===null?'non confirmé':(n/100).toFixed(2)+' €';
+  const text=final?`Hunt : ${s.openedCount}/${s.bonusCount} bonus ouverts${s.failedCount?` · ${s.failedCount} à vérifier`:''}. Start ${euro(s.startBalanceCents)} · BE initial ${euro(s.initialBECents)} · gains ${euro(s.totalGainCents)} · reste pour BE ${euro(s.remainingBECents)}. Moyenne ×${s.averageMultiplier===null?'—':s.averageMultiplier.toFixed(1)}${s.best?` · meilleur : ${s.best.slotName}, ×${s.best.multiplier.toFixed(1)}, call de ${s.best.caller}`:''}.`:`Ouverture ${s.openedCount}/${s.bonusCount} · gains ${euro(s.totalGainCents)} · reste pour BE : ${euro(s.remainingBECents)}.`;
+  const result=await notifyShop(pool,sid,text);
+  if(result.sent)await pool.query(`UPDATE automod_hunt_reports SET sent=TRUE WHERE streamer_id=$1 AND report_id=$2`,[sid,id]);
+ }
+ return res.json({ok:true});
 }));
 // Maintenance credit is restricted to the verified channel owner's Rumble identity.
 // It is idempotent and unavailable to viewers or public site callers.

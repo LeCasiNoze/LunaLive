@@ -2,6 +2,7 @@
 import type { Pool } from "pg";
 import { mig141_automod_feedback } from './mig141_automod_feedback.js';
 import { mig142_automod_points } from './mig142_automod_points.js';
+import { mig143_automod_hunt_reservations } from './mig143_automod_hunt_reservations.js';
 
 import { mig001_core } from "./mig001_core.js";
 import { mig002_chat_tables } from "./mig002_chat_tables.js";
@@ -319,6 +320,7 @@ export async function migrateAll(pool: Pool) {
   await mig140_automod_service(pool);
   await mig141_automod_feedback(pool);
   await mig142_automod_points(pool);
+  await mig143_automod_hunt_reservations(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
