@@ -11,6 +11,7 @@ import { ordersForCall,mutateOrder,ingestPointsEvent } from "../automod-shop/run
 import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
 import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
 import { observeBonusCatalog } from "../automod-shop/catalog.js";
+import { pollHuntVote } from "../automod-shop/hunt-votes.js";
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -147,6 +148,10 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
 automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
  return res.json({ok:true,rain:await tickPointsRain(pool,req.automodService.streamerId)});
+}));
+automodServiceRouter.post(`${API}/v1/shop/hunt-vote`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ return res.json(await pollHuntVote(pool,req.automodService.streamerId,req.body));
 }));
 // Maintenance credit is restricted to the verified channel owner's Rumble identity.
 // It is idempotent and unavailable to viewers or public site callers.

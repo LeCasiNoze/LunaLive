@@ -21,7 +21,7 @@ automodShopRouter.get('/automod-shop',async(req,res)=>{
   const catalog=slotKey?await pool.query(`SELECT slot_name,provider,base_stake_cents,offers,observed_at FROM automod_bonus_catalog WHERE streamer_id=$1 AND slot_key=$2 AND base_stake_cents=$3`,[row.id,slotKey,catalogBase]):{rows:[]};
   const rain=await pool.query(`SELECT points,closes_at FROM automod_points_rains WHERE streamer_id=$1 AND closes_at>NOW() ORDER BY opened_at DESC LIMIT 1`,[row.id]);
   res.setHeader('Cache-Control','no-store');
-  return res.json({ok:true,enabled:row.desired_enabled===true,rules:SHOP_RULES,baseStakeCents:base,effectiveBaseStakeCents:catalogBase,
+  return res.json({ok:true,enabled:row.desired_enabled===true,durationAllowed:!(row.dashboard_settings?.mode==='auto-hunt'&&row.dashboard_settings?.hunt?.jail===true),rules:SHOP_RULES,baseStakeCents:base,effectiveBaseStakeCents:catalogBase,
     slotDurationMs:Number(row.dashboard_settings?.slotDurationMs??row.runtime_status?.config?.slotDurationMs??420000),
     allowedProviders:allowed,slots,bonusMenu:catalog.rows[0]??null,rain:rain.rows[0]??null});
  }catch{return res.status(503).json({ok:false,error:'shop_temporarily_unavailable'});}
