@@ -6,6 +6,8 @@ import { isMailReady, sendMail } from "../utils/mailer.js";
 import { renderLunaLiveEmail } from "../utils/lunalive_email.js";
 import { createHmac, randomBytes } from "node:crypto";
 
+import {automodAnalytics} from '../automod-shop/analytics.js';
+
 export const automodControlRouter = Router();
 let schemaReady: Promise<unknown> | null = null;
 let dashboardSchemaReady: Promise<unknown> | null = null;
@@ -165,4 +167,11 @@ automodControlRouter.post("/automod/commands/:id/complete/:slug",requireAuth,asy
   const ok=req.body?.ok===true;const result=String(req.body?.result||"").slice(0,400);
   const updated=await pool.query(`UPDATE automod_control_commands SET status=$3,finished_at=NOW(),result=$4 WHERE streamer_id=$1 AND id=$2 AND status='claimed' RETURNING id`,[s.id,req.params.id,ok?"done":"failed",result]);
   return res.json({ok:updated.rowCount===1});
+});
+
+automodControlRouter.get('/automod/stats',requireAuth,requireFsbAccess,async(req:any,res)=>{
+ const streamer=await streamerForSlug('lecasinoze');
+ if(!streamer)return res.status(404).json({ok:false,error:'streamer_not_found'});
+ if(!await canControl(req.user,streamer))return res.status(403).json({ok:false,error:'forbidden'});
+ return res.json(await automodAnalytics(pool,Number(streamer.id),Number(req.query.days)));
 });

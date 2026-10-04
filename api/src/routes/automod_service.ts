@@ -1,3 +1,4 @@
+import {tickFollows} from '../automod-shop/follows.js';
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
@@ -149,7 +150,7 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
 }));
 automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
- return res.json({ok:true,rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
+ return res.json({ok:true,follow:await tickFollows(pool,req.automodService.streamerId).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
 }));
 automodServiceRouter.post(`${API}/v1/shop/engagement`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});

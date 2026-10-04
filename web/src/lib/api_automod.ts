@@ -15,3 +15,6 @@ export const getAutomodDashboard=()=>dashboardRequest("/dashboard") as Promise<A
 export const setAutomodAudioMode=(audioMode:"spotify"|"game")=>dashboardRequest("/audio",{method:"PUT",body:JSON.stringify({audioMode})});
 export const saveAutomodDashboardSettings=(settings:AutomodDashboardSettings)=>dashboardRequest("/settings",{method:"PUT",body:JSON.stringify(settings)}) as Promise<{ok:true;settings:AutomodDashboardSettings;settingsRevision:number}>;
 export const sendAutomodCommand=(kind:"restart_chrome"|"skip_call"|"open_hunt")=>dashboardRequest("/commands",{method:"POST",body:JSON.stringify({kind})}) as Promise<{ok:true;id:string;kind:string}>;
+
+export type AutomodAnalytics={ok:true;followers:{total:number|null;growth:number|null;since:string|null};days:number;timeZone:string;collectionStartedAt:string|null;summary:{messages:number;speakers:number;first_seen:string|null};daily:Array<{day:string;messages:number;speakers:number}>;hours:Array<{hour:number;messages:number;speakers:number}>;audience:Array<{day:string;average_viewers:number;peak_viewers:number;samples:number}>};
+export const getAutomodAnalytics=(days:number)=>dashboardRequest(`/stats?days=${days}`) as Promise<AutomodAnalytics>;

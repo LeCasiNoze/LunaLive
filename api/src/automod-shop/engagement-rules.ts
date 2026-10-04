@@ -26,3 +26,14 @@ export function predictionStats(bets:PredictionBet[]){
  return {yesVotes:yes.length,noVotes:no.length,yesPoints,noPoints,pot,
   yesOdds:yesPoints&&noPoints?pot/yesPoints:null,noOdds:yesPoints&&noPoints?pot/noPoints:null};
 }
+
+export function parsePredictionCommand(text:string){
+ const raw=text.trim();
+ if(!/^!(?:oui|non|pari)(?:\s|$)/i.test(raw))return null;
+ const match=/^!(?:pari\s+)?(oui|non)\s+(\d{1,6})(?:[.,](\d{1,2}))?\s*$/i.exec(raw);
+ if(!match)return {error:true as const};
+ const amount=Number(match[2]+(match[3]?'.'+match[3]:''));
+ const points=Math.round(amount/10)*10;
+ if(amount<BET_MIN||amount>BET_MAX||!validPredictionPoints(points))return {error:true as const};
+ return {error:false as const,choice:match[1]!.toLowerCase()==='oui'?'yes' as const:'no' as const,points};
+}
