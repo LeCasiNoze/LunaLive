@@ -12,6 +12,7 @@ import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
 import { removeLatestRumbleCall } from "./calls/queue.js";
 import { handleShopChat } from "./automod-shop/commands.js";
+import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
 
 type Bridge = {
@@ -449,6 +450,7 @@ export function ensureRumbleBridge(opts: {
 
     // Persist DB (fire-and-forget — l'unique index empêche les doublons)
     persistMessage(m.msgId, m.userId, m.username, m.text, m.createdAt).catch(() => {});
+    if(opts.slug==='lecasinoze')void observeAutomodChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,createdAt:m.createdAt}).catch(()=>{});
 
     // chatStore (mémoire — sert au /chat/messages au reload)
     const stored = chatStore.addMessage(opts.slug, {
@@ -476,7 +478,7 @@ export function ensureRumbleBridge(opts: {
     // restent indépendantes pour les comptes importés et pour la radio.
     if (opts.slug === "lunalive" || !commandsOn) return;
 
-    if (opts.slug === "lecasinoze" && (/^!(?:points|shop|rain|achat|duree|mise|hunt)(?:\s|$)/i.test(m.text)
+    if (opts.slug === "lecasinoze" && (/^!(?:points|shop|rain|achat|duree|mise|hunt|pari|vote)(?:\s|$)/i.test(m.text) || /^![12]\s*$/.test(m.text.trim())
       || /^!call\s+\+[123]\s/i.test(m.text) || /^(?:[1-9]|1[0-6])$/.test(m.text.trim()))) {
       const reply = await handleShopChat(opts.pool, { streamerId: opts.streamerId, userId: m.userId,
         username: m.username, messageId: m.msgId, text: m.text, createdAt: m.createdAt });

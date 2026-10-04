@@ -12,6 +12,7 @@ import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
 import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
 import { observeBonusCatalog } from "../automod-shop/catalog.js";
 import { pollHuntVote } from "../automod-shop/hunt-votes.js";
+import {tickEngagement,pollEngagement,finishPrediction,applyModeVote,engagementSchema} from '../automod-shop/engagement.js';
 import { syncHuntReservations } from '../calls/automod_hunt_reservations.js';
 
 export const automodServiceRouter = Router();
@@ -148,7 +149,31 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
 }));
 automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
- return res.json({ok:true,rain:await tickPointsRain(pool,req.automodService.streamerId)});
+ return res.json({ok:true,rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
+}));
+automodServiceRouter.post(`${API}/v1/shop/engagement`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ if(JSON.stringify(req.body??{}).length>50000)return res.status(400).json({ok:false});
+ try{return res.json(await pollEngagement(pool,req.automodService.streamerId,req.body??{}));}
+ catch(e){if(String(e).includes('invalid_prediction'))return res.status(400).json({ok:false,error:'invalid_prediction'});throw e;}
+}));
+automodServiceRouter.get(`${API}/v1/shop/engagement-stats`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ await engagementSchema(pool);
+ const sid=req.automodService.streamerId;
+ const activity=await pool.query(`SELECT to_char(occurred_at AT TIME ZONE 'Europe/Paris','YYYY-MM-DD HH24') AS paris_hour,COUNT(*)::int AS messages,COUNT(DISTINCT rumble_user_id)::int AS speakers FROM automod_chat_activity WHERE streamer_id=$1 AND occurred_at>NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1`,[sid]);
+ const audience=await pool.query(`SELECT to_char(sample_at AT TIME ZONE 'Europe/Paris','YYYY-MM-DD HH24') AS paris_hour,ROUND(AVG(viewer_count),1) AS average_viewers,MAX(viewer_count)::int AS peak_viewers FROM automod_audience_samples WHERE streamer_id=$1 AND sample_at>NOW()-INTERVAL '30 days' GROUP BY 1 ORDER BY 1`,[sid]);
+ return res.json({ok:true,timeZone:'Europe/Paris',activity:activity.rows,audience:audience.rows});
+}));
+automodServiceRouter.post(`${API}/v1/shop/prediction-finish`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ const result=await finishPrediction(pool,req.automodService.streamerId,req.body??{});
+ if(result.changed)await notifyShop(pool,req.automodService.streamerId,result.refunded?'Pronostic Hunt remboursé : un seul camp ou bilan incomplet.':`Pronostic réglé : Hunt ${result.winner==='yes'?'rentable':'non rentable'}. Pot de ${result.pot} points distribué. !points pour ton solde.`);
+ return res.json(result);
+}));
+automodServiceRouter.post(`${API}/v1/shop/mode-apply`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write')||!/^[a-f0-9-]{36}$/.test(String(req.body?.id)))return res.status(400).json({ok:false});
+ return res.json(await applyModeVote(pool,req.automodService.streamerId,req.body.id));
 }));
 automodServiceRouter.post(`${API}/v1/shop/hunt-vote`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});

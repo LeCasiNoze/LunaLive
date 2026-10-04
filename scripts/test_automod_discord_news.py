@@ -20,11 +20,11 @@ class NewsTests(unittest.TestCase):
         self.assertEqual(plan(hunt(9))['count'], 9)
         self.assertEqual(plan(hunt(9))['events'], [])
         self.assertEqual(next_event(plan(hunt(10)), {'start': {}})[0], 'half')
-        self.assertEqual(next_event(plan(hunt(18)), {'start': {}, 'half': {}})[0], 'near')
-        self.assertIn('2 bonus', next_event(plan(hunt(18)), {'start': {}, 'half': {}})[2])
+        self.assertEqual(next_event(plan(hunt(19)), {'start': {}, 'half': {}})[0], 'near')
+        self.assertIn('1 bonus', next_event(plan(hunt(19)), {'start': {}, 'half': {}})[2])
 
     def test_skipped_thresholds_emit_one_latest_message(self):
-        event = next_event(plan(hunt(18)), {'start': {}})
+        event = next_event(plan(hunt(19)), {'start': {}})
         self.assertEqual(event[0], 'near')
         self.assertEqual(event[3], ['half'])
 

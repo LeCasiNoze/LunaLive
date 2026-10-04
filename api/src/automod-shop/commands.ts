@@ -11,12 +11,14 @@ import { inTransaction,lockWallet,walletEntry,readWallet,walletSummary } from ".
 import {effectiveShopStake} from './effective-stake.js';
 import {requirePurchaseSlotAvailable} from './purchase-queue.js';
 import {castHuntVote} from './hunt-votes.js';
+import {castEngagement} from './engagement.js';
 import {findObservedBonusMenu} from './catalog.js';
 
 export interface ShopChatMessage { streamerId:number; userId:string; username:string; messageId:string; text:string; createdAt:Date; }
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
 export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string|null> {
   if(!validRumbleIdentity(m.userId) || !m.messageId) return null;
+  const engagement=await castEngagement(pool,m);if(engagement!==null)return engagement;
   const vote=/^!hunt\s+(ouvrir|continuer)\s*$/i.exec(m.text.trim());
   if(vote){
     if(Date.now()-m.createdAt.getTime()>120_000||m.createdAt.getTime()>Date.now()+30_000)return null;
