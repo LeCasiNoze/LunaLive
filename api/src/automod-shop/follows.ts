@@ -19,6 +19,7 @@ async function poll(pool:Pool,sid:number){
   const response=await fetch('https://rumble.com/-livestream-api/get-data?key='+encodeURIComponent(account.api_key),{signal:AbortSignal.timeout(12000)});
   if(!response.ok)return;
   const data=await response.json() as any,followers=data?.followers;
+  if(String(data?.username??'').toLowerCase()!=='lecasinoze')return;
   if(!followers||!Number.isSafeInteger(followers.num_followers_total)||followers.num_followers_total<0)return;
   await inTransaction(pool,async c=>{
    await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
