@@ -91,6 +91,8 @@ export async function pollEngagement(pool:Pool,sid:number,input:any){
   }
   let row=(await c.query(`SELECT * FROM automod_engagement WHERE streamer_id=$1 AND ${input.kind==='prediction'?"kind='prediction' AND checkpoint=$2":"kind='mode' AND status IN ('queued','open','locked')"} ORDER BY created_at LIMIT 1 FOR UPDATE`,input.kind==='prediction'?[sid,input.checkpoint]:[sid])).rows[0];
   if(!row)return {ok:true,event:null,live:true};
+  // Inspect queued/locked mode votes without starting their deadline before the VPS unloads the slot.
+  if(input.kind==='mode'&&input.prepareOnly===true)return {ok:true,event:await display(c,row),live:true};
   if(row.kind==='mode'&&row.status==='queued'){
    // Do not resurrect yesterday's missed vote after a long failure.
    if(Date.now()-new Date(row.created_at).getTime()>3600000){await c.query("UPDATE automod_engagement SET status='refunded',result='missed' WHERE id=$1",[row.id]);return {ok:true,event:null,live:true};}
