@@ -108,7 +108,7 @@ export async function pollEngagement(pool:Pool,sid:number,input:any){
  });
  if(result.announce&&result.event){
   const event=result.event;
-  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !oui 100 ou !non 100 (10 à 500 points, arrondis à la dizaine). Pot partagé, cotes finales à la clôture ; un seul camp = remboursement. Start ${(event.summary.startBalanceCents/100).toFixed(2)} € · ${event.entries.length} bonus.`:'Vote de mode · 5 minutes : !1 Automod, !2 Auto Hunt. Une voix par personne. Égalité ou aucun vote : choix aléatoire.';
+  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !oui 100 ou !non 100 (10 à 500 points).`:'Vote de mode · 5 minutes : !1 Automod, !2 Auto Hunt. Une voix par personne. Égalité ou aucun vote : choix aléatoire.';
   if((await notifyShop(pool,sid,text)).sent)await pool.query('UPDATE automod_engagement SET announced_at=NOW() WHERE id=$1',[event.id]);
  }
  return result;
@@ -117,7 +117,7 @@ export async function castEngagement(pool:Pool,m:{streamerId:number;userId:strin
  const prediction=parsePredictionCommand(m.text),vote=/^!(?:vote\s+)?([12])\s*$/i.exec(m.text.trim());
  if(!prediction&&!vote)return null;
  if(!validRumbleIdentity(m.userId)||Date.now()-m.createdAt.getTime()>120000||m.createdAt.getTime()>Date.now()+30000)return null;
- if(prediction?.error)return `@${m.username} — Tape !oui 100 ou !non 100 (10 à 500 points). Le montant est arrondi à la dizaine la plus proche : 63 devient 60.`;
+ if(prediction?.error)return `@${m.username} — Tape !oui 100 ou !non 100 (10 à 500 points).`;
  await engagementSchema(pool);
  try{return await inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[m.streamerId]);
