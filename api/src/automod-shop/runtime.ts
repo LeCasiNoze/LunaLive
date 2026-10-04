@@ -1,6 +1,25 @@
 import type { Pool } from "pg";
 import { bonusPointPrice,bonusRebatePoints,performancePoints,SHOP_RULES,validateOffers,validRumbleIdentity } from "./rules.js";
 import { inTransaction,lockWallet,walletEntry,readWallet } from "./wallet.js";
+export function purchaseCertainlyNotSent(reason:unknown):boolean{
+ if(typeof reason!=='string'||!reason.startsWith('SHOP_BUY_NOT_TRIGGERED: select: '))return false;
+ try{const value=JSON.parse(reason.slice('SHOP_BUY_NOT_TRIGGERED: select: '.length));return value.triggered===false&&['shop-control-not-unique-or-visible','native-shop-action-refused'].includes(value.error);}catch{return false;}
+}
+/** Only a native selection refusal proves no purchase confirmation was sent. */
+export async function reconcileProvenUnsentPurchases(pool:Pool,streamerId:number){
+ return inTransaction(pool,async c=>{
+  await c.query('SELECT pg_advisory_xact_lock($1)',[streamerId]);
+  const rows=(await c.query("SELECT * FROM automod_shop_orders WHERE streamer_id=$1 AND status='uncertain' AND spent_points=0 AND reserved_points>0 ORDER BY rumble_user_id,id FOR UPDATE",[streamerId])).rows;
+  const released=[];
+  for(const o of rows){
+   if(!purchaseCertainlyNotSent(o.result?.reason))continue;
+   await lockWallet(c,streamerId,o.rumble_user_id,o.username);
+   await walletEntry(c,streamerId,o.rumble_user_id,`order:${o.id}:refund-reservation`,0,-Number(o.reserved_points),'technical-failure-release',{reason:'native-selection-refused-before-confirmation'});
+   await c.query("UPDATE automod_shop_orders SET status='refunded',reserved_points=0,result=$3,updated_at=NOW(),completed_at=NOW() WHERE streamer_id=$1 AND id=$2",[streamerId,o.id,JSON.stringify({reason:'native-selection-refused-before-confirmation',previous:o.result})]);
+   released.push({username:o.username,wallet:await readWallet(c,streamerId,o.rumble_user_id)});
+  }return released;
+ });
+}
 
 export async function ordersForCall(pool:Pool,streamerId:number,callId:string){
  const r=await pool.query(`SELECT id,kind,tier,offer_id AS "offerId",status,selected_offer AS "selectedOffer",offers,
@@ -112,7 +131,7 @@ export async function mutateOrder(pool:Pool,streamerId:number,id:string,action:s
    return status('expired',{result:{feePoints:fee},username:o.username});
   }
   if(action==='failure'){
-   if(['purchase-sent','bonus','uncertain'].includes(o.status))return status('uncertain',{result:{reason:String(input.reason??'purchase-unconfirmed').slice(0,240)}});
+   if(['purchase-sent','bonus','uncertain'].includes(o.status)&&!(o.status!=='bonus'&&Number(o.spent_points)===0&&purchaseCertainlyNotSent(input.reason)))return status('uncertain',{result:{reason:String(input.reason??'purchase-unconfirmed').slice(0,240)}});
    const reserved=Number(o.reserved_points);
    await walletEntry(c,streamerId,o.rumble_user_id,`order:${id}:refund-reservation`,0,-reserved,'technical-failure-release',input);
    await c.query(`UPDATE automod_shop_orders SET reserved_points=0 WHERE streamer_id=$1 AND id=$2`,[streamerId,id]);

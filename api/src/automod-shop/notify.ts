@@ -4,7 +4,7 @@ import { sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 import { shopReplyChunks,SHOP_RULES } from "./rules.js";
 import { inTransaction } from "./wallet.js";
 import { walletSummary } from "./wallet.js";
-import { reconcileRemovedShopCalls } from "./runtime.js";
+import { reconcileRemovedShopCalls,reconcileProvenUnsentPurchases } from "./runtime.js";
 export async function notifyShop(pool:Pool,streamerId:number,text:string){
  const target=await pool.query(`SELECT i.live_video_id_numeric FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id
   WHERE i.streamer_id=$1 AND i.is_live=TRUE AND lower(s.slug)='lecasinoze'`,[streamerId]);
@@ -13,6 +13,7 @@ export async function notifyShop(pool:Pool,streamerId:number,text:string){
  return {sent:results.every(r=>r.sent||r.queued)};
 }
 export async function tickPointsRain(pool:Pool,streamerId:number){
+ for(const released of await reconcileProvenUnsentPurchases(pool,streamerId))await notifyShop(pool,streamerId,`@${released.username} — Achat non déclenché confirmé : réservation libérée. ${walletSummary(released.wallet)}`);
  for(const released of await reconcileRemovedShopCalls(pool,streamerId)){
   await notifyShop(pool,streamerId,`@${released.username} — Ton call a été retiré : les points réservés sont libérés. ${walletSummary(released.wallet)}`);
  }

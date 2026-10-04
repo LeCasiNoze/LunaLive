@@ -30,6 +30,20 @@ def plan(status):
               'count': 0, 'events': [], 'stake': config.get('stakeCents', 10),
               'golden': any(p.get('enabled') for p in (config.get('enhancedSpins') or {}).values()),
               'fast': config.get('fastSpins') is True}
+    engagement = status.get('engagement') or {}
+    if engagement.get('status') == 'open':
+        if engagement.get('kind') == 'mode':
+            result['events'].append(('mode:' + str(engagement.get('id')), 'Vote de mode en direct — 5 minutes !',
+                'Quel mode voulez-vous ? **!1 Automod** ou **!2 Auto Hunt** dans le chat. Une voix par personne ; égalité ou aucun vote = choix aléatoire.'))
+        else:
+            summary = engagement.get('summary') or {}
+            start = summary.get('startBalanceCents')
+            be = hunt.get('summary', {}).get('requiredAverageMultiplier')
+            details = f"Start {euro(start)}" if isinstance(start, int) else 'Start à confirmer'
+            if isinstance(be, (int, float)):
+                details += f' · BE ×{be:.1f}'
+            result['events'].append(('prediction:' + str(engagement.get('id')), 'Pronostics ouverts — ouverture dans 3 minutes !',
+                details + ' · ' + str(len(engagement.get('entries', []))) + ' bonus. Le Hunt sera-t-il rentable ? **!pari oui 100** ou **!pari non 100**. De 10 à 500 points, pot partagé.'))
     if not is_hunt:
         return result
     settings = config.get('bonusHunt') or {}
@@ -65,13 +79,13 @@ def plan(status):
         target = max(1, int(settings.get('targetBonuses', 20)))
         remaining = max(0, target - count)
         result['title'] = f'Auto Hunt — {target} bonus'
-        result['objective'] = f'Recherche de {target} bonus, puis ouverture de toute la collection. Un nouveau hunt suivra !'
+        result['objective'] = f'Recherche de {target} bonus, pronostics puis ouverture de la collection. Retour en Automod à la fin.'
         if count >= math.ceil(target / 2):
             result['events'].append(('half', 'Le Hunt a passé la moitié !',
                 f'{count}/{target} bonus capturés. Encore {remaining} bonus avant l’ouverture !'))
-        if count > 0 and remaining <= 2:
+        if count > 0 and remaining <= 1:
             result['events'].append(('near', 'Ouverture du Hunt imminente !',
-                f'{count}/{target} bonus capturés. Plus que {remaining} bonus à trouver : rejoignez le live !'))
+                f'{count}/{target} bonus capturés. Plus que {remaining} bonus à trouver ! Rejoignez le live pour les pronostics : le Hunt sera-t-il rentable ? Start {euro(hunt["startBalanceCents"]) if isinstance(hunt.get("startBalanceCents"), int) else "—"} · BE ×{hunt.get("summary", {}).get("requiredAverageMultiplier", 0) or 0:.1f}.'))
     if hunt.get('phase') == 'opening':
         result['events'].append(('opening', 'On ouvre le Hunt !',
             f'Les {count} bonus sauvegardés vont être ouverts. Venez découvrir les gains en direct !'))
