@@ -168,12 +168,22 @@ automodServiceRouter.post(`${API}/v1/shop/hunt-report`,runtimeRoute(async(req:an
  await pool.query(`INSERT INTO automod_hunt_reports(streamer_id,report_id,payload) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[sid,id,JSON.stringify(s)]);
  const row=await pool.query(`SELECT sent FROM automod_hunt_reports WHERE streamer_id=$1 AND report_id=$2`,[sid,id]);
  if(!row.rows[0]?.sent){
-  const euro=(n:number|null)=>n===null?'non confirmé':(n/100).toFixed(2)+' €';
-  const text=final?`Hunt : ${s.openedCount}/${s.bonusCount} bonus ouverts${s.failedCount?` · ${s.failedCount} à vérifier`:''}. Start ${euro(s.startBalanceCents)} · BE initial ${euro(s.initialBECents)} · gains ${euro(s.totalGainCents)} · reste pour BE ${euro(s.remainingBECents)}. Moyenne ×${s.averageMultiplier===null?'—':s.averageMultiplier.toFixed(1)}${s.best?` · meilleur : ${s.best.slotName}, ×${s.best.multiplier.toFixed(1)}, call de ${s.best.caller}`:''}.`:`Ouverture ${s.openedCount}/${s.bonusCount} · gains ${euro(s.totalGainCents)} · reste pour BE : ${euro(s.remainingBECents)}.`;
+  const euro=(n:number|null)=>n===null?'—':(n/100).toFixed(2)+' €';
+  const profit=Number.isSafeInteger(s.profitCents)?Number(s.profitCents):s.initialBECents===null?null:s.totalGainCents-s.initialBECents;
+  const renta=profit===null?'Renta —':`${profit>=0?'Gain':'Perte'} ${euro(Math.abs(profit))}`;
+  const be=Number.isFinite(s.requiredAverageMultiplier)&&s.requiredAverageMultiplier>=0?'×'+s.requiredAverageMultiplier.toFixed(1):'—';
+  const text=final?`Hunt ${s.openedCount}/${s.bonusCount} · Start ${euro(s.startBalanceCents)} · Retours ${euro(s.totalGainCents)} · ${renta} | Moy. ×${s.averageMultiplier===null?'—':s.averageMultiplier.toFixed(1)}${s.best?` | Top ${s.best.slotName} ×${s.best.multiplier.toFixed(1)} (${s.best.caller})`:''}${s.failedCount?` | X ${s.failedCount}`:''}`:`Ouverture ${s.openedCount}/${s.bonusCount} · BE ${be} · ${renta}`;
   const result=await notifyShop(pool,sid,text);
   if(result.sent)await pool.query(`UPDATE automod_hunt_reports SET sent=TRUE WHERE streamer_id=$1 AND report_id=$2`,[sid,id]);
  }
  return res.json({ok:true});
+}));
+automodServiceRouter.post(`${API}/v1/shop/hunt-finished`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ await ensureDashboardSchema();
+ // Never undo a manual stop or a newer mode selection; update only the mode.
+ const r=await pool.query(`UPDATE automod_control SET dashboard_settings=jsonb_set(dashboard_settings,'{mode}','"automod"'::jsonb),settings_revision=settings_revision+1,updated_at=NOW() WHERE streamer_id=$1 AND desired_enabled=TRUE AND dashboard_settings->>'mode'='auto-hunt' RETURNING streamer_id`,[req.automodService.streamerId]);
+ return res.json({ok:true,transitioned:r.rowCount===1});
 }));
 // Maintenance credit is restricted to the verified channel owner's Rumble identity.
 // It is idempotent and unavailable to viewers or public site callers.
