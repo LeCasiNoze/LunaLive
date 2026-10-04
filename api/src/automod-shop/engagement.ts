@@ -3,7 +3,7 @@ import type {Pool,PoolClient} from 'pg';
 import {inTransaction,lockWallet,walletEntry,walletSummary,readWallet} from './wallet.js';
 import {notifyShop} from './notify.js';
 import {validRumbleIdentity} from './rules.js';
-import {PREDICTION_MS,MODE_VOTE_MS,validPredictionPoints,predictionPayouts,predictionStats,parisVoteCheckpoint,type PredictionBet} from './engagement-rules.js';
+import {PREDICTION_MS,MODE_VOTE_MS,validPredictionPoints,parsePredictionCommand,predictionPayouts,predictionStats,parisVoteCheckpoint,type PredictionBet} from './engagement-rules.js';
 
 const ready=new WeakMap<Pool,Promise<void>>();
 export async function engagementSchema(pool:Pool){
@@ -108,15 +108,16 @@ export async function pollEngagement(pool:Pool,sid:number,input:any){
  });
  if(result.announce&&result.event){
   const event=result.event;
-  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !pari oui 100 ou !pari non 100 (10 à 500 points, multiples de 10). Pot partagé, cotes finales à la clôture ; un seul camp = remboursement. Start ${(event.summary.startBalanceCents/100).toFixed(2)} € · ${event.entries.length} bonus.`:'Vote de mode · 5 minutes : !1 Automod, !2 Auto Hunt. Une voix par personne. Égalité ou aucun vote : choix aléatoire.';
+  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !oui 100 ou !non 100 (10 à 500 points, arrondis à la dizaine). Pot partagé, cotes finales à la clôture ; un seul camp = remboursement. Start ${(event.summary.startBalanceCents/100).toFixed(2)} € · ${event.entries.length} bonus.`:'Vote de mode · 5 minutes : !1 Automod, !2 Auto Hunt. Une voix par personne. Égalité ou aucun vote : choix aléatoire.';
   if((await notifyShop(pool,sid,text)).sent)await pool.query('UPDATE automod_engagement SET announced_at=NOW() WHERE id=$1',[event.id]);
  }
  return result;
 }
 export async function castEngagement(pool:Pool,m:{streamerId:number;userId:string;username:string;messageId:string;createdAt:Date;text:string}):Promise<string|null>{
- const prediction=/^!pari\s+(oui|non)\s+(\d{1,6})\s*$/i.exec(m.text.trim()),vote=/^!(?:vote\s+)?([12])\s*$/i.exec(m.text.trim());
+ const prediction=parsePredictionCommand(m.text),vote=/^!(?:vote\s+)?([12])\s*$/i.exec(m.text.trim());
  if(!prediction&&!vote)return null;
  if(!validRumbleIdentity(m.userId)||Date.now()-m.createdAt.getTime()>120000||m.createdAt.getTime()>Date.now()+30000)return null;
+ if(prediction?.error)return `@${m.username} — Tape !oui 100 ou !non 100 (10 à 500 points). Le montant est arrondi à la dizaine la plus proche : 63 devient 60.`;
  await engagementSchema(pool);
  try{return await inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[m.streamerId]);
@@ -126,10 +127,10 @@ export async function castEngagement(pool:Pool,m:{streamerId:number;userId:strin
   if(!row)return `@${m.username} — Aucun ${prediction?'pronostic':'vote de mode'} ouvert.`;
   const previous=(await c.query('SELECT 1 FROM automod_engagement_ballots WHERE round_id=$1 AND rumble_user_id=$2',[row.id,m.userId])).rowCount;
   if(previous)return `@${m.username} — Participation déjà enregistrée ; un seul choix par personne.`;
-  const points=prediction?Number(prediction[2]):0;
+  const points=prediction?prediction.points:0;
   if(prediction&&!validPredictionPoints(points))return `@${m.username} — Choisis 10 à 500 points, par multiples de 10.`;
   if(prediction){await lockWallet(c,m.streamerId,m.userId,m.username);await walletEntry(c,m.streamerId,m.userId,`prediction:${row.id}:reserve:${m.userId}`,0,points,'prediction-reservation');}
-  const choice=prediction?(prediction[1]!.toLowerCase()==='oui'?'yes':'no'):vote![1]==='1'?'automod':'auto-hunt';
+  const choice=prediction?prediction.choice:vote![1]==='1'?'automod':'auto-hunt';
   await c.query('INSERT INTO automod_engagement_ballots(round_id,rumble_user_id,username,choice,points) VALUES($1,$2,$3,$4,$5)',[row.id,m.userId,m.username.slice(0,80),choice,points]);
   return `@${m.username} — ${prediction?`${points} points réservés sur « ${choice==='yes'?'rentable':'non rentable'} ». ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`:`Vote ${choice==='automod'?'Automod':'Auto Hunt'} enregistré.`}`;
  });}catch(e){if(String(e).includes('insufficient_points'))return `@${m.username} — Points disponibles insuffisants ; aucun point réservé.`;throw e;}

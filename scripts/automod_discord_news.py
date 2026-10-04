@@ -43,7 +43,7 @@ def plan(status):
             if isinstance(be, (int, float)):
                 details += f' · BE ×{be:.1f}'
             result['events'].append(('prediction:' + str(engagement.get('id')), 'Pronostics ouverts — ouverture dans 3 minutes !',
-                details + ' · ' + str(len(engagement.get('entries', []))) + ' bonus. Le Hunt sera-t-il rentable ? **!pari oui 100** ou **!pari non 100**. De 10 à 500 points, pot partagé.'))
+                details + ' · ' + str(len(engagement.get('entries', []))) + ' bonus. Le Hunt sera-t-il rentable ? **!oui 100** ou **!non 100**. De 10 à 500 points, pot partagé.'))
     if not is_hunt:
         return result
     settings = config.get('bonusHunt') or {}

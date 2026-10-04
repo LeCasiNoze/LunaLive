@@ -6,6 +6,7 @@ import { canAccessFsbBoard } from "../lib/fsb_access";
 import { getAutomodCaptchaAccess, getAutomodDashboard, saveAutomodDashboardSettings, sendAutomodCommand, setAutomodControl, setAutomodAudioMode,
   type AutomodDashboard, type AutomodDashboardSettings, type AutomodProvider } from "../lib/api_automod";
 import "./AutomodDashboardPage.css";
+import AutomodStats from "./AutomodStats";
 
 const PROVIDERS: Array<{key:AutomodProvider;name:string;short:string;accent:string}>=[
   {key:"hacksaw",name:"Hacksaw Gaming",short:"H",accent:"mint"},
@@ -20,6 +21,7 @@ const formatTime=(value:string)=>{const date=new Date(value);return Number.isNaN
 
 export default function AutomodDashboardPage(){
   const {user}=useAuth();
+  const [tab,setTab]=React.useState<'control'|'stats'>('control');
   const [dashboard,setDashboard]=React.useState<AutomodDashboard|null>(null);
   const [draft,setDraft]=React.useState<AutomodDashboardSettings>(DEFAULT_SETTINGS);
   const [stakeText,setStakeText]=React.useState("0,20");
@@ -86,7 +88,8 @@ export default function AutomodDashboardPage(){
       {notice&&<div role="status" className={`amd-notice ${notice.error?"error":"success"}`}>{notice.error?<AlertTriangle size={18}/>:<Check size={18}/>}<span>{notice.text}</span><button onClick={()=>setNotice(null)} aria-label="Fermer">×</button></div>}
       {loading&&<div className="amd-loading">Connexion au contrôle Automod…</div>}
 
-      <div className="amd-grid">
+      <nav className="amd-section-tabs" aria-label="Automod"><button aria-pressed={tab==='control'} onClick={()=>setTab('control')}>Contrôle du direct</button><button aria-pressed={tab==='stats'} onClick={()=>setTab('stats')}>Audience & statistiques</button></nav>
+      {tab==='stats'?<AutomodStats/>:<div className="amd-grid">
         <div className="amd-main-column">
           <section className="amd-panel amd-mode-panel"><div className="amd-panel-heading"><div><span className="amd-kicker">COMMENT JOUER</span><h2>Choisir la session</h2></div><Sparkles size={22}/></div>
             <div className="amd-mode-grid">{(['automod','auto-hunt'] as const).map(mode=><button type="button" key={mode} className={`amd-mode ${(draft.mode??'automod')===mode?'selected':''}`} aria-pressed={(draft.mode??'automod')===mode} onClick={()=>setValue({mode})}><span>{mode==='automod'?'01':'02'}</span><strong>{mode==='automod'?'Automod':'Auto Hunt'}</strong><small>{mode==='automod'?'Une session sur chaque call, bonus joués immédiatement.':'Capture les bonus, puis ouvre toute la collection.'}</small></button>)}</div>
@@ -152,7 +155,7 @@ export default function AutomodDashboardPage(){
           {runtime?.mode==='bonus-hunt'&&<section className="amd-panel"><span className="amd-kicker">COLLECTION DU HUNT</span><h2>Bonus capturés</h2><button className="amd-save" disabled={!playing||!!busy||!runtime.huntEntries?.some(e=>e.status!=='opened')} onClick={()=>void perform('open_hunt',()=>sendAutomodCommand('open_hunt'),'Ouverture du hunt demandée après le dernier round.')}>Ouvrir maintenant</button><div className="amd-queue-list">{runtime.huntEntries?.map(entry=><div className="amd-queue-card" key={entry.id}>{entry.imageUrl&&<img src={entry.imageUrl} alt=""/>}<div><strong>{entry.slotName}</strong><small>{euro(entry.baseStakeCents)} · {entry.gainCents===null?'À ouvrir':euro(entry.gainCents)}</small></div><span>{entry.status==='failed'?'À vérifier':entry.status==='opening'?'En ouverture':entry.status==='opened'?'Ouvert':'Capturé'}</span></div>)}</div></section>}
 
         </aside>
-      </div>
+      </div>}
     </div>
     <div className="amd-mobile-dock"><span><span className={live?"on":"off"}/>{live?"EN DIRECT":phase.toUpperCase()}</span><button disabled={!dashboard||!!busy||(!dashboard.enabled&&(!fresh||runtime?.queueWritable!==true))} onClick={toggle}>{dashboard?.enabled?"Arrêter":"Démarrer"}</button></div>
   </main>;

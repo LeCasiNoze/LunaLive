@@ -24,3 +24,12 @@ test('Historical release requires explicit refusal before confirmation',()=>{
  assert.equal(purchaseCertainlyNotSent('SHOP_BUY_NOT_TRIGGERED: select: {"triggered":false,"error":"shop-control-not-unique-or-visible"}'),true);
  for(const value of ['timeout','SHOP_BUY_NOT_TRIGGERED: confirm: {"triggered":false}', 'SHOP_BUY_NOT_TRIGGERED: select: {"triggered":true,"error":"shop-control-not-unique-or-visible"}'])assert.equal(purchaseCertainlyNotSent(value),false);
 });
+
+test('short prediction commands round to nearest ten and reject malformed or out-of-range stakes',async()=>{
+ const {parsePredictionCommand}=await import('../src/automod-shop/engagement-rules.js');
+ assert.deepEqual(parsePredictionCommand('!oui 63'),{error:false,choice:'yes',points:60});
+ assert.deepEqual(parsePredictionCommand('!non 65'),{error:false,choice:'no',points:70});
+ assert.deepEqual(parsePredictionCommand('!pari oui 100'),{error:false,choice:'yes',points:100});
+ for(const text of ['!oui','!non abc','!oui 0','!oui 501','!oui -20'])assert.deepEqual(parsePredictionCommand(text),{error:true});
+ assert.equal(parsePredictionCommand('!points'),null);
+});
