@@ -17,6 +17,9 @@ function size(chunk, encoding) {
 }
 function feature(raw = "") {
   const path = raw.split("?", 1)[0];
+  if (path.includes("automod-service")) return "automod-service";
+  if (path.includes("automod")) return "automod-public";
+  if (path.includes("/calls")) return "calls";
   if (/\/clips\/[^/]+\/mp4\/?$/.test(path)) return "clips-video";
   if (path.startsWith("/hls")) return "live-hls";
   if (path.includes("lunaclip")) return "lunaclip-admin";
