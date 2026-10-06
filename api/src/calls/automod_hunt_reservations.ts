@@ -4,7 +4,9 @@ export function huntSlotKey(name:string):string {
   return name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 }
 export async function huntSlotReserved(client:PoolClient,streamerId:number,name:string):Promise<boolean>{
-  const result=await client.query(`SELECT 1 FROM automod_hunt_reservations WHERE streamer_id=$1 AND slot_key=$2 AND status<>'opened' LIMIT 1`,[streamerId,huntSlotKey(name)]);
+  // Failed openings remain in the recovery history, not in the call lock.
+  // Recalling them lets the runner reconcile an existing bonus on entry.
+  const result=await client.query(`SELECT 1 FROM automod_hunt_reservations WHERE streamer_id=$1 AND slot_key=$2 AND status IN ('pending','opening') LIMIT 1`,[streamerId,huntSlotKey(name)]);
   return result.rowCount!==0;
 }
 export async function syncHuntReservations(pool:Pool,streamerId:number,input:unknown){
