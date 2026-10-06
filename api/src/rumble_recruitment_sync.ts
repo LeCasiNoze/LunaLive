@@ -1,4 +1,12 @@
 import { pool } from "./db.js";
+import { createSyncChanges } from "./utils/sync_changes.js";
+
+const changes = createSyncChanges<Record<string, unknown>>(
+  row => String(row.slug),
+  row => { const { updatedAt, ...content } = row; return JSON.stringify(content); },
+);
+let syncing = false;
+let fullSyncRequested = false;
 
 const log = (...args: unknown[]) => console.log("[rumble-recruitment-sync]", ...args);
 
@@ -103,21 +111,35 @@ async function sync(recentOnly = false) {
     lastStreamStartedAt: row.last_stream_started_at, lastStreamEndedAt: row.last_stream_ended_at,
     updatedAt: row.monitoring_updated_at,
   }));
-  if (!candidates.length) return;
+  const pending = changes.pending(candidates);
+  if (!pending.length) return;
   const response = await fetch(`${cfg.base}/api/internal/recruitment/rumble`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-nivora-bot-key": cfg.key },
-    body: JSON.stringify({ candidates }),
+    body: JSON.stringify({ candidates: pending }),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!response.ok) throw new Error(`Nivora returned ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  log(`synced ${candidates.length} ${recentOnly ? "live/recent" : "total"} candidates`);
+  changes.acknowledge(pending);
+  log(`synced ${pending.length}/${candidates.length} ${recentOnly ? "live/recent" : "total"} candidates`);
+}
+
+async function syncOnce(recentOnly = false) {
+  if (!recentOnly) fullSyncRequested = true;
+  if (syncing) return;
+  syncing = true;
+  const runFull = fullSyncRequested;
+  fullSyncRequested = false;
+  try { await sync(!runFull); }
+  catch (error) { if (runFull) fullSyncRequested = true; throw error; }
+  finally { syncing = false; }
 }
 
 export function startRumbleRecruitmentSync() {
   if (!config() || process.env.RUMBLE_RECRUITMENT_MONITOR_ENABLED === "0") return;
   setTimeout(() => void pullRecordedTargets().catch((error) => log("target pull failed", error)), 5_000);
-  setTimeout(() => void sync().catch((error) => log("initial sync failed", error)), 20_000);
+  setTimeout(() => void syncOnce().catch((error) => log("initial sync failed", error)), 20_000);
   setInterval(() => void pullRecordedTargets().catch((error) => log("target pull failed", error)), 10 * 60_000);
-  setInterval(() => void sync(true).catch((error) => log("live sync failed", error)), 30_000);
-  setInterval(() => void sync().catch((error) => log("sync failed", error)), 5 * 60_000);
+  setInterval(() => void syncOnce(true).catch((error) => log("live sync failed", error)), 30_000);
+  setInterval(() => void syncOnce().catch((error) => log("sync failed", error)), 5 * 60_000);
 }
