@@ -4,6 +4,7 @@ import { keyText, normText } from "./normalize.js";
 import { normalizeProvider } from "./provider_aliases.js";
 import { automodCallProviderAllowed } from "./automod_provider_policy.js";
 import { huntSlotReserved } from './automod_hunt_reservations.js';
+import { excludedSlotName } from './excluded-slot.js';
 
 export type CallItem = {
   id: string;
@@ -205,6 +206,10 @@ export async function isUserBannedFromCalls(
 export async function isSlotBanned(pool: Pool, streamerId: number, slotKey: string): Promise<boolean> {
   const k = String(slotKey || "").trim();
   if (!k) return false;
+  if (excludedSlotName(k)) {
+    const owner = await pool.query("SELECT 1 FROM streamers WHERE id=$1 AND lower(slug)='lecasinoze'", [streamerId]);
+    if (owner.rows.length) return true;
+  }
 
   const r = await pool.query(
     `SELECT 1

@@ -6,6 +6,7 @@ import { SHOP_RULES } from "../automod-shop/rules.js";
 import { automodProviderAllowed } from "../calls/automod_provider_policy.js";
 import {effectiveShopStake} from '../automod-shop/effective-stake.js';
 import {findObservedBonusMenu} from '../automod-shop/catalog.js';
+import {excludedSlotName} from '../calls/excluded-slot.js';
 export const automodShopRouter=Router();
 // Public information only: the site generates commands; no browser may spend points.
 automodShopRouter.get('/automod-shop',async(req,res)=>{
@@ -17,9 +18,9 @@ automodShopRouter.get('/automod-shop',async(req,res)=>{
   const base=Number(row.dashboard_settings?.stakeCents??row.runtime_status?.config?.stakeCents??10);
   const catalogBase=await effectiveShopStake(pool,row.id,base);
   const q=String(req.query.q??'').trim().slice(0,160);
-  const slots=q.length>=2?(await searchSlots(pool,q,12)).filter(s=>automodProviderAllowed(s.provider,allowed)):[];
+  const slots=q.length>=2?(await searchSlots(pool,q,12)).filter(s=>!excludedSlotName(s.name)&&automodProviderAllowed(s.provider,allowed)):[];
   const slotKey=keyText(String(req.query.slot??'').slice(0,160));
-  const catalog=slotKey?await findObservedBonusMenu(pool,row.id,slotKey,catalogBase):null;
+  const catalog=slotKey&&!excludedSlotName(slotKey)?await findObservedBonusMenu(pool,row.id,slotKey,catalogBase):null;
   const rain=await pool.query(`SELECT points,closes_at FROM automod_points_rains WHERE streamer_id=$1 AND closes_at>NOW() ORDER BY opened_at DESC LIMIT 1`,[row.id]);
   res.setHeader('Cache-Control','no-store');
   return res.json({ok:true,enabled:row.desired_enabled===true,durationAllowed:!(row.dashboard_settings?.mode==='auto-hunt'&&row.dashboard_settings?.hunt?.jail===true),rules:SHOP_RULES,baseStakeCents:base,effectiveBaseStakeCents:catalogBase,
