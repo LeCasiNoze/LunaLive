@@ -1,3 +1,4 @@
+import {setAutomodEnabled} from '../automod-shop/control-transition.js';
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
@@ -71,8 +72,8 @@ async function dashboardStreamer(req:any,res:any){const s=await streamerForSlug(
 automodControlRouter.get("/fsb/automod",requireAuth,requireFsbAccess,async(_req,res)=>{await ensureSchema();const s=await streamerForSlug("lecasinoze");if(!s)return res.status(404).json({ok:false,error:"streamer_not_found"});
   const r=await pool.query(`SELECT desired_enabled,updated_at,captcha_active,captcha_detected_at FROM automod_control WHERE streamer_id=$1`,[s.id]);return res.json({ok:true,enabled:r.rows[0]?.desired_enabled===true,updatedAt:r.rows[0]?.updated_at??null,captchaActive:r.rows[0]?.captcha_active===true,captchaDetectedAt:r.rows[0]?.captcha_detected_at??null,captchaAvailable:captchaConfig()!==null});});
 automodControlRouter.put("/fsb/automod",requireAuth,requireFsbAccess,async(req:any,res)=>{await ensureSchema();const s=await streamerForSlug("lecasinoze");if(!s)return res.status(404).json({ok:false,error:"streamer_not_found"});const enabled=req.body?.enabled===true;
-  const r=await pool.query(`INSERT INTO automod_control(streamer_id,desired_enabled,updated_by) VALUES($1,$2,$3) ON CONFLICT(streamer_id) DO UPDATE SET desired_enabled=EXCLUDED.desired_enabled,updated_by=EXCLUDED.updated_by,updated_at=NOW() RETURNING desired_enabled,updated_at`,[s.id,enabled,req.user?.id??null]);
-  return res.json({ok:true,enabled:r.rows[0].desired_enabled,updatedAt:r.rows[0].updated_at});});
+  const r=await setAutomodEnabled(pool,Number(s.id),enabled,req.user?.id??null);
+  return res.json({ok:true,enabled:r.desired_enabled,updatedAt:r.updated_at,announcementQueued:r.announcementQueued});});
 automodControlRouter.get("/automod/control/:slug",requireAuth,async(req:any,res)=>{await ensureDashboardSchema();const s=await streamerForSlug(String(req.params.slug||""));if(!s)return res.status(404).json({ok:false,error:"streamer_not_found"});if(!(await canControl(req.user,s)))return res.status(403).json({ok:false,error:"forbidden"});
   const r=await pool.query(`SELECT desired_enabled,updated_at,dashboard_settings,settings_revision FROM automod_control WHERE streamer_id=$1`,[s.id]);return res.json({ok:true,enabled:r.rows[0]?.desired_enabled===true,updatedAt:r.rows[0]?.updated_at??null,settings:r.rows[0]?.dashboard_settings??null,settingsRevision:Number(r.rows[0]?.settings_revision??0)});});
 
