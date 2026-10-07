@@ -1,0 +1,83 @@
+{
+  "version": "points-20261002-intro-proof",
+  "apiCommit": "38dc325eaca407546f50e6dd14dbadc5d0bec571",
+  "siteCommit": "b2b1916dc77cab33a30dd0b52312492a5c362ba1",
+  "files": [
+    {
+      "path": "automod-controller.ts",
+      "sha256": "425358a5f87c163d5ed7c1793ebe6b7dfa512d8fcc9dbe43247d9259c1e20d1c",
+      "beforeSha256": "c621590b85bf5d0a1eae2b834c1a9ad13f639fd7f5e833f2c64bc23ec6568c6b"
+    },
+    {
+      "path": "automod-domain.ts",
+      "sha256": "08819992125c1ad2a9848b3eb6ec48bb9644f17c6e662ba6ca2952d1d8ec9d53",
+      "beforeSha256": "a77b7c364b72223789982fb67e9f09b2014c21eaaff8c76cd2b2f0eff636679e"
+    },
+    {
+      "path": "automod-service.ts",
+      "sha256": "86e989008704fe12bf2f1d71f3bc62c391f741571153c043013f5a73457e6ade",
+      "beforeSha256": "ff94e0a63ea98cb51acee4a8d35e24b1725e74b33d4f8da3f6828cd6545d50b1"
+    },
+    {
+      "path": "lunalive-client.ts",
+      "sha256": "7c71c8bd912709751f6685ab7f55a862d1890064095381fd529d074118724591",
+      "beforeSha256": "fe1d6884fc80f6f4ced099534b3219289daab9e32e1aa48ba9bd1b2e6cccb5ff"
+    },
+    {
+      "path": "session-data-journal.ts",
+      "sha256": "f37af9746739dcbbe0f444ec203d42a1fd7712e1196b30c77f5a81ce5755d5ca",
+      "beforeSha256": "14e3f1825a8f28754ffcb65670e02fdd70a53dd08b4301c12a74310ce6a6a6c7"
+    },
+    {
+      "path": "pragmatic-native-shop.ts",
+      "sha256": "895368e048a37deb7511a6145c0d585065ec4ffa859057b73ee7035ab6daa9cf",
+      "beforeSha256": "349642ab1ca4440c1db1aa0cc2676e464dcf7844003b6f8fd832e3dd3f5b9526"
+    },
+    {
+      "path": "automod-queue.ts",
+      "sha256": "eef0757bf292c7b64aff51de6fc30bd5958fd15d38207bbf70ade58e65295fe4",
+      "beforeSha256": "c5f0ab79f5d6f37e5c85c34c822b16663cb8ef3422b986bbb8a266441361efd8"
+    },
+    {
+      "path": "automod-config.ts",
+      "sha256": "9c4389e33e35b7baf0abb9a1b2292f5448e96757dd5a336dc877aef8b8bed8df",
+      "beforeSha256": "54a6bbe27bb5061efc4e68c88e2af53ad1d8ede670f928dfd498bcface95445e"
+    },
+    {
+      "path": "browser-slot-executor.ts",
+      "sha256": "0450fefb8853faf15c9fdd68e76ebde1c10d0c175dd277bab633f2fb594e210f",
+      "beforeSha256": "abe7d1fcaf73c38e8f1ad5b699b560588228d0e618c5d92137cbeb1261c7878e"
+    },
+    {
+      "path": "automod-shop.ts",
+      "sha256": "e08e26c37977e9e60d7ea2ccac920f5a2d804f236098d6d4b5ce280ba1c89ce3",
+      "beforeSha256": null
+    },
+    {
+      "path": "bonus-shop.ts",
+      "sha256": "b6e3c4fdbb2dee1089dedc145cb7e40aad545a9ff6b70e109b3976bcbffa9a78",
+      "beforeSha256": null
+    },
+    {
+      "path": "points-outbox.ts",
+      "sha256": "0af406adb88a51a9b1dba64ebdd496e7ff5b3fac800b4ddd4f643d0456501bc8",
+      "beforeSha256": null
+    },
+    {
+      "path": "pragmatic-recap-ocr.ts",
+      "sha256": "4b593e63e980ac0820f33e7fe4b05fdaeb5821515317601be472edbaeac242d1",
+      "beforeSha256": "e1bc402871e6094d99bdb5bb3b0ea3e34d5faa15d4e13ad44389a3a57d49c4ad"
+    },
+    {
+      "path": "pragmatic-free-spin-start.ts",
+      "sha256": "617cdc460fde2a17eef45d411b36165a334f494d8ac5f8bcd394066dabe0d61b",
+      "beforeSha256": "416be7bf49b877c8f555038f01e5fe75ac07c801273b62381eac21dfa6de406b"
+    }
+  ],
+  "stableBackupSha256": "42878e684cc49b990d890c1b14ae65d6b9cb049f27926a11bec0ead7ebdba61a",
+  "incrementalPatches": [
+    "hacksaw-shop-patch.json",
+    "pragmatic-scroll-patch.json",
+    "pragmatic-intro-patch.json"
+  ]
+}

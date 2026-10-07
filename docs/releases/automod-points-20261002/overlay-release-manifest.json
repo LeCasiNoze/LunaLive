@@ -1,0 +1,31 @@
+{
+  "version": "points-overlay-rule-cycle-20261002",
+  "files": [
+    {
+      "path": "data.mjs",
+      "beforeSha256": "ba611be334d0b44b2b6e970b3822854ca62d79feaccacc3269424e3b181c994e",
+      "sha256": "ba611be334d0b44b2b6e970b3822854ca62d79feaccacc3269424e3b181c994e"
+    },
+    {
+      "path": "src/main.jsx",
+      "beforeSha256": "d0b36028a25c1ceeb818bd4add3ea500e282ca3651739ef8d110b0f4907e4a7c",
+      "sha256": "36e17ffd28ba119e82b8b891e7d90a02d9bccbc9c63e54e5dd46bad19c66acf6"
+    },
+    {
+      "path": "public/overlay.css",
+      "beforeSha256": "d92317fc08369242d2652177d2ce08ade8bcf3a38d7fea420bfd2064601c315b",
+      "sha256": "d92317fc08369242d2652177d2ce08ade8bcf3a38d7fea420bfd2064601c315b"
+    },
+    {
+      "path": "public/app.js",
+      "beforeSha256": "b035c0fe0612090845ae426c668c128d1f87f2c81d392959bd301e080dd824f1",
+      "sha256": "976aacf091ea276c7962154ed556a2c98e5944045380cc193ab7a7de38967fd9"
+    },
+    {
+      "path": "public/app.js.LEGAL.txt",
+      "beforeSha256": "573cc95a6417c69a6ca44804f440f00965283c8cdcc50025305a7a50f53940ac",
+      "sha256": "573cc95a6417c69a6ca44804f440f00965283c8cdcc50025305a7a50f53940ac"
+    }
+  ],
+  "backupSha256": "24768ebb5e2550bd427d630d3f63f0a10f2074cbb51797186cd351768548abcc"
+}

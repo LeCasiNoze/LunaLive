@@ -2,7 +2,9 @@
 
 ## État de livraison
 
-Implémentation candidate du 2 octobre 2026. Ce document décrit les invariants et la procédure de validation ; il ne prouve pas un déploiement. La preuve de livraison doit contenir les commits API/site, les versions VPS, les réponses réelles et les journaux de tests privés. La production ne doit pas être déclarée opérationnelle avant ces contrôles.
+API et site déployés le 2 octobre 2026. API : PR #8, commit main `38dc325eaca407546f50e6dd14dbadc5d0bec571` ; migration `mig142_automod_points`. Site : PR #1 du dépôt NozeBet, branche de déploiement `codex/lecasinoze-hub`, commit `b2b1916dc77cab33a30dd0b52312492a5c362ba1`. Shop : https://lecasinoze.onrender.com/automod-shop/ .
+
+Worker VPS : version consolidée `points-20261002-intro-proof`, contrôlée par les quatorze empreintes de `worker-current-manifest.json`. Les correctifs incrémentaux et sauvegardes restent conservés. Le journal de recette détaillé est `automod-points-20261002/LIVRAISON-ET-VALIDATION.md` dans le dossier de travail LeCasiNoze. Le déploiement n'est pas une preuve de toutes les familles de machines : les limites de recette ci-dessous restent applicables.
 
 ## Identité et stockage
 
@@ -83,3 +85,31 @@ Les providers partagent des familles de composants ; une famille validée n'est 
 Ne pas forcer une option disabled, le menu de gamble ou un achat après intent ambigu. Les fichiers de diagnostic ne doivent pas afficher les cookies, tokens, URLs sensibles ou adresses IP. Le profil Chrome et Norway doivent être préservés. Le pipeline FPS et le chat statique ne sont pas modifiés par le shop.
 
 Hunt, cagnotte/full-buy et giveaway futurs sont hors implémentation de cette livraison.
+
+## Preuves de recette privée
+
+- PostgreSQL temporaire réel : 14 tests réussis, aucun échec ni skip ; trois croisent le worker installé et les transitions SQL. Les actions provider de ces trois tests sont des fixtures, distinctes des achats réels ci-dessous.
+- Worker Linux : 497 tests, 492 réussis, 5 ignorés ; régression ciblée Pragmatic/capture : 27 réussis, aucun échec ni skip.
+- Le Bandit, unité53 : vraie commande Rumble, réserve175, menu10€/25€, choix du propriétaire, achat10€ débité350points après bonus naturel, résultat8,73€, reprise des spins payants/Golden. Ordre `1e060e39-1360-4b53-8239-63c8dfa5815e`. Journal `/opt/automod/.runtime/points-fullchain-1790964554409/validation.jsonl`.
+- Gates1000, unité57 : reprise réelle du récap16,16€, CONTINUE sans scroll parasite, disparition confirmée puis base20c. Journal `/opt/automod/.runtime/shop-purchase-validation/gates-return-1790966088204.jsonl`. Aucun nouvel achat dans cette reprise.
+- Boosts/rain, unité58 : commandes natives créant un seul call1029, débit300+250, durée90000ms à partir du premier spin, bonus naturel attendu au-delà du deadline puis gain15,46€ collecté. Rain+20 une fois, deuxième participation refusée. Solde natif final19200, réserve0. L'assertion de mise du harness attendait30c exactement, alors que le provider a choisi20c pour cible30c ; cette unité n'est donc pas un test vert. La grille réelle doit être contrôlée indépendamment pour prouver l'arrondi inférieur.
+
+Le crédit de test initial20000 a été attribué une seule fois à l'ID propriétaire284177710 ; les dépenses/récompenses expliquent le solde actuel. Ne jamais recréditer aveuglément après un test ou une perte de réponse.
+
+Les essais utilisent uniquement un publisher privé borné et un vrai live non répertorié. Le superviseur FSB est arrêté pendant l'activation temporaire du mode. Après essai : désir Automodfalse, publisher privé arrêté, modèlePUBLICrestauré avec confirmation, Chrome manuel/superviseur rétablis, publisher public inactif. Ne pas lancer un live public pour terminer cette recette.
+
+### Résolution de l'assertion de mise
+
+Diagnostic natif unité62, sans spin ni achat : le palier immédiatement supérieur à20c est40c. La cible30c est donc correctement arrondie à20c, avec Golden60c. Journal /opt/automod/.runtime/points-stake-grid-1790967886961/grid.json. Le vérificateur indépendant verify-native-boosts.mts, exécuté sur ce journal et celui de l'unité58, confirme les deux ordresdone, durée90s, spins terminés, bonus attendu/collecté et fileviewer intacte. L'unité58 initiale conserve son erreur historique d'assertion ; sa preuve métier est maintenant validée indépendamment. Aucune nouvelle dépense pour cette vérification.
+
+## Achat connu et récompense positive — unité63
+
+Même live privé v7gakqm/446974600 repris et confirmé EN DIRECT/non répertorié. Commande native !achat B:fs_consume Le Bandit : réserve350 immédiate sur solde19200, call1030, ordreba77eecd-374e-4ed0-a6d8-5dff801e6a01. Menu réel revalidé identifiantfs_consume/prix10€/base10c ; achat avant tout round payé, sans second choix du viewer.
+Bonus réellement terminé gain2257c ; débit350, rebate210 (60% pour gain>=2×prix), aucune récompense naturelle sur le bonus acheté. Spins payants repris Golden30c/base10c, first-spin+10. Solde annoncé19070, réserve0 =19200-350+210+10.
+Unité63 terminalcode0 19:17:24UTC, journal /opt/automod/.runtime/points-fullchain-1790968274329/validation.jsonl. Deux vérificateurs indépendants en lecture seule réussissent : intentunique, achatconnuavantspins, résultat/rebate, roundsaprèsachat, filetierspréservée. Fin de timer autoplay coupé puis dernierround réglé avant sortie.
+Manifeste actuel13sources contrôlé allMatchtrue. Nettoyage APIshopfalse, Chrome/web/superviseuractifs, publicpublisherfailed/inactif, privéstoppé ; modèlePUBLICsauvegardé et toastconfirmé. Screenshots native-known-buy-chat-proof.png et rumble-public-restored-after-known-buy.png. Aucun achat100€/gamble ni livepublic.
+Le parcours connu/cache et la récompensepositive sont maintenant prouvés en natif. Hot Fiesta legacy est désormais validé (achat25€, récupération73, 10→0, gain1,68€, retour base25c). Livraison versionnée dans la PR9, périmètre prêt pour les tests utilisateur.
+
+
+### Transition legacy Hot Fiesta validée
+L'achat déclenche une phase de piñatas avant l'introduction des free spins. Le compteur serveur peut déjà valoir 10 pendant cette phase, tandis que les UILabel FSStart sont encore inactifs. Une capture HUD `clear` ne prouve donc pas le lancement du bonus. Le worker acquitte `bonusStartAdvanced` seulement après une progression réelle, puis reconnaît l'introduction profonde `FSStartWindow_BuyFS` sous `FSStartWindow_HOFI` (ancêtre le plus proche, profondeur12). Les labels actifs, titres complets, handler natif et gardes anti-gamble restent obligatoires. La récupération73 a confirmé 10→0, gain168c, fermeture du récap et retour base25c sans nouvel achat. 50 tests ciblés et compilation stricte passent. Backup : `.runtime/backups/points-20261002/before-intro-proof-<fichier>` ; manifeste version `points-20261002-intro-proof`.
