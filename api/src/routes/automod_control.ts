@@ -22,7 +22,7 @@ function ensureSchema() { return schemaReady ??= pool.query(`CREATE TABLE IF NOT
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS captcha_active BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS captcha_detected_at TIMESTAMPTZ NULL;
-  ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS captcha_notified_at TIMESTAMPTZ NULL;`); }
+  ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS captcha_notified_at TIMESTAMPTZ NULL;`).catch(error=>{schemaReady=null;throw error;}); }
 function captchaConfig(){const key=String(process.env.AUTOMOD_CAPTCHA_SIGNING_KEY||"").trim();const base=String(process.env.AUTOMOD_CAPTCHA_PUBLIC_BASE||"https://vps-92b153fc.vps.ovh.net/automod-captcha/").trim();try{const target=new URL(base);return key.length>=32&&target.protocol==="https:"?{key,target}:null;}catch{return null;}}
 function captchaUrl(){const config=captchaConfig();if(!config)return null;const payload=Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+10*60,nonce:randomBytes(18).toString("base64url")})).toString("base64url");const signature=createHmac("sha256",config.key).update(payload).digest("base64url");config.target.searchParams.set("ticket",`${payload}.${signature}`);return config.target.href;}
 async function streamerForSlug(slug:string){ const r=await pool.query(`SELECT id,user_id FROM streamers WHERE lower(slug)=lower($1) LIMIT 1`,[slug]); return r.rows[0]??null; }
@@ -68,7 +68,7 @@ export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSche
   ALTER TABLE automod_control_commands DROP CONSTRAINT IF EXISTS automod_control_commands_kind_check;
   ALTER TABLE automod_control_commands ADD CONSTRAINT automod_control_commands_kind_check CHECK (kind IN ('restart_chrome','skip_call','open_hunt'));
   CREATE INDEX IF NOT EXISTS automod_control_commands_pending ON automod_control_commands(streamer_id,id) WHERE status='pending';
-`));}
+`)).catch(error=>{dashboardSchemaReady=null;throw error;});}
 async function dashboardStreamer(req:any,res:any){const s=await streamerForSlug("lecasinoze");if(!s){res.status(404).json({ok:false,error:"streamer_not_found"});return null;}if(!canAccessCaptcha(req.user,s)){res.status(403).json({ok:false,error:"forbidden"});return null;}await ensureDashboardSchema();return s;}
 automodControlRouter.get("/fsb/automod",requireAuth,requireFsbAccess,async(_req,res)=>{await ensureSchema();const s=await streamerForSlug("lecasinoze");if(!s)return res.status(404).json({ok:false,error:"streamer_not_found"});
   const r=await pool.query(`SELECT desired_enabled,updated_at,captcha_active,captcha_detected_at FROM automod_control WHERE streamer_id=$1`,[s.id]);return res.json({ok:true,enabled:r.rows[0]?.desired_enabled===true,updatedAt:r.rows[0]?.updated_at??null,captchaActive:r.rows[0]?.captcha_active===true,captchaDetectedAt:r.rows[0]?.captcha_detected_at??null,captchaAvailable:captchaConfig()!==null});});
