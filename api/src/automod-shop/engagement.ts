@@ -105,6 +105,7 @@ export async function pollEngagement(pool:Pool,sid:number,input:any){
   if(!row)return {ok:true,event:null,live:true};
   // Inspect queued/locked mode votes without starting their deadline before the VPS unloads the slot.
   if(input.kind==='mode'&&input.prepareOnly===true)return {ok:true,event:await display(c,row),live:true};
+  if(row.kind==='mode'&&live.runtime_status?.mode==='bonus-hunt')return {ok:true,event:await display(c,row),live:true};
   if(row.kind==='mode'&&row.status==='queued'){
    // A long hunt defers this vote; do not discard it merely because it waited.
    row=(await c.query(`UPDATE automod_engagement SET status='open',closes_at=NOW()+($2*INTERVAL '1 millisecond') WHERE id=$1 RETURNING *`,[row.id,MODE_VOTE_MS])).rows[0];
@@ -142,13 +143,13 @@ export async function castEngagement(pool:Pool,m:{streamerId:number;userId:strin
   if(!row)return `@${m.username} — Aucun ${prediction?'pronostic':'vote de mode'} ouvert.`;
   if(vote&&Number(vote[1])>modeOptions(row).length)return `@${m.username} — Choisis ${modeOptions(row).map((_,i)=>'!'+(i+1)).join(' ou ')}.`;
   const previous=(await c.query('SELECT 1 FROM automod_engagement_ballots WHERE round_id=$1 AND rumble_user_id=$2',[row.id,m.userId])).rowCount;
-  if(previous)return `@${m.username} — Participation déjà enregistrée ; un seul choix par personne.`;
+  if(previous&&prediction)return `@${m.username} — Participation déjà enregistrée ; un seul choix par personne.`;
   const points=prediction?prediction.points:0;
   if(prediction&&!validPredictionPoints(points))return `@${m.username} — Choisis 10 à 500 points, par multiples de 10.`;
   if(prediction){await lockWallet(c,m.streamerId,m.userId,m.username);await walletEntry(c,m.streamerId,m.userId,`prediction:${row.id}:reserve:${m.userId}`,0,points,'prediction-reservation');}
   const choice=prediction?prediction.choice:modeOptions(row)[Number(vote![1])-1]!;
-  await c.query('INSERT INTO automod_engagement_ballots(round_id,rumble_user_id,username,choice,points) VALUES($1,$2,$3,$4,$5)',[row.id,m.userId,m.username.slice(0,80),choice,points]);
-  return `@${m.username} — ${prediction?`${points} points réservés sur « ${choice==='yes'?'rentable':'non rentable'} ». ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`:`Vote ${modeNames[choice]} enregistré.`}`;
+  await c.query('INSERT INTO automod_engagement_ballots(round_id,rumble_user_id,username,choice,points) VALUES($1,$2,$3,$4,$5) ON CONFLICT(round_id,rumble_user_id) DO UPDATE SET choice=EXCLUDED.choice,username=EXCLUDED.username',[row.id,m.userId,m.username.slice(0,80),choice,points]);
+  return `@${m.username} — ${prediction?`${points} points réservés sur « ${choice==='yes'?'rentable':'non rentable'} ». ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`:`Vote ${modeNames[choice]} ${previous?'modifié':'enregistré'}.`}`;
  });}catch(e){if(String(e).includes('insufficient_points'))return `@${m.username} — Points disponibles insuffisants ; aucun point réservé.`;throw e;}
 }
 export async function finishPrediction(pool:Pool,sid:number,input:any){
@@ -157,10 +158,16 @@ export async function finishPrediction(pool:Pool,sid:number,input:any){
   await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
   const row=(await c.query("SELECT * FROM automod_engagement WHERE streamer_id=$1 AND kind='prediction' AND checkpoint=$2 FOR UPDATE",[sid,String(input.checkpoint)])).rows[0];
   if(!row||['settled','refunded'].includes(row.status))return {ok:true,changed:false};
-  const complete=input.complete===true&&Number.isSafeInteger(input.totalGainCents)&&input.totalGainCents>=0&&input.bonusCount===row.payload.entries.length&&input.openedCount===row.payload.entries.length&&input.failedCount===0;
-  if(complete&&row.status!=='locked')throw Error('prediction_not_closed');
-  const finalBalance=row.payload.summary.openingBalanceCents+Number(input.totalGainCents??0);
-  const winner=complete?(finalBalance>=row.payload.summary.startBalanceCents?'yes':'no'):null;
+  const expected=row.payload.entries.length;
+  const valid=Number.isSafeInteger(input.totalGainCents)&&input.totalGainCents>=0&&input.totalGainCents<100000000&&input.bonusCount===expected&&Number.isSafeInteger(input.openedCount)&&input.openedCount>=0&&input.openedCount<=expected&&Number.isSafeInteger(input.failedCount)&&input.failedCount>=0&&input.openedCount+input.failedCount<=expected;
+  if(!valid)throw Error('invalid_prediction_result');
+  const complete=input.complete===true&&input.openedCount===expected&&input.failedCount===0;
+  const finalBalance=row.payload.summary.openingBalanceCents+input.totalGainCents;
+  // Remaining bonus gains are nonnegative: a proven YES cannot become NO.
+  const profitable=finalBalance>=row.payload.summary.startBalanceCents;
+  if(row.status!=='locked')throw Error('prediction_not_closed');
+  if(!complete&&!profitable)return {ok:true,changed:false,pending:true};
+  const winner=profitable?'yes':'no';
   const settled=await release(c,sid,row,winner);
   return {ok:true,changed:true,winner:!settled.refund?winner:null,refunded:settled.refund,pot:settled.payouts.reduce((s,b)=>s+b.points,0)};
  });
@@ -174,6 +181,7 @@ export async function applyModeVote(pool:Pool,sid:number,id:string){
   if(!row||!modeOptions(row).includes(row.result)||!live)return {ok:true,applied:false};
   if(row.status==='settled')return {ok:true,applied:live.dashboard_settings?.mode===row.result,mode:row.result};
   if(row.status!=='locked')return {ok:true,applied:false};
+  if(live.runtime_status?.mode==='bonus-hunt')return {ok:true,applied:false,reason:'hunt_in_progress'};
   if(!['automod','auto-hunt'].includes(row.result)&&!live.runtime_status?.supportedModes?.includes(row.result))return {ok:true,applied:false};
   // Finish the paid obligations of the old mode before entering a mode which
   // cannot execute them. The worker keeps playing the old mode and retries.
@@ -187,4 +195,17 @@ export async function applyModeVote(pool:Pool,sid:number,id:string){
   await c.query("INSERT INTO automod_mode_clock(streamer_id,due_at) VALUES($1,NOW()+INTERVAL '2 hours') ON CONFLICT(streamer_id) DO UPDATE SET due_at=EXCLUDED.due_at",[sid]);
   return {ok:true,applied:true,mode:row.result};
  });
+}
+
+/** One aggregate for the overlay; no per-viewer polling or public native IDs. */
+export async function activePointViewers(pool:Pool,sid:number){
+ await engagementSchema(pool);
+ const rows=(await pool.query(`WITH recent AS (
+  SELECT DISTINCT ON(rumble_user_id) rumble_user_id,username,occurred_at
+  FROM automod_chat_activity WHERE streamer_id=$1 AND occurred_at>NOW()-INTERVAL '30 minutes'
+  ORDER BY rumble_user_id,occurred_at DESC,message_id DESC)
+ SELECT r.username,COALESCE(a.balance-a.reserved,0)::bigint AS points,r.occurred_at
+ FROM recent r LEFT JOIN automod_points_accounts a ON a.streamer_id=$1 AND a.rumble_user_id=r.rumble_user_id
+ ORDER BY points DESC,r.occurred_at DESC,r.rumble_user_id LIMIT 100`,[sid])).rows;
+ return rows.map(r=>({username:String(r.username).slice(0,80),points:Number(r.points),lastMessageAt:new Date(r.occurred_at).getTime()}));
 }
