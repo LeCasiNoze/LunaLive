@@ -2,7 +2,8 @@
 export function followSnapshot(data:any,configuredUsername:string){
  if(configuredUsername.toLowerCase()!=='lecasinoze')return null;
  if(data?.username!=null&&String(data.username).toLowerCase()!==configuredUsername.toLowerCase())return null;
- if(data?.type!=='user'||!/^\d{1,20}$/.test(String(data?.user_id??'')))return null;
+ // The livestream API uses a public base36 account ID, not the numeric chat ID.
+ if(data?.type!=='user'||!/^[a-zA-Z0-9]{1,20}$/.test(String(data?.user_id??'')))return null;
  const followers=data.followers;
  if(!followers||!Number.isSafeInteger(followers.num_followers_total)||followers.num_followers_total<0)return null;
  return {ownerId:String(data.user_id),total:followers.num_followers_total,
