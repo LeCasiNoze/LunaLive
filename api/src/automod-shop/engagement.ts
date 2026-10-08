@@ -50,6 +50,8 @@ async function release(c:PoolClient,sid:number,row:any,winner:'yes'|'no'|null){
 export async function observeAutomodChat(pool:Pool,m:{streamerId:number;userId:string;username:string;messageId:string;createdAt:Date}){
  if(!validRumbleIdentity(m.userId)||!m.messageId||m.messageId.length>150||Date.now()-m.createdAt.getTime()>120000||m.createdAt.getTime()>Date.now()+30000)return;
  await engagementSchema(pool);
+ await pool.query(`INSERT INTO automod_viewer_first_seen(streamer_id,rumble_user_id,first_seen_at)
+ VALUES($1,$2,$3) ON CONFLICT(streamer_id,rumble_user_id) DO UPDATE SET first_seen_at=LEAST(automod_viewer_first_seen.first_seen_at,EXCLUDED.first_seen_at)`,[m.streamerId,m.userId,m.createdAt]);
  await pool.query(`INSERT INTO automod_chat_activity(streamer_id,message_id,rumble_user_id,username,occurred_at)
  SELECT $1,$2,$3,$4,$5 WHERE EXISTS(SELECT 1 FROM automod_control WHERE streamer_id=$1 AND desired_enabled=TRUE)
  ON CONFLICT DO NOTHING`,[m.streamerId,m.messageId,m.userId,m.username.slice(0,80),m.createdAt]);

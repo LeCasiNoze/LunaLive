@@ -480,7 +480,7 @@ export function ensureRumbleBridge(opts: {
     // restent indépendantes pour les comptes importés et pour la radio.
     if (opts.slug === "lunalive" || !commandsOn) return;
 
-    if (opts.slug === "lecasinoze" && (/^!(?:points|shop|rain|achat|duree|mise|hunt|pari|oui|non|vote)(?:\s|$)/i.test(m.text) || /^![12]\s*$/.test(m.text.trim())
+    if (opts.slug === "lecasinoze" && (/^!(?:points|profil|profile|xp|parrain|parrainer|shop|rain|achat|duree|mise|hunt|pari|oui|non|vote)(?:\s|$)/i.test(m.text) || /^![12]\s*$/.test(m.text.trim())
       || /^!call\s+\+[123]\s/i.test(m.text) || /^(?:[1-9]|1[0-6])$/.test(m.text.trim()))) {
       const reply = await handleShopChat(opts.pool, { streamerId: opts.streamerId, userId: m.userId,
         username: m.username, messageId: m.msgId, text: m.text, createdAt: m.createdAt });

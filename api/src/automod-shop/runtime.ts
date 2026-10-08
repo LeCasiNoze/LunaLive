@@ -1,3 +1,5 @@
+import {settleReferral} from './referral.js';
+import {discountedPoints} from './profile.js';
 import type { Pool } from "pg";
 import { bonusPointPrice,bonusRebatePoints,performancePoints,SHOP_RULES,validateOffers,validRumbleIdentity } from "./rules.js";
 import { inTransaction,lockWallet,walletEntry,readWallet } from "./wallet.js";
@@ -76,7 +78,7 @@ export async function mutateOrder(pool:Pool,streamerId:number,id:string,action:s
    // A known command is not permission for a higher price or a different base stake.
    if(selected&&o.selected_offer&&(selected.costCents!==o.selected_offer.costCents||selected.baseStakeCents!==o.selected_offer.baseStakeCents))throw Error('bonus_quote_changed');
    if(o.offer_id&&!selected)throw Error('bonus_variant_missing');
-   const reserve=selected?bonusPointPrice(selected.costCents):Math.ceil(bonusPointPrice(Math.min(...offers.map(f=>f.costCents)))/2);
+   const reserve=selected?discountedPoints(bonusPointPrice(selected.costCents),Number(o.discount_percent)):Math.ceil(discountedPoints(bonusPointPrice(Math.min(...offers.map(f=>f.costCents))),Number(o.discount_percent))/2);
    const delta=reserve-Number(o.reserved_points);
    if(delta)await walletEntry(c,streamerId,o.rumble_user_id,`order:${id}:menu-reserve:${reserve}`,0,delta,'actual-bonus-menu');
    await c.query(`UPDATE automod_shop_orders SET offers=$3,selected_offer=$4,reserved_points=$5 WHERE streamer_id=$1 AND id=$2`,[streamerId,id,JSON.stringify(offers),selected?JSON.stringify(selected):null,reserve]);
@@ -124,7 +126,7 @@ export async function mutateOrder(pool:Pool,streamerId:number,id:string,action:s
   }
   if(action==='expire'){
    if(o.kind!=='buy'||o.status!=='offered'||input.played!==true||input.technicalFailure===true)throw Error('no_response_fee_not_allowed');
-   const offers=validateOffers(o.offers),fee=Math.ceil(bonusPointPrice(Math.min(...offers.map(f=>f.costCents)))/2);
+   const offers=validateOffers(o.offers),fee=Math.ceil(discountedPoints(bonusPointPrice(Math.min(...offers.map(f=>f.costCents))),Number(o.discount_percent))/2);
    if(fee!==Number(o.reserved_points))throw Error('fee_not_reserved');
    await walletEntry(c,streamerId,o.rumble_user_id,`order:${id}:no-response`,-fee,-Number(o.reserved_points),'no-response-priority-fee');
    await c.query(`UPDATE automod_shop_orders SET spent_points=$3,reserved_points=0 WHERE streamer_id=$1 AND id=$2`,[streamerId,id,fee]);
@@ -147,18 +149,20 @@ export async function ingestPointsEvent(pool:Pool,streamerId:number,event:any){
  const uid=event.item.requestedByRumbleId,username=String(event.item.requestedBy??'').slice(0,80);
  const d=event.data??{},origin=d.purchaseOrderId?'purchase':d.inheritedBonus?'inherited':'natural';
  let amount=0,key='';
- if(event.kind==='first-spin-settled'){amount=SHOP_RULES.firstSpinPoints;key=`first:${event.item.callId}`;}
+ if(event.kind==='first-spin-settled'||event.kind==='call-played'){amount=SHOP_RULES.firstSpinPoints;key=`first:${event.item.callId}`;}
  else if(event.kind==='bonus-started'&&origin==='natural'){amount=SHOP_RULES.naturalBonusPoints;key=`bonus-start:${event.visitId}:${d.bonus?.startedAt}`;}
  else if(event.kind==='bonus-ended'){amount=performancePoints(d.bonus?.gainCents,d.baseStakeCents,origin);key=`bonus-result:${event.visitId}:${d.bonus?.startedAt}`;}
  else if(event.kind==='round'&&!d.bonusActive){amount=performancePoints(d.gainCents,d.baseStakeCents,origin);key=`round:${event.visitId}:${d.roundNumber}`;}
  else return {accepted:true,points:0};
  if(!event.item.callId||!event.visitId||key.endsWith(':undefined'))throw Error('invalid_reward_identity');
  return inTransaction(pool,async c=>{
+  await c.query('SELECT pg_advisory_xact_lock($1)',[streamerId]);
   await lockWallet(c,streamerId,uid,username);
   const seen=await c.query(`INSERT INTO automod_points_events(streamer_id,event_key,kind,payload) VALUES($1,$2,$3,$4)
     ON CONFLICT DO NOTHING RETURNING event_key`,[streamerId,key,event.kind,JSON.stringify(event)]);
   if(!seen.rowCount)return {accepted:true,points:0,duplicate:true};
   if(amount)await walletEntry(c,streamerId,uid,`reward:${key}`,amount,0,event.kind,{sessionId:event.sessionId,slotName:event.item.slotName});
+  if(event.kind==='first-spin-settled'||event.kind==='call-played')await settleReferral(c,streamerId,uid);
   return {accepted:true,points:amount,userId:uid,username,wallet:await readWallet(c,streamerId,uid)};
  });
 }

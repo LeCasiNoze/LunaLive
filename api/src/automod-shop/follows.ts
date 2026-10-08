@@ -1,3 +1,4 @@
+import {settleReferral} from './referral.js';
 import type {Pool} from 'pg';
 import {inTransaction,lockWallet,walletEntry} from './wallet.js';
 import {validRumbleIdentity} from './rules.js';
@@ -28,7 +29,7 @@ async function poll(pool:Pool,sid:number){
    for(const f of list.slice(0,500)){
     if(typeof f.username!=='string'||!f.username||f.username.length>80||!Number.isFinite(Date.parse(f.followed_on)))continue;
     // The first snapshot is an inventory, never a burst of historical alerts/rewards.
-    await c.query('INSERT INTO automod_follow_events(streamer_id,username,followed_at,baseline) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[sid,f.username,new Date(f.followed_on),!initialized]);
+    await c.query('INSERT INTO automod_follow_events(streamer_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(streamer_id,username,followed_at) DO UPDATE SET last_confirmed_at=NOW()',[sid,f.username,new Date(f.followed_on),!initialized]);
    }
    await c.query('INSERT INTO automod_follow_state(streamer_id) VALUES($1) ON CONFLICT DO NOTHING',[sid]);
    await c.query("INSERT INTO automod_follower_samples(streamer_id,sample_at,total) VALUES($1,date_trunc('minute',NOW()),$2) ON CONFLICT DO NOTHING",[sid,followers.num_followers_total]);
@@ -52,10 +53,14 @@ export async function rewardFollow(pool:Pool,m:{streamerId:number;userId:string;
   await c.query('SELECT pg_advisory_xact_lock($1)',[m.streamerId]);
   const control=(await c.query('SELECT desired_enabled,runtime_status FROM automod_control WHERE streamer_id=$1',[m.streamerId])).rows[0];
   if(!control?.desired_enabled||!control.runtime_status?.publisherActive)return;
-  const events=(await c.query("SELECT * FROM automod_follow_events WHERE streamer_id=$1 AND username=$2 AND NOT baseline AND rumble_user_id IS NULL AND seen_at>NOW()-INTERVAL '7 days' AND followed_at<=NOW()+INTERVAL '1 minute' ORDER BY followed_at DESC LIMIT 1 FOR UPDATE",[m.streamerId,m.username])).rows;
-  if(!events.length)return;
-  await lockWallet(c,m.streamerId,m.userId,m.username);
-  await walletEntry(c,m.streamerId,m.userId,`follow:${m.userId}`,FOLLOW_POINTS,0,'follow-welcome');
-  await c.query('UPDATE automod_follow_events SET rumble_user_id=$4 WHERE streamer_id=$1 AND username=$2 AND followed_at=$3',[m.streamerId,m.username,events[0].followed_at,m.userId]);
+  const events=(await c.query("SELECT *,followed_at::text AS followed_at_key FROM automod_follow_events WHERE streamer_id=$1 AND username=$2 AND rumble_user_id IS NULL AND seen_at>NOW()-INTERVAL '7 days' AND followed_at<=NOW()+INTERVAL '1 minute' ORDER BY followed_at DESC LIMIT 1 FOR UPDATE",[m.streamerId,m.username])).rows;
+  if(events.length){
+   await lockWallet(c,m.streamerId,m.userId,m.username);
+   if(!events[0].baseline)await walletEntry(c,m.streamerId,m.userId,`follow:${m.userId}`,FOLLOW_POINTS,0,'follow-welcome');
+   await c.query('UPDATE automod_follow_events SET rumble_user_id=$4 WHERE streamer_id=$1 AND username=$2 AND followed_at=$3',[m.streamerId,m.username,events[0].followed_at_key,m.userId]);
+  }
+  // Retry after a delayed follow observation, not only after the second call.
+  const candidates=(await c.query("SELECT child_id FROM automod_referrals WHERE streamer_id=$1 AND status='pending' AND (parent_id=$2 OR child_id=$2) ORDER BY created_at LIMIT 100",[m.streamerId,m.userId])).rows;
+  for(const candidate of candidates)await settleReferral(c,m.streamerId,candidate.child_id);
  });
 }

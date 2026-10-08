@@ -1,3 +1,5 @@
+import {handleReferral} from './referral.js';
+import {readProfile,profileMessage,discountedPoints} from './profile.js';
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 import { resolveSlot } from "../calls/catalog.js";
@@ -18,6 +20,11 @@ export interface ShopChatMessage { streamerId:number; userId:string; username:st
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
 export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string|null> {
   if(!validRumbleIdentity(m.userId) || !m.messageId) return null;
+  if(/^!(?:profil|profile|xp)\s*$/i.test(m.text.trim())){
+    if(Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
+    return profileMessage(m.username,await readProfile(pool,m.streamerId,m.userId));
+  }
+  const referral=await handleReferral(pool,m);if(referral!==null)return referral;
   const engagement=await castEngagement(pool,m);if(engagement!==null)return engagement;
   const vote=/^!hunt\s+(ouvrir|continuer)\s*$/i.exec(m.text.trim());
   if(vote){
@@ -55,7 +62,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
         const order=r.rows[0];if(!order)return `@${m.username} — Aucun choix d’achat en attente pour toi.`;
         const offers=validateOffers(order.offers),offer=offers[cmd.choice-1];
         if(!offer)return `@${m.username} — Choisis un numéro entre 1 et ${offers.length}.`;
-        const price=bonusPointPrice(offer.costCents),delta=price-Number(order.reserved_points);
+        const price=discountedPoints(bonusPointPrice(offer.costCents),Number(order.discount_percent)),delta=price-Number(order.reserved_points);
         if(delta)await walletEntry(c,m.streamerId,m.userId,`order:${order.id}:choice:${offer.id}`,0,delta,'bonus-choice-reservation');
         await c.query(`UPDATE automod_shop_orders SET status='chosen',selected_offer=$3,offer_id=$4,reserved_points=$5,updated_at=NOW() WHERE streamer_id=$1 AND id=$2`,[m.streamerId,order.id,JSON.stringify(offer),offer.id,price]);
         return `@${m.username} — ${offer.label} sélectionné (${(offer.costCents/100).toFixed(2)} €, ${price} points réservés). ${walletSummary(await readWallet(c,m.streamerId,m.userId))} Achat dès la fin du round ou bonus en cours.`;
@@ -72,10 +79,11 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
         const active=await c.query(`SELECT id FROM automod_shop_orders WHERE streamer_id=$1 AND kind='globalstake' AND status IN ('pending','opening','done') LIMIT 1`,[m.streamerId]);
         if(active.rowCount)throw Error('global_boost_already_active');
         await lockWallet(c,m.streamerId,m.userId,m.username);
-        const id=randomUUID(),price=SHOP_RULES.globalStake.points;
+        const discount=(await readProfile(c,m.streamerId,m.userId)).discountPercent;
+        const id=randomUUID(),price=discountedPoints(SHOP_RULES.globalStake.points,discount);
         await walletEntry(c,m.streamerId,m.userId,`order:${id}:reserve`,0,price,'global-stake-reservation');
-        await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,reserved_points)
-          VALUES($1,$2,$3,$4,$5,'globalstake','session','Session Automod','all',1,$6)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,price]);
+        await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,reserved_points,discount_percent)
+          VALUES($1,$2,$3,$4,$5,'globalstake','session','Session Automod','all',1,$6,$7)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,price,discount]);
         return `@${m.username} — Mise de session ×3 pour une heure : ${price} points réservés. Début au premier spin confirmé sur la prochaine machine ; aucun cumul de boosts. ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`;
       });
     }
@@ -111,6 +119,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       const sessionBase=Number(mode.rows[0].dashboard_settings?.stakeCents??mode.rows[0].runtime_status?.config?.stakeCents??10);
       const base=await effectiveShopStake(c,m.streamerId,sessionBase,m.userId,keyText(slot.name));
       if(cmd.kind==='stake'&&await effectiveShopStake(c,m.streamerId,sessionBase)>=sessionBase*SHOP_RULES.stake[cmd.tier-1]!.factor)throw Error('boost_already_covered');
+      const discount=(await readProfile(c,m.streamerId,m.userId)).discountPercent;
       let points=0,offer:any=null;
       if(cmd.kind==='buy'){
         const knownMenu=await findObservedBonusMenu(c,m.streamerId,keyText(slot.name),base);
@@ -122,9 +131,10 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
           // Reserve half the actual cheapest cached buy, or a 100x base estimate.
           // Actual discovery replaces this amount before the no-response fee can apply.
           const cheapest=cache.rows[0]?Math.min(...validateOffers(cache.rows[0].offers).map(o=>o.costCents)):base*100;
-          points=Math.ceil(bonusPointPrice(cheapest)/2);
+          points=Math.ceil(discountedPoints(bonusPointPrice(cheapest),discount)/2);
         }
       }else points=(cmd.kind==='stake'?SHOP_RULES.stake:SHOP_RULES.duration)[cmd.tier-1]!.points;
+      if(cmd.kind!=='buy'||cmd.offerId)points=discountedPoints(points,discount);
       if(await huntSlotReserved(c,m.streamerId,slot.name))throw Error('automod_bonus_pending');
       const existing=await c.query(`SELECT id::text,pos FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND slot_key=$3 ORDER BY pos LIMIT 1 FOR UPDATE`,[m.streamerId,m.userId,keyText(slot.name)]);
       let call=existing.rows[0];
@@ -156,14 +166,14 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
           const difference=points-Number(old.reserved_points);
           if(wallet.available<difference)throw Error('insufficient_points');
           await walletEntry(c,m.streamerId,m.userId,`order:${old.id}:upgrade:${m.messageId}`,0,difference,'shop-upgrade-reservation');
-          await c.query(`UPDATE automod_shop_orders SET tier=$3,reserved_points=$4,updated_at=NOW() WHERE streamer_id=$1 AND id=$2`,[m.streamerId,old.id,cmd.tier,points]);
+          await c.query(`UPDATE automod_shop_orders SET tier=$3,reserved_points=$4,discount_percent=$5,updated_at=NOW() WHERE streamer_id=$1 AND id=$2`,[m.streamerId,old.id,cmd.tier,points,discount]);
           return `@${m.username} — ${slot.name} : palier ${cmd.tier} réservé, seulement ${difference} points supplémentaires. ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`;
         }
       }
       if(wallet.available<points)throw Error('insufficient_points');
       await walletEntry(c,m.streamerId,m.userId,`order:${id}:reserve`,0,points,'shop-reservation');
-      await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,offer_id,selected_offer,call_id,reserved_points)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,cmd.kind,keyText(slot.name),slot.name,provider,'tier'in cmd?cmd.tier:null,cmd.kind==='buy'?cmd.offerId:null,offer?JSON.stringify(offer):null,call.id,points]);
+      await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,offer_id,selected_offer,call_id,reserved_points,discount_percent)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,cmd.kind,keyText(slot.name),slot.name,provider,'tier'in cmd?cmd.tier:null,cmd.kind==='buy'?cmd.offerId:null,offer?JSON.stringify(offer):null,call.id,points,discount]);
       return `@${m.username} — ${slot.name} : ${points} points réservés. ${walletSummary(await readWallet(c,m.streamerId,m.userId))} ${cmd.kind==='buy'?(offer?'Bonus choisi, achat vérifié au passage sur la machine.':'Passage prioritaire ; choix du bonus dans le chat. Sans réponse : moitié du plus petit achat vérifié, uniquement si la machine joue.'):cmd.kind==='stake'?`Mise ×${SHOP_RULES.stake[cmd.tier-1]!.factor} demandée, Golden inclus dans le contrôle du coût.`:`Durée ×${SHOP_RULES.duration[cmd.tier-1]!.factor}.`}`;
     });
   }catch(error){

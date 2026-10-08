@@ -1,3 +1,8 @@
+import {rewardFollow} from '../src/automod-shop/follows.js';
+import {handleReferral,settleReferral} from '../src/automod-shop/referral.js';
+import {mig143_automod_hunt_reservations} from '../src/db/migrations/mig143_automod_hunt_reservations.js';
+import {readProfile} from '../src/automod-shop/profile.js';
+import {mig144_automod_progression} from '../src/db/migrations/mig144_automod_progression.js';
 import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -18,6 +23,8 @@ before(async()=>{
  assert.equal(directory.rows[0].path,'/tmp/automod-points-pg-data');
  await admin.query(`CREATE DATABASE ${database}`);created=true;
  await pool.query(`CREATE TABLE streamers(id BIGINT PRIMARY KEY);
+  CREATE TABLE rumble_chat_messages(streamer_id BIGINT,rumble_user_id TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
+
   CREATE TABLE automod_control(streamer_id BIGINT PRIMARY KEY,desired_enabled BOOLEAN,dashboard_settings JSONB DEFAULT '{}',runtime_status JSONB DEFAULT '{}');
   CREATE TABLE calls_queue(id BIGSERIAL PRIMARY KEY,streamer_id BIGINT,slot_name TEXT,slot_key TEXT,provider TEXT,user_id BIGINT,username TEXT,pos BIGINT,rumble_user_id TEXT,is_bonus BOOLEAN DEFAULT FALSE,bet NUMERIC,pay NUMERIC,bounty BOOLEAN);
   CREATE TABLE calls_settings(streamer_id BIGINT PRIMARY KEY,enabled BOOLEAN DEFAULT TRUE,show_cmd_in_chat BOOLEAN DEFAULT FALSE,show_accept_public BOOLEAN DEFAULT TRUE,allow_listec BOOLEAN DEFAULT TRUE,listec_max INT DEFAULT 10,per_user_limit INT DEFAULT 2,sync_hunt BOOLEAN DEFAULT FALSE);
@@ -26,6 +33,8 @@ before(async()=>{
   CREATE TABLE calls_allowed_providers(streamer_id BIGINT,provider_norm TEXT);
   CREATE TABLE slots_catalog(name_key TEXT PRIMARY KEY,name TEXT,provider_norm TEXT,image_url TEXT);`);
  await mig142_automod_points(pool);await mig142_automod_points(pool);
+ await mig143_automod_hunt_reservations(pool);
+ await mig144_automod_progression(pool);await mig144_automod_progression(pool);
  await pool.query(`INSERT INTO slots_catalog(name_key,name,provider_norm) VALUES($1,'Wanted Dead or a Wild','Hacksaw Gaming')`,[keyText('Wanted Dead or a Wild')]);
 });
 after(async()=>{
@@ -149,4 +158,80 @@ test('natural rewards are business-event idempotent and bought bonuses earn no n
  await ingestPointsEvent(pool,12,{...base,id:'result',kind:'bonus-ended',data:{baseStakeCents:20,bonus:{startedAt:1000,gainCents:10000}}});
  await ingestPointsEvent(pool,12,{...base,id:'bought',kind:'bonus-ended',visitId:'bought',data:{baseStakeCents:20,purchaseOrderId:randomUUID(),bonus:{startedAt:2000,gainCents:100000}}});
  assert.equal((await readWallet(pool,12,'113')).balance,110);
+});
+
+
+test('profile counts historical facts once, excludes purchased records and test credits',async()=>{
+ const p=await readProfile(pool,12,'113');
+ assert.equal(p.callsPlayed,1);assert.equal(p.naturalBonuses,1);assert.equal(p.bestMultiplier,500);
+ assert.equal(p.xp,135);assert.equal(p.monthlyEventPoints,0);
+ assert.equal((await readProfile(pool,2,'102')).xp,0);
+ assert.match(await chat(12,'113','!profil')??'',/1 calls joués/);
+});
+test('discount remains frozen from reservation through bonus selection, debit and rebate',async()=>{
+ const uid=await buyer(20,'120');
+ await inTransaction(pool,async c=>{await lockWallet(c,20,uid,'User');for(let i=0;i<25;i++)await walletEntry(c,20,uid,`xp-call:${i}`,10,0,'first-spin-settled');});
+ assert.equal((await readProfile(pool,20,uid)).discountPercent,1);
+ assert.match(await chat(20,uid,'!achat Wanted Dead or a Wild')??'',/réservés/);
+ const o=(await pool.query('SELECT * FROM automod_shop_orders WHERE streamer_id=20')).rows[0];
+ assert.equal(o.discount_percent,1);assert.equal(Number(o.reserved_points),347);
+ const offers=[{id:'train',label:'Train',costCents:2000,baseStakeCents:20},{id:'duel',label:'Duel',costCents:4000,baseStakeCents:20}];
+ await mutateOrder(pool,20,o.id,'menu',{cacheBaseStakeCents:20,offers});
+ await chat(20,uid,'2');assert.equal((await readWallet(pool,20,uid)).reserved,1386);
+ await mutateOrder(pool,20,o.id,'intent',{offer:offers[1]});await mutateOrder(pool,20,o.id,'confirmed',{});
+ await mutateOrder(pool,20,o.id,'complete',{gainCents:12000});
+ assert.equal((await readWallet(pool,20,uid)).available,10250-1386+1524);
+});
+
+
+test('referral: stable code, reciprocal refusal, two calls, both follows, exactly once',async()=>{
+ const sid=30,parent=await buyer(sid,'130'),child='131';
+ const msg=(uid:string,text:string)=>handleReferral(pool,{streamerId:sid,userId:uid,username:'Viewer'+uid,text,createdAt:new Date()});
+ await pool.query("INSERT INTO automod_viewer_first_seen VALUES($1,$2,NOW()),($1,$3,NOW())",[sid,parent,child]);
+ const code=(await msg(parent,'!parrainer'))!.match(/!parrain ([A-F0-9]{8})/)![1];
+ assert.match((await msg(parent,'!parrainer'))!,new RegExp(code));
+ assert.match((await msg(parent,'!parrain '+code))!,/personnel/);
+ assert.match((await msg(child,'!parrain '+code))!,/enregistré/);
+ const childCode=(await msg(child,'!parrainer'))!.match(/!parrain ([A-F0-9]{8})/)![1];
+ assert.match((await msg(parent,'!parrain '+childCode))!,/réciproque/);
+ await pool.query('INSERT INTO automod_follow_events(streamer_id,rumble_user_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,$2,$2,NOW(),FALSE,NOW()),($1,$3,$3,NOW(),FALSE,NOW())',[sid,parent,child]);
+ const fact=(n:number)=>({id:'c'+n,kind:'first-spin-settled',item:{callId:String(n),requestedByRumbleId:child,requestedBy:'Child',slotName:'Test'},visitId:'v'+n,data:{}});
+ await ingestPointsEvent(pool,sid,fact(1));assert.equal((await readWallet(pool,sid,child)).available,10);
+ await Promise.all([ingestPointsEvent(pool,sid,fact(2)),ingestPointsEvent(pool,sid,fact(2))]);
+ assert.equal((await readWallet(pool,sid,child)).available,520);assert.equal((await readWallet(pool,sid,parent)).available,10500);
+ assert.equal((await readProfile(pool,sid,child)).xp,40);
+ assert.match((await msg(child,'!parrain '+code))!,/validé/);
+ assert.equal((await readWallet(pool,sid,parent)).available,10500);
+});
+
+
+test('referral waits for follow proof and enforces five atomic rewards per Paris month',async()=>{
+ const sid=31,parent=await buyer(sid,'140');
+ await pool.query('INSERT INTO automod_follow_events(streamer_id,rumble_user_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,$2,$2,NOW(),FALSE,NOW())',[sid,parent]);
+ for(let n=0;n<6;n++){
+  const child=String(150+n);
+  await pool.query("INSERT INTO automod_referrals(streamer_id,child_id,parent_id,child_name,parent_name,status) VALUES($1,$2,$3,'Child','Parent','pending')",[sid,child,parent]);
+  for(let spin=0;spin<2;spin++)await ingestPointsEvent(pool,sid,{id:child+':'+spin,kind:'first-spin-settled',item:{callId:child+':'+spin,requestedByRumbleId:child,requestedBy:'Child'},visitId:'v',data:{}});
+  assert.equal((await readWallet(pool,sid,child)).available,20);
+  await pool.query('INSERT INTO automod_follow_events(streamer_id,rumble_user_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,$2,$2,NOW(),FALSE,NOW())',[sid,child]);
+  if(n===0){
+   await pool.query("UPDATE automod_follow_events SET last_confirmed_at=NOW()-INTERVAL '3 minutes' WHERE streamer_id=$1 AND rumble_user_id=$2",[sid,child]);
+   await inTransaction(pool,async c=>{await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);assert.equal(await settleReferral(c,sid,child),false);});
+   assert.equal((await readWallet(pool,sid,child)).available,20);
+   await pool.query('UPDATE automod_follow_events SET last_confirmed_at=NOW() WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,child]);
+  }
+  await inTransaction(pool,async c=>{await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);await settleReferral(c,sid,child);});
+  assert.equal((await readWallet(pool,sid,child)).available,n<5?520:20);
+ }
+ assert.equal((await readWallet(pool,sid,parent)).available,12500);
+ assert.equal((await pool.query("SELECT COUNT(*) AS n FROM automod_referrals WHERE streamer_id=$1 AND status='limit-reached'",[sid])).rows[0].n,'1');
+});
+
+test('baseline follow binds the native ID without paying a historical welcome reward',async()=>{
+ const sid=32,uid=await buyer(sid,'166');
+ await pool.query(`UPDATE automod_control SET runtime_status='{"publisherActive":true}' WHERE streamer_id=$1`,[sid]);
+ await pool.query("INSERT INTO automod_follow_events(streamer_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,'KnownFollower',NOW(),TRUE,NOW())",[sid]);
+ await rewardFollow(pool,{streamerId:sid,userId:uid,username:'KnownFollower',createdAt:new Date()});
+ assert.equal((await readWallet(pool,sid,uid)).available,10000);
+ assert.equal((await pool.query('SELECT rumble_user_id FROM automod_follow_events WHERE streamer_id=$1',[sid])).rows[0].rumble_user_id,uid);
 });
