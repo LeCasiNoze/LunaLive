@@ -1,3 +1,4 @@
+import {pollBonusChoice} from '../automod-shop/bonus-choice.js';
 import {tickFollows} from '../automod-shop/follows.js';
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -13,7 +14,7 @@ import { tickPointsRain,notifyShop } from "../automod-shop/notify.js";
 import { creditPoints,walletSummary } from "../automod-shop/wallet.js";
 import { observeBonusCatalog } from "../automod-shop/catalog.js";
 import { pollHuntVote } from "../automod-shop/hunt-votes.js";
-import {tickEngagement,pollEngagement,finishPrediction,applyModeVote,engagementSchema} from '../automod-shop/engagement.js';
+import {tickEngagement,pollEngagement,finishPrediction,applyModeVote,engagementSchema,activePointViewers} from '../automod-shop/engagement.js';
 import { syncHuntReservations } from '../calls/automod_hunt_reservations.js';
 import {createChallenge,challengeSnapshot,startChallengePass,finishChallengePass,settleChallenge,refundStoppedChallenges} from '../automod-shop/provider-challenge.js';
 import {nextWeeklyPurchase,quoteWeeklyPurchase,weeklyPurchaseIntent,finishWeeklyPurchase,failWeeklyPurchase,tickWeeklyEvents} from '../automod-shop/weekly-event.js';
@@ -161,7 +162,11 @@ automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=
   const ranks=event.winners?.map((w,i)=>`${i+1}. @${w.username} ×${Math.floor(w.multiplier)} : ${w.points} pts événement`).join(' · ');
   if(ranks)await notifyShop(pool,req.automodService.streamerId,`Meilleur Achat terminé (${event.day}) · ${ranks}`);
  }
- return res.json({ok:true,follow:await tickFollows(pool,req.automodService.streamerId).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
+ return res.json({ok:true,activePointViewers:await activePointViewers(pool,req.automodService.streamerId),follow:await tickFollows(pool,req.automodService.streamerId).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
+}));
+automodServiceRouter.post(`${API}/v1/shop/bonus-choice`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ return res.json(await pollBonusChoice(pool,req.automodService.streamerId,req.body??{}));
 }));
 automodServiceRouter.post(`${API}/v1/shop/engagement`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});

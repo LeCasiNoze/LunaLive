@@ -1,3 +1,4 @@
+import {castBonusChoice} from './bonus-choice.js';
 import {handleReferral} from './referral.js';
 import {handleDiscordLinkChat} from './discord-profile.js';
 import {handleWeeklyChat} from './weekly-chat.js';
@@ -34,6 +35,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
   const weekly=await handleWeeklyChat(pool,m);if(weekly!==null)return weekly;
   const upgrade=await handleUpgradeChat(pool,m);if(upgrade!==null)return upgrade;
   const challenge=await handleChallengeChat(pool,m);if(challenge!==null)return challenge;
+  const bonusChoice=await castBonusChoice(pool,m);if(bonusChoice!==null)return bonusChoice;
   const engagement=await castEngagement(pool,m);if(engagement!==null)return engagement;
   const vote=/^!hunt\s+(ouvrir|continuer)\s*$/i.exec(m.text.trim());
   if(vote){

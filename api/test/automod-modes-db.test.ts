@@ -1,5 +1,6 @@
+import {pollBonusChoice,castBonusChoice} from '../src/automod-shop/bonus-choice.js';
 import test,{before,after} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';import pg from 'pg';
-import {tickEngagement,pollEngagement,castEngagement,applyModeVote} from '../src/automod-shop/engagement.js';
+import {tickEngagement,pollEngagement,castEngagement,applyModeVote,finishPrediction,activePointViewers,observeAutomodChat} from '../src/automod-shop/engagement.js';
 import {createChallenge,chooseCamp,challengeCallAllowed,startChallengePass,finishChallengePass,settleChallenge,challengeSnapshot,refundStoppedChallenges} from '../src/automod-shop/provider-challenge.js';
 import {setAutomodEnabled} from '../src/automod-shop/control-transition.js';
 import {creditPoints,readWallet} from '../src/automod-shop/wallet.js';
@@ -9,9 +10,9 @@ const pool=new pg.Pool({host:'127.0.0.1',port:55432,user:'automod',database,max:
 before(async()=>{
  assert.equal((await admin.query("SELECT current_setting('data_directory') AS path")).rows[0].path,'/tmp/automod-points-pg-data');
  await admin.query(`CREATE DATABASE ${database}`);created=true;
- await pool.query(`CREATE TABLE streamers(id bigint PRIMARY KEY);
+ await pool.query(`CREATE TABLE streamers(id bigint PRIMARY KEY,slug text DEFAULT 'test');
  CREATE TABLE automod_control(streamer_id bigint PRIMARY KEY,desired_enabled boolean,dashboard_settings jsonb DEFAULT '{}',runtime_status jsonb DEFAULT '{}',runtime_seen_at timestamptz DEFAULT NOW(),settings_revision bigint DEFAULT 0,updated_at timestamptz DEFAULT NOW(),updated_by bigint);
- CREATE TABLE streamer_rumble_info(streamer_id bigint PRIMARY KEY,is_live boolean,viewers_count integer);
+ CREATE TABLE streamer_rumble_info(streamer_id bigint PRIMARY KEY,is_live boolean,viewers_count integer,live_video_id_numeric text);
  CREATE TABLE automod_shop_orders(id uuid,streamer_id bigint,rumble_user_id text,status text,kind text,result jsonb);
  CREATE TABLE automod_points_accounts(streamer_id bigint,rumble_user_id text,username text,balance bigint DEFAULT 0,reserved bigint DEFAULT 0,updated_at timestamptz DEFAULT NOW(),PRIMARY KEY(streamer_id,rumble_user_id));
  CREATE TABLE automod_points_ledger(streamer_id bigint,rumble_user_id text,event_key text,delta bigint,reserved_delta bigint,reason text,metadata jsonb,PRIMARY KEY(streamer_id,event_key));
@@ -28,11 +29,16 @@ test('two hour clock, one pending vote, deferred hunt keeps its five minute wind
  await tickEngagement(pool,1);assert.equal((await pool.query('SELECT COUNT(*) AS n FROM automod_engagement WHERE streamer_id=1')).rows[0].n,'1');
  await pool.query("UPDATE automod_engagement SET created_at=NOW()-INTERVAL '4 hours' WHERE streamer_id=1");
  assert.equal((await pollEngagement(pool,1,{kind:'mode',prepareOnly:true})).event?.status,'queued');
+ await pool.query("UPDATE automod_control SET runtime_status=runtime_status||'{\"mode\":\"bonus-hunt\"}'::jsonb WHERE streamer_id=1");
+ assert.equal((await pollEngagement(pool,1,{kind:'mode'})).event?.status,'queued');
+ await pool.query("UPDATE automod_control SET runtime_status=runtime_status-'mode' WHERE streamer_id=1");
  const opened=(await pollEngagement(pool,1,{kind:'mode'})).event!;
  assert.equal(opened.status,'open');assert.ok(Date.parse(opened.closesAt!)-Date.now()>290000);
  assert.match((await vote(1,'101','!3'))!,/Session achat/);assert.match((await vote(1,'102','!3'))!,/Session achat/);
  assert.match((await vote(1,'103','!1'))!,/Automod/);assert.match((await vote(1,'104','!4'))!,/Choisis/);
- assert.match((await vote(1,'101','!1'))!,/déjà/);
+ assert.match((await vote(1,'101','!1'))!,/modifié/);
+ assert.equal((await pool.query('SELECT COUNT(*) AS n FROM automod_engagement_ballots WHERE round_id=$1 AND rumble_user_id=$2',[opened.id,'101'])).rows[0].n,'1');
+ await vote(1,'101','!3');
  await pool.query("UPDATE automod_engagement SET closes_at=NOW()-INTERVAL '1 second' WHERE id=$1",[opened.id]);
  assert.equal((await pollEngagement(pool,1,{kind:'mode'})).event?.result,'session-buy');
  await pool.query("INSERT INTO automod_shop_orders(streamer_id,status,kind,result) VALUES(1,'pending','buy',NULL)");
@@ -128,4 +134,50 @@ test('stop persists cancellation across immediate restart and refunds only once'
  assert.deepEqual(await readWallet(pool,6,'601'),{balance:1000,reserved:0,available:1000});
  await assert.rejects(chooseCamp(pool,6,e.id,{userId:'602',username:'Late'},'hacksaw',100),/closed/);
  assert.equal((await pool.query("SELECT COUNT(*) AS n FROM automod_points_ledger WHERE streamer_id=6 AND reason='challenge-refund'")).rows[0].n,'1');
+});
+
+test('partial hunt pays a proven YES once; incomplete losing result waits',async()=>{
+ await pool.query('INSERT INTO streamers VALUES(15)');
+ const checkpoint=randomUUID(),id=randomUUID();
+ await creditPoints(pool,15,'1501','Yes','seed-yes',1000,'test');
+ await creditPoints(pool,15,'1502','No','seed-no',1000,'test');
+ await pool.query(`INSERT INTO automod_engagement(id,streamer_id,kind,checkpoint,status,payload) VALUES($1,15,'prediction',$2,'locked',$3)`,[id,checkpoint,JSON.stringify({summary:{startBalanceCents:10000,openingBalanceCents:1000},entries:[{}, {}, {}]})]);
+ for(const [user,choice] of [['1501','yes'],['1502','no']]){
+  await pool.query('UPDATE automod_points_accounts SET reserved=100 WHERE streamer_id=15 AND rumble_user_id=$1',[user]);
+  await pool.query('INSERT INTO automod_engagement_ballots(round_id,rumble_user_id,username,choice,points) VALUES($1,$2,$2,$3,100)',[id,user,choice]);
+ }
+ const base={checkpoint,bonusCount:3,openedCount:2,failedCount:1,complete:false};
+ assert.equal((await finishPrediction(pool,15,{...base,totalGainCents:8000})).pending,true);
+ assert.equal((await readWallet(pool,15,'1501')).reserved,100);
+ await assert.rejects(finishPrediction(pool,15,{...base,totalGainCents:-1}),/invalid_prediction/);
+ assert.equal((await finishPrediction(pool,15,{...base,totalGainCents:9000})).winner,'yes');
+ assert.equal((await readWallet(pool,15,'1501')).balance,1100);
+ assert.equal((await readWallet(pool,15,'1502')).balance,900);
+ assert.equal((await finishPrediction(pool,15,{...base,totalGainCents:9000})).changed,false);
+});
+
+test('bonus choice lasts 60 seconds, viewers can change vote, tie defaults right',async()=>{
+ await pool.query('INSERT INTO streamers VALUES(16)');
+ await pool.query(`INSERT INTO automod_control(streamer_id,desired_enabled,runtime_status) VALUES(16,TRUE,'{"publisherActive":true}')`);
+ await pool.query('INSERT INTO streamer_rumble_info VALUES(16,TRUE,3)');
+ const checkpoint=randomUUID();
+ const first=(await pollBonusChoice(pool,16,{checkpoint,slotName:'Hercules'})).event!;
+ assert.equal(first.status,'open');assert.ok(Date.parse(first.closesAt)-Date.now()>59000);
+ const m={streamerId:16,userId:'1601',username:'Viewer',createdAt:new Date(),text:'!gauche'};
+ await castBonusChoice(pool,m);await castBonusChoice(pool,{...m,text:'!droite'});
+ const changed=(await pollBonusChoice(pool,16,{checkpoint,slotName:'Hercules'})).event!;
+ assert.equal(changed.leftVotes,0);assert.equal(changed.rightVotes,1);
+ await castBonusChoice(pool,{...m,userId:'1602',text:'!gauche'});
+ await pool.query("UPDATE automod_bonus_choices SET closes_at=NOW()-INTERVAL '1 second' WHERE id=$1",[first.id]);
+ const result=(await pollBonusChoice(pool,16,{checkpoint,slotName:'Hercules'})).event!;
+ assert.equal(result.result,'right');assert.equal(result.status,'locked');
+ assert.match((await castBonusChoice(pool,m))!,/Aucun choix/);
+ assert.equal((await pollBonusChoice(pool,16,{checkpoint,slotName:'Hercules'})).event!.id,first.id);
+});
+test('active points aggregate uses native IDs, newest name, available points, 30-minute expiry',async()=>{
+ await creditPoints(pool,16,'1601','Old','seed-activity',500,'test');
+ await pool.query("INSERT INTO automod_chat_activity VALUES(16,'recent','1601','New',NOW()),(16,'stale','1602','Stale',NOW()-INTERVAL '31 minutes'),(16,'older','1601','Old',NOW()-INTERVAL '1 minute')");
+ const viewers=await activePointViewers(pool,16);
+ assert.equal(viewers.length,1);assert.equal(viewers[0]!.username,'New');assert.equal(viewers[0]!.points,500);
+ assert.equal('rumble_user_id' in viewers[0]!,false);
 });
