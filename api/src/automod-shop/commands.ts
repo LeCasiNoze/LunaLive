@@ -1,4 +1,9 @@
 import {handleReferral} from './referral.js';
+import {handleDiscordLinkChat} from './discord-profile.js';
+import {handleWeeklyChat} from './weekly-chat.js';
+import {handleUpgradeChat} from './upgrade-chat.js';
+import {handleChallengeChat,challengeSchema} from './provider-challenge.js';
+import {shopCommandAllowed} from './mode-policy.js';
 import {readProfile,profileMessage,discountedPoints} from './profile.js';
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
@@ -20,11 +25,15 @@ export interface ShopChatMessage { streamerId:number; userId:string; username:st
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
 export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string|null> {
   if(!validRumbleIdentity(m.userId) || !m.messageId) return null;
+  const discordLink=await handleDiscordLinkChat(pool,m);if(discordLink!==null)return discordLink;
   if(/^!(?:profil|profile|xp)\s*$/i.test(m.text.trim())){
     if(Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
     return profileMessage(m.username,await readProfile(pool,m.streamerId,m.userId));
   }
   const referral=await handleReferral(pool,m);if(referral!==null)return referral;
+  const weekly=await handleWeeklyChat(pool,m);if(weekly!==null)return weekly;
+  const upgrade=await handleUpgradeChat(pool,m);if(upgrade!==null)return upgrade;
+  const challenge=await handleChallengeChat(pool,m);if(challenge!==null)return challenge;
   const engagement=await castEngagement(pool,m);if(engagement!==null)return engagement;
   const vote=/^!hunt\s+(ouvrir|continuer)\s*$/i.exec(m.text.trim());
   if(vote){
@@ -36,6 +45,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
   if(!cmd)return null;
   const control=await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`,[m.streamerId]);
   if(control.rows[0]?.desired_enabled!==true)return `@${m.username} — Le shop et les points sont disponibles pendant l’Automod.`;
+  if(!shopCommandAllowed(control.rows[0],cmd.kind))return `@${m.username} — Cette option n’est pas disponible dans le mode actuel. Aucun point réservé. Consulte !shop.`;
   if(cmd.kind==='duration'&&control.rows[0].dashboard_settings?.mode==='auto-hunt'&&control.rows[0].dashboard_settings?.hunt?.jail===true)return `@${m.username} — La durée est désactivée en Jail Hunt : la machine reste jusqu’au bonus ou à la limite de spins. Aucun point réservé.`;
   // SSE init replays old messages: do not turn them into new orders or rain joins.
   if(Date.now()-m.createdAt.getTime()>120_000 || m.createdAt.getTime()>Date.now()+30_000)return null;
@@ -71,8 +81,9 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
     if(cmd.kind==='globalstake'){
       return await inTransaction(pool,async c=>{
         await c.query(`SELECT pg_advisory_xact_lock($1)`,[m.streamerId]);
-        const mode=await c.query(`SELECT desired_enabled FROM automod_control WHERE streamer_id=$1 FOR UPDATE`,[m.streamerId]);
+        const mode=await c.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1 FOR UPDATE`,[m.streamerId]);
         if(!mode.rows[0]?.desired_enabled)throw Error('automod_disabled');
+        if(!shopCommandAllowed(mode.rows[0],cmd.kind))throw Error('shop_mode_unavailable');
         const previous=await c.query(`SELECT id FROM automod_shop_orders WHERE streamer_id=$1 AND request_key=$2`,[m.streamerId,`rumble:${m.messageId}`]);
         if(previous.rowCount)return null;
         await c.query(`UPDATE automod_shop_orders SET status='expired',updated_at=NOW() WHERE streamer_id=$1 AND kind='globalstake' AND status='done' AND (result->>'activeUntil')::timestamptz<=NOW()`,[m.streamerId]);
@@ -97,10 +108,22 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
     if(!settings.enabled || await isUserBannedFromCalls(pool,m.streamerId,0,m.username)
       || await isSlotBanned(pool,m.streamerId,keyText(slot.name)) || await isProviderBanned(pool,m.streamerId,provider)
       || !await isProviderAllowedByPolicy(pool,m.streamerId,provider))return `@${m.username} — Ce call n’est pas autorisé.`;
+    await challengeSchema(pool);
     return await inTransaction(pool,async c=>{
       await c.query(`SELECT pg_advisory_xact_lock($1)`,[m.streamerId]);
       const mode=await c.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1 FOR UPDATE`,[m.streamerId]);
       if(!mode.rows[0]?.desired_enabled)throw Error('automod_disabled');
+      if(!shopCommandAllowed(mode.rows[0],cmd.kind))throw Error('shop_mode_unavailable');
+      let challengeId:string|null=null;
+      if([mode.rows[0].dashboard_settings?.mode,mode.rows[0].runtime_status?.mode,mode.rows[0].runtime_status?.config?.mode].includes('provider-challenge')){
+        const camp=(await c.query(`SELECT e.id,p.provider FROM automod_provider_challenges e
+          LEFT JOIN automod_provider_camps p ON p.challenge_id=e.id AND p.rumble_user_id=$2
+          WHERE e.streamer_id=$1 AND e.status IN ('preparing','playing') AND e.cancel_requested_at IS NULL`,[m.streamerId,m.userId])).rows[0];
+        if(!camp)throw Error('challenge_not_ready');
+        if(!camp.provider)throw Error('challenge_choose_camp');
+        if(!automodProviderAllowed(provider,[camp.provider]))throw Error('challenge_other_camp');
+        challengeId=camp.id;
+      }
       if(cmd.kind==='duration'&&mode.rows[0].dashboard_settings?.mode==='auto-hunt'&&mode.rows[0].dashboard_settings?.hunt?.jail===true)throw Error('jail_duration_disabled');
       const currentAllowed=mode.rows[0].dashboard_settings?.allowedProviders??mode.rows[0].runtime_status?.config?.allowedProviders??['hacksaw','pragmatic'];
       if(!automodProviderAllowed(provider,currentAllowed))throw Error('provider_not_allowed');
@@ -172,12 +195,16 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       }
       if(wallet.available<points)throw Error('insufficient_points');
       await walletEntry(c,m.streamerId,m.userId,`order:${id}:reserve`,0,points,'shop-reservation');
-      await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,offer_id,selected_offer,call_id,reserved_points,discount_percent)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,cmd.kind,keyText(slot.name),slot.name,provider,'tier'in cmd?cmd.tier:null,cmd.kind==='buy'?cmd.offerId:null,offer?JSON.stringify(offer):null,call.id,points,discount]);
+      await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,offer_id,selected_offer,call_id,reserved_points,discount_percent,result)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,cmd.kind,keyText(slot.name),slot.name,provider,'tier'in cmd?cmd.tier:null,cmd.kind==='buy'?cmd.offerId:null,offer?JSON.stringify(offer):null,call.id,points,discount,challengeId?JSON.stringify({challengeId}):null]);
       return `@${m.username} — ${slot.name} : ${points} points réservés. ${walletSummary(await readWallet(c,m.streamerId,m.userId))} ${cmd.kind==='buy'?(offer?'Bonus choisi, achat vérifié au passage sur la machine.':'Passage prioritaire ; choix du bonus dans le chat. Sans réponse : moitié du plus petit achat vérifié, uniquement si la machine joue.'):cmd.kind==='stake'?`Mise ×${SHOP_RULES.stake[cmd.tier-1]!.factor} demandée, Golden inclus dans le contrôle du coût.`:`Durée ×${SHOP_RULES.duration[cmd.tier-1]!.factor}.`}`;
     });
   }catch(error){
     const key=error instanceof Error?error.message:'';
+    if(key==='challenge_not_ready')return `@${m.username} — Le Défi est en préparation ou terminé. Réessaie quand les camps sont ouverts ; aucun point réservé.`;
+    if(key==='challenge_choose_camp')return `@${m.username} — Choisis d’abord !camp pragma ou !camp hacksaw, puis améliore un call de ce camp.`;
+    if(key==='challenge_other_camp')return `@${m.username} — Tu peux améliorer uniquement les calls de ton camp. Aucun point réservé.`;
+    if(key==='shop_mode_unavailable')return `@${m.username} — Le mode a changé : cette option n’est plus disponible. Aucun point réservé. Consulte !shop.`;
     if(key==='automod_bonus_pending')return `@${m.username} — Cette machine a un bonus en attente d’ouverture. Réessaie après son ouverture ; aucun point réservé.`;
     if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé. Ils ne se cumulent pas.`;
     if(key==='boost_already_covered')return `@${m.username} — Le boost de session couvre déjà cette mise. Aucun point réservé ; choisis un palier supérieur.`;

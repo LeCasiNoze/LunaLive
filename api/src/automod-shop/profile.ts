@@ -21,7 +21,7 @@ export async function readProfile(c:Pick<PoolClient,'query'>,sid:number,uid:stri
    WHEN reason IN ('first-spin-settled','call-played') THEN 20 WHEN reason='bonus-started' THEN 40
    WHEN reason='rain' THEN 5 WHEN reason='event-participation' THEN 25
    WHEN reason IN ('bonus-ended','round') THEN LEAST(delta,100) ELSE 0 END),0)::bigint AS xp
-  FROM automod_points_ledger WHERE streamer_id=$1 AND rumble_user_id=$2 AND delta>0
+  FROM automod_points_ledger WHERE streamer_id=$1 AND rumble_user_id=$2 AND (delta>0 OR reason='event-participation')
  ), facts AS (
   SELECT COUNT(*) FILTER(WHERE kind IN ('first-spin-settled','call-played'))::int AS calls,
    COUNT(*) FILTER(WHERE kind='bonus-started' AND COALESCE(payload#>>'{data,inheritedBonus}','false')<>'true'

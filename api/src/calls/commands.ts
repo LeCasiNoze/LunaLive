@@ -581,6 +581,12 @@ export async function handleCallsCommand(opts: {
 
   if (!add.ok) {
     const m = add.error;
+    if(m==='challenge_choose_camp'||m==='challenge_other_camp'){
+      const message=m==='challenge_choose_camp'?'Choisis ton camp : !camp pragma ou !camp hacksaw, puis refais ton call.':'Cette machine appartient à l’autre camp. Fais un call du provider que tu as choisi.';
+      emitUserToast(io,actorUserId,{kind:'error',title:'Défi providers',message});
+      await sendBotChat(pool,io,{streamerId,slug,rumbleVideoIdNumeric},`@${actorUsername} — ${message}`);
+      return {handled:true,showOriginalInChat};
+    }
     if(m==='automod_bonus_pending'){
       const message=`« ${resolved.name} » a déjà un bonus en attente d’ouverture. Tu pourras la call après son ouverture.`;
       emitUserToast(io,actorUserId,{kind:'error',title:'Bonus en attente',message});

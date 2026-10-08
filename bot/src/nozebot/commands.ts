@@ -15,6 +15,8 @@ import {
   actLunaLiveBlackjack,
   claimLunaLiveDaily,
   fetchLunaLiveProfile,
+  fetchAutomodProfile,
+  requestAutomodLink,
   playLunaLiveSlot,
   requestLunaLiveLink,
   startLunaLiveBlackjack,
@@ -33,6 +35,9 @@ export type NozeBotCommandConfig = {
 };
 
 const COMMANDS = [
+  new SlashCommandBuilder().setName('automodprofil').setDescription('Ton profil Automod, points et progression Rumble'),
+  new SlashCommandBuilder().setName('automodlink').setDescription('Lier ton compte Rumble au profil Automod'),
+  new SlashCommandBuilder().setName('automodhelp').setDescription('Commandes, shop et règles Automod'),
   new SlashCommandBuilder().setName("link").setDescription("Lier ton compte Discord à LunaLive"),
   new SlashCommandBuilder().setName("claim").setDescription("Récupérer tes Rubis LunaLive quotidiens"),
   new SlashCommandBuilder().setName("solde").setDescription("Afficher tes Rubis et ton niveau LunaLive"),
@@ -447,6 +452,18 @@ export async function handleNozeBotCommand(
   if (interaction.guildId !== config.guildId) return true;
 
   try {
+    if(interaction.commandName.startsWith('automod')){
+      await interaction.deferReply({ephemeral:true});
+      if(interaction.commandName==='automodlink'){
+        const link=await requestAutomodLink(config.lunaLive,interaction.user.id);
+        await interaction.editReply(link.linked?`Compte lié : ${link.username}. Utilise /automodprofil.`
+          :`Dans le chat Rumble de LeCasiNoze, colle cette commande (valable 10 minutes) :\n\`${link.command}\``);
+      }else if(interaction.commandName==='automodprofil'){
+        const result=await fetchAutomodProfile(config.lunaLive,interaction.user.id);
+        await interaction.editReply(result.profile?.message??'Lie ton compte Rumble avec /automodlink pour retrouver tes points et ta progression.');
+      }else await interaction.editReply('Sur Rumble : !call + slot · !points · !profil · !shop · !music · !parrainer.\nShop : https://lecasinoze.onrender.com/automod-shop/');
+      return true;
+    }
     if (interaction.channelId !== config.commandsChannelId && interaction.commandName !== "link") {
       await interaction.reply({
         content: `🎮 Utilise cette commande dans <#${config.commandsChannelId}> pour garder le serveur propre.`,

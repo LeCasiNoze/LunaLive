@@ -82,3 +82,10 @@ export function normalizeProvider(raw?: string | null): string | null {
   const key = String(raw).trim().toLowerCase();
   return (ALIASES as any)[key] ?? String(raw).trim();
 }
+
+/** SQL callers can filter aliases without maintaining a second provider map. */
+export function providerAliases(canonical:string):string[]{
+ const target=normalizeProvider(canonical);
+ return [...new Set([String(target??canonical).toLowerCase(),...Object.entries(ALIASES)
+  .filter(([,value])=>value===target).map(([key])=>key)])];
+}

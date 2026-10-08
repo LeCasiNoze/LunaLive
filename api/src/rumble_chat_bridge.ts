@@ -1,4 +1,5 @@
 import {rewardFollow} from './automod-shop/follows.js';
+import {dailyViewerGreeting} from './automod-shop/viewer-greeting.js';
 // api/src/rumble_chat_bridge.ts
 // Bridge chat Rumble → Luna. SSE depuis web7.rumble.com.
 // Persiste les messages dans `chatStore` (visible après reload) + DB `rumble_chat_messages`.
@@ -451,7 +452,7 @@ export function ensureRumbleBridge(opts: {
 
     // Persist DB (fire-and-forget — l'unique index empêche les doublons)
     persistMessage(m.msgId, m.userId, m.username, m.text, m.createdAt).catch(() => {});
-    if(opts.slug==='lecasinoze')void rewardFollow(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,createdAt:m.createdAt}).catch(()=>{});
+    const followCheck=opts.slug==='lecasinoze'?rewardFollow(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,createdAt:m.createdAt}).catch(()=>{}):Promise.resolve();
     if(opts.slug==='lecasinoze')void observeAutomodChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,createdAt:m.createdAt}).catch(()=>{});
 
     // chatStore (mémoire — sert au /chat/messages au reload)
@@ -479,8 +480,12 @@ export function ensureRumbleBridge(opts: {
     // Le miroir du chat reste actif même si le bot est coupé. Les commandes
     // restent indépendantes pour les comptes importés et pour la radio.
     if (opts.slug === "lunalive" || !commandsOn) return;
+    if(opts.slug==='lecasinoze'&&!/^(lunalive_bot|lunabot|automod|lunalivebot|nozebot)$/i.test(m.username))void followCheck.then(async()=>{
+      const greeting=await dailyViewerGreeting(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,createdAt:m.createdAt});
+      if(greeting)for(const chunk of shopReplyChunks(greeting))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);
+    }).catch(()=>{});
 
-    if (opts.slug === "lecasinoze" && (/^!(?:points|profil|profile|xp|parrain|parrainer|shop|rain|achat|duree|mise|hunt|pari|oui|non|vote)(?:\s|$)/i.test(m.text) || /^![12]\s*$/.test(m.text.trim())
+    if (opts.slug === "lecasinoze" && (/^!(?:lier|upgrade|offert|points|camp|profil|profile|xp|parrain|parrainer|shop|rain|achat|duree|mise|hunt|pari|oui|non|vote)(?:\s|$)/i.test(m.text) || /^![1-4]\s*$/.test(m.text.trim())
       || /^!call\s+\+[123]\s/i.test(m.text) || /^(?:[1-9]|1[0-6])$/.test(m.text.trim()))) {
       const reply = await handleShopChat(opts.pool, { streamerId: opts.streamerId, userId: m.userId,
         username: m.username, messageId: m.msgId, text: m.text, createdAt: m.createdAt });
