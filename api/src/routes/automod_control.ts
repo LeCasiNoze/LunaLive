@@ -1,4 +1,5 @@
 import {setAutomodEnabled} from '../automod-shop/control-transition.js';
+import {inTransaction} from '../automod-shop/wallet.js';
 import { Router } from "express";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
@@ -28,7 +29,7 @@ async function streamerForSlug(slug:string){ const r=await pool.query(`SELECT id
 async function canControl(user:any,streamer:any){ if(!user||!streamer)return false; if(user.role==="admin"||Number(user.id)===Number(streamer.user_id))return true;
   const r=await pool.query(`SELECT 1 FROM streamer_mods WHERE streamer_id=$1 AND user_id=$2 AND removed_at IS NULL LIMIT 1`,[streamer.id,user.id]); return Boolean(r.rowCount); }
 function canAccessCaptcha(user:any,streamer:any){return Boolean(user&&streamer&&(user.role==="admin"||Number(user.id)===Number(streamer.user_id)));}
-type DashboardSettings = { mode?: "automod"|"auto-hunt"; fastSpins?:boolean; hunt?: {jail:boolean;jailSpinLimit:number;openingCondition:"count"|"balance"|"vote";targetBonuses:number;balanceFloorCents:number;voteFromBonuses:number;voteEveryBonuses:number}; allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean; audioMode?: "spotify"|"game" };
+type DashboardSettings = { mode?: "automod"|"auto-hunt"|"session-buy"|"provider-challenge"; fastSpins?:boolean; hunt?: {jail:boolean;jailSpinLimit:number;openingCondition:"count"|"balance"|"vote";targetBonuses:number;balanceFloorCents:number;voteFromBonuses:number;voteEveryBonuses:number}; allowedProviders: Array<"pragmatic"|"hacksaw"|"nolimit">; stakeCents: number; slotDurationMs: number; goldenEnabled: boolean; audioMode?: "spotify"|"game" };
 function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!value||typeof value!=="object"||Array.isArray(value))return null;
   const row=value as Record<string,unknown>;
@@ -38,14 +39,14 @@ function parseDashboardSettings(value:unknown):DashboardSettings|null {
   if(!Number.isSafeInteger(row.slotDurationMs)||Number(row.slotDurationMs)<60_000||Number(row.slotDurationMs)>120*60_000)return null;
   if(typeof row.goldenEnabled!=="boolean")return null;
   if(row.audioMode!==undefined&&row.audioMode!=="spotify"&&row.audioMode!=="game")return null;
-  if(row.mode!==undefined&&row.mode!=="automod"&&row.mode!=="auto-hunt")return null;
+  if(row.mode!==undefined&&row.mode!=="automod"&&row.mode!=="auto-hunt"&&row.mode!=="session-buy"&&row.mode!=="provider-challenge")return null;
   if(row.fastSpins!==undefined&&typeof row.fastSpins!=="boolean")return null;
   const h=(row.hunt??{}) as Record<string,unknown>;
   if(!h||typeof h!=="object"||Array.isArray(h))return null;
   const check=(v:unknown,fallback:number,min:number,max:number)=>v===undefined?fallback:Number.isSafeInteger(v)&&Number(v)>=min&&Number(v)<=max?Number(v):null;
   const jailSpinLimit=check(h.jailSpinLimit,1000,1,10000),targetBonuses=check(h.targetBonuses,20,1,1000),balanceFloorCents=check(h.balanceFloorCents,0,0,100000000),voteFromBonuses=check(h.voteFromBonuses,10,1,1000),voteEveryBonuses=check(h.voteEveryBonuses,5,1,1000);
   if([jailSpinLimit,targetBonuses,balanceFloorCents,voteFromBonuses,voteEveryBonuses].some(n=>n===null)||(h.openingCondition!==undefined&&!['count','balance','vote'].includes(String(h.openingCondition)))||(h.jail!==undefined&&typeof h.jail!=='boolean'))return null;
-  return {mode:row.mode==='auto-hunt'?'auto-hunt':'automod',fastSpins:row.fastSpins===true,hunt:{jail:h.jail===true,jailSpinLimit:jailSpinLimit!,targetBonuses:targetBonuses!,balanceFloorCents:balanceFloorCents!,voteFromBonuses:voteFromBonuses!,voteEveryBonuses:voteEveryBonuses!,openingCondition:h.openingCondition==='balance'?'balance':h.openingCondition==='vote'?'vote':'count'},allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled,audioMode:row.audioMode==="game"?"game":"spotify"};
+  return {mode:row.mode==='provider-challenge'?'provider-challenge':row.mode==='session-buy'?'session-buy':row.mode==='auto-hunt'?'auto-hunt':'automod',fastSpins:row.fastSpins===true,hunt:{jail:h.jail===true,jailSpinLimit:jailSpinLimit!,targetBonuses:targetBonuses!,balanceFloorCents:balanceFloorCents!,voteFromBonuses:voteFromBonuses!,voteEveryBonuses:voteEveryBonuses!,openingCondition:h.openingCondition==='balance'?'balance':h.openingCondition==='vote'?'vote':'count'},allowedProviders:providers as DashboardSettings["allowedProviders"],stakeCents:Number(row.stakeCents),slotDurationMs:Number(row.slotDurationMs),goldenEnabled:row.goldenEnabled,audioMode:row.audioMode==="game"?"game":"spotify"};
 }
 export function ensureDashboardSchema(){return dashboardSchemaReady??=ensureSchema().then(()=>pool.query(`
   ALTER TABLE automod_control ADD COLUMN IF NOT EXISTS dashboard_settings JSONB NULL;
@@ -107,10 +108,25 @@ automodControlRouter.get("/fsb/automod/dashboard",requireAuth,requireFsbAccess,a
 automodControlRouter.put("/fsb/automod/settings",requireAuth,requireFsbAccess,async(req:any,res)=>{
   const s=await dashboardStreamer(req,res);if(!s)return;
   const settings=parseDashboardSettings(req.body);if(!settings)return res.status(400).json({ok:false,error:"Paramètres invalides : un provider au moins, mise de 0,01 à 100 €, durée de 1 à 120 min."});
-  const result=await pool.query(`INSERT INTO automod_control(streamer_id,dashboard_settings,settings_revision) VALUES($1,$2,1)
-    ON CONFLICT(streamer_id) DO UPDATE SET dashboard_settings=EXCLUDED.dashboard_settings,settings_revision=automod_control.settings_revision+1
-    RETURNING settings_revision`,[s.id,JSON.stringify(settings)]);
-  return res.json({ok:true,settings,settingsRevision:Number(result.rows[0].settings_revision)});
+  try{
+   const revision=await inTransaction(pool,async c=>{
+    await c.query('SELECT pg_advisory_xact_lock($1)',[s.id]);
+    if(settings.mode==='session-buy'||settings.mode==='provider-challenge'){
+     const current=(await c.query('SELECT runtime_status,runtime_seen_at FROM automod_control WHERE streamer_id=$1 FOR UPDATE',[s.id])).rows[0];
+     if(!current?.runtime_status?.supportedModes?.includes(settings.mode)||Date.now()-new Date(current.runtime_seen_at).getTime()>60000)throw Error('Le VPS ne confirme pas encore la disponibilité de ce mode.');
+     if(!settings.allowedProviders.some(p=>p==='pragmatic'||p==='hacksaw'))throw Error('Session achat nécessite Pragmatic ou Hacksaw.');
+     if(settings.mode==='provider-challenge'&&(!settings.allowedProviders.includes('pragmatic')||!settings.allowedProviders.includes('hacksaw')))throw Error('Le Défi nécessite Pragmatic et Hacksaw.');
+     const pending=await c.query(`SELECT 1 FROM automod_shop_orders WHERE streamer_id=$1 AND
+      (status NOT IN ('done','expired','refunded') OR (kind='globalstake' AND status='done' AND (result->>'activeUntil')::timestamptz>NOW())) LIMIT 1`,[s.id]);
+     if(pending.rowCount)throw Error('Des achats payés sont encore en attente. Termine-les avant de changer de mode.');
+    }
+    const result=await c.query(`INSERT INTO automod_control(streamer_id,dashboard_settings,settings_revision) VALUES($1,$2,1)
+     ON CONFLICT(streamer_id) DO UPDATE SET dashboard_settings=EXCLUDED.dashboard_settings,settings_revision=automod_control.settings_revision+1
+     RETURNING settings_revision`,[s.id,JSON.stringify(settings)]);
+    return Number(result.rows[0].settings_revision);
+   });
+   return res.json({ok:true,settings,settingsRevision:revision});
+  }catch(e){return res.status(409).json({ok:false,error:e instanceof Error?e.message:'Modification impossible.'});}
 });
 
 automodControlRouter.put("/fsb/automod/audio",requireAuth,requireFsbAccess,async(req:any,res)=>{

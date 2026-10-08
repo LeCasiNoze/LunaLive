@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import {requestAutomodDiscordLink,automodDiscordProfile} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { pool } from "../db.js";
 import { createLinkCode, getLinkedUser } from "../discord/link.js";
@@ -47,6 +48,16 @@ function readIdentity(req: Request, res: Response): { discordUserId: string; dis
   }
   return { discordUserId, discordGuildId };
 }
+
+internalNozeBotRouter.post('/internal/bot/nozebot/automod/:action',requireNozeBot,a(async(req,res)=>{
+ const identity=readIdentity(req,res);if(!identity)return;
+ const sid=(await pool.query("SELECT id FROM streamers WHERE lower(slug)='lecasinoze' LIMIT 1")).rows[0]?.id;
+ if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
+ if(req.params.action==='profile')return res.json({ok:true,profile:await automodDiscordProfile(pool,Number(sid),identity.discordUserId)});
+ if(req.params.action!=='link')return res.status(404).json({ok:false,error:'unknown_action'});
+ try{return res.json({ok:true,...await requestAutomodDiscordLink(pool,Number(sid),identity.discordUserId)});}
+ catch(e){if(e instanceof Error&&e.message==='link_cooldown')return res.status(429).json({ok:false,error:'link_cooldown'});throw e;}
+}));
 
 internalNozeBotRouter.post("/internal/bot/nozebot/link", requireNozeBot, a(async (req, res) => {
   const identity = readIdentity(req, res);

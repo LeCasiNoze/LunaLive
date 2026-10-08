@@ -10,6 +10,7 @@ import { logEvent } from "../log.js";
 import { tryHandleClipCommand } from "../modules/clips/clip.js";
 import { tryHandleWheelCommand } from "../modules/wheel/wheel.js";
 import { tryHandleLunaCommand } from "../modules/referral/luna.js";
+import { claimAutomodReminder,renderAutomodReminder } from './autopost-activity.js';
 
 const BOT_TEXT_MAX = 500;
 
@@ -332,12 +333,24 @@ export class StreamerRunner {
         return;
       }
 
+      // One reminder needs new human activity; persist the budget across bot restarts.
+      try {
+        if(!await claimAutomodReminder(this.pool,this.streamer.id,this.streamer.slug,
+          Number((this.env as any).BOT_LUNALIVE_USER_ID || this.env.BOT_USER_ID || 1))){
+          this.autopostTimer=setTimeout(autopostTick,30_000);return;
+        }
+      } catch {
+        // Failed activity verification must never produce an unsolicited reminder.
+        this.autopostTimer=setTimeout(autopostTick,30_000);return;
+      }
       // Configuration reloads every 10 seconds; keep the rotation cursor separate.
       const it = this.autoposts[this.autopostIndex % this.autoposts.length];
       this.autopostIndex = (this.autopostIndex + 1) % this.autoposts.length;
+      const rendered=await renderAutomodReminder(this.pool,this.streamer.id,this.streamer.slug,it.message).catch(()=>null);
+      if(!rendered){this.autopostTimer=setTimeout(autopostTick,30_000);return;}
 
       try {
-        await sendBotText(it.message, "autopost");
+        await sendBotText(rendered, "autopost");
       } catch (e: any) {
         try {
           await logEvent(this.pool, this.streamer.id, "warn", "autopost failed", {
@@ -348,7 +361,7 @@ export class StreamerRunner {
 
       // Forward vers DLive : newlines repliés en espace (DLive = une seule ligne)
       try {
-        const dliveMsg = it.message.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+        const dliveMsg = rendered.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
         if (dliveMsg) {
           await sendDliveText(dliveMsg, "autopost");
         }

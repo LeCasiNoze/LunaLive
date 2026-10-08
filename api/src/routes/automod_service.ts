@@ -15,6 +15,9 @@ import { observeBonusCatalog } from "../automod-shop/catalog.js";
 import { pollHuntVote } from "../automod-shop/hunt-votes.js";
 import {tickEngagement,pollEngagement,finishPrediction,applyModeVote,engagementSchema} from '../automod-shop/engagement.js';
 import { syncHuntReservations } from '../calls/automod_hunt_reservations.js';
+import {createChallenge,challengeSnapshot,startChallengePass,finishChallengePass,settleChallenge,refundStoppedChallenges} from '../automod-shop/provider-challenge.js';
+import {nextWeeklyPurchase,quoteWeeklyPurchase,weeklyPurchaseIntent,finishWeeklyPurchase,failWeeklyPurchase,tickWeeklyEvents} from '../automod-shop/weekly-event.js';
+import {purchaseUpgradeForTarget,reconcileUnusedPurchaseUpgrades} from '../automod-shop/purchase-upgrades.js';
 
 export const automodServiceRouter = Router();
 const API = "/automod-service";
@@ -150,6 +153,14 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
 }));
 automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,"automod:runtime:write"))return res.status(403).json({ok:false});
+ await refundStoppedChallenges(pool,req.automodService.streamerId);
+ const unusedUpgrades=await reconcileUnusedPurchaseUpgrades(pool,req.automodService.streamerId);
+ for(const upgrade of unusedUpgrades)await notifyShop(pool,req.automodService.streamerId,`@${upgrade.username} — Upgrade non exécuté : ${upgrade.points} points libérés.`);
+ const weeklyResults=await tickWeeklyEvents(pool,req.automodService.streamerId);
+ for(const event of weeklyResults){
+  const ranks=event.winners?.map((w,i)=>`${i+1}. @${w.username} ×${Math.floor(w.multiplier)} : ${w.points} pts événement`).join(' · ');
+  if(ranks)await notifyShop(pool,req.automodService.streamerId,`Meilleur Achat terminé (${event.day}) · ${ranks}`);
+ }
  return res.json({ok:true,follow:await tickFollows(pool,req.automodService.streamerId).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
 }));
 automodServiceRouter.post(`${API}/v1/shop/engagement`,runtimeRoute(async(req:any,res)=>{
@@ -175,6 +186,50 @@ automodServiceRouter.post(`${API}/v1/shop/prediction-finish`,runtimeRoute(async(
 automodServiceRouter.post(`${API}/v1/shop/mode-apply`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write')||!/^[a-f0-9-]{36}$/.test(String(req.body?.id)))return res.status(400).json({ok:false});
  return res.json(await applyModeVote(pool,req.automodService.streamerId,req.body.id));
+}));
+automodServiceRouter.post(`${API}/v1/shop/challenge`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ if(JSON.stringify(req.body??{}).length>12000)return res.status(400).json({ok:false});
+ const sid=req.automodService.streamerId,body=req.body??{};
+ if(body.action!=='create'&&!/^[a-f0-9-]{36}$/i.test(String(body.id??'')))return res.status(400).json({ok:false,error:'challenge_invalid_id'});
+ try{
+  if(body.action==='create'){
+   const control=(await pool.query('SELECT desired_enabled,dashboard_settings FROM automod_control WHERE streamer_id=$1',[sid])).rows[0];
+   if(!control?.desired_enabled||control.dashboard_settings?.mode!=='provider-challenge')return res.status(409).json({ok:false,error:'challenge_mode_inactive'});
+   const settings=control.dashboard_settings;
+   const event=await createChallenge(pool,sid,String(body.checkpoint??''),{stakeCents:settings.stakeCents,slotDurationMs:settings.slotDurationMs,goldenEnabled:settings.goldenEnabled===true});
+   return res.json({ok:true,event:await challengeSnapshot(pool,sid,event.id)});
+  }
+  if(body.action==='state')return res.json({ok:true,event:await challengeSnapshot(pool,sid,body.id)});
+  if(body.action==='start-pass')return res.json({ok:true,pass:await startChallengePass(pool,sid,body.id,body.pass??{})});
+  if(body.action==='finish-pass')return res.json({ok:true,...await finishChallengePass(pool,sid,body.id,String(body.passId??''),body.receipt??{})});
+  if(body.action==='settle')return res.json({ok:true,...await settleChallenge(pool,sid,body.id,body.cancel===true)});
+  return res.status(400).json({ok:false,error:'challenge_invalid_action'});
+ }catch(e){const message=e instanceof Error?e.message:'';
+  if(/^challenge_[a-z_]+$/.test(message))return res.status(409).json({ok:false,error:message});throw e;
+ }
+}));
+
+automodServiceRouter.post(`${API}/v1/shop/weekly`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ const body=req.body??{},sid=req.automodService.streamerId;
+ if(JSON.stringify(body).length>16000)return res.status(400).json({ok:false});
+ if(body.action!=='next'&&!/^[a-f0-9-]{36}$/.test(String(body.id)))return res.status(400).json({ok:false});
+ try{
+  if(body.action==='next')return res.json({ok:true,entry:await nextWeeklyPurchase(pool,sid)});
+  if(body.action==='quote')return res.json({ok:true,quote:await quoteWeeklyPurchase(pool,sid,body.id,body.offers,body.kinds??{},body.verifiedMinimumStake)});
+  if(body.action==='intent')return res.json({ok:true,...await weeklyPurchaseIntent(pool,sid,body.id,body.offer,body.upgradeId)});
+  if(body.action==='complete')return res.json({ok:true,...await finishWeeklyPurchase(pool,sid,body.id,body.gainCents)});
+  if(body.action==='failure'&&typeof body.reason==='string')return res.json({ok:true,...await failWeeklyPurchase(pool,sid,body.id,body.reason)});
+  return res.status(400).json({ok:false,error:'weekly_invalid_action'});
+ }catch(e){return res.status(409).json({ok:false,error:e instanceof Error?e.message:'weekly_failed'});}
+}));
+
+automodServiceRouter.post(`${API}/v1/shop/upgrade`,runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
+ const {kind,target}=req.body??{};
+ if(!['series','weekly'].includes(kind)||typeof target!=='string'||!(kind==='series'?/^\d{1,20}$/:/^[a-f0-9-]{36}$/).test(target))return res.status(400).json({ok:false});
+ return res.json({ok:true,upgrade:await purchaseUpgradeForTarget(pool,req.automodService.streamerId,kind,target)});
 }));
 automodServiceRouter.post(`${API}/v1/shop/hunt-vote`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});

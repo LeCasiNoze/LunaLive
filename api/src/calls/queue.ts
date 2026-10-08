@@ -5,6 +5,7 @@ import { normalizeProvider } from "./provider_aliases.js";
 import { automodCallProviderAllowed } from "./automod_provider_policy.js";
 import { huntSlotReserved } from './automod_hunt_reservations.js';
 import { excludedSlotName } from './excluded-slot.js';
+import {challengeSchema,challengeCallAllowedInTransaction} from '../automod-shop/provider-challenge.js';
 
 export type CallItem = {
   id: string;
@@ -317,6 +318,7 @@ export async function addCall(
   opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string; rumbleUserId?: string | null }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   await ensureCallsSchema(pool);
+  await challengeSchema(pool);
 
   if (opts?.automodRequestId) {
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(opts.automodRequestId) || userId !== 0 || username !== "Automod") return { ok: false, error: "invalid_automod_request" };
@@ -362,6 +364,12 @@ export async function addCall(
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
 
+    if(!opts?.automodRequestId){
+      const family=providerLower?.includes('hacksaw')?'hacksaw':providerLower?.includes('pragmatic')?'pragmatic':providerLower;
+      const denied=await challengeCallAllowedInTransaction(client,streamerId,opts?.rumbleUserId??null,family);
+      if(denied){await client.query('COMMIT');return {ok:false,error:denied};}
+    }
+
     if(await huntSlotReserved(client,streamerId,slotName)){
       await client.query('COMMIT');
       return {ok:false,error:'automod_bonus_pending'};
@@ -379,7 +387,10 @@ export async function addCall(
       }
       // Same lock as viewer addCall: a viewer who got here first keeps priority.
       // Bonus-hunt rows also prevent an automatic insertion.
-      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 LIMIT 1`, [streamerId]);
+      const challenge=(await client.query(`SELECT 1 FROM automod_provider_challenges e JOIN automod_control a ON a.streamer_id=e.streamer_id
+        WHERE e.streamer_id=$1 AND e.status='playing' AND a.desired_enabled=TRUE AND
+        (a.dashboard_settings->>'mode'='provider-challenge' OR a.runtime_status->>'mode'='provider-challenge')`,[streamerId])).rowCount;
+      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND ($2::boolean=FALSE OR provider=$3) LIMIT 1`, [streamerId,Boolean(challenge),providerLower]);
       if (existing.rows.length) {
         await client.query("COMMIT");
         return { ok: false, error: "queue_not_empty" };

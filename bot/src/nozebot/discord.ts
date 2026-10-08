@@ -10,6 +10,7 @@ import {
   ModalBuilder,
   PermissionFlagsBits,
   Routes,
+  REST,
   TextInputBuilder,
   TextInputStyle,
   type GuildMember,
@@ -20,6 +21,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Pool } from "pg";
+import {fetchAutomodProfile} from './lunalive-api.js';
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
 import {
   handleNozeBotCommand,
@@ -475,9 +477,29 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     return async () => undefined;
   }
 
+  // Only request privileged message content when the existing application allows it.
+  const application=await new REST({version:'10'}).setToken(config.token).get(Routes.currentApplication()) as {flags?:number};
+  const prefixEnabled=Boolean(Number(application.flags??0)&((1<<18)|(1<<19)));
   const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,
+      ...(prefixEnabled?[GatewayIntentBits.MessageContent]:[])],
   });
+  const profileCooldown=new Map<string,number>();
+  client.on(Events.MessageCreate,message=>{
+    if(message.author.bot||message.guildId!==config.guildId||!/^!(profil|points|shop|help)\s*$/i.test(message.content))return;
+    const now=Date.now();if(now-(profileCooldown.get(message.author.id)??0)<15000)return;
+    for(const [uid,at] of profileCooldown)if(now-at>60000)profileCooldown.delete(uid);
+    profileCooldown.set(message.author.id,now);
+    void (async()=>{
+      const command=message.content.trim().toLowerCase();
+      const content=command==='!shop'?'Shop Automod : https://lecasinoze.onrender.com/automod-shop/'
+        :command==='!help'?'Sur Rumble : !call + slot · !points · !profil · !shop · !music. Ici : /automodlink pour lier ton compte, puis !profil.'
+        :(await fetchAutomodProfile(config.commands.lunaLive,message.author.id)).profile?.message
+          ??'Lie ton compte Rumble avec /automodlink, puis utilise !profil.';
+      await message.reply({content,allowedMentions:{parse:[],repliedUser:false}});
+    })().catch(()=>message.reply({content:'Profil temporairement indisponible. Réessaie dans un instant.',allowedMentions:{parse:[],repliedUser:false}}).catch(()=>{}));
+  });
+  if(!prefixEnabled)console.warn('[nozebot] commandes texte sans accès MessageContent ; /automodprofil et /automodhelp restent disponibles');
 
   let stopped = false;
   let gatewayUnavailableSince = 0;

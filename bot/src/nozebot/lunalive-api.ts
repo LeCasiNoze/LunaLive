@@ -109,6 +109,13 @@ function cleanBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
+export function fetchAutomodProfile(config:LunaLiveApiConfig,discordUserId:string){
+ return post<{ok:true;profile:null|{username:string;message:string}}>(config,'/internal/bot/nozebot/automod/profile',discordUserId);
+}
+export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string){
+ return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId);
+}
+
 async function post<T>(
   config: LunaLiveApiConfig,
   path: string,

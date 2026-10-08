@@ -7,6 +7,7 @@ import { getAutomodCaptchaAccess, getAutomodDashboard, saveAutomodDashboardSetti
   type AutomodDashboard, type AutomodDashboardSettings, type AutomodProvider } from "../lib/api_automod";
 import "./AutomodDashboardPage.css";
 import AutomodStats from "./AutomodStats";
+import AutomodChallengePanel from './AutomodChallengePanel';
 
 const PROVIDERS: Array<{key:AutomodProvider;name:string;short:string;accent:string}>=[
   {key:"hacksaw",name:"Hacksaw Gaming",short:"H",accent:"mint"},
@@ -60,7 +61,7 @@ export default function AutomodDashboardPage(){
   const live=fresh&&runtime?.publisherActive===true;
   const playing=fresh&&runtime?.phase==="running";
   const remaining=runtime?.slotDeadlineAt?runtime.slotDeadlineAt-(runtime.recoveryPausedAt??now):null;
-  const timer=runtime?.mode==='bonus-hunt'&&runtime.slotPhase==='opening'?'Ouverture du hunt':runtime?.config?.mode==='auto-hunt'&&runtime.config.hunt?.jail?'Jail Hunt · 1 000 max':remaining===null?"En attente du premier spin":remaining<=0&&runtime?.bonusActive?"En attente du bonus":`${runtime?.recoveryPausedAt?"Pause · ":""}${clock(remaining)}`;
+  const timer=runtime?.mode==='session-buy'?`${runtime.sessionBuy?.settledCount??0} / 3 achats`:runtime?.mode==='bonus-hunt'&&runtime.slotPhase==='opening'?'Ouverture du hunt':runtime?.config?.mode==='auto-hunt'&&runtime.config.hunt?.jail?'Jail Hunt · 1 000 max':remaining===null?"En attente du premier spin":remaining<=0&&runtime?.bonusActive?"En attente du bonus":`${runtime?.recoveryPausedAt?"Pause · ":""}${clock(remaining)}`;
   const latestCommand=dashboard?.commands[0];
   const hunt={...HUNT_DEFAULT,...draft.hunt};
   const setHunt=(patch:Partial<NonNullable<AutomodDashboardSettings['hunt']>>)=>setValue({hunt:{...hunt,...patch}});
@@ -92,7 +93,7 @@ export default function AutomodDashboardPage(){
       {tab==='stats'?<AutomodStats/>:<div className="amd-grid">
         <div className="amd-main-column">
           <section className="amd-panel amd-mode-panel"><div className="amd-panel-heading"><div><span className="amd-kicker">COMMENT JOUER</span><h2>Choisir la session</h2></div><Sparkles size={22}/></div>
-            <div className="amd-mode-grid">{(['automod','auto-hunt'] as const).map(mode=><button type="button" key={mode} className={`amd-mode ${(draft.mode??'automod')===mode?'selected':''}`} aria-pressed={(draft.mode??'automod')===mode} onClick={()=>setValue({mode})}><span>{mode==='automod'?'01':'02'}</span><strong>{mode==='automod'?'Automod':'Auto Hunt'}</strong><small>{mode==='automod'?'Une session sur chaque call, bonus joués immédiatement.':'Capture les bonus, puis ouvre toute la collection.'}</small></button>)}</div>
+            <div className="amd-mode-grid">{(['automod','auto-hunt','session-buy','provider-challenge'] as const).map(mode=><button type="button" key={mode} className={`amd-mode ${(draft.mode??'automod')===mode?'selected':''}`} disabled={(mode==='session-buy'||mode==='provider-challenge')&&(!fresh||!runtime?.supportedModes?.includes(mode))} aria-pressed={(draft.mode??'automod')===mode} onClick={()=>setValue({mode})}><span>{mode==='automod'?'01':mode==='auto-hunt'?'02':mode==='session-buy'?'03':'04'}</span><strong>{mode==='automod'?'Automod':mode==='auto-hunt'?'Auto Hunt':mode==='session-buy'?'Session achat':'Défi providers'}</strong><small>{mode==='automod'?'Une session sur chaque call, bonus joués immédiatement.':mode==='auto-hunt'?'Capture les bonus, puis ouvre toute la collection.':mode==='session-buy'?'Trois bonus par call. Bounty privilégié chez Hacksaw, selon le prix disponible.':'Pragmatic contre Hacksaw : trois machines chacun, deux heures puis fin du cycle.'}</small></button>)}</div>
             <label className="amd-option"><input type="checkbox" checked={draft.fastSpins===true} onChange={e=>setValue({fastSpins:e.target.checked})}/><span><strong>Parties rapides</strong><small>Accélère le jeu de base, garde les suspenses et la vitesse normale des bonus.</small></span></label>
             {draft.mode==='auto-hunt'&&<div className="amd-hunt-settings"><label className="amd-option"><input type="checkbox" checked={hunt.jail} onChange={e=>setHunt({jail:e.target.checked})}/><span><strong>Jail Hunt</strong><small>Reste jusqu’au bonus, dans la limite de {hunt.jailSpinLimit.toLocaleString('fr-FR')} spins. Le chrono est désactivé.</small></span></label>
               <div className="amd-settings-grid"><label className="amd-field"><span>Ouvrir le hunt quand…</span><select value={hunt.openingCondition} onChange={e=>setHunt({openingCondition:e.target.value as typeof hunt.openingCondition})}><option value="count">Le nombre de bonus est atteint</option><option value="balance">Le solde atteint le seuil</option><option value="vote">Les viewers votent pour ouvrir</option></select></label>
@@ -103,11 +104,12 @@ export default function AutomodDashboardPage(){
             </div>}
           </section>
 
+          {runtime?.mode==='provider-challenge'&&runtime.providerChallenge&&<AutomodChallengePanel event={runtime.providerChallenge} calls={waitingCalls} now={now}/>}
           <section className="amd-panel amd-now-panel">
             <div className="amd-panel-heading"><div><span className="amd-kicker">SESSION EN COURS</span><h2>Vue en temps réel</h2></div><span className={`amd-live-indicator ${fresh?"fresh":"stale"}`}><span/>{fresh?"VPS connecté":"VPS sans nouvelles"}</span></div>
             <div className="amd-now-grid">
               <div className="amd-slot-card"><div className="amd-slot-icon">{activeImage?<img src={activeImage} alt=""/>:<Sparkles size={25}/>}</div><div><span>Machine actuelle</span><strong>{runtime?.slot?.name||"Aucune machine"}</strong><small>{runtime?.slot?`${runtime.slot.provider} · ${runtime.slot.requestedBy||"Automod"}`:"Prête pour la prochaine session"}</small></div></div>
-              <div className="amd-metric"><span><Clock3 size={16}/> CHANGEMENT DANS</span><strong className="amd-timer">{playing?timer:"—"}</strong><small>Le chrono démarre au premier spin terminé.</small></div>
+              <div className="amd-metric"><span><Clock3 size={16}/> CHANGEMENT DANS</span><strong className="amd-timer">{playing?timer:"—"}</strong><small>{runtime?.mode==='session-buy'?'La série se termine après trois bonus collectés.':'Le chrono démarre au premier spin terminé.'}</small></div>
               <div className="amd-metric"><span><ListRestart size={16}/> ROUNDS TERMINÉS</span><strong>{playing?runtime?.roundsPlayed??0:"—"}</strong><small>Rounds confirmés sur cette machine.</small></div>
             </div>
             {runtime?.lastError&&<div className="amd-inline-alert"><AlertTriangle size={16}/><span>{runtime.lastError}</span></div>}
@@ -135,7 +137,7 @@ export default function AutomodDashboardPage(){
             <div className="amd-provider-grid">{PROVIDERS.map(provider=><button key={provider.key} type="button" aria-pressed={draft.allowedProviders.includes(provider.key)} className={`amd-provider ${provider.accent} ${draft.allowedProviders.includes(provider.key)?"selected":""}`} onClick={()=>toggleProvider(provider.key)}><span className="amd-provider-monogram">{provider.short}</span><strong>{provider.name}</strong><span className="amd-provider-check">{draft.allowedProviders.includes(provider.key)&&<Check size={15}/>}</span></button>)}</div>
             <div className="amd-settings-grid">
               <label className="amd-field"><span>Mise de base</span><div className="amd-input-wrap"><input type="text" inputMode="decimal" value={stakeText} onChange={event=>{setStakeText(event.target.value);setDraftDirty(true);}}/><span>€ / spin</span></div><small>La mise est vérifiée dans le jeu avant autoplay.</small></label>
-              <label className="amd-field"><span>Temps par slot</span><div className="amd-input-wrap"><input type="text" inputMode="numeric" disabled={draft.mode==='auto-hunt'&&hunt.jail} value={minutesText} onChange={event=>{setMinutesText(event.target.value);setDraftDirty(true);}}/><span>minutes</span></div><small>{draft.mode==='auto-hunt'&&hunt.jail?'Désactivé en Jail Hunt.':'Le chrono actif reste inchangé.'}</small></label>
+              <label className="amd-field"><span>Temps par slot</span><div className="amd-input-wrap"><input type="text" inputMode="numeric" disabled={draft.mode==='session-buy'||draft.mode==='auto-hunt'&&hunt.jail} value={minutesText} onChange={event=>{setMinutesText(event.target.value);setDraftDirty(true);}}/><span>minutes</span></div><small>{draft.mode==='session-buy'?'Trois achats par machine, sans chrono.':draft.mode==='auto-hunt'&&hunt.jail?'Désactivé en Jail Hunt.':'Le chrono actif reste inchangé.'}</small></label>
               <label className="amd-golden"><span className="amd-golden-icon"><Zap size={21}/></span><span><strong>Golden Bet</strong><small>Activé seulement si la machine propose cette option.</small></span><input type="checkbox" checked={draft.goldenEnabled} onChange={event=>setValue({goldenEnabled:event.target.checked})}/><span className="amd-switch"/></label>
             </div>
             <div className="amd-save-row"><span>{draftDirty?"Modifications non enregistrées":dashboard&&dashboard.appliedSettingsRevision<dashboard.settingsRevision?"Application en cours sur le VPS":`Configuration actuelle : ${euro(draft.stakeCents)} · ${Math.round(draft.slotDurationMs/60000)} min`}</span><button className="amd-save" disabled={!draftDirty||!!busy} onClick={save}>{busy==="save"?"Enregistrement…":"Enregistrer les réglages"}</button></div>
