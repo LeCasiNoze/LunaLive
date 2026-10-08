@@ -53,7 +53,7 @@ export async function rewardFollow(pool:Pool,m:{streamerId:number;userId:string;
   await c.query('SELECT pg_advisory_xact_lock($1)',[m.streamerId]);
   const control=(await c.query('SELECT desired_enabled,runtime_status FROM automod_control WHERE streamer_id=$1',[m.streamerId])).rows[0];
   if(!control?.desired_enabled||!control.runtime_status?.publisherActive)return;
-  const events=(await c.query("SELECT *,followed_at::text AS followed_at_key FROM automod_follow_events WHERE streamer_id=$1 AND username=$2 AND rumble_user_id IS NULL AND seen_at>NOW()-INTERVAL '7 days' AND followed_at<=NOW()+INTERVAL '1 minute' ORDER BY followed_at DESC LIMIT 1 FOR UPDATE",[m.streamerId,m.username])).rows;
+  const events=(await c.query("SELECT *,followed_at::text AS followed_at_key FROM automod_follow_events WHERE streamer_id=$1 AND username=$2 AND rumble_user_id IS NULL AND last_confirmed_at>NOW()-INTERVAL '2 minutes' AND followed_at<=NOW()+INTERVAL '1 minute' ORDER BY followed_at DESC LIMIT 1 FOR UPDATE",[m.streamerId,m.username])).rows;
   if(events.length){
    await lockWallet(c,m.streamerId,m.userId,m.username);
    if(!events[0].baseline)await walletEntry(c,m.streamerId,m.userId,`follow:${m.userId}`,FOLLOW_POINTS,0,'follow-welcome');

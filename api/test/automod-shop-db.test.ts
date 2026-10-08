@@ -231,6 +231,7 @@ test('baseline follow binds the native ID without paying a historical welcome re
  const sid=32,uid=await buyer(sid,'166');
  await pool.query(`UPDATE automod_control SET runtime_status='{"publisherActive":true}' WHERE streamer_id=$1`,[sid]);
  await pool.query("INSERT INTO automod_follow_events(streamer_id,username,followed_at,baseline,last_confirmed_at) VALUES($1,'KnownFollower',NOW(),TRUE,NOW())",[sid]);
+ await pool.query("UPDATE automod_follow_events SET seen_at=NOW()-INTERVAL '30 days' WHERE streamer_id=$1",[sid]);
  await rewardFollow(pool,{streamerId:sid,userId:uid,username:'KnownFollower',createdAt:new Date()});
  assert.equal((await readWallet(pool,sid,uid)).available,10000);
  assert.equal((await pool.query('SELECT rumble_user_id FROM automod_follow_events WHERE streamer_id=$1',[sid])).rows[0].rumble_user_id,uid);
