@@ -1,4 +1,5 @@
 import {randomUUID,randomInt} from 'node:crypto';
+import {modeVoteOptions} from './mode-vote-options.js';
 import type {Pool,PoolClient} from 'pg';
 import {inTransaction,lockWallet,walletEntry,walletSummary,readWallet} from './wallet.js';
 import {notifyShop} from './notify.js';
@@ -29,7 +30,7 @@ async function liveControl(c:Pick<PoolClient,'query'>,sid:number){
  return r?.desired_enabled===true&&r.runtime_status?.publisherActive===true&&r.is_live===true&&Date.now()-new Date(r.runtime_seen_at).getTime()<60000?r:null;
 }
 const modeNames:Record<string,string>={'automod':'Automod','auto-hunt':'Auto Hunt','session-buy':'Session achat','provider-challenge':'Défi providers'};
-function modeOptions(row:any):string[]{return Array.isArray(row.payload?.options)?row.payload.options.filter((v:unknown)=>typeof v==='string'&&Object.hasOwn(modeNames,v)):['automod','auto-hunt'];}
+function modeOptions(row:any):string[]{return modeVoteOptions(row.payload);}
 const betsOf=(rows:any[]):PredictionBet[]=>rows.map(b=>({userId:b.rumble_user_id,choice:b.choice,points:Number(b.points)}));
 async function display(c:Pick<PoolClient,'query'>,row:any){
  if(!row)return null;
@@ -63,6 +64,8 @@ export async function tickEngagement(pool:Pool,sid:number){
  await engagementSchema(pool);
  return inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
+  // Old locked purchase polls must not block every subsequent mode vote.
+  await c.query("UPDATE automod_engagement SET status='refunded',result='cancelled' WHERE streamer_id=$1 AND kind='mode' AND status='locked' AND result='session-buy'",[sid]);
   const live=await liveControl(c,sid);
   const enabled=(await c.query('SELECT desired_enabled FROM automod_control WHERE streamer_id=$1',[sid])).rows[0]?.desired_enabled===true;
   if(!enabled){
@@ -75,7 +78,7 @@ export async function tickEngagement(pool:Pool,sid:number){
   const clock=live?(await c.query('SELECT due_at,due_at<=NOW() AS due FROM automod_mode_clock WHERE streamer_id=$1',[sid])).rows[0]:null;
   if(live&&Number.isSafeInteger(live.viewers_count)&&live.viewers_count>=0)await c.query("INSERT INTO automod_audience_samples(streamer_id,sample_at,viewer_count) VALUES($1,date_trunc('minute',NOW()),$2) ON CONFLICT DO NOTHING",[sid,live.viewers_count]);
   if(clock?.due){
-   const options=['automod','auto-hunt',...['session-buy','provider-challenge'].filter(mode=>live.runtime_status?.supportedModes?.includes(mode))];
+   const options=['automod','auto-hunt',...['provider-challenge'].filter(mode=>live.runtime_status?.supportedModes?.includes(mode))];
    await c.query(`INSERT INTO automod_engagement(id,streamer_id,kind,checkpoint,status,payload)
     SELECT $1,$2,'mode',$3,'queued',$4::jsonb WHERE NOT EXISTS(SELECT 1 FROM automod_engagement WHERE streamer_id=$2 AND kind='mode' AND status IN ('queued','open','locked'))
     ON CONFLICT DO NOTHING`,[randomUUID(),sid,new Date(clock.due_at).toISOString(),JSON.stringify({options})]);
