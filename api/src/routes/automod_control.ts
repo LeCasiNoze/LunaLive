@@ -1,4 +1,5 @@
 import {setAutomodEnabled} from '../automod-shop/control-transition.js';
+import {sessionBuyAvailable,SESSION_BUY_DAYS_MESSAGE} from '../automod-shop/session-buy-availability.js';
 import {inTransaction} from '../automod-shop/wallet.js';
 import { Router } from "express";
 import { pool } from "../db.js";
@@ -108,6 +109,7 @@ automodControlRouter.get("/fsb/automod/dashboard",requireAuth,requireFsbAccess,a
 automodControlRouter.put("/fsb/automod/settings",requireAuth,requireFsbAccess,async(req:any,res)=>{
   const s=await dashboardStreamer(req,res);if(!s)return;
   const settings=parseDashboardSettings(req.body);if(!settings)return res.status(400).json({ok:false,error:"Paramètres invalides : un provider au moins, mise de 0,01 à 100 €, durée de 1 à 120 min."});
+  if(settings.mode==='session-buy'&&!sessionBuyAvailable())return res.status(409).json({ok:false,error:SESSION_BUY_DAYS_MESSAGE});
   try{
    const revision=await inTransaction(pool,async c=>{
     await c.query('SELECT pg_advisory_xact_lock($1)',[s.id]);
