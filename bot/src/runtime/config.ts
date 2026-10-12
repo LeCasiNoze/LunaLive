@@ -45,7 +45,7 @@ export async function loadAutoposts(
 ): Promise<BotAutopost[]> {
   try {
     const r = await pool.query(
-      `SELECT message, every_sec, enabled
+      `SELECT message, every_sec, enabled, scope
        FROM bot_autoposts
        WHERE streamer_id=$1
        ORDER BY id ASC`,
@@ -55,6 +55,7 @@ export async function loadAutoposts(
     return r.rows
       .map((row) => ({
         message: String(row.message || ""),
+        scope: row.scope??'all',
         everySec: Number(row.every_sec || 0),
         enabled: Boolean(row.enabled),
       }))

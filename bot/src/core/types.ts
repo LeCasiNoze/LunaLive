@@ -37,6 +37,7 @@ export type BotCommand = {
 };
 
 export type BotAutopost = {
+  scope?: 'all'|'automod'|'personal';
   message: string;
   everySec: number;
   enabled: boolean;

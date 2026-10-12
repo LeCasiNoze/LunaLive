@@ -16,6 +16,7 @@ export type BotCommandRow = {
 };
 
 export type BotAutopostRow = {
+  scope: 'all'|'automod'|'personal';
   id: string;
   message: string;
   everySec: number;
@@ -275,7 +276,7 @@ export async function listAutoposts(pool: Pool, streamerId: number): Promise<Bot
     const r = await pool.query(
       `SELECT
          id::text AS id,
-         message,
+         message, scope,
          every_sec AS "everySec",
          enabled,
          created_at::text AS "createdAt",
@@ -287,7 +288,7 @@ export async function listAutoposts(pool: Pool, streamerId: number): Promise<Bot
     );
     return r.rows.map((x) => ({
       id: String(x.id),
-      message: String(x.message ?? ""),
+      message: String(x.message ?? ""), scope: x.scope??'all',
       everySec: Number(x.everySec ?? 0),
       enabled: Boolean(x.enabled),
       createdAt: x.createdAt ?? null,
@@ -302,25 +303,25 @@ export async function listAutoposts(pool: Pool, streamerId: number): Promise<Bot
 export async function createAutopost(
   pool: Pool,
   streamerId: number,
-  data: { message: string; everySec: number; enabled: boolean }
+  data: { message: string; everySec: number; enabled: boolean; scope?: 'all'|'automod'|'personal' }
 ): Promise<BotAutopostRow> {
   try {
     const r = await pool.query(
-      `INSERT INTO bot_autoposts (streamer_id, message, every_sec, enabled, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW(), NOW())
+      `INSERT INTO bot_autoposts (streamer_id, message, every_sec, enabled, scope, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
        RETURNING
          id::text AS id,
-         message,
+         message, scope,
          every_sec AS "everySec",
          enabled,
          created_at::text AS "createdAt",
          updated_at::text AS "updatedAt"`,
-      [streamerId, data.message, data.everySec, data.enabled]
+      [streamerId, data.message, data.everySec, data.enabled, data.scope??'all']
     );
     const x = r.rows[0];
     return {
       id: String(x.id),
-      message: String(x.message ?? ""),
+      message: String(x.message ?? ""), scope: x.scope??'all',
       everySec: Number(x.everySec ?? 0),
       enabled: Boolean(x.enabled),
       createdAt: x.createdAt ?? null,
@@ -336,13 +337,14 @@ export async function patchAutopost(
   pool: Pool,
   streamerId: number,
   id: string,
-  patch: Partial<{ message: string; everySec: number; enabled: boolean }>
+  patch: Partial<{ message: string; everySec: number; enabled: boolean; scope: 'all'|'automod'|'personal' }>
 ): Promise<BotAutopostRow> {
   try {
     const fields: string[] = [];
     const vals: any[] = [];
     let i = 1;
 
+    if (patch.scope != null) {fields.push(`scope=$${i++}`);vals.push(patch.scope);}
     if (patch.message != null) {
       fields.push(`message=$${i++}`);
       vals.push(patch.message);
@@ -367,7 +369,7 @@ export async function patchAutopost(
        WHERE streamer_id=$${i++} AND id=$${i++}
        RETURNING
          id::text AS id,
-         message,
+         message, scope,
          every_sec AS "everySec",
          enabled,
          created_at::text AS "createdAt",
@@ -380,7 +382,7 @@ export async function patchAutopost(
 
     return {
       id: String(x.id),
-      message: String(x.message ?? ""),
+      message: String(x.message ?? ""), scope: x.scope??'all',
       everySec: Number(x.everySec ?? 0),
       enabled: Boolean(x.enabled),
       createdAt: x.createdAt ?? null,
@@ -424,7 +426,7 @@ export async function listLogs(pool: Pool, streamerId: number, limit: number): P
     return r.rows.map((x) => ({
       id: String(x.id),
       level: String(x.level ?? "info"),
-      message: String(x.message ?? ""),
+      message: String(x.message ?? ""), scope: x.scope??'all',
       meta: x.meta ?? null,
       createdAt: String(x.createdAt ?? ""),
     }));
@@ -437,7 +439,7 @@ export async function listLogs(pool: Pool, streamerId: number, limit: number): P
     return r.rows.map((x) => ({
       id: String(x.id),
       level: String(x.level ?? "info"),
-      message: String(x.message ?? ""),
+      message: String(x.message ?? ""), scope: x.scope??'all',
       meta: x.meta ?? null,
       createdAt: String(x.createdAt ?? ""),
     }));

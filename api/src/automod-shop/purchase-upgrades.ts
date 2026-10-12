@@ -1,3 +1,4 @@
+import {accountBenefits} from './account-benefits.js';
 import {randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {inTransaction,lockWallet,walletEntry,readWallet} from './wallet.js';
@@ -51,7 +52,7 @@ export async function reservePurchaseUpgrade(pool:Pool,sid:number,viewer:{userId
    let call=(await c.query('SELECT id::text FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND slot_key=$3 ORDER BY pos LIMIT 1 FOR UPDATE',[sid,viewer.userId,request.slotKey])).rows[0];
    if(call&&String(control.runtime_status?.slot?.callId??'')===call.id)throw Error('call_already_started');
    if(!call){
-    if(Number((await c.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,viewer.userId])).rows[0].n)>=SHOP_RULES.maxPendingCalls)throw Error('call_limit');
+    if(Number((await c.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,viewer.userId])).rows[0].n)>=(await accountBenefits(c,sid,viewer.userId)).maxPendingCalls)throw Error('call_limit');
     call=(await c.query(`INSERT INTO calls_queue(streamer_id,rumble_user_id,username,user_id,slot_name,slot_key,provider,pos,is_bonus)
      SELECT $1,$2,$3,0,$4,$5,$6,COALESCE(MAX(pos),0)+1,FALSE FROM calls_queue WHERE streamer_id=$1 RETURNING id::text`,[sid,viewer.userId,viewer.username,request.slotName,request.slotKey,request.provider])).rows[0];
    }

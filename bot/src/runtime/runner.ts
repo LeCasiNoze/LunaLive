@@ -25,7 +25,7 @@ export class StreamerRunner {
   private cooldowns = new Cooldowns();
 
   private commands: Map<string, BotCommand> = new Map();
-  private autoposts: { message: string; everySec: number }[] = [];
+  private autoposts: { message: string; everySec: number; scope?: string }[] = [];
   private autopostIndex = 0;
   private autopostTimer: NodeJS.Timeout | null = null;
   private cfgReloadTimer: NodeJS.Timeout | null = null;
@@ -333,6 +333,17 @@ export class StreamerRunner {
         return;
       }
 
+      // Skip ineligible scopes before consuming the durable activity budget.
+      let rendered:string|null=null;
+      let it=this.autoposts[this.autopostIndex % this.autoposts.length];
+      for(let n=0;n<this.autoposts.length;n++){
+        it=this.autoposts[this.autopostIndex % this.autoposts.length];
+        this.autopostIndex=(this.autopostIndex+1)%this.autoposts.length;
+        rendered=await renderAutomodReminder(this.pool,this.streamer.id,this.streamer.slug,it.message,it.scope).catch(()=>null);
+        if(rendered)break;
+      }
+      if(!rendered){this.autopostTimer=setTimeout(autopostTick,30_000);return;}
+
       // One reminder needs new human activity; persist the budget across bot restarts.
       try {
         if(!await claimAutomodReminder(this.pool,this.streamer.id,this.streamer.slug,
@@ -343,11 +354,6 @@ export class StreamerRunner {
         // Failed activity verification must never produce an unsolicited reminder.
         this.autopostTimer=setTimeout(autopostTick,30_000);return;
       }
-      // Configuration reloads every 10 seconds; keep the rotation cursor separate.
-      const it = this.autoposts[this.autopostIndex % this.autoposts.length];
-      this.autopostIndex = (this.autopostIndex + 1) % this.autoposts.length;
-      const rendered=await renderAutomodReminder(this.pool,this.streamer.id,this.streamer.slug,it.message).catch(()=>null);
-      if(!rendered){this.autopostTimer=setTimeout(autopostTick,30_000);return;}
 
       try {
         await sendBotText(rendered, "autopost");

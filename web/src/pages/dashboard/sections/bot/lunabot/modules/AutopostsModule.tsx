@@ -144,6 +144,8 @@ export function AutopostsModule({ token, autoposts, onReload }: {
   token: string; autoposts: ApiBotAutopost[]; onReload: () => Promise<void>;
 }) {
   const [newMsg, setNewMsg] = React.useState("");
+  const [newScope,setNewScope]=React.useState<'all'|'automod'|'personal'>('all');
+  const [editScope,setEditScope]=React.useState<'all'|'automod'|'personal'>('all');
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
@@ -188,14 +190,14 @@ export function AutopostsModule({ token, autoposts, onReload }: {
     if (!message.trim()) return setErr("Message manquant.");
     setBusy(true);
     try {
-      await createMyBotAutopost(token, { message, everySec: FIXED_EVERY_SEC, enabled: true });
+      await createMyBotAutopost(token, { message, everySec: FIXED_EVERY_SEC, enabled: true,scope:newScope });
       setNewMsg(""); setShowAdd(false); await onReload();
     } catch (e: any) { setErr(String(e?.message || "Erreur")); }
     finally { setBusy(false); }
   }
 
   function startEdit(p: ApiBotAutopost) {
-    setErr(null); setEditingId(p.id); setEditMsg(p.message ?? "");
+    setErr(null); setEditingId(p.id); setEditMsg(p.message ?? ""); setEditScope(p.scope??'all');
   }
   function cancelEdit() {
     setEditingId(null); setEditMsg("");
@@ -207,7 +209,7 @@ export function AutopostsModule({ token, autoposts, onReload }: {
     if (!message.trim()) return setErr("Message manquant.");
     setSavingId(id);
     try {
-      await updateMyBotAutopost(token, id, { message, everySec: FIXED_EVERY_SEC });
+      await updateMyBotAutopost(token, id, { message, everySec: FIXED_EVERY_SEC,scope:editScope });
       setEditingId(null); await onReload();
     } catch (e: any) { setErr(String(e?.message || "Erreur")); }
     finally { setSavingId(null); }
@@ -268,6 +270,7 @@ export function AutopostsModule({ token, autoposts, onReload }: {
                   <div className="auto-label">MESSAGE</div>
                   <div className="auto-label">{newMsg.length}/{BOT_TEXT_MAX}</div>
                 </div>
+                <label className="auto-label">Diffusion concernée <select value={newScope} onChange={e=>setNewScope(e.target.value as typeof newScope)}><option value="all">Tous les lives</option><option value="automod">AutoMod uniquement</option><option value="personal">Live personnel uniquement</option></select></label>
                 <textarea
                   className="auto-textarea"
                   value={newMsg}
@@ -313,7 +316,7 @@ export function AutopostsModule({ token, autoposts, onReload }: {
                           <div className="auto-card-label">Auto-post</div>
                           <div className="auto-card-interval">{everyLabel}</div>
                           <div className={`auto-card-status ${p.enabled ? "active" : "inactive"}`}>
-                            {p.enabled ? "ACTIF" : "DÉSACTIVÉ"}
+                            {p.enabled ? "ACTIF" : "DÉSACTIVÉ"} · {p.scope==='automod'?'AutoMod':p.scope==='personal'?'Personnel':'Tous les lives'}
                           </div>
                         </div>
 
@@ -356,7 +359,7 @@ export function AutopostsModule({ token, autoposts, onReload }: {
                           <div style={{ fontWeight:800, fontSize:13, color:"rgba(235,232,255,.85)" }}>✏️ Édition</div>
                           <div className="auto-card-interval">{everyLabel}</div>
                           <div className={`auto-card-status ${p.enabled ? "active" : "inactive"}`}>
-                            {p.enabled ? "ACTIF" : "DÉSACTIVÉ"}
+                            {p.enabled ? "ACTIF" : "DÉSACTIVÉ"} · {p.scope==='automod'?'AutoMod':p.scope==='personal'?'Personnel':'Tous les lives'}
                           </div>
                         </div>
                         <div className="auto-card-actions">
@@ -373,6 +376,7 @@ export function AutopostsModule({ token, autoposts, onReload }: {
                             <div className="auto-label">MESSAGE</div>
                             <div className="auto-label">{editMsg.length}/{BOT_TEXT_MAX}</div>
                           </div>
+                          <label className="auto-label">Diffusion concernée <select value={editScope} onChange={e=>setEditScope(e.target.value as typeof editScope)}><option value="all">Tous les lives</option><option value="automod">AutoMod uniquement</option><option value="personal">Live personnel uniquement</option></select></label>
                           <textarea
                             className="auto-textarea"
                             value={editMsg}

@@ -1,3 +1,4 @@
+import {accountBenefits,handleAccountUpgrade} from './account-benefits.js';
 import {castBonusChoice} from './bonus-choice.js';
 import {handleReferral} from './referral.js';
 import {handleDiscordLinkChat} from './discord-profile.js';
@@ -26,6 +27,7 @@ export interface ShopChatMessage { streamerId:number; userId:string; username:st
 const SHOP_URL="https://lecasinoze.onrender.com/automod-shop/";
 export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string|null> {
   if(!validRumbleIdentity(m.userId) || !m.messageId) return null;
+  const accountUpgrade=await handleAccountUpgrade(pool,m);if(accountUpgrade!==null)return accountUpgrade;
   const discordLink=await handleDiscordLinkChat(pool,m);if(discordLink!==null)return discordLink;
   if(/^!(?:profil|profile|xp)\s*$/i.test(m.text.trim())){
     if(Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
@@ -45,6 +47,10 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
   const open=await pool.query(`SELECT id FROM automod_shop_orders WHERE streamer_id=$1 AND rumble_user_id=$2 AND status='offered' LIMIT 1`,[m.streamerId,m.userId]);
   const cmd=parseShopCommand(m.text,Boolean(open.rowCount));
   if(!cmd)return null;
+  if(cmd.kind==='balance'){
+    if(Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
+    return `@${m.username} — ${walletSummary(await readWallet(pool,m.streamerId,m.userId))} !profil pour ton niveau ; !shop pour tes options.`;
+  }
   const control=await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`,[m.streamerId]);
   if(control.rows[0]?.desired_enabled!==true)return `@${m.username} — Le shop et les points sont disponibles pendant l’Automod.`;
   if(!shopCommandAllowed(control.rows[0],cmd.kind))return `@${m.username} — Cette option n’est pas disponible dans le mode actuel. Aucun point réservé. Consulte !shop.`;
@@ -53,9 +59,6 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
   if(Date.now()-m.createdAt.getTime()>120_000 || m.createdAt.getTime()>Date.now()+30_000)return null;
   try{
     if(cmd.kind==='shop')return `@${m.username} — Le shop Automod : ${SHOP_URL} Choisis une option, puis copie sa commande ici. Aucun compte nécessaire !`;
-    if(cmd.kind==='balance'){
-      return `@${m.username} — ${walletSummary(await readWallet(pool,m.streamerId,m.userId))} !shop pour les utiliser.`;
-    }
     if(cmd.kind==='rain'){
       return await inTransaction(pool,async c=>{
         await c.query(`SELECT pg_advisory_xact_lock($1)`,[m.streamerId]);
@@ -167,7 +170,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       if(call?.id===runtimeCall)throw Error('call_already_started');
       if(!call){
         const count=await c.query(`SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2`,[m.streamerId,m.userId]);
-        if(Number(count.rows[0].n)>=SHOP_RULES.maxPendingCalls)throw Error('call_limit');
+        if(Number(count.rows[0].n)>=(await accountBenefits(c,m.streamerId,m.userId)).maxPendingCalls)throw Error('call_limit');
         const pos=await c.query(`SELECT COALESCE(MAX(pos),0)+1 AS p FROM calls_queue WHERE streamer_id=$1`,[m.streamerId]);
         const added=await c.query(`INSERT INTO calls_queue(streamer_id,slot_name,slot_key,provider,user_id,username,pos,rumble_user_id,is_bonus)
           VALUES($1,$2,$3,$4,0,$5,$6,$7,FALSE) RETURNING id::text,pos`,[m.streamerId,slot.name,keyText(slot.name),provider,m.username,pos.rows[0].p,m.userId]);
@@ -211,7 +214,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
     if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé. Ils ne se cumulent pas.`;
     if(key==='boost_already_covered')return `@${m.username} — Le boost de session couvre déjà cette mise. Aucun point réservé ; choisis un palier supérieur.`;
     if(key==='buy_slot_already_waiting')return `@${m.username} — Cette machine est déjà en cours ou en attente. Attends la fin de son call avant de demander un achat dessus. Aucun point réservé.`;
-    const labels:Record<string,string>={insufficient_points:'Points disponibles insuffisants.',buy_already_pending:'Tu as déjà un achat en attente.',bonus_menu_changed:'Menu du bonus non connu à cette mise. Utilise !achat + nom complet pour le découvrir.',call_limit:'Tu as déjà deux calls en attente.',call_already_started:'Cette amélioration doit être choisie avant le début du call.',boost_already_set:'Cette amélioration est déjà réservée pour ce call.',automod_disabled:'L’Automod est arrêté.'};
+    const labels:Record<string,string>={insufficient_points:'Points disponibles insuffisants.',buy_already_pending:'Tu as déjà un achat en attente.',bonus_menu_changed:'Menu du bonus non connu à cette mise. Utilise !achat + nom complet pour le découvrir.',call_limit:'Ta limite de calls en attente est atteinte. !profil pour la consulter ; !compte pour l’améliorer.',call_already_started:'Cette amélioration doit être choisie avant le début du call.',boost_already_set:'Cette amélioration est déjà réservée pour ce call.',automod_disabled:'L’Automod est arrêté.'};
     return `@${m.username} — ${key.startsWith('cooldown:')?`Prochain achat possible dans ${key.split(':')[1]} min.`:labels[key]??'Demande non enregistrée. Réessaie dans un instant ; aucun débit partiel.'}`;
   }
 }
