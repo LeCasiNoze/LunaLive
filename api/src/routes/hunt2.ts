@@ -4,6 +4,9 @@ import crypto from "crypto";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { expectedAmount, onceSchema } from "../hunt2/amount.js";
+import { manualHuntRecap } from "../hunt2/recap.js";
+import { sendBotChat } from "../calls/commands.js";
+import { shopReplyChunks } from "../automod-shop/rules.js";
 import { searchSlots as searchSlotsCatalog } from "../calls/catalog.js";
 import {
   addCall,
@@ -11,7 +14,6 @@ import {
   getCallsSettings,
   reorderCalls,
   setCallBet,
-  setCallPay,
   setCallBounty,
 } from "../calls/queue.js";
 
@@ -460,6 +462,23 @@ function emitCallsChanged(req: any, slug: string, action: string) {
   io.to(`chat:${slug}`).emit("hunt:changed", { action });
 }
 
+async function announceManualPay(req: any, userId: number, state: HuntState, itemId: string) {
+  const text = manualHuntRecap(state, itemId);
+  const io = req.app?.locals?.io;
+  if (!text || !io) return;
+  try {
+    const target = await pool.query(`SELECT id,slug FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
+    const row = target.rows[0];
+    if (!row) return;
+    for (const chunk of shopReplyChunks(text)) {
+      await sendBotChat(pool, io, {streamerId: Number(row.id), slug: String(row.slug)}, chunk);
+    }
+  } catch (error) {
+    // A chat failure must not invalidate an already recorded payout.
+    console.error("[hunt2] payout recap failed", error);
+  }
+}
+
 export const hunt2Router = express.Router();
 hunt2Router.use(express.json());
 
@@ -643,7 +662,8 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
 
       const it = await getFirstUnpaidOpenItem(meta.streamerId);
       if (it?.id) {
-        await setCallPay(pool, meta.streamerId, String(it.id), pay);
+        const updated = await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 AND pay IS NULL RETURNING id`, [meta.streamerId, String(it.id), pay]);
+        if (updated.rowCount) await announceManualPay(req, meta.ownerUserId, await getState(meta.ownerUserId), String(it.id));
       }
 
       emitCallsChanged(req, slug, "pay");
@@ -905,15 +925,18 @@ hunt2Router.post("/api/hunt2/set-pay", async (req: any, res) => {
 
     const sync = await isSyncActiveForUser(userId);
     const expected = expectedAmount(req.body);
+    let changed = false;
     if (expected.guarded) {
       const result = sync.ok
         ? await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 AND pay IS NOT DISTINCT FROM $4::numeric RETURNING id`, [sync.streamerId, id, pay, expected.value])
         : await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2 AND pay IS NOT DISTINCT FROM $4::numeric RETURNING id`, [userId, id, pay, expected.value]);
       if (!result.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
-    } else if (sync.ok) {
-      await setCallPay(pool, sync.streamerId, id, pay);
+      changed = expected.value !== pay;
     } else {
-      await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2`, [userId, id, pay]);
+      const result = sync.ok
+        ? await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 AND pay IS DISTINCT FROM $3::numeric RETURNING id`, [sync.streamerId, id, pay])
+        : await pool.query(`UPDATE hunt_session_items SET pay=$3 WHERE user_id=$1 AND id=$2 AND pay IS DISTINCT FROM $3::numeric RETURNING id`, [userId, id, pay]);
+      changed = !!result.rowCount;
     }
 
     // ✅ Auto-archive: when the last open bonus gets its pay, finalise the hunt
@@ -921,6 +944,7 @@ hunt2Router.post("/api/hunt2/set-pay", async (req: any, res) => {
     // Only fires when phase === "open" (avoids double-archive) and every item
     // has a pay value (>=0) set.
     const after = await getState(userId);
+    if (changed) await announceManualPay(req, userId, after, id);
     const allPaid =
       after.items.length > 0 && after.items.every((it) => it.pay != null && Number(it.pay) >= 0);
     if (!expected.guarded && after.phase === "open" && allPaid) {
