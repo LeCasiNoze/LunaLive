@@ -272,7 +272,7 @@
           }
 
           // ✅ join + ack (slug + token + uid)
-          socket.emit("stream:join", { slug, token, uid }, (ack) => {
+          socket.emit(token ? "stream:join" : "obs:subscribe", { slug, token, uid }, (ack) => {
             if (!ack?.ok) {
               s.textContent = `Join stream: échec (${ack?.error || "unknown"})`;
             } else {

@@ -3,8 +3,10 @@
 import { pool } from "./db.js";
 import { createDiscoveryCache } from "./utils/discovery_cache.js";
 import { hasReadableHlsSegment } from "./utils/hls_probe.js";
+import {followSnapshot} from './automod-shop/follow-snapshot.js';
 
 export interface RumbleLiveInfo {
+  followers?: ReturnType<typeof followSnapshot>;
   username: string;
   isLive: boolean;
   viewersCount: number | null;
@@ -469,6 +471,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
 
   try {
     const data = await fetchRumbleData(apiKey);
+    offline.followers=followSnapshot(data,username);
 
     const livestreams: any[] = Array.isArray(data?.livestreams) ? data.livestreams : [];
 
@@ -547,6 +550,7 @@ export async function fetchRumbleLiveInfo(username: string, apiKey: string): Pro
       videoId,
       videoIdNumeric,
       createdAt,
+      followers:offline.followers,
     };
   } catch (e) {
     console.error(`[rumble] Error fetching live info for ${username}:`, e);

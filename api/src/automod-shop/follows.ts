@@ -4,6 +4,8 @@ import {inTransaction,lockWallet,walletEntry} from './wallet.js';
 import {validRumbleIdentity} from './rules.js';
 import {shopReplyChunks} from './rules.js';
 import {followSnapshot} from './follow-snapshot.js';
+import {emitFollowOverlayAlert} from '../follow_alert.js';
+import {emitSpecialCard} from '../socket_emit.js';
 const ready=new WeakMap<Pool,Promise<unknown>>();
 export const FOLLOW_POINTS=100;
 export async function followSchema(pool:Pool){
@@ -24,6 +26,11 @@ async function poll(pool:Pool,sid:number){
   if(!response.ok)return;
   const snapshot=followSnapshot(await response.json(),account.username);
   if(!snapshot)return;
+  await recordFollowSnapshot(pool,sid,snapshot);
+ })();polls.set(sid,{at:Date.now(),promise});return promise;
+}
+export async function recordFollowSnapshot(pool:Pool,sid:number,snapshot:NonNullable<ReturnType<typeof followSnapshot>>){
+  await followSchema(pool);
   await inTransaction(pool,async c=>{
    await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
    const state=(await c.query('SELECT owner_id FROM automod_follow_state WHERE streamer_id=$1',[sid])).rows[0];
@@ -38,35 +45,42 @@ async function poll(pool:Pool,sid:number){
    await c.query('INSERT INTO automod_follow_state(streamer_id,owner_id) VALUES($1,$2) ON CONFLICT(streamer_id) DO UPDATE SET owner_id=COALESCE(automod_follow_state.owner_id,EXCLUDED.owner_id)',[sid,snapshot.ownerId]);
    await c.query("INSERT INTO automod_follower_samples(streamer_id,sample_at,total) VALUES($1,date_trunc('minute',NOW()),$2) ON CONFLICT DO NOTHING",[sid,snapshot.total]);
   });
- })();polls.set(sid,{at:Date.now(),promise});return promise;
 }
-export async function tickFollows(pool:Pool,sid:number){
+export async function tickFollows(pool:Pool,sid:number,io?:any){
  await poll(pool,sid);await followSchema(pool);
- await announceNewFollow(pool,sid);
+ await announceNewFollow(pool,sid,io);
  const recent=(await pool.query("SELECT username,announced_at FROM automod_follow_events WHERE streamer_id=$1 AND announced_at>NOW()-INTERVAL '12 seconds' ORDER BY announced_at DESC LIMIT 1",[sid])).rows[0];
  return recent?{username:recent.username,shownUntil:new Date(recent.announced_at).getTime()+12000}:null;
 }
 /** Rumble's offset currently places recent follows four hours in the future.
  * Preserve its timestamp as a deduplication key; freshness uses our first seen
  * time, never an invented timezone correction. Queue and receipt commit together. */
-export async function announceNewFollow(pool:Pool,sid:number){
- return inTransaction(pool,async c=>{
-  const live=(await c.query(`SELECT i.live_video_id_numeric FROM automod_control a
-   JOIN streamers s ON s.id=a.streamer_id JOIN streamer_rumble_info i ON i.streamer_id=a.streamer_id
-   WHERE a.streamer_id=$1 AND lower(s.slug)='lecasinoze' AND a.desired_enabled=TRUE
-   AND a.runtime_status->>'publisherActive'='true' AND a.runtime_seen_at>NOW()-INTERVAL '60 seconds' AND i.is_live=TRUE`,[sid])).rows[0];
+export async function announceNewFollow(pool:Pool,sid:number,io?:any){
+ const announced=await inTransaction(pool,async c=>{
+  const live=(await c.query(`SELECT i.live_video_id_numeric,s.slug,s.user_id AS "ownerUserId",
+   (a.desired_enabled=TRUE AND a.runtime_status->>'publisherActive'='true' AND a.runtime_seen_at>NOW()-INTERVAL '60 seconds') AS "automodActive"
+   FROM streamers s JOIN streamer_rumble_info i ON i.streamer_id=s.id
+   LEFT JOIN automod_control a ON a.streamer_id=s.id
+   WHERE s.id=$1 AND lower(s.slug)='lecasinoze' AND i.is_live=TRUE
+   AND i.updated_at>NOW()-INTERVAL '120 seconds'`,[sid])).rows[0];
   if(!live?.live_video_id_numeric)return false;
   const event=(await c.query(`SELECT username,followed_at::text AS event_key FROM automod_follow_events
    WHERE streamer_id=$1 AND NOT baseline AND announced_at IS NULL
    AND seen_at>NOW()-INTERVAL '10 minutes' ORDER BY seen_at
    LIMIT 1 FOR UPDATE SKIP LOCKED`,[sid])).rows[0];
   if(!event)return false;
-  for(const chunk of shopReplyChunks(`Merci pour ton follow @${event.username} ! +${FOLLOW_POINTS} points après ton premier message. Ton solde : !points.`)){
+  const message=live.automodActive?`Merci pour ton follow @${event.username} ! +${FOLLOW_POINTS} points après ton premier message. Ton solde : !points.`:`Merci pour ton follow @${event.username} !`;
+  for(const chunk of shopReplyChunks(message)){
    await c.query("INSERT INTO rumble_send_queue(video_id_numeric,text,status) VALUES($1,$2,'pending')",[String(live.live_video_id_numeric),chunk]);
   }
   await c.query('UPDATE automod_follow_events SET announced_at=NOW() WHERE streamer_id=$1 AND username=$2 AND followed_at=$3',[sid,event.username,event.event_key]);
-  return true;
+  return {streamer:live,username:event.username};
  });
+ if(announced&&io){
+  emitSpecialCard(io,announced.streamer.slug,'follow',{who:announced.username,platform:'rumble'});
+  await emitFollowOverlayAlert(pool,io,announced.streamer,announced.username).catch(e=>console.warn('[rumble-follow-overlay]',e?.message));
+ }
+ return Boolean(announced);
 }
 /** Follow API supplies names; only an authenticated Rumble chat event binds the durable numeric identity. */
 export async function rewardFollow(pool:Pool,m:{streamerId:number;userId:string;username:string;createdAt:Date}){

@@ -162,7 +162,7 @@ automodServiceRouter.post(`${API}/v1/shop/tick`,runtimeRoute(async(req:any,res)=
   const ranks=event.winners?.map((w,i)=>`${i+1}. @${w.username} ×${Math.floor(w.multiplier)} : ${w.points} pts événement`).join(' · ');
   if(ranks)await notifyShop(pool,req.automodService.streamerId,`Meilleur Achat terminé (${event.day}) · ${ranks}`);
  }
- return res.json({ok:true,activePointViewers:await activePointViewers(pool,req.automodService.streamerId),follow:await tickFollows(pool,req.automodService.streamerId).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
+ return res.json({ok:true,activePointViewers:await activePointViewers(pool,req.automodService.streamerId),follow:await tickFollows(pool,req.automodService.streamerId,req.app.locals.io).catch(()=>null),rain:await tickPointsRain(pool,req.automodService.streamerId),engagement:await tickEngagement(pool,req.automodService.streamerId)});
 }));
 automodServiceRouter.post(`${API}/v1/shop/bonus-choice`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});

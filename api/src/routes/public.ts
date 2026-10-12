@@ -10,6 +10,8 @@ import { chatStore } from "../chat_store.js";
 import normalizeAppearance from "../appearance.js";
 import { emitChatAll, emitChatAndStream, emitSpecialCard } from "../socket_emit.js";
 
+import {emitFollowOverlayAlert} from '../follow_alert.js';
+
 export const publicRouter = Router();
 const HEARTBEAT_TTL_SECONDS = 110;
 const DEFAULT_OFFLINE_BG_URL = "/stream-offline-default.webp";
@@ -26,29 +28,6 @@ const PUBLIC_CACHE_TTL_MS = 5_000;
 const PUBLIC_CACHE_MAX_ENTRIES = 500;
 const publicCache = new Map<string, { body: unknown; ts: number }>();
 const publicCacheInflight = new Map<string, Promise<unknown>>();
-
-function renderFollowTemplate(template: string, username: string) {
-  return String(template || "Merci @{user} pour le follow 💜")
-    .replaceAll("@{user}", `@${username}`)
-    .replaceAll("{user}", username);
-}
-
-async function emitFollowOverlayAlert(io: any, streamer: any, username: string) {
-  const ownerUserId = Number(streamer.ownerUserId || 0);
-  if (!ownerUserId) return;
-  const result = await pool.query(`SELECT config FROM streamer_overlay_configs WHERE user_id=$1 LIMIT 1`, [ownerUserId]);
-  const alerts = result.rows?.[0]?.config?.alerts || {};
-  io.to(`stream:${String(streamer.slug).toLowerCase()}`).emit("obs:alert", {
-    event: "follow",
-    name: username,
-    text: renderFollowTemplate(alerts.follow_tpl, username),
-    imageUrl: alerts.follow_img ?? null,
-    soundUrl: alerts.follow_sound ?? null,
-    volume: Math.max(0, Math.min(1, Number(alerts.sound_vol ?? 1))),
-    durationMs: Math.max(1200, Math.min(30_000, Number(alerts.follow_duration_ms ?? 4500))),
-    createdAt: new Date().toISOString(),
-  });
-}
 
 function getPublicCache(key: string): unknown | null {
   const hit = publicCache.get(key);
@@ -920,7 +899,7 @@ publicRouter.post(
       emitSpecialCard(io, String(streamer.slug), "follow", {
         who: followerName,
       });
-      await emitFollowOverlayAlert(io, streamer, followerName).catch((error) => {
+      await emitFollowOverlayAlert(pool, io, streamer, followerName).catch((error) => {
         console.error("[follow-overlay] emit failed", error);
       });
     }
