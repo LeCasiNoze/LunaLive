@@ -1,3 +1,5 @@
+import {mig146_community_benefits} from '../src/db/migrations/mig146_community_benefits.js';
+import {observeCnz,accountBenefits,handleAccountUpgrade} from '../src/automod-shop/account-benefits.js';
 import {rewardFollow,announceNewFollow} from '../src/automod-shop/follows.js';
 import {handleReferral,settleReferral} from '../src/automod-shop/referral.js';
 import {mig143_automod_hunt_reservations} from '../src/db/migrations/mig143_automod_hunt_reservations.js';
@@ -20,19 +22,20 @@ import {weeklyGreeting} from '../src/automod-shop/weekly-chat.js';
 import {dailyViewerGreeting,greetingText} from '../src/automod-shop/viewer-greeting.js';
 import {followSnapshot} from '../src/automod-shop/follow-snapshot.js';
 import {requestAutomodDiscordLink,handleDiscordLinkChat,automodDiscordProfile} from '../src/automod-shop/discord-profile.js';
-import {claimAutomodReminder} from '../../bot/src/runtime/autopost-activity.js';
+import {renderAutomodReminder,claimAutomodReminder} from '../../bot/src/runtime/autopost-activity.js';
 import {reservePurchaseUpgrade,purchaseUpgradeForTarget,reconcileUnusedPurchaseUpgrades} from '../src/automod-shop/purchase-upgrades.js';
 
 // Never accept a production connection string. This suite requires the disposable local cluster.
-const admin=new pg.Pool({host:'127.0.0.1',port:55432,user:'automod',database:'postgres',max:1});
+const admin=new pg.Pool({host:'127.0.0.1',port:55433,user:'automod',database:'postgres',max:1});
 const database='automod_points_test_'+randomUUID().replaceAll('-','');
-const pool=new pg.Pool({host:'127.0.0.1',port:55432,user:'automod',database,max:8});
+const pool=new pg.Pool({host:'127.0.0.1',port:55433,user:'automod',database,max:8});
 let created=false;
 before(async()=>{
  const directory=await admin.query(`SELECT current_setting('data_directory') AS path`);
- assert.equal(directory.rows[0].path,'/tmp/automod-points-pg-data');
+ assert.equal(directory.rows[0].path,'/tmp/cnz-community-pg-20261012');
  await admin.query(`CREATE DATABASE ${database}`);created=true;
- await pool.query(`CREATE TABLE streamers(id BIGINT PRIMARY KEY);
+ await pool.query(`CREATE TABLE streamers(id BIGINT PRIMARY KEY,slug text,user_id bigint);
+  CREATE TABLE bot_autoposts(id BIGSERIAL PRIMARY KEY,streamer_id bigint,message text NOT NULL,every_sec integer,enabled boolean,created_at timestamptz,updated_at timestamptz);
   CREATE TABLE rumble_chat_messages(streamer_id BIGINT,rumble_user_id TEXT,created_at TIMESTAMPTZ DEFAULT NOW());
 
   CREATE TABLE automod_control(streamer_id BIGINT PRIMARY KEY,desired_enabled BOOLEAN,dashboard_settings JSONB DEFAULT '{}',runtime_status JSONB DEFAULT '{}');
@@ -46,13 +49,14 @@ before(async()=>{
  await mig143_automod_hunt_reservations(pool);
  await mig144_automod_progression(pool);await mig144_automod_progression(pool);
  await mig145_automod_modes(pool);await mig145_automod_modes(pool);
+ await mig146_community_benefits(pool);await mig146_community_benefits(pool);
  await pool.query(`INSERT INTO slots_catalog(name_key,name,provider_norm) VALUES($1,'Wanted Dead or a Wild','Hacksaw Gaming')`,[keyText('Wanted Dead or a Wild')]);
 });
 after(async()=>{
  await pool.end();if(created)await admin.query(`DROP DATABASE ${database}`);await admin.end();
 });
 async function streamer(id:number){
- await pool.query(`INSERT INTO streamers VALUES($1)`,[id]);
+ await pool.query(`INSERT INTO streamers(id) VALUES($1)`,[id]);
  await pool.query(`INSERT INTO automod_control(streamer_id,desired_enabled,dashboard_settings) VALUES($1,TRUE,'{"stakeCents":20,"allowedProviders":["hacksaw","pragmatic"]}')`,[id]);
 }
 async function buyer(id:number,user='284177710'){
@@ -467,6 +471,7 @@ test('future-offset Rumble follow thanks and native-ID credit use observed fresh
  const sid=470,uid='1470';await streamer(sid);
  await pool.query(`ALTER TABLE streamers ADD COLUMN IF NOT EXISTS slug text;
  ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS live_video_id_numeric text;
+ ALTER TABLE streamer_rumble_info ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT NOW();
  CREATE TABLE rumble_send_queue(id bigserial PRIMARY KEY,video_id_numeric text,text text,status text,created_at timestamptz DEFAULT NOW());`);
  await pool.query("UPDATE streamers SET slug='lecasinoze' WHERE id=$1",[sid]);
  await pool.query("UPDATE automod_control SET runtime_seen_at=NOW(),runtime_status='{\"publisherActive\":true}' WHERE streamer_id=$1",[sid]);
@@ -482,4 +487,74 @@ test('future-offset Rumble follow thanks and native-ID credit use observed fresh
  assert.equal((await readWallet(pool,sid,uid)).available,100);
  await pool.query("INSERT INTO automod_follow_events(streamer_id,username,followed_at,baseline,seen_at) VALUES($1,'OldUnannounced',NOW(),FALSE,NOW()-INTERVAL '11 minutes')",[sid]);
  assert.equal(await announceNewFollow(pool,sid),false);
+});
+
+
+test('CNZ reward is once per native ID through rename, replay and concurrent delivery',async()=>{
+ const sid=901,uid=await buyer(sid,'901001');
+ const m={streamerId:sid,userId:uid,username:'CNZ_Lucas',createdAt:new Date()};
+ const replies=await Promise.all([observeCnz(pool,m),observeCnz(pool,m),observeCnz(pool,m)]);
+ assert.equal(replies.filter(Boolean).length,1);
+ assert.equal((await readWallet(pool,sid,uid)).balance,12000);
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,3);
+ await creditPoints(pool,sid,uid,'AncienPseudo',`late-name:${uid}`,0,'late-old-event');
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,3);
+ await observeCnz(pool,{...m,username:'Lucas'});
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,2);
+ await creditPoints(pool,sid,uid,'CNZ_Ancien',`late-cnz:${uid}`,0,'late-old-event');
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,2);
+ await observeCnz(pool,{...m,createdAt:new Date(m.createdAt.getTime()-1)});
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,2);
+ assert.equal(await observeCnz(pool,m),null);
+ assert.equal((await readWallet(pool,sid,uid)).balance,12000);
+ assert.equal(await observeCnz(pool,{...m,createdAt:new Date(Date.now()-180000)}),null);
+});
+test('account upgrades debit once, respect reserved balance and sequential tiers',async()=>{
+ const sid=902,uid=await buyer(sid,'902001');
+ const m={streamerId:sid,userId:uid,username:'Viewer',createdAt:new Date(),messageId:'account-test',text:'!compte calls 1'};
+ const replies=await Promise.all([handleAccountUpgrade(pool,m),handleAccountUpgrade(pool,m)]);
+ assert.equal(replies.filter(r=>r?.includes('acquis pour')).length,1);
+ assert.equal((await readWallet(pool,sid,uid)).balance,7000);
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,3);
+ assert.match((await handleAccountUpgrade(pool,{...m,text:'!compte calls 3'}))!,/palier 2/);
+ await handleAccountUpgrade(pool,{...m,text:'!compte calls 2'});
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingCalls,4);
+ assert.equal((await readWallet(pool,sid,uid)).balance,2000);
+ assert.match((await handleAccountUpgrade(pool,{...m,text:'!compte musique 1'}))!,/3?000|3000/);
+ assert.equal((await accountBenefits(pool,sid,uid)).maxPendingMusic,1);
+ assert.equal((await readProfile(pool,sid,uid)).xp,0);
+});
+
+
+test('autopost scopes follow the actual publisher, and disabled AutoMod cannot render its reminder',async()=>{
+ const sid=903;await streamer(sid);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','{{automod_session}}'),null);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','shop','automod'),null);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','bonjour','personal'),'bonjour');
+ await pool.query(`UPDATE automod_control SET runtime_seen_at=NOW(),runtime_status='{"publisherActive":true,"mode":"bonus-hunt"}' WHERE streamer_id=$1`,[sid]);
+ assert.match((await renderAutomodReminder(pool,sid,'lecasinoze','{{automod_session}}'))!,/Auto Hunt/);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','bonjour','personal'),null);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','CNZ','all'),'CNZ');
+ await pool.query('UPDATE automod_control SET desired_enabled=FALSE WHERE streamer_id=$1',[sid]);
+ assert.equal(await renderAutomodReminder(pool,sid,'lecasinoze','{{automod_session}}'),null);
+});
+test('autopost migration saves old posts once and preserves subsequent owner edits',async()=>{
+ const sid=904;await streamer(sid);await pool.query("UPDATE streamers SET slug='lecasinoze' WHERE id=$1",[sid]);
+ const id=(await pool.query("INSERT INTO bot_autoposts(streamer_id,message,every_sec,enabled) VALUES($1,'!shop : bonus et options. !points : ton solde. !profil : ta progression. Rain annoncée ? !rain pour participer.',1200,TRUE) RETURNING id",[sid])).rows[0].id;
+ await mig146_community_benefits(pool);
+ const posts=(await pool.query('SELECT message,scope FROM bot_autoposts WHERE streamer_id=$1',[sid])).rows;
+ assert.equal(posts.length,2);assert.equal(posts.find(p=>p.message.startsWith('✨')).scope,'automod');
+ assert.equal(posts.find(p=>p.message.includes('CNZ')).scope,'all');
+ await pool.query("UPDATE bot_autoposts SET message='Mon texte personnel',scope='personal' WHERE id=$1",[id]);
+ await mig146_community_benefits(pool);
+ assert.equal((await pool.query('SELECT COUNT(*) AS n FROM bot_autoposts WHERE streamer_id=$1',[sid])).rows[0].n,'2');
+ assert.equal((await pool.query('SELECT message FROM bot_autoposts WHERE id=$1',[id])).rows[0].message,'Mon texte personnel');
+ assert.equal((await pool.query('SELECT COUNT(*) AS n FROM automod_autopost_backups WHERE streamer_id=$1',[sid])).rows[0].n,'1');
+});
+test('concurrent native calls enforce upgraded capacity across usernames',async()=>{
+ const sid=905,uid=await buyer(sid,'905001');await pool.query("UPDATE streamers SET slug='lecasinoze' WHERE id=$1",[sid]);
+ await observeCnz(pool,{streamerId:sid,userId:uid,username:'CNZ_Viewer',createdAt:new Date()});
+ const results=await Promise.all(['Fruit Party','Sugar Rush','Le Bandit','Wanted Dead or a Wild','Le Zeus'].map((name,i)=>addCall(pool,sid,0,'Name'+i,name,i===2?'Hacksaw Gaming':'Pragmatic Play',{rumbleUserId:uid,bypassLimit:true})));
+ assert.equal(results.filter(r=>r.ok).length,3);
+ assert.equal((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,uid])).rows[0].n,'3');
 });

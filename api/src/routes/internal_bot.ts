@@ -1,5 +1,7 @@
 // api/src/routes/internal_bot.ts
 import express from "express";
+import {accountBenefits} from '../automod-shop/account-benefits.js';
+import {validRumbleIdentity} from '../automod-shop/rules.js';
 import { pool } from "../db.js";
 import { createAutoClipForStreamer } from "../shared/clip_service.js";
 import { markClipDeletedById } from "../bot_clips/store.js";
@@ -8,6 +10,17 @@ import { getChatCosmeticsForUsers } from "../chat_cosmetics.js";
 import { sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 
 export const internalBotRouter = express.Router();
+
+internalBotRouter.get('/internal/bot/music-benefits/:rumbleId',async(req,res)=>{
+ if(!requireBotKey(req,res))return;
+ if(!validRumbleIdentity(req.params.rumbleId))return res.status(400).json({ok:false});
+ try{
+  const sid=(await pool.query("SELECT id FROM streamers WHERE lower(slug)='lecasinoze'")).rows[0]?.id;
+  if(!sid)return res.status(404).json({ok:false});
+  const benefits=await accountBenefits(pool,sid,req.params.rumbleId);
+  res.set('Cache-Control','no-store').json({ok:true,maxPendingMusic:benefits.maxPendingMusic});
+ }catch{res.status(503).json({ok:false});}
+});
 
 // Read-only credential check: does not depend on optional bot settings tables.
 internalBotRouter.get("/internal/bot/auth-check", (req, res) => {

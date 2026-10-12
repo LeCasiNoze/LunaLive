@@ -1,3 +1,4 @@
+import {accountBenefits} from '../automod-shop/account-benefits.js';
 // api/src/calls/commands.ts
 import type { Pool } from "pg";
 import type { Server } from "socket.io";
@@ -486,6 +487,7 @@ export async function handleCallsCommand(opts: {
   const bypassLimit = canMod || actorRole === "admin" || actorRole === "streamer" || isDliveViewer;
 
   let lim = effectiveLimit(settings.perUserLimit);
+  if(rumbleUserId&&slug==='lecasinoze')lim=(await accountBenefits(pool,streamerId,rumbleUserId)).maxPendingCalls;
 
   // talent_calls_limit => ajoute des slots par rapport à la limite streamer
   // (pas applicable aux viewers DLive sans compte Luna)
@@ -497,7 +499,7 @@ export async function handleCallsCommand(opts: {
 
   // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
   if (isDliveViewer && lim > 0 && actorUsername) {
-    const n = await countUserCallsByUsername(pool, streamerId, actorUsername);
+    const n = rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
     if (n >= lim) {
       await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
       return { handled: true, showOriginalInChat };

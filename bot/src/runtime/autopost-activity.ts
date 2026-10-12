@@ -1,16 +1,20 @@
 import type {Pool} from 'pg';
 
 export function automodModeReminder(mode:string){
- if(mode==='provider-challenge')return 'Pragmatic ou Hacksaw ? Choisis !camp pragma ou !camp hacksaw, puis !call + nom complet. !shop pour renforcer ton camp.';
- if(mode==='session-buy')return 'Session achat : 3 bonus par machine ! Propose la tienne : !call + nom complet. !shop pour améliorer un achat.';
- if(mode==='bonus-hunt'||mode==='auto-hunt')return 'Auto Hunt : on collecte les bonus, puis on les ouvre ensemble ! !call + nom complet pour proposer une machine. !help pour participer.';
- return 'À toi de jouer : !call + nom complet de la slot. !mcall retire ton dernier call. !music + titre et artiste pour la musique.';
+ if(mode==='provider-challenge')return '⚔️ Pragmatic ou Hacksaw ? Choisis !camp pragma ou !camp hacksaw, puis !call + nom complet. !shop pour renforcer ton camp.';
+ if(mode==='session-buy')return '✨ Session achat : 3 bonus par machine ! Propose la tienne : !call + nom complet. !shop pour améliorer un achat.';
+ if(mode==='bonus-hunt'||mode==='auto-hunt')return '🎯 Auto Hunt : on collecte les bonus, puis on les ouvre ensemble ! !call + nom complet pour proposer une machine. !help pour participer.';
+ return '🎰 À toi de jouer : !call + nom complet de la slot. !mcall retire ton dernier call. !music + titre et artiste pour la musique.';
 }
 /** Only this explicit template opts into dynamic Automod copy. */
-export async function renderAutomodReminder(pool:Pool,sid:number,slug:string,message:string){
- if(slug.toLowerCase()!=='lecasinoze'||message!=='{{automod_session}}')return message;
- const control=(await pool.query('SELECT desired_enabled,runtime_status,dashboard_settings FROM automod_control WHERE streamer_id=$1',[sid])).rows[0];
- return automodModeReminder(control?.desired_enabled?(control.runtime_status?.mode??control.dashboard_settings?.mode??'automod'):'automod');
+export async function renderAutomodReminder(pool:Pool,sid:number,slug:string,message:string,scope='all'){
+ if(slug.toLowerCase()!=='lecasinoze')return message;
+ const control=(await pool.query('SELECT desired_enabled,runtime_status,runtime_seen_at,dashboard_settings FROM automod_control WHERE streamer_id=$1',[sid])).rows[0];
+ const age=Date.now()-new Date(control?.runtime_seen_at).getTime();
+ const automod=control?.desired_enabled===true&&control.runtime_status?.publisherActive===true&&Number.isFinite(age)&&age>=-30000&&age<60000;
+ if((scope==='automod'||message==='{{automod_session}}')&&!automod)return null;
+ if(scope==='personal'&&automod)return null;
+ return message==='{{automod_session}}'?automodModeReminder(control.runtime_status?.mode??control.dashboard_settings?.mode??'automod'):message;
 }
 
 /** Durable activity budget: bot messages cannot unlock another Automod reminder. */

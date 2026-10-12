@@ -1,3 +1,4 @@
+import {accountBenefits} from './account-benefits.js';
 import type {PoolClient} from 'pg';
 import {validRumbleIdentity} from './rules.js';
 
@@ -43,9 +44,9 @@ export async function readProfile(c:Pick<PoolClient,'query'>,sid:number,uid:stri
  LEFT JOIN automod_points_accounts a ON a.streamer_id=$1 AND a.rumble_user_id=$2`,[sid,uid]);
  const row=r.rows[0];
  const xp=Number(row.xp);
- return {xp,...levelForXp(xp),callsPlayed:Number(row.calls),naturalBonuses:Number(row.bonuses),
+ return {...await accountBenefits(c,sid,uid),xp,...levelForXp(xp),callsPlayed:Number(row.calls),naturalBonuses:Number(row.bonuses),
   bestMultiplier:Number(row.best_multi),available:Number(row.available),reserved:Number(row.reserved),monthlyEventPoints:Number(row.event_points)};
 }
 export function profileMessage(name:string,p:Awaited<ReturnType<typeof readProfile>>){
- return `@${name} — Niv. ${p.level} · ${p.xp} XP · ${p.callsPlayed} calls joués · ${p.naturalBonuses} bonus · record ×${Math.floor(p.bestMultiplier)}. Solde : ${p.available} pts · Évent/mois : ${p.monthlyEventPoints} · Shop −${p.discountPercent} %.`;
+ return `@${name} — Niv. ${p.level} · ${p.xp} XP · ${p.callsPlayed} calls joués · ${p.naturalBonuses} bonus · record ×${Math.floor(p.bestMultiplier)}. Solde : ${p.available} pts · Évent/mois : ${p.monthlyEventPoints} · Shop −${p.discountPercent} % · Calls : ${p.maxPendingCalls} · Musiques : ${p.maxPendingMusic} en attente.`;
 }

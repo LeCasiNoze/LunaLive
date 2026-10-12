@@ -1335,6 +1335,7 @@ export type ApiBotCommand = {
 };
 
 export type ApiBotAutopost = {
+  scope?: 'all'|'automod'|'personal';
   id: string;
   message: string;
   everySec: number;
@@ -1414,7 +1415,7 @@ export async function getMyBotAutoposts(token: string) {
 
 export async function createMyBotAutopost(
   token: string,
-  payload: { message: string; everySec: number; enabled?: boolean }
+  payload: { message: string; everySec: number; enabled?: boolean; scope?: 'all'|'automod'|'personal' }
 ) {
   return j<{ ok: true; autopost: ApiBotAutopost }>("/me/bot/autoposts", {
     method: "POST",
@@ -1426,7 +1427,7 @@ export async function createMyBotAutopost(
 export async function updateMyBotAutopost(
   token: string,
   id: string,
-  patch: Partial<{ message: string; everySec: number; enabled: boolean }>
+  patch: Partial<{ message: string; everySec: number; enabled: boolean; scope: 'all'|'automod'|'personal' }>
 ) {
   return j<{ ok: true; autopost: ApiBotAutopost }>(`/me/bot/autoposts/${encodeURIComponent(id)}`, {
     method: "PATCH",

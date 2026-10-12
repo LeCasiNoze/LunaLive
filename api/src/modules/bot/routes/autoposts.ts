@@ -23,6 +23,7 @@ autopostsRouter.post("/autoposts", async (req, res) => {
     const s = await mustGetMyStreamer(req);
     const parsed = AutopostCreateSchema.parse(req.body ?? {});
     const autopost = await createAutopost(pool, s.id, {
+      scope: parsed.scope,
       message: parsed.message,
       everySec: parsed.everySec,
       enabled: parsed.enabled ?? true,
@@ -43,6 +44,7 @@ autopostsRouter.patch("/autoposts/:id", async (req, res) => {
 
     const parsed = AutopostPatchSchema.parse(req.body ?? {});
     const autopost = await patchAutopost(pool, s.id, id, {
+      scope: parsed.scope,
       message: parsed.message,
       everySec: parsed.everySec,
       enabled: parsed.enabled as any,

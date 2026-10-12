@@ -1,3 +1,4 @@
+import {mig146_community_benefits} from './mig146_community_benefits.js';
 import {mig145_automod_modes} from './mig145_automod_modes.js';
 // api/src/db/migrations/index.ts (ou ton fichier migrateAll)
 import type { Pool } from "pg";
@@ -325,6 +326,7 @@ export async function migrateAll(pool: Pool) {
   await mig143_automod_hunt_reservations(pool);
   await mig144_automod_progression(pool);
   await mig145_automod_modes(pool);
+  await mig146_community_benefits(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

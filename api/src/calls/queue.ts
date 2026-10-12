@@ -1,4 +1,5 @@
 // api/src/calls/queue.ts
+import {accountBenefits} from '../automod-shop/account-benefits.js';
 import type { Pool } from "pg";
 import { keyText, normText } from "./normalize.js";
 import { normalizeProvider } from "./provider_aliases.js";
@@ -397,6 +398,14 @@ export async function addCall(
       }
     }
 
+    if(opts?.rumbleUserId&&!opts.automodRequestId){
+      const isChannel=(await client.query("SELECT 1 FROM streamers WHERE id=$1 AND lower(slug)='lecasinoze'",[streamerId])).rowCount;
+      if(isChannel){
+       const limit=(await accountBenefits(client,streamerId,opts.rumbleUserId)).maxPendingCalls;
+       const count=Number((await client.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[streamerId,opts.rumbleUserId])).rows[0].n);
+       if(count>=limit){await client.query('COMMIT');return {ok:false,error:'limit_reached'};}
+      }
+    }
     // position par défaut = append
     let nextPos = 0;
 
