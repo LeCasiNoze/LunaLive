@@ -51,6 +51,13 @@ export class LunaLiveDbTransport {
           const body = String(row.body);
           const externalSource = row.external_source ? String(row.external_source) : null;
 
+          // The API bridge already handles !clip on the original Rumble message.
+          // Preserve its chat/history mirror without executing the clip a second time.
+          if (externalSource === "rumble" && /^\s*!clip(?:\s|$)/i.test(body)) {
+            this.lastId = Math.max(this.lastId, Number(row.id));
+            continue;
+          }
+
           // ✅ ignore system (userId=0 sans external_source = bot/system Luna)
           //    Mais on garde les externes (Rumble bridge) pour dispatch des commandes.
           if (userId <= 0 && !externalSource) {
