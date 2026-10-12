@@ -11,6 +11,7 @@ import {
 } from "./rumble.js";
 import type { Server as IOServer } from "socket.io";
 import { notifyFollowersGoLive } from "./notify_go_live.js";
+import {recordFollowSnapshot,announceNewFollow} from './automod-shop/follows.js';
 
 /**
  * Archive un live terminé dans rumble_vods + programme la résolution du VOD permanent.
@@ -301,6 +302,11 @@ async function pollOne(
       io,
       info.createdAt
     );
+    // Reuse the existing official API response: no extra polling/bandwidth.
+    if(info.followers){
+      await recordFollowSnapshot(pool,streamerId,info.followers);
+      await announceNewFollow(pool,streamerId,io);
+    }
   } catch (e) {
     console.error(`[rumble-poller] Error polling ${slug}:`, e);
   }

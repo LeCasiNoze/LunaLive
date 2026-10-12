@@ -660,7 +660,9 @@ adminRumbleRouter.post("/admin/rumble/announce-follows", requireAdminKey, async 
 
     // Annonce uniquement si delta > 0 et stream live (sinon spam offline)
     let announced = false;
-    if (previous != null && delta > 0 && isLive) {
+    // LeCasiNoze uses named official follow events; don't also send a count-only thank-you.
+    const namedFollows=slug==='lecasinoze'&&(await pool.query('SELECT 1 FROM automod_follow_state WHERE streamer_id=$1 LIMIT 1',[streamerId])).rows.length>0;
+    if (previous != null && delta > 0 && isLive && !namedFollows) {
       const text = delta === 1
         ? `💚 +1 follow GG !`
         : `💚 +${delta} follows GG !`;
