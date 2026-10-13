@@ -352,7 +352,7 @@ automodServiceRouter.post(`${API}/v1/calls`, async (req: any, res) => {
     if (!existing.rows[0].slotName) return res.status(409).json({ ok: false, error: "automod_call_finished" });
     return res.json({ ok: true, item: existing.rows[0] });
   }
-  const result = await addCall(pool, req.automodService.streamerId, 0, "Automod", slotName, provider, { bypassLimit: true });
+  const result = await addCall(pool, req.automodService.streamerId, 0, "Automod", slotName, provider, { bypassLimit: true, automodRequestId: requestId });
   if (!result.ok) return res.status(409).json({ ok: false, error: result.error });
   await pool.query(`INSERT INTO automod_call_requests(service_id,request_id,call_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, [req.automodService.serviceId, requestId, result.item.id]);
   return res.status(201).json({ ok: true, item: { id: result.item.id, slotName: result.item.slotName, provider: result.item.provider, username: "Automod", userId: 0, pos: result.position } });

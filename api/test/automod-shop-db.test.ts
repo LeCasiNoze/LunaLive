@@ -16,6 +16,8 @@ import {mutateOrder,ordersForCall,ingestPointsEvent,reconcileRemovedShopCalls} f
 import {handleShopChat} from '../src/automod-shop/commands.js';
 import {keyText} from '../src/calls/normalize.js';
 import {addCall} from '../src/calls/queue.js';
+import {automodServiceRouter} from '../src/routes/automod_service.js';
+import {pool as servicePool} from '../src/db.js';
 import {createChallenge,chooseCamp,settleChallenge} from '../src/automod-shop/provider-challenge.js';
 import {requestWeeklyPurchase,nextWeeklyPurchase,quoteWeeklyPurchase,weeklyPurchaseIntent,finishWeeklyPurchase,failWeeklyPurchase,settleWeeklyEvent} from '../src/automod-shop/weekly-event.js';
 import {weeklyGreeting} from '../src/automod-shop/weekly-chat.js';
@@ -83,6 +85,32 @@ test('provider challenge call admission uses native camp and leaves classic call
  assert.equal((await pool.query("SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=300 AND slot_name='Wanted Dead or a Wild'")).rows[0].n,'1');
  await pool.query('UPDATE automod_control SET desired_enabled=FALSE WHERE streamer_id=300');
  assert.equal((await call('Le Bandit','Hacksaw Gaming')).ok,true);
+});
+test('service call route fills a challenge queue without a viewer camp and retries only once',async()=>{
+ await streamer(9301);
+ await pool.query(`UPDATE automod_control SET dashboard_settings=dashboard_settings||'{"mode":"provider-challenge"}'::jsonb WHERE streamer_id=9301`);
+ const event=await createChallenge(pool,9301,'service-admission',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});
+ await pool.query("UPDATE automod_provider_challenges SET status='playing' WHERE id=$1",[event.id]);
+ await pool.query('CREATE TABLE IF NOT EXISTS automod_call_requests(service_id text,request_id text,call_id bigint,PRIMARY KEY(service_id,request_id))');
+ const handler=(automodServiceRouter as any).stack.find((layer:any)=>layer.route?.path==='/automod-service/v1/calls'&&layer.route.methods.post).route.stack.at(-1).handle;
+ const originalQuery=servicePool.query,originalConnect=servicePool.connect;
+ (servicePool as any).query=pool.query.bind(pool);(servicePool as any).connect=pool.connect.bind(pool);
+ const body={requestId:randomUUID(),slotName:'Sugar Rush',provider:'Pragmatic Play'};
+ async function request(scopes:string[]){
+  let status=200,payload:any;
+  const res={status(code:number){status=code;return this;},json(value:any){payload=value;return this;}};
+  await handler({body,automodService:{streamerId:9301,serviceId:'test-service',scope:new Set(scopes)}},res);
+  return {status,payload};
+ }
+ try{
+  assert.equal((await request([])).status,403);
+  const first=await request(['calls:sync']);
+  assert.equal(first.status,201,JSON.stringify(first.payload));
+  assert.equal(first.payload.item.username,'Automod');
+  const retry=await request(['calls:sync']);
+  assert.equal(retry.status,200);assert.equal(retry.payload.item.id,first.payload.item.id);
+  assert.equal((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=9301')).rows[0].n,'1');
+ }finally{servicePool.query=originalQuery;servicePool.connect=originalConnect;}
 });
 async function order(sid:number,status:string,reserved=1400,kind='buy'){
  const uid=await buyer(sid),id=randomUUID();
