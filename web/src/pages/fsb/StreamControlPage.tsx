@@ -11,7 +11,7 @@ import { ChatPanel } from "../../components/ChatPanel";
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
 
-const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
+import { FSB_ALLOWED_USER_IDS as FSB_ALLOWED_IDS } from "../../lib/fsb_access";
 const FSB_SLUGS = ["fabiozsis", "samyyzsis", "lecasinoze"];
 const SLOT_LABELS = ["Cam 1", "Cam 2", "Cam 3"];
 
@@ -1972,7 +1972,7 @@ function StreamControlInner({ user }: { user: { id: number; username: string } }
             </button>
           )}
           {camError && <span style={{ fontSize: 11, color: "#fc8181" }}>{camError}</span>}
-          <Link to="/FSB_Board" style={{ ...S.btn, background: "transparent", border: "1px solid rgba(255,255,255,.08)", color: "#64748b", textDecoration: "none", padding: "6px 12px", fontSize: 12 }}>
+          <Link to="/board" style={{ ...S.btn, background: "transparent", border: "1px solid rgba(255,255,255,.08)", color: "#64748b", textDecoration: "none", padding: "6px 12px", fontSize: 12 }}>
             ← Board
           </Link>
         </div>

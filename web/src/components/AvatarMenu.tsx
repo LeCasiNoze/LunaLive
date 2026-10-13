@@ -362,7 +362,7 @@ export function AvatarMenu({
             {canSeeDashboard && (
               <>
                 <Link to="/dashboard" className="av-dd-item" role="menuitem" onClick={close}>
-                  📊 Dashboard
+                  📊 Studio de ma chaîne
                 </Link>
                 <Link to={myChannelHref} className="av-dd-item" role="menuitem" onClick={close}>
                   📺 Ma chaîne
@@ -371,8 +371,8 @@ export function AvatarMenu({
             )}
 
             {canSeeFsbBoard && (
-              <Link to="/FSB_Board" className="av-dd-item" role="menuitem" onClick={close}>
-                💼 FSB Board
+              <Link to="/board" className="av-dd-item" role="menuitem" onClick={close}>
+                💼 Dashboard
               </Link>
             )}
 

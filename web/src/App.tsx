@@ -1,6 +1,6 @@
 // web/src/App.tsx
 import * as React from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { useIsMobile } from "./hooks/useIsMobile";
 import { Topbar } from "./layout/Topbar";
@@ -35,7 +35,6 @@ const SkinsCataloguePage = React.lazy(() => import("./pages/SkinsCataloguePage")
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
 const DashboardPage = React.lazy(() => import("./pages/DashboardPage"));
 const FsbBoardPage = React.lazy(() => import("./pages/FsbBoardPage"));
-const AutomodDashboardPage = React.lazy(() => import("./pages/AutomodDashboardPage"));
 const ExtensionInstallPage = React.lazy(() => import("./pages/ExtensionInstallPage"));
 const AgencyPortalPage = React.lazy(() => import("./pages/AgencyPortalPage"));
 const AdminCasinoCommentsPage = React.lazy(() => import("./pages/admin/AdminCasinoCommentsPage"));
@@ -352,7 +351,7 @@ function AppInner() {
             }
           />
           <Route
-            path="/FSB_Board"
+            path="/board"
             element={
               <React.Suspense fallback={<LoadingFallback />}>
                 <FsbBoardPage />
@@ -361,8 +360,9 @@ function AppInner() {
           />
           <Route
             path="/FSB_Board/automod"
-            element={<React.Suspense fallback={<LoadingFallback />}><AutomodDashboardPage /></React.Suspense>}
+            element={<Navigate to="/board" replace />}
           />
+          <Route path="/FSB_Board" element={<Navigate to="/board" replace />} />
           <Route
             path="/extension"
             element={

@@ -22,7 +22,7 @@ import {
   type FsbAffiPage,
 } from "../lib/api_affi_pages";
 
-const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
+import { FSB_ALLOWED_USER_IDS as FSB_ALLOWED_IDS } from "../lib/fsb_access";
 
 // ─── Theme — palette moderne SaaS ────────────────────────────────────────────
 const T = {

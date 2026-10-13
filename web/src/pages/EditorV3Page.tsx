@@ -44,7 +44,7 @@ import { M1_THEMES } from "../lib/m1_themes";
 import { V3_PENALTY_TEAMS } from "../lib/v3_penalty_teams";
 import { M5V1Preview } from "../components/M5V1Preview";
 
-const FSB_ALLOWED_IDS = new Set([4, 15, 71]);
+import { FSB_ALLOWED_USER_IDS as FSB_ALLOWED_IDS } from "../lib/fsb_access";
 
 // ─── Theme ──────────────────────────────────────────────────────────────────
 const T = {

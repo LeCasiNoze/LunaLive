@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
 import { chatStore } from "./chat_store.js";
 import type { AuthUser } from "./auth.js";
+import { canAccessFsb } from "./routes/fsb_guard.js";
 import { normalizeAppearance, type Appearance } from "./appearance.js";
 import { getChatCosmeticsForUsers } from "./chat_cosmetics.js";
 import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
@@ -575,6 +576,10 @@ export function attachChat(io: Server) {
 
     // ✅ fsb:designer-join — join shared FSB designer room for real-time config sync
     socket.on("fsb:designer-join", (_: any, cb?: (ack: any) => void) => {
+      if (!canAccessFsb((socket.data as SocketData).user)) {
+        cb?.({ ok: false, error: "forbidden" });
+        return;
+      }
       socket.join("fsb:designer");
       cb?.({ ok: true });
     });

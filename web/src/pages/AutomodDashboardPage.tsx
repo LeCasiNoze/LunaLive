@@ -22,6 +22,7 @@ const formatTime=(value:string)=>{const date=new Date(value);return Number.isNaN
 
 export default function AutomodDashboardPage(){
   const {user}=useAuth();
+  const allowed=canAccessFsbBoard(user);
   const [tab,setTab]=React.useState<'control'|'stats'>('control');
   const [dashboard,setDashboard]=React.useState<AutomodDashboard|null>(null);
   const [draft,setDraft]=React.useState<AutomodDashboardSettings>(DEFAULT_SETTINGS);
@@ -33,13 +34,15 @@ export default function AutomodDashboardPage(){
   const [loading,setLoading]=React.useState(true);
   const [now,setNow]=React.useState(Date.now());
   const refresh=React.useCallback(async()=>{
+    if(!allowed)return;
     try{const result=await getAutomodDashboard();setDashboard(result);setNotice(previous=>previous?.error?null:previous);
       if(!draftDirty){const settings=result.settings??result.runtime?.config??DEFAULT_SETTINGS;setDraft(settings);
         setStakeText((settings.stakeCents/100).toFixed(2).replace(".",","));setMinutesText(String(Math.round(settings.slotDurationMs/60000)));}}
     catch(error){setNotice({text:error instanceof Error?error.message:"Tableau de bord indisponible.",error:true});}
     finally{setLoading(false);}
-  },[draftDirty]);
-  React.useEffect(()=>{void refresh();const poll=window.setInterval(()=>void refresh(),5000);const ticker=window.setInterval(()=>setNow(Date.now()),1000);return()=>{window.clearInterval(poll);window.clearInterval(ticker);};},[refresh]);
+  },[draftDirty,allowed]);
+  React.useEffect(()=>{if(!allowed)return;void refresh();const poll=window.setInterval(()=>void refresh(),5000);const ticker=window.setInterval(()=>setNow(Date.now()),1000);return()=>{window.clearInterval(poll);window.clearInterval(ticker);};},[refresh,allowed]);
+  React.useEffect(()=>{const previous=document.title;document.title="Dashboard · Automod | LunaLive";return()=>{document.title=previous;};},[]);
   const perform=async(name:string,action:()=>Promise<unknown>,success:string)=>{setBusy(name);setNotice(null);try{await action();setNotice({text:success,error:false});await refresh();}catch(error){setNotice({text:error instanceof Error?error.message:"Commande impossible.",error:true});}finally{setBusy(null);}};
   const toggle=()=>void perform("toggle",()=>setAutomodControl(!dashboard?.enabled),dashboard?.enabled?"Arrêt demandé : diffusion coupée, puis fin du round en cours.":"Démarrage demandé : Automod puis diffusion Rumble.");
   const command=(kind:"restart_chrome"|"skip_call")=>{
@@ -53,8 +56,8 @@ export default function AutomodDashboardPage(){
     const settings={...draft,stakeCents,slotDurationMs};void perform("save",async()=>{await saveAutomodDashboardSettings(settings);setDraft(settings);setDraftDirty(false);},"Paramètres enregistrés. Ils s’appliquent au prochain démarrage de l’Automod.");};
   const setValue=(patch:Partial<AutomodDashboardSettings>)=>{setDraft(current=>({...current,...patch}));setDraftDirty(true);};
   const toggleProvider=(provider:AutomodProvider)=>{const next=draft.allowedProviders.includes(provider)?draft.allowedProviders.filter(p=>p!==provider):[...draft.allowedProviders,provider];if(next.length===0){setNotice({text:"Garde au moins un provider actif.",error:true});return;}setValue({allowedProviders:next});};
-  if(!user)return <main className="amd-access"><h1>Automod</h1><p>Connecte-toi à LunaLive pour accéder au contrôle.</p><Link to="/FSB_Board">Retour au FSB Board</Link></main>;
-  if(!canAccessFsbBoard(user))return <main className="amd-access"><h1>Accès réservé</h1><Link to="/FSB_Board">Retour au FSB Board</Link></main>;
+  if(!user)return <main className="amd-access"><h1>Dashboard</h1><p>Connecte-toi à LunaLive pour accéder à ton studio Automod.</p><Link to="/">Retour à LunaLive</Link></main>;
+  if(!allowed)return <main className="amd-access"><h1>Accès réservé</h1><p>Ce Dashboard est réservé à LeCasiNoze.</p><Link to="/">Retour à LunaLive</Link></main>;
   const runtime=dashboard?.runtime;
   const fresh=!!dashboard?.runtimeSeenAt&&now-new Date(dashboard.runtimeSeenAt).getTime()<20_000;
   const phase=!fresh?"Hors connexion":runtime?.phase==="running"?"En rotation":runtime?.phase==="starting"?"Démarrage":runtime?.phase==="stopping"?"Arrêt en cours":runtime?.phase==="error"?"Erreur":"À l’arrêt";
@@ -71,7 +74,7 @@ export default function AutomodDashboardPage(){
   return <main className="amd-page">
     <div className="amd-wrap">
       <header className="amd-header">
-        <Link className="amd-back" to="/FSB_Board"><ArrowLeft size={17}/> FSB Board</Link>
+        <Link className="amd-back" to="/s/lecasinoze"><ArrowLeft size={17}/> Ma chaîne</Link>
         <span className="amd-eyebrow"><span className="amd-eyebrow-dot"/> CONTRÔLE DU DIRECT</span>
         <button className="amd-icon-button" onClick={()=>void refresh()} aria-label="Actualiser"><RefreshCw size={18}/></button>
       </header>
@@ -79,9 +82,15 @@ export default function AutomodDashboardPage(){
       <section className="amd-hero">
         <div className="amd-hero-glow"/>
         <div className="amd-hero-copy"><div className="amd-hero-mark"><Zap size={18}/> AUTOMOD STUDIO <span>01 / LIVE CONTROL</span></div>
-          <h1>Le direct, <em>sous contrôle.</em></h1>
-          <p>Slots, diffusion et interventions depuis une seule page. Chaque action remonte avec son état réel sur le VPS.</p>
-          <div className="amd-hero-badges"><span className={`amd-badge ${live?"on":"off"}`}><Radio size={14}/>{live?"RUMBLE EN DIRECT":"RUMBLE À L’ARRÊT"}</span><span className={`amd-badge ${playing?"on":"off"}`}><span className="amd-pulse"/>{phase.toUpperCase()}</span></div>
+          <h1>Dashboard<span className="amd-dashboard-subtitle">Ton studio <em>Automod.</em></span></h1>
+          <p>La session, le stream et les réglages de l’Automod réunis au même endroit.</p>
+          <div className="amd-hero-badges"><span className={`amd-badge ${live?"on":"off"}`}><Radio size={14}/>{!fresh?"DIFFUSION À VÉRIFIER":live?"RUMBLE EN DIRECT":"RUMBLE À L’ARRÊT"}</span><span className={`amd-badge ${playing?"on":"off"}`}><span className="amd-pulse"/>{phase.toUpperCase()}</span></div>
+          <div className="amd-dashboard-power">
+            <button className={`amd-power-button ${dashboard?.enabled?"stop":"start"}`} disabled={!dashboard||!!busy||(!dashboard.enabled&&(!fresh||runtime?.queueWritable!==true))} onClick={toggle}>
+              {busy==="toggle"?<><RefreshCw size={17}/> Transmission…</>:dashboard?.enabled?<><Square size={17} fill="currentColor"/> Arrêter Automod + Stream</>:<><Play size={17} fill="currentColor"/> Démarrer Automod + Stream</>}
+            </button>
+            <small>{!dashboard?"Chargement du contrôle…":dashboard.enabled?"Activation demandée : vérifie les états du VPS ci-dessus. Arrêt possible à tout moment.":!fresh?"Le démarrage sera disponible quand le VPS sera connecté.":runtime?.queueWritable!==true?"Reconnecte la file de calls sur le VPS avant de démarrer.":"Démarre la session et la diffusion Rumble ensemble."}</small>
+          </div>
         </div>
         <div className="amd-hero-orb"><div className="amd-hero-orb-inner"><MonitorPlay size={42}/><span>LIVE OPS</span></div></div>
       </section>
@@ -145,8 +154,7 @@ export default function AutomodDashboardPage(){
         </div>
 
         <aside className="amd-side-column">
-          <section className="amd-panel amd-power-panel"><span className="amd-kicker">DIFFUSION</span><h2>Commandes du direct</h2><p>Le bouton pilote ensemble la rotation Automod et la diffusion Rumble.</p><div className="amd-power-state"><span className={live?"on":"off"}/><div><strong>{live?"Flux en direct":"Flux arrêté"}</strong><small>{dashboard?.enabled?"Démarrage demandé":"Automod désactivé"}</small></div></div>
-            <button className={`amd-power-button ${dashboard?.enabled?"stop":"start"}`} disabled={!dashboard||!!busy||(!dashboard.enabled&&(!fresh||runtime?.queueWritable!==true))} onClick={toggle}>{dashboard?.enabled?<><Square size={17} fill="currentColor"/> Arrêter Automod + stream</>:<><Play size={17} fill="currentColor"/> Démarrer Automod + stream</>}</button>
+          <section className="amd-panel amd-power-panel"><span className="amd-kicker">DIFFUSION</span><h2>État du direct</h2><p>L’état remonte du VPS. Utilise la commande Automod + Stream en haut du Dashboard.</p><div className="amd-power-state"><span className={live?"on":"off"}/><div><strong>{!fresh?"État à vérifier":live?"Flux en direct":"Flux arrêté"}</strong><small>{dashboard?.enabled?"Activation demandée":"Arrêt demandé"}</small></div></div>
             <small className="amd-power-foot">À l’arrêt, le direct est coupé avant la fin propre du spin.</small>
           </section>
           <section className="amd-panel amd-activity"><div className="amd-panel-heading"><div><span className="amd-kicker">JOURNAL</span><h2>Activité récente</h2></div></div>

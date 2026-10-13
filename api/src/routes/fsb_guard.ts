@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 
-export const FSB_ALLOWED_USER_IDS = new Set([4, 15, 71]);
+// Dashboard privé de LeCasiNoze, également appliqué aux anciennes URL FSB.
+export const FSB_ALLOWED_USER_IDS = new Set([4]);
 
 export function canAccessFsb(user: any) {
   return FSB_ALLOWED_USER_IDS.has(Number(user?.id || 0));

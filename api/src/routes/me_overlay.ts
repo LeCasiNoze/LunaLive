@@ -2,6 +2,7 @@
 import { Router } from "express";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
+import { FSB_ALLOWED_USER_IDS } from "./fsb_guard.js";
 
 import fs from "fs";
 import path from "path";
@@ -276,7 +277,7 @@ meOverlayRouter.post(
 );
 
 // ─── FSB Overlay — IDs autorisés (partagé entre les 3 streameurs + SamyyZsis) ─
-const FSB_OVERLAY_ALLOWED_IDS = new Set([4, 15, 71]);
+const FSB_OVERLAY_ALLOWED_IDS = FSB_ALLOWED_USER_IDS;
 const FSB_OVERLAY_SLUG = "fabiozsis"; // chaîne commune
 
 function canAccessFsbOverlay(uid: number): boolean {
