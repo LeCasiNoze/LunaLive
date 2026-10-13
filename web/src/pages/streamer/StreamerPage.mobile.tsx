@@ -686,6 +686,17 @@ export default function StreamerPageMobile() {
               <button className="iconBtn" onClick={() => setActionsOpen(false)}>✕</button>
             </div>
             <div className="mob-sheet-body" style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              <a
+                className="mob-row"
+                href={`/popout/chat/${encodeURIComponent(String(slug || ""))}`}
+                target={`lunalive_chat_popup_${slug}`}
+                rel="noopener"
+                onClick={() => setActionsOpen(false)}
+                style={{ color: "inherit", textDecoration: "none" }}
+              >
+                <span>↗ Chat détaché</span>
+                <span style={{ fontSize:11, color:"rgba(167,139,250,.55)" }}>Ouvrir</span>
+              </a>
               {claimError ? <div style={{ fontSize:12, color:"rgba(252,165,165,.90)" }}>{claimError}</div> : null}
               <div className="mob-card" style={{ padding:14 }}>
                 <div style={{ fontSize:11, color:"rgba(167,139,250,.60)", fontWeight:700, marginBottom:10 }}>MON SOLDE</div>
