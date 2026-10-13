@@ -344,8 +344,9 @@ function ChatHeader(props: {
   timeoutUntil: string | null;
   onClickGear: () => void;
   canManageSettings: boolean;
+  onOpenPopup?: () => void;
 }) {
-  if (props.compact) return null;
+  if (props.compact && !props.onOpenPopup) return null;
   const headBtn: React.CSSProperties = {
     padding: "6px 10px",
     borderRadius: 10,
@@ -366,7 +367,18 @@ function ChatHeader(props: {
         {props.isBanned ? " • banni" : props.isTimedOut ? ` • timeout ${fmtRemaining(props.timeoutUntil)}` : ""}
       </div>
       <div style={{ flex: 1 }} />
-      {props.canManageSettings ? (
+      {props.onOpenPopup ? (
+        <button
+          type="button"
+          style={headBtn}
+          onClick={props.onOpenPopup}
+          title="Ouvrir le chat dans une fenêtre séparée"
+          aria-label="Détacher le chat"
+        >
+          ↗ Détacher
+        </button>
+      ) : null}
+      {!props.compact && props.canManageSettings ? (
         <button
           type="button"
           style={{ ...headBtn, background: "rgba(255,255,255,0.06)" }}
@@ -2502,7 +2514,7 @@ function openChatPopup() {
     }
   } catch {}
 
-  const win = window.open(url, "lunalive_chat_popup", features);
+  const win = window.open(url, `lunalive_chat_popup_${slug}`, features);
   if (!win) {
     setError("Popup bloquée par le navigateur. Autorise les popups pour ce site.");
     return;
@@ -2586,6 +2598,7 @@ function openChatPopup() {
         timeoutUntil={timeoutUntil}
         onClickGear={() => void onClickGear()}
         canManageSettings={canManageSettings}
+        onOpenPopup={isPopup ? undefined : openChatPopup}
       />
 
       {/* bandeau reconnexion */}

@@ -118,11 +118,13 @@ function AppInner() {
   const isOverlayRoute =
     location.pathname.startsWith("/overlay") ||
     location.pathname.startsWith("/stream-control");
+  const isChatPopup = location.pathname.startsWith("/popout/chat/");
   const hideChrome =
     location.pathname === "/editorFSN" ||
     location.pathname === "/editorFSNV2" ||
     location.pathname === "/editorFSNV3" ||
     isOverlayRoute ||
+    isChatPopup ||
     location.pathname.startsWith("/agency") ||
     isStandaloneReferral;
 
@@ -217,7 +219,7 @@ function AppInner() {
           sur MOBILE : il tournait derrière chaque page même masqué = charge
           compositor permanente → saccades à la nav/scroll (enquête 11 juil).
           Le fond sombre uni reste propre. Desktop : conservé. */}
-      {!isStandaloneReferral && !isOverlayRoute && !isMobile && (
+      {!isStandaloneReferral && !isOverlayRoute && !isChatPopup && !isMobile && (
         <div className="appBgLayer" aria-hidden="true">
           <BgEffect type="cards" />
         </div>
@@ -228,7 +230,7 @@ function AppInner() {
           <Topbar onOpenLogin={() => setLoginOpen(true)} onLogout={logout} />
         )}
 
-        {!isStandaloneReferral && (
+        {!isStandaloneReferral && !isChatPopup && (
           <>
             <GoLiveNotifier />
             <DailyBonusToast />
