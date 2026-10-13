@@ -365,8 +365,8 @@ export async function addCall(
     // lock par streamer pour pos + dédup
     await client.query(`SELECT pg_advisory_xact_lock($1)`, [Number(streamerId)]);
 
+    const family=providerLower?.includes('hacksaw')?'hacksaw':providerLower?.includes('pragmatic')?'pragmatic':providerLower;
     if(!opts?.automodRequestId){
-      const family=providerLower?.includes('hacksaw')?'hacksaw':providerLower?.includes('pragmatic')?'pragmatic':providerLower;
       const denied=await challengeCallAllowedInTransaction(client,streamerId,opts?.rumbleUserId??null,family);
       if(denied){await client.query('COMMIT');return {ok:false,error:denied};}
     }
@@ -389,9 +389,10 @@ export async function addCall(
       // Same lock as viewer addCall: a viewer who got here first keeps priority.
       // Bonus-hunt rows also prevent an automatic insertion.
       const challenge=(await client.query(`SELECT 1 FROM automod_provider_challenges e JOIN automod_control a ON a.streamer_id=e.streamer_id
-        WHERE e.streamer_id=$1 AND e.status='playing' AND a.desired_enabled=TRUE AND
+        WHERE e.streamer_id=$1 AND e.status IN ('preparing','playing') AND a.desired_enabled=TRUE AND
         (a.dashboard_settings->>'mode'='provider-challenge' OR a.runtime_status->>'mode'='provider-challenge')`,[streamerId])).rowCount;
-      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND ($2::boolean=FALSE OR provider=$3) LIMIT 1`, [streamerId,Boolean(challenge),providerLower]);
+      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND ($2::boolean=FALSE OR
+        CASE WHEN provider LIKE '%hacksaw%' THEN 'hacksaw' WHEN provider LIKE '%pragmatic%' THEN 'pragmatic' ELSE provider END=$3) LIMIT 1`, [streamerId,Boolean(challenge),family]);
       if (existing.rows.length) {
         await client.query("COMMIT");
         return { ok: false, error: "queue_not_empty" };

@@ -90,12 +90,13 @@ test('service call route fills a challenge queue without a viewer camp and retri
  await streamer(9301);
  await pool.query(`UPDATE automod_control SET dashboard_settings=dashboard_settings||'{"mode":"provider-challenge"}'::jsonb WHERE streamer_id=9301`);
  const event=await createChallenge(pool,9301,'service-admission',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});
- await pool.query("UPDATE automod_provider_challenges SET status='playing' WHERE id=$1",[event.id]);
+ await chooseCamp(pool,9301,event.id,{userId:'9302',username:'Viewer'},'hacksaw');
+ assert.equal((await addCall(pool,9301,0,'Viewer','Wanted Dead or a Wild','Hacksaw Gaming',{rumbleUserId:'9302',bypassLimit:true})).ok,true);
  await pool.query('CREATE TABLE IF NOT EXISTS automod_call_requests(service_id text,request_id text,call_id bigint,PRIMARY KEY(service_id,request_id))');
  const handler=(automodServiceRouter as any).stack.find((layer:any)=>layer.route?.path==='/automod-service/v1/calls'&&layer.route.methods.post).route.stack.at(-1).handle;
  const originalQuery=servicePool.query,originalConnect=servicePool.connect;
  (servicePool as any).query=pool.query.bind(pool);(servicePool as any).connect=pool.connect.bind(pool);
- const body={requestId:randomUUID(),slotName:'Sugar Rush',provider:'Pragmatic Play'};
+ const body={requestId:randomUUID(),slotName:'Sugar Rush',provider:'pragmatic'};
  async function request(scopes:string[]){
   let status=200,payload:any;
   const res={status(code:number){status=code;return this;},json(value:any){payload=value;return this;}};
@@ -109,7 +110,13 @@ test('service call route fills a challenge queue without a viewer camp and retri
   assert.equal(first.payload.item.username,'Automod');
   const retry=await request(['calls:sync']);
   assert.equal(retry.status,200);assert.equal(retry.payload.item.id,first.payload.item.id);
-  assert.equal((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=9301')).rows[0].n,'1');
+  assert.equal((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=9301')).rows[0].n,'2');
+  for(const status of ['preparing','playing']){
+   await pool.query('UPDATE automod_provider_challenges SET status=$2 WHERE id=$1',[event.id,status]);
+   body.requestId=randomUUID();body.provider='hacksaw';body.slotName='Le Bandit';
+   const denied=await request(['calls:sync']);
+   assert.equal(denied.status,409);assert.equal(denied.payload.error,'queue_not_empty');
+  }
  }finally{servicePool.query=originalQuery;servicePool.connect=originalConnect;}
 });
 async function order(sid:number,status:string,reserved=1400,kind='buy'){
