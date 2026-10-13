@@ -211,8 +211,8 @@ automodServiceRouter.post(`${API}/v1/shop/challenge`,runtimeRoute(async(req:any,
   if(body.action==='settle'){
    const result=await settleChallenge(pool,sid,body.id,body.cancel===true);
    if(result.changed){
-    await notifyShop(pool,sid,result.cancelled?'Défi annulé, paris remboursés.':`Défi terminé : ${result.result==='draw'?'égalité':result.result==='pragmatic'?'Pragmatic gagne !':'Hacksaw gagne !'}`);
-    for(const reward of result.rewards??[])if(reward.total)await notifyShop(pool,sid,`@${reward.username} — Défi : +${reward.total} pts${reward.contribution?` dont ${reward.contribution} pour tes calls`:''} !`);
+    const total=(result.rewards??[]).reduce((sum,reward)=>sum+reward.total,0);
+    await notifyShop(pool,sid,result.cancelled?'Défi annulé, paris remboursés.':`Défi terminé : ${result.result==='draw'?'égalité':result.result==='pragmatic'?'Pragmatic gagne !':'Hacksaw gagne !'}${total?` ${total} pts distribués. !points pour ton gain.`:''}`);
    }
    return res.json({ok:true,...result});
   }
