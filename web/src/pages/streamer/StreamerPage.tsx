@@ -1139,6 +1139,18 @@ function StreamerPageDesktop() {
                 </button>
               )}
 
+              <a
+                className="sp-row"
+                href={`/popout/chat/${encodeURIComponent(String(slug || ""))}`}
+                target={`lunalive_chat_popup_${slug}`}
+                rel="noopener"
+                onClick={() => setActionsOpen(false)}
+                style={{ color: "inherit", textDecoration: "none" }}
+              >
+                <span>↗ Chat détaché</span>
+                <span style={{ fontSize: 11, color: "rgba(167,139,250,.50)" }}>Ouvrir</span>
+              </a>
+
               {isFollowing && (
                 <button type="button" className="sp-row" disabled={followLoading} onClick={toggleNotify}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
