@@ -154,6 +154,26 @@ test('challenge shop accepts only own camp, replaces tiers without stacking, ref
  assert.equal((await readWallet(pool,sid,uid)).balance,10000);
 });
 
+test('banked and scored bonus rows cannot block Automod replenishment; playable viewers still keep priority',async()=>{
+ const sid=9404;await streamer(sid);
+ await pool.query(`UPDATE automod_control SET dashboard_settings=dashboard_settings||'{"mode":"auto-hunt"}'::jsonb WHERE streamer_id=$1`,[sid]);
+ await pool.query(`INSERT INTO calls_queue(streamer_id,slot_name,slot_key,provider,user_id,username,pos,is_bonus,bet,pay)
+  VALUES($1,'Wanted Dead or a Wild',$2,'hacksaw',42,'Viewer',1,TRUE,0,0),
+   ($1,'Fruit Party','fruit party','pragmatic',43,'Viewer2',2,FALSE,0.2,8)`,[sid,keyText('Wanted Dead or a Wild')]);
+ const automatic=()=>addCall(pool,sid,0,'Automod','Le Bandit','hacksaw',{bypassLimit:true,automodRequestId:randomUUID()});
+ assert.deepEqual(await addCall(pool,sid,0,'Automod','Wanted Dead or a Wild','hacksaw',{bypassLimit:true,automodRequestId:randomUUID()}),{ok:false,error:'automod_bonus_pending'});
+ const first=await automatic();assert.equal(first.ok,true,JSON.stringify(first));
+ assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1',[sid])).rows[0].n,3);
+ assert.deepEqual(await automatic(),{ok:false,error:'queue_not_empty'});
+ await pool.query('DELETE FROM calls_queue WHERE streamer_id=$1 AND user_id=0',[sid]);
+ assert.equal((await addCall(pool,sid,44,'PlayableViewer','Sugar Rush','pragmatic',{bypassLimit:true})).ok,true);
+ assert.deepEqual(await automatic(),{ok:false,error:'queue_not_empty'});
+ await pool.query("DELETE FROM calls_queue WHERE streamer_id=$1 AND username='PlayableViewer'",[sid]);
+ await pool.query(`INSERT INTO automod_hunt_reservations(streamer_id,entry_id,slot_key,slot_name,status) VALUES($1,'banked-bandit',$2,'Le Bandit','pending')`,[sid,'lebandit']);
+ assert.deepEqual(await automatic(),{ok:false,error:'automod_bonus_pending'});
+ assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1',[sid])).rows[0].n,2,'banked and scored rows remain intact');
+});
+
 test('challenge rewards native callers, frozen late eligibility, bets and concurrent settlement exactly once',async()=>{
  const sid=9401;await streamer(sid);
  const e=await createChallenge(pool,sid,'rewards',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});

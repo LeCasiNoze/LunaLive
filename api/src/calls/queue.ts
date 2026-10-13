@@ -387,16 +387,21 @@ export async function addCall(
         return { ok: true, item: row.item as CallItem, position: Number(row.item.pos) };
       }
       // Same lock as viewer addCall: a viewer who got here first keeps priority.
-      // Bonus-hunt rows also prevent an automatic insertion.
+      // Match the worker's playable queue. Banked/scored bonus rows stay intact,
+      // but cannot block replenishment of an otherwise empty Automod queue.
       const challenge=(await client.query(`SELECT 1 FROM automod_provider_challenges e JOIN automod_control a ON a.streamer_id=e.streamer_id
         WHERE e.streamer_id=$1 AND e.status IN ('preparing','playing') AND a.desired_enabled=TRUE AND
         (a.dashboard_settings->>'mode'='provider-challenge' OR a.runtime_status->>'mode'='provider-challenge')`,[streamerId])).rowCount;
-      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND ($2::boolean=FALSE OR
+      const existing = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1
+        AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0) AND ($2::boolean=FALSE OR
         CASE WHEN provider LIKE '%hacksaw%' THEN 'hacksaw' WHEN provider LIKE '%pragmatic%' THEN 'pragmatic' ELSE provider END=$3) LIMIT 1`, [streamerId,Boolean(challenge),family]);
       if (existing.rows.length) {
         await client.query("COMMIT");
         return { ok: false, error: "queue_not_empty" };
       }
+      const banked = await client.query(`SELECT id FROM calls_queue WHERE streamer_id=$1 AND slot_key=$2
+        AND COALESCE(is_bonus,FALSE)=TRUE LIMIT 1`,[streamerId,slotKey]);
+      if(banked.rows.length){await client.query('COMMIT');return {ok:false,error:'automod_bonus_pending'};}
     }
 
     if(opts?.rumbleUserId&&!opts.automodRequestId){
