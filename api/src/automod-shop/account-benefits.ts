@@ -30,16 +30,16 @@ export async function handleAccountUpgrade(pool:Pool,m:{streamerId:number;userId
  if(!/^!compte(?:\s|$)/i.test(m.text.trim()))return null;
  if(!validRumbleIdentity(m.userId)||Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
  const match=/^!compte\s+(calls|musique)\s+([123])\s*$/i.exec(m.text.trim());
- if(!match)return `@${m.username} — Améliorations permanentes : !compte calls 1 ou !compte musique 1. Paliers successifs : 3 000, 5 000, 10 000 pts ; +1 place par palier. !profil pour ton niveau.`;
+ if(!match)return `@${m.username} — !compte calls 1 ou !compte musique 1 · +1 place · paliers : 3 000 / 5 000 / 10 000 pts.`;
  const kind=match[1]!.toLowerCase(),tier=Number(match[2]),column=kind==='calls'?'calls_tier':'music_tier',price=ACCOUNT_TIERS[tier-1]!;
  try{return await inTransaction(pool,async c=>{
   await lockWallet(c,m.streamerId,m.userId,m.username);
   await c.query(`INSERT INTO automod_account_benefits(streamer_id,rumble_user_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,[m.streamerId,m.userId]);
   const current=Number((await c.query(`SELECT ${column} AS tier FROM automod_account_benefits WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE`,[m.streamerId,m.userId])).rows[0].tier);
-  if(current>=tier)return `@${m.username} — Ce palier est déjà acquis. Aucun point dépensé.`;
+  if(current>=tier)return `@${m.username} — Ce palier est déjà acquis.`;
   if(current!==tier-1)return `@${m.username} — Achète d’abord le palier ${current+1}.`;
   await walletEntry(c,m.streamerId,m.userId,`account:${kind}:${tier}:${m.userId}`,-price,0,'account-upgrade',{kind,tier});
   await c.query(`UPDATE automod_account_benefits SET ${column}=$3 WHERE streamer_id=$1 AND rumble_user_id=$2`,[m.streamerId,m.userId,tier]);
-  return `✨ @${m.username} — ${kind==='calls'?'Calls':'Musique'} : palier ${tier} acquis pour ${price} points, +1 place en attente. La priorité dans la file reste équitable.`;
+  return `✨ @${m.username} — ${kind==='calls'?'Calls':'Musique'} : palier ${tier} acquis pour ${price} points, +1 place en attente.`;
  });}catch(e){if((e as Error).message==='insufficient_points')return `@${m.username} — Il te faut ${price} points disponibles pour ce palier. !points pour ton solde.`;throw e;}
 }

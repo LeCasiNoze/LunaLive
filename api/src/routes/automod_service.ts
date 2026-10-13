@@ -137,8 +137,8 @@ automodServiceRouter.post(`${API}/v1/shop/orders/:id/:action`,runtimeRoute(async
   }
   // The command already acknowledges the reservation: routine debit and small
   // rewards stay in the ledger/!points instead of producing another chat reply.
-  if(out.changed&&req.params.action==='complete'&&out.result.rebatePoints>=100)await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Bonus : ${(out.result.gainCents/100).toFixed(2)} € ; +${out.result.rebatePoints} points ! ${walletSummary(out.wallet)}`);
-  if(out.changed&&['expire','failure'].includes(req.params.action))await notifyShop(pool,req.automodService.streamerId,`@${out.username} — ${out.status==='uncertain'?'Achat à vérifier ; aucune nouvelle tentative automatique.':out.status==='refunded'?'Réservation libérée.':out.status==='expired'?`Choix expiré : ${out.result.feePoints} points débités pour le passage prioritaire.`:`${out.spentPoints??out.result?.spentPoints??0} points débités.`} ${walletSummary(out.wallet)}`);
+  if(out.changed&&req.params.action==='complete'&&out.result.rebatePoints>=100)await notifyShop(pool,req.automodService.streamerId,`@${out.username} — Bonus : ${(out.result.gainCents/100).toFixed(2)} € ; +${out.result.rebatePoints} points !`);
+  if(out.changed&&['expire','failure'].includes(req.params.action))await notifyShop(pool,req.automodService.streamerId,`@${out.username} — ${out.status==='uncertain'?'Achat à vérifier.':out.status==='refunded'?'Réservation libérée.':out.status==='expired'?`Choix expiré : ${out.result.feePoints} points débités pour le passage prioritaire.`:`${out.spentPoints??out.result?.spentPoints??0} points débités.`}`);
   return res.json({ok:true,...out});
  }catch(e){return res.status(409).json({ok:false,error:e instanceof Error?e.message:'shop_update_failed'});}
 }));
@@ -148,7 +148,7 @@ automodServiceRouter.post(`${API}/v1/shop/events`,runtimeRoute(async(req:any,res
  const accepted=[];
  for(const event of req.body.events){
   const result=await ingestPointsEvent(pool,req.automodService.streamerId,event);accepted.push(event.id);
-  if(result.points>=100&&'wallet' in result&&result.wallet)await notifyShop(pool,req.automodService.streamerId,`@${result.username} — +${result.points} points Automod ! ${walletSummary(result.wallet)}`);
+  if(result.points>=100&&'wallet' in result&&result.wallet)await notifyShop(pool,req.automodService.streamerId,`@${result.username} — +${result.points} points Automod !`);
  }
  return res.json({ok:true,accepted});
 }));
@@ -185,7 +185,7 @@ automodServiceRouter.get(`${API}/v1/shop/engagement-stats`,runtimeRoute(async(re
 automodServiceRouter.post(`${API}/v1/shop/prediction-finish`,runtimeRoute(async(req:any,res)=>{
  if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false});
  const result=await finishPrediction(pool,req.automodService.streamerId,req.body??{});
- if(result.changed)await notifyShop(pool,req.automodService.streamerId,result.refunded?'Pronostic Hunt remboursé : un seul camp ou bilan incomplet.':`Pronostic réglé : Hunt ${result.winner==='yes'?'rentable':'non rentable'}. Pot de ${result.pot} points distribué. !points pour ton solde.`);
+ if(result.changed)await notifyShop(pool,req.automodService.streamerId,result.refunded?'Pronostic Hunt remboursé.':`Pronostic réglé : Hunt ${result.winner==='yes'?'rentable':'non rentable'}. ${result.pot} pts distribués.`);
  return res.json(result);
 }));
 automodServiceRouter.post(`${API}/v1/shop/mode-apply`,runtimeRoute(async(req:any,res)=>{
@@ -208,7 +208,14 @@ automodServiceRouter.post(`${API}/v1/shop/challenge`,runtimeRoute(async(req:any,
   if(body.action==='state')return res.json({ok:true,event:await challengeSnapshot(pool,sid,body.id)});
   if(body.action==='start-pass')return res.json({ok:true,pass:await startChallengePass(pool,sid,body.id,body.pass??{})});
   if(body.action==='finish-pass')return res.json({ok:true,...await finishChallengePass(pool,sid,body.id,String(body.passId??''),body.receipt??{})});
-  if(body.action==='settle')return res.json({ok:true,...await settleChallenge(pool,sid,body.id,body.cancel===true)});
+  if(body.action==='settle'){
+   const result=await settleChallenge(pool,sid,body.id,body.cancel===true);
+   if(result.changed){
+    await notifyShop(pool,sid,result.cancelled?'Défi annulé, paris remboursés.':`Défi terminé : ${result.result==='draw'?'égalité':result.result==='pragmatic'?'Pragmatic gagne !':'Hacksaw gagne !'}`);
+    for(const reward of result.rewards??[])if(reward.total)await notifyShop(pool,sid,`@${reward.username} — Défi : +${reward.total} pts${reward.contribution?` dont ${reward.contribution} pour tes calls`:''} !`);
+   }
+   return res.json({ok:true,...result});
+  }
   return res.status(400).json({ok:false,error:'challenge_invalid_action'});
  }catch(e){const message=e instanceof Error?e.message:'';
   if(/^challenge_[a-z_]+$/.test(message))return res.status(409).json({ok:false,error:message});throw e;

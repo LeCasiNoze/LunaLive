@@ -32,7 +32,7 @@ export async function pollHuntVote(pool:Pool,streamerId:number,input:any){
   return r;
  });
  if(!row.announced_at&&!row.result){
-  const n=await notifyShop(pool,streamerId,`Hunt : ${row.bonus_count} bonus ! Vote pendant 60 secondes : !hunt ouvrir ou !hunt continuer. Une voix par personne ; égalité = continuer.`);
+  const n=await notifyShop(pool,streamerId,`Hunt : ${row.bonus_count} bonus ! !hunt ouvrir ou !hunt continuer · 60 secondes.`);
   if(n.sent)await pool.query('UPDATE automod_hunt_votes SET announced_at=NOW() WHERE id=$1',[row.id]);
  }
  return {ok:true,vote:view(row),result:row.result??null};

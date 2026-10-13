@@ -24,11 +24,11 @@ export async function handleWeeklyChat(pool:Pool,m:{streamerId:number;userId:str
  if(!family||!settings.enabled||!automodProviderAllowed(provider,allowed)||await isUserBannedFromCalls(pool,m.streamerId,0,m.username)||await isSlotBanned(pool,m.streamerId,keyText(slot.name))||await isProviderBanned(pool,m.streamerId,provider)||!await isProviderAllowedByPolicy(pool,m.streamerId,provider))return `@${m.username} — Cette machine n’est pas autorisée pour l’événement.`;
  try{
   const result=await requestWeeklyPurchase(pool,m.streamerId,{userId:m.userId,username:m.username},{name:slot.name,key:keyText(slot.name),provider:family});
-  return result.created?`@${m.username} — ${slot.name} : achat offert enregistré ! Il passera entre deux calls en Automod classique.`:`@${m.username} — Ton achat offert du jour est déjà enregistré : ${result.entry.slot_name}.`;
+  return result.created?`@${m.username} — ${slot.name} : achat offert enregistré !`:`@${m.username} — Ton achat offert du jour est déjà enregistré : ${result.entry.slot_name}.`;
  }catch(e){
   const reason=e instanceof Error?e.message:'';
   if(reason==='weekly_follow_required')return `@${m.username} — Follow la chaîne pour ton achat offert, puis réessaie !offert ${slot.name}.`;
-  if(reason==='weekly_not_today')return `@${m.username} — Meilleur Achat a lieu mardi et vendredi, de minuit à minuit (heure de Paris).`;
+  if(reason==='weekly_not_today')return `@${m.username} — Meilleur Achat : mardi et vendredi.`;
   if(reason==='weekly_not_live')return `@${m.username} — Les inscriptions sont ouvertes pendant le live Automod.`;
   if(reason==='weekly_hunt_bonus_pending')return `@${m.username} — Cette machine a un bonus de hunt en attente. Choisis une autre slot.`;
   if(reason==='weekly_provider_disabled')return `@${m.username} — Ce provider vient d’être désactivé. Choisis une autre slot.`;
@@ -48,5 +48,5 @@ export async function weeklyGreeting(pool:Pool,m:{streamerId:number;userId:strin
  ON CONFLICT DO NOTHING RETURNING rumble_user_id`,[m.streamerId,day.key,m.userId]);
  if(!inserted.rowCount)return null;
  const follows=(await pool.query("SELECT 1 FROM automod_follow_events WHERE streamer_id=$1 AND rumble_user_id=$2 AND last_confirmed_at>$3::timestamptz-INTERVAL '2 minutes' LIMIT 1",[m.streamerId,m.userId,now])).rowCount;
- return `Bonjour @${m.username} ! Meilleur Achat aujourd’hui : ${follows?'ton bonus offert t’attend':'follow la chaîne pour ton bonus offert'}. Le meilleur multi gagne des points d’événement ! https://lecasinoze.onrender.com/automod-shop/?event=meilleur-achat`;
+ return `Bonjour @${m.username} ! Meilleur Achat aujourd’hui : ${follows?'ton bonus offert t’attend':'follow la chaîne pour ton bonus offert'}. https://lecasinoze.onrender.com/automod-shop/?event=meilleur-achat`;
 }

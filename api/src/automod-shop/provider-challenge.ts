@@ -4,6 +4,7 @@ import {inTransaction,lockWallet,walletEntry} from './wallet.js';
 import {validRumbleIdentity} from './rules.js';
 import {predictionPayouts} from './engagement-rules.js';
 import {nextChallengeProvider,canFinishChallenge,providerPassScore,type EventProvider} from './event-rules.js';
+import {CHALLENGE_REWARDS,challengeRewardTerms,challengeReward} from './challenge-rewards.js';
 
 const ready=new WeakMap<Pool,Promise<void>>();
 export async function challengeSchema(pool:Pool){
@@ -23,7 +24,10 @@ export async function challengeSchema(pool:Pool){
  challenge_id uuid NOT NULL REFERENCES automod_provider_challenges(id),pass_id text NOT NULL,sequence integer NOT NULL,
  provider text NOT NULL CHECK(provider IN ('pragmatic','hacksaw')),slot_name text NOT NULL,
  started_at timestamptz NOT NULL DEFAULT NOW(),receipt jsonb,score_hundredths bigint,
- PRIMARY KEY(challenge_id,pass_id),UNIQUE(challenge_id,sequence));`).then(()=>undefined).catch(e=>{ready.delete(pool);throw e});ready.set(pool,task);}
+ PRIMARY KEY(challenge_id,pass_id),UNIQUE(challenge_id,sequence));
+ ALTER TABLE automod_provider_camps ADD COLUMN IF NOT EXISTS joined_at timestamptz;
+ ALTER TABLE automod_provider_camps ADD COLUMN IF NOT EXISTS reward_terms jsonb;
+ ALTER TABLE automod_provider_passes ADD COLUMN IF NOT EXISTS requested_user_id text;`).then(()=>undefined).catch(e=>{ready.delete(pool);throw e});ready.set(pool,task);}
  await task;
 }
 async function locked(c:PoolClient,sid:number,id:string){
@@ -39,7 +43,7 @@ export async function createChallenge(pool:Pool,sid:number,checkpoint:string,con
   const previous=(await c.query('SELECT * FROM automod_provider_challenges WHERE streamer_id=$1 AND checkpoint=$2',[sid,checkpoint])).rows[0];if(previous)return previous;
   if((await c.query("SELECT 1 FROM automod_provider_challenges WHERE streamer_id=$1 AND status IN ('preparing','playing')",[sid])).rowCount)throw Error('challenge_already_active');
   return (await c.query(`INSERT INTO automod_provider_challenges(id,streamer_id,checkpoint,status,config,closes_at)
-   VALUES($1,$2,$3,'preparing',$4,NOW()+INTERVAL '3 minutes') RETURNING *`,[randomUUID(),sid,checkpoint,JSON.stringify(config)])).rows[0];
+   VALUES($1,$2,$3,'preparing',$4,NOW()+INTERVAL '3 minutes') RETURNING *`,[randomUUID(),sid,checkpoint,JSON.stringify({...config,rewardsVersion:CHALLENGE_REWARDS.version})])).rows[0];
  });
 }
 export async function chooseCamp(pool:Pool,sid:number,id:string,viewer:{userId:string;username:string},provider:EventProvider,points=0){
@@ -53,7 +57,10 @@ export async function chooseCamp(pool:Pool,sid:number,id:string,viewer:{userId:s
   // Late spectators can join a camp and call, but cannot bet after play starts.
   if(points>0&&(r.status!=='preparing'||Date.now()>=new Date(r.closes_at).getTime()))throw Error('challenge_bets_closed');
   if(points){await lockWallet(c,sid,viewer.userId,viewer.username);await walletEntry(c,sid,viewer.userId,`challenge:${id}:reserve:${viewer.userId}`,0,points,'challenge-reservation');}
-  return (await c.query('INSERT INTO automod_provider_camps(challenge_id,rumble_user_id,username,provider,points) VALUES($1,$2,$3,$4,$5) RETURNING *',[id,viewer.userId,viewer.username.slice(0,80),provider,points])).rows[0];
+  const scores=(await c.query('SELECT provider,COALESCE(SUM(score_hundredths),0)::bigint AS score FROM automod_provider_passes WHERE challenge_id=$1 GROUP BY provider',[id])).rows;
+  const own=Number(scores.find(p=>p.provider===provider)?.score??0)/100,other=Number(scores.find(p=>p.provider!==provider)?.score??0)/100;
+  const now=Date.now(),terms=challengeRewardTerms(r.started_at?now-new Date(r.started_at).getTime():0,own,other);
+  return (await c.query('INSERT INTO automod_provider_camps(challenge_id,rumble_user_id,username,provider,points,joined_at,reward_terms) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *',[id,viewer.userId,viewer.username.slice(0,80),provider,points,new Date(now),JSON.stringify(terms)])).rows[0];
  });
 }
 export async function challengeCallAllowed(pool:Pool,sid:number,userId:string|null,provider:EventProvider){
@@ -72,19 +79,21 @@ export async function challengeCallAllowedInTransaction(db:Pick<PoolClient,'quer
 export async function handleChallengeChat(pool:Pool,m:{streamerId:number;userId:string;username:string;text:string;createdAt:Date}){
  if(!/^!camp(?:\s|$)/i.test(m.text.trim()))return null;
  if(!validRumbleIdentity(m.userId)||Date.now()-m.createdAt.getTime()>120000||m.createdAt.getTime()>Date.now()+30000)return null;
- const help=`@${m.username} — Choisis !camp pragma ou !camp hacksaw. Pour parier avant le départ : !camp pragma 100 (10 à 500 points).`;
- const parsed=/^!camp\s+(pragma(?:tic)?|hacksaw|axo)(?:\s+(\d{1,5}))?\s*$/i.exec(m.text.trim());if(!parsed)return help;
+ const parsed=/^!camp\s+(pragma(?:tic)?|hacksaw|axo)(?:\s+(\d{1,5}))?\s*$/i.exec(m.text.trim());
  await challengeSchema(pool);
- const active=(await pool.query(`SELECT e.id FROM automod_provider_challenges e JOIN automod_control a ON a.streamer_id=e.streamer_id
+ const active=(await pool.query(`SELECT e.id,e.config FROM automod_provider_challenges e JOIN automod_control a ON a.streamer_id=e.streamer_id
  WHERE e.streamer_id=$1 AND e.status IN ('preparing','playing') AND a.desired_enabled=TRUE`,[m.streamerId])).rows[0];
  if(!active)return `@${m.username} — Aucun Défi providers en cours.`;
+ const help=`@${m.username} — !camp pragma ou !camp hacksaw.${active.config.rewardsVersion===CHALLENGE_REWARDS.version?' Jusqu’à 1 500 pts : choisis tôt et fais tes calls.':''} Pari avant le départ : !camp pragma 100 (10–500 pts).`;
+ if(!parsed)return help;
  const points=parsed[2]===undefined?0:Math.round(Number(parsed[2])/10)*10;if(parsed[2]!==undefined&&(points<10||points>500))return help;
  const provider=parsed[1]!.toLowerCase().startsWith('pragma')?'pragmatic':'hacksaw';
- try{await chooseCamp(pool,m.streamerId,active.id,m,provider,points);
-  return `@${m.username} — Camp ${provider==='pragmatic'?'Pragmatic':'Hacksaw'} confirmé${points?`, ${points} points réservés`:''}. Fais tes calls dans ce camp !`;
+ try{const camp=await chooseCamp(pool,m.streamerId,active.id,m,provider,points);
+  const victory=active.config.rewardsVersion===CHALLENGE_REWARDS.version&&camp.reward_terms?challengeReward(camp.reward_terms,provider,provider,0).participation:null;
+  return `@${m.username} — Camp ${provider==='pragmatic'?'Pragmatic':'Hacksaw'}${points?`, ${points} pts misés`:''}.${victory!==null?` Victoire : ${victory} pts + bonus de tes calls.`:''}`;
  }catch(e){const reason=e instanceof Error?e.message:'';
-  if(reason==='challenge_camp_locked')return `@${m.username} — Ton camp est déjà choisi pour ce défi. Il reste verrouillé jusqu’à la fin.`;
-  if(reason==='challenge_bets_closed')return `@${m.username} — Les paris sont fermés. Tu peux encore rejoindre un camp sans montant : !camp ${provider==='pragmatic'?'pragma':'hacksaw'}.`;
+  if(reason==='challenge_camp_locked')return `@${m.username} — Ton camp est déjà choisi pour ce défi.`;
+  if(reason==='challenge_bets_closed')return `@${m.username} — Paris fermés. Rejoins sans mise : !camp ${provider==='pragmatic'?'pragma':'hacksaw'}.`;
   if(reason==='insufficient_points')return `@${m.username} — Pas assez de points disponibles. !points pour voir ton solde.`;
   throw e;
  }
@@ -103,7 +112,12 @@ export async function startChallengePass(pool:Pool,sid:number,id:string,pass:{id
   const elapsed=r.started_at?Date.now()-new Date(r.started_at).getTime():0;
   if(canFinishChallenge({elapsedMs:elapsed,pragmaticPasses:passes.filter(p=>p.provider==='pragmatic').length,hacksawPasses:passes.filter(p=>p.provider==='hacksaw').length,bonusActive:false,passActive:false}))throw Error('challenge_ready_to_settle');
   await c.query("UPDATE automod_provider_challenges SET status='playing',started_at=COALESCE(started_at,NOW()) WHERE id=$1",[id]);
-  return (await c.query('INSERT INTO automod_provider_passes(challenge_id,pass_id,sequence,provider,slot_name) VALUES($1,$2,$3,$4,$5) RETURNING *',[id,pass.id,passes.length,pass.provider,pass.slotName])).rows[0];
+  // Capture the native caller before the runner removes this call from the queue.
+  const callId=/^call:(\d{1,20}):\d+$/.exec(pass.id)?.[1];
+  const caller=callId?(await c.query(`SELECT q.rumble_user_id FROM calls_queue q
+   JOIN automod_provider_camps p ON p.challenge_id=$3 AND p.rumble_user_id=q.rumble_user_id AND p.provider=$4
+   WHERE q.streamer_id=$1 AND q.id=$2 AND q.slot_name=$5 AND p.joined_at IS NOT NULL`,[sid,callId,id,pass.provider,pass.slotName])).rows[0]?.rumble_user_id:null;
+  return (await c.query('INSERT INTO automod_provider_passes(challenge_id,pass_id,sequence,provider,slot_name,requested_user_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING *',[id,pass.id,passes.length,pass.provider,pass.slotName,caller??null])).rows[0];
  });
 }
 export type ChallengeReceipt = {naturalBonuses:number;bestMultiplier:number;rounds:number;bonusActive:false}&(
@@ -151,8 +165,8 @@ export async function settleChallenge(pool:Pool,sid:number,id:string,cancel=fals
    bonusActive:false,passActive:passes.some(p=>p.receipt===null)}))throw Error('challenge_not_complete');
   const totals={pragmatic:0,hacksaw:0};for(const p of passes)totals[p.provider as EventProvider]+=Number(p.score_hundredths??0);
   const winner=cancel||totals.pragmatic===totals.hacksaw?null:totals.pragmatic>totals.hacksaw?'pragmatic':'hacksaw';
-  const camps=(await c.query('SELECT * FROM automod_provider_camps WHERE challenge_id=$1 AND points>0 ORDER BY rumble_user_id',[id])).rows;
-  const result=predictionPayouts(camps.map(p=>({userId:p.rumble_user_id,choice:p.provider==='pragmatic'?'yes' as const:'no' as const,points:Number(p.points)})),winner===null?null:winner==='pragmatic'?'yes':'no');
+  const camps=(await c.query('SELECT * FROM automod_provider_camps WHERE challenge_id=$1 ORDER BY rumble_user_id',[id])).rows;
+  const result=predictionPayouts(camps.filter(p=>Number(p.points)>0).map(p=>({userId:p.rumble_user_id,choice:p.provider==='pragmatic'?'yes' as const:'no' as const,points:Number(p.points)})),winner===null?null:winner==='pragmatic'?'yes':'no');
   const amounts=new Map(result.payouts.map(p=>[p.userId,p.points]));
   // Pending reinforcements have never been handed to the worker. Return them
   // at event end even when their call remains queued for the following mode.
@@ -162,9 +176,19 @@ export async function settleChallenge(pool:Pool,sid:number,id:string,cancel=fals
    await walletEntry(c,sid,o.rumble_user_id,`order:${o.id}:refund-reservation`,0,-Number(o.reserved_points),'technical-failure-release',{reason:'challenge-ended-before-boost'});
    await c.query("UPDATE automod_shop_orders SET status='refunded',reserved_points=0,result=result||'{\"reason\":\"challenge-ended-before-boost\"}'::jsonb,updated_at=NOW(),completed_at=NOW() WHERE streamer_id=$1 AND id=$2",[sid,o.id]);
   }
-  for(const p of camps){await lockWallet(c,sid,p.rumble_user_id,p.username);await walletEntry(c,sid,p.rumble_user_id,`challenge:${id}:settle:${p.rumble_user_id}`,(amounts.get(p.rumble_user_id)??0)-Number(p.points),-Number(p.points),result.refund?'challenge-refund':'challenge-settlement');}
+  const rewards=[];
+  for(const p of camps){
+   await lockWallet(c,sid,p.rumble_user_id,p.username);
+   if(Number(p.points)>0)await walletEntry(c,sid,p.rumble_user_id,`challenge:${id}:settle:${p.rumble_user_id}`,(amounts.get(p.rumble_user_id)??0)-Number(p.points),-Number(p.points),result.refund?'challenge-refund':'challenge-settlement');
+   if(!cancel&&r.config.rewardsVersion===CHALLENGE_REWARDS.version&&p.reward_terms){
+    const positive=passes.filter(pass=>pass.requested_user_id===p.rumble_user_id&&pass.provider===p.provider).reduce((n,pass)=>n+Math.max(0,Number(pass.score_hundredths??0)),0);
+    const reward=challengeReward(p.reward_terms,p.provider,winner,positive);
+    if(reward.total)await walletEntry(c,sid,p.rumble_user_id,`challenge:${id}:reward:${p.rumble_user_id}`,reward.total,0,'challenge-reward',{...reward,winner,provider:p.provider,positiveScoreHundredths:positive,terms:p.reward_terms});
+    rewards.push({username:p.username,...reward});
+   }
+  }
   await c.query('UPDATE automod_provider_challenges SET status=$2,result=$3,finished_at=NOW() WHERE id=$1',[id,result.refund?'refunded':'settled',winner??'draw']);
-  return {changed:true,result:winner??'draw',refunded:result.refund,totals};
+  return {changed:true,result:winner??'draw',cancelled:cancel,refunded:result.refund,totals,rewards};
  });
 }
 export async function refundStoppedChallenges(pool:Pool,sid:number){

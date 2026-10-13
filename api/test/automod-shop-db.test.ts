@@ -18,7 +18,8 @@ import {keyText} from '../src/calls/normalize.js';
 import {addCall} from '../src/calls/queue.js';
 import {automodServiceRouter} from '../src/routes/automod_service.js';
 import {pool as servicePool} from '../src/db.js';
-import {createChallenge,chooseCamp,settleChallenge} from '../src/automod-shop/provider-challenge.js';
+import {createChallenge,chooseCamp,settleChallenge,startChallengePass,finishChallengePass} from '../src/automod-shop/provider-challenge.js';
+import {challengeReward} from '../src/automod-shop/challenge-rewards.js';
 import {requestWeeklyPurchase,nextWeeklyPurchase,quoteWeeklyPurchase,weeklyPurchaseIntent,finishWeeklyPurchase,failWeeklyPurchase,settleWeeklyEvent} from '../src/automod-shop/weekly-event.js';
 import {weeklyGreeting} from '../src/automod-shop/weekly-chat.js';
 import {dailyViewerGreeting,greetingText} from '../src/automod-shop/viewer-greeting.js';
@@ -134,23 +135,77 @@ test('challenge shop accepts only own camp, replaces tiers without stacking, ref
  await pool.query(`UPDATE automod_control SET dashboard_settings=dashboard_settings||'{"mode":"provider-challenge"}'::jsonb WHERE streamer_id=$1`,[sid]);
  const event=await createChallenge(pool,sid,'shop-camps',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});
  const command='!call +1 Wanted Dead or a Wild';
- assert.match((await chat(sid,uid,command))!,/Choisis d’abord/);
+ assert.match((await chat(sid,uid,command))!,/Choisis ton camp/);
  await chooseCamp(pool,sid,event.id,{userId:uid,username:'Viewer'},'hacksaw');
  assert.match((await chat(sid,uid,command))!,/réservés/);
- assert.match((await chat(sid,uid,'!call +2 Wanted Dead or a Wild'))!,/supplémentaires/);
- assert.match((await chat(sid,uid,'!duree 1 Wanted Dead or a Wild'))!,/pas disponible/);
+ assert.match((await chat(sid,uid,'!call +2 Wanted Dead or a Wild'))!,/\+450 pts réservés/);
+ assert.match((await chat(sid,uid,'!duree 1 Wanted Dead or a Wild'))!,/indisponible/);
  const orders=(await pool.query('SELECT * FROM automod_shop_orders WHERE streamer_id=$1',[sid])).rows;
  assert.equal(orders.length,1);assert.equal(orders[0].tier,2);assert.equal(orders[0].result.challengeId,event.id);
  assert.equal((await readWallet(pool,sid,uid)).reserved,750);
  await creditPoints(pool,sid,'304','Other','seed-other',1000,'test');
  await chooseCamp(pool,sid,event.id,{userId:'304',username:'Other'},'pragmatic');
- assert.match((await chat(sid,'304',command))!,/uniquement les calls de ton camp/);
+ assert.match((await chat(sid,'304',command))!,/l’autre camp/);
  assert.equal((await readWallet(pool,sid,'304')).reserved,0);
  await settleChallenge(pool,sid,event.id,true);
  assert.equal((await readWallet(pool,sid,uid)).reserved,0,'settlement must release the unused boost without waiting for its queued call');
  assert.equal((await mutateOrder(pool,sid,orders[0].id,'claim',{})).status,'refunded');
  assert.equal((await readWallet(pool,sid,uid)).reserved,0);
  assert.equal((await readWallet(pool,sid,uid)).balance,10000);
+});
+
+test('challenge rewards native callers, frozen late eligibility, bets and concurrent settlement exactly once',async()=>{
+ const sid=9401;await streamer(sid);
+ const e=await createChallenge(pool,sid,'rewards',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});
+ await chooseCamp(pool,sid,e.id,{userId:'94011',username:'EarlyPragma'},'pragmatic');
+ await chooseCamp(pool,sid,e.id,{userId:'94012',username:'EarlyHacksaw'},'hacksaw');
+ await creditPoints(pool,sid,'94014','Bettor','seed',1000,'test');
+ await chooseCamp(pool,sid,e.id,{userId:'94014',username:'Bettor'},'hacksaw',100);
+ await pool.query("UPDATE automod_provider_challenges SET closes_at=NOW()-INTERVAL '1 minute' WHERE id=$1",[e.id]);
+ let lastPass='';
+ for(let i=0;i<6;i++){
+  const provider=i<3?'pragmatic':'hacksaw',caller=i===0?'94011':i===3?'94012':i===5?'94013':null;
+  const call=(await pool.query(`INSERT INTO calls_queue(streamer_id,slot_name,slot_key,provider,username,user_id,pos,rumble_user_id)
+   VALUES($1,'Fruit Party','fruit party',$2,'Caller',0,$3,$4) RETURNING id`,[sid,provider,i+1,caller])).rows[0];
+  const pass={id:`call:${call.id}:123456789`,provider:provider as 'pragmatic'|'hacksaw',slotName:'Fruit Party'};
+  await startChallengePass(pool,sid,e.id,pass);
+  await pool.query('DELETE FROM calls_queue WHERE streamer_id=$1 AND id=$2',[sid,call.id]);
+  const delta=[1000,-500,0,5000,5000,500][i]!;
+  const receipt={measurement:'balance-delta' as const,balanceBeforeCents:10000,balanceAfterCents:10000+delta,naturalBonuses:0,bestMultiplier:0,rounds:50,bonusActive:false as const};
+  await finishChallengePass(pool,sid,e.id,pass.id,receipt);
+  assert.equal((await finishChallengePass(pool,sid,e.id,pass.id,receipt)).changed,false);
+  if(i===4){
+   await pool.query("UPDATE automod_provider_challenges SET started_at=NOW()-INTERVAL '1 hour' WHERE id=$1",[e.id]);
+   const late=await chooseCamp(pool,sid,e.id,{userId:'94013',username:'LateHacksaw'},'hacksaw');
+   assert.ok(late.reward_terms.timeBps<=5000);assert.ok(late.reward_terms.certaintyBps<10000);
+   const same=await chooseCamp(pool,sid,e.id,{userId:'94013',username:'Renamed'},'hacksaw');
+   assert.deepEqual(same.reward_terms,late.reward_terms);
+  }
+  lastPass=pass.id;
+ }
+ const captured=(await pool.query('SELECT requested_user_id FROM automod_provider_passes WHERE challenge_id=$1 AND pass_id=$2',[e.id,lastPass])).rows[0];
+ assert.equal(captured.requested_user_id,'94013','caller survives queue deletion');
+ await pool.query("UPDATE automod_provider_challenges SET started_at=NOW()-INTERVAL '2 hours' WHERE id=$1",[e.id]);
+ const settlements=await Promise.all([settleChallenge(pool,sid,e.id),settleChallenge(pool,sid,e.id)]);
+ assert.equal(settlements.filter(r=>r.changed).length,1);
+ assert.equal((await readWallet(pool,sid,'94011')).balance,350,'losing camp gets participation and positive caller score');
+ assert.equal((await readWallet(pool,sid,'94012')).balance,1500,'winning camp and capped contribution');
+ assert.equal((await readWallet(pool,sid,'94014')).balance,2050,'existing wager payout remains separate from free reward');
+ const terms=(await pool.query('SELECT reward_terms FROM automod_provider_camps WHERE challenge_id=$1 AND rumble_user_id=$2',[e.id,'94013'])).rows[0].reward_terms;
+ assert.equal((await readWallet(pool,sid,'94013')).balance,challengeReward(terms,'hacksaw','hacksaw',1000).total);
+ assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM automod_points_ledger WHERE streamer_id=$1 AND reason='challenge-reward'",[sid])).rows[0].n,4);
+ assert.equal((await pool.query('SELECT status,result FROM automod_provider_challenges WHERE id=$1',[e.id])).rows[0].status,'settled');
+});
+
+test('cancelled and pre-reward challenges never grant completion rewards',async()=>{
+ for(const [sid,legacy] of [[9402,false],[9403,true]] as const){
+  await streamer(sid);const e=await createChallenge(pool,sid,'cancel-rewards',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});
+  await chooseCamp(pool,sid,e.id,{userId:'94021',username:'Viewer'},'hacksaw');
+  if(legacy)await pool.query("UPDATE automod_provider_challenges SET config=config-'rewardsVersion',status='playing',started_at=NOW()-INTERVAL '2 hours' WHERE id=$1",[e.id]);
+  if(legacy)for(let i=0;i<6;i++)await pool.query('INSERT INTO automod_provider_passes(challenge_id,pass_id,sequence,provider,slot_name,receipt,score_hundredths) VALUES($1,$2,$3,$4,$5,$6,$7)',[e.id,'legacy:'+i,i,i<3?'pragmatic':'hacksaw','Legacy','{}',i<3?0:100]);
+  await settleChallenge(pool,sid,e.id,!legacy);
+  assert.equal((await readWallet(pool,sid,'94021')).balance,0);
+ }
 });
 
 test('concurrent wallet reservations never exceed the native-ID balance and failed reservations roll back',async()=>{
@@ -230,7 +285,7 @@ test('only the native requester can choose a discovered bonus; replay is harmles
  await mutateOrder(pool,10,id,'menu',{cacheBaseStakeCents:20,offers:[{id:'train',label:'Train',costCents:2000,baseStakeCents:20},{id:'duel',label:'Duel',costCents:4000,baseStakeCents:20}]});
  assert.match(await chat(10,'111','!achat 2')??'',/Aucun choix/);
  assert.equal((await readWallet(pool,10,uid)).reserved,350);
- assert.match(await chat(10,uid,'2')??'',/Duel sélectionné/);
+ assert.match(await chat(10,uid,'2')??'',/Duel choisi/);
  assert.equal((await readWallet(pool,10,uid)).reserved,1400);
  const replay=await chat(10,uid,'2');assert.equal(replay,null);assert.equal((await readWallet(pool,10,uid)).reserved,1400);
 });

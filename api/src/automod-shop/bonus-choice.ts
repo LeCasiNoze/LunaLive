@@ -34,7 +34,7 @@ export async function pollBonusChoice(pool:Pool,sid:number,input:any){
   }
   return {ok:true,event:{id:row.id,kind:'choice' as const,status:row.result?'locked':'open',result:row.result,closesAt:new Date(row.closes_at).toISOString(),slotName:row.slot_name,leftVotes:left,rightVotes:right},announce:!row.announced_at&&!row.result};
  });
- if(reply.announce&&reply.event&&(await notifyShop(pool,sid,`${reply.event.slotName} · Quel bonus ? !gauche ou !droite · 1 minute. Sans vote ou égalité : droite.`)).sent)await pool.query('UPDATE automod_bonus_choices SET announced_at=NOW() WHERE id=$1',[reply.event.id]);
+ if(reply.announce&&reply.event&&(await notifyShop(pool,sid,`${reply.event.slotName} · Quel bonus ? !gauche ou !droite · 1 minute.`)).sent)await pool.query('UPDATE automod_bonus_choices SET announced_at=NOW() WHERE id=$1',[reply.event.id]);
  return reply;
 }
 export async function castBonusChoice(pool:Pool,m:{streamerId:number;userId:string;username:string;createdAt:Date;text:string}){

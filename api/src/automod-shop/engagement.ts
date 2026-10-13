@@ -127,7 +127,7 @@ export async function pollEngagement(pool:Pool,sid:number,input:any){
  });
  if(result.announce&&result.event){
   const event=result.event;
-  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !oui 100 ou !non 100 (10 à 500 points).`:`Vote de mode · 5 minutes : ${(event.options??['automod','auto-hunt']).map((m:string,i:number)=>'!'+(i+1)+' '+modeNames[m]).join(', ')}. Une voix par personne.`;
+  const text=event.kind==='prediction'?`Préparation du Hunt · 3 minutes ! Sera-t-il rentable ? !oui 100 ou !non 100 (10 à 500 points).`:`Vote de mode · 5 minutes : ${(event.options??['automod','auto-hunt']).map((m:string,i:number)=>'!'+(i+1)+' '+modeNames[m]).join(', ')}.`;
   if((await notifyShop(pool,sid,text)).sent)await pool.query('UPDATE automod_engagement SET announced_at=NOW() WHERE id=$1',[event.id]);
  }
  return result;
@@ -146,14 +146,14 @@ export async function castEngagement(pool:Pool,m:{streamerId:number;userId:strin
   if(!row)return `@${m.username} — Aucun ${prediction?'pronostic':'vote de mode'} ouvert.`;
   if(vote&&Number(vote[1])>modeOptions(row).length)return `@${m.username} — Choisis ${modeOptions(row).map((_,i)=>'!'+(i+1)).join(' ou ')}.`;
   const previous=(await c.query('SELECT 1 FROM automod_engagement_ballots WHERE round_id=$1 AND rumble_user_id=$2',[row.id,m.userId])).rowCount;
-  if(previous&&prediction)return `@${m.username} — Participation déjà enregistrée ; un seul choix par personne.`;
+  if(previous&&prediction)return `@${m.username} — Participation déjà enregistrée.`;
   const points=prediction?prediction.points:0;
   if(prediction&&!validPredictionPoints(points))return `@${m.username} — Choisis 10 à 500 points, par multiples de 10.`;
   if(prediction){await lockWallet(c,m.streamerId,m.userId,m.username);await walletEntry(c,m.streamerId,m.userId,`prediction:${row.id}:reserve:${m.userId}`,0,points,'prediction-reservation');}
   const choice=prediction?prediction.choice:modeOptions(row)[Number(vote![1])-1]!;
   await c.query('INSERT INTO automod_engagement_ballots(round_id,rumble_user_id,username,choice,points) VALUES($1,$2,$3,$4,$5) ON CONFLICT(round_id,rumble_user_id) DO UPDATE SET choice=EXCLUDED.choice,username=EXCLUDED.username',[row.id,m.userId,m.username.slice(0,80),choice,points]);
-  return `@${m.username} — ${prediction?`${points} points réservés sur « ${choice==='yes'?'rentable':'non rentable'} ». ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`:`Vote ${modeNames[choice]} ${previous?'modifié':'enregistré'}.`}`;
- });}catch(e){if(String(e).includes('insufficient_points'))return `@${m.username} — Points disponibles insuffisants ; aucun point réservé.`;throw e;}
+  return `@${m.username} — ${prediction?`${points} pts misés : Hunt ${choice==='yes'?'rentable':'non rentable'}.`:`Vote ${modeNames[choice]} ${previous?'modifié':'enregistré'}.`}`;
+ });}catch(e){if(String(e).includes('insufficient_points'))return `@${m.username} — Points insuffisants. !points`;throw e;}
 }
 export async function finishPrediction(pool:Pool,sid:number,input:any){
  await engagementSchema(pool);

@@ -69,7 +69,7 @@ export async function announceNewFollow(pool:Pool,sid:number,io?:any){
    AND seen_at>NOW()-INTERVAL '10 minutes' ORDER BY seen_at
    LIMIT 1 FOR UPDATE SKIP LOCKED`,[sid])).rows[0];
   if(!event)return false;
-  const message=live.automodActive?`Merci pour ton follow @${event.username} ! +${FOLLOW_POINTS} points après ton premier message. Ton solde : !points.`:`Merci pour ton follow @${event.username} !`;
+  const message=live.automodActive?`Merci pour ton follow @${event.username} ! +${FOLLOW_POINTS} points après ton premier message.`:`Merci pour ton follow @${event.username} !`;
   for(const chunk of shopReplyChunks(message)){
    await c.query("INSERT INTO rumble_send_queue(video_id_numeric,text,status) VALUES($1,$2,'pending')",[String(live.live_video_id_numeric),chunk]);
   }

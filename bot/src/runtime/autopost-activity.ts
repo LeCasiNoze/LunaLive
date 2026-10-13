@@ -1,7 +1,7 @@
 import type {Pool} from 'pg';
 
 export function automodModeReminder(mode:string){
- if(mode==='provider-challenge')return '⚔️ Pragmatic ou Hacksaw ? Choisis !camp pragma ou !camp hacksaw, puis !call + nom complet. !shop pour renforcer ton camp.';
+ if(mode==='provider-challenge')return '⚔️ !camp pragma ou !camp hacksaw, puis !call + nom complet. !shop pour renforcer ton camp.';
  if(mode==='session-buy')return '✨ Session achat : 3 bonus par machine ! Propose la tienne : !call + nom complet. !shop pour améliorer un achat.';
  if(mode==='bonus-hunt'||mode==='auto-hunt')return '🎯 Auto Hunt : on collecte les bonus, puis on les ouvre ensemble ! !call + nom complet pour proposer une machine. !help pour participer.';
  return '🎰 À toi de jouer : !call + nom complet de la slot. !mcall retire ton dernier call. !music + titre et artiste pour la musique.';

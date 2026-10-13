@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import { sendRumbleMessageReliable } from "../rumble_chat_bridge.js";
 import { shopReplyChunks,SHOP_RULES } from "./rules.js";
 import { inTransaction } from "./wallet.js";
-import { walletSummary } from "./wallet.js";
 import { reconcileRemovedShopCalls,reconcileProvenUnsentPurchases } from "./runtime.js";
 export async function notifyShop(pool:Pool,streamerId:number,text:string){
  const target=await pool.query(`SELECT i.live_video_id_numeric FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id
@@ -13,9 +12,9 @@ export async function notifyShop(pool:Pool,streamerId:number,text:string){
  return {sent:results.every(r=>r.sent||r.queued)};
 }
 export async function tickPointsRain(pool:Pool,streamerId:number){
- for(const released of await reconcileProvenUnsentPurchases(pool,streamerId))await notifyShop(pool,streamerId,`@${released.username} — Achat non déclenché confirmé : réservation libérée. ${walletSummary(released.wallet)}`);
+ for(const released of await reconcileProvenUnsentPurchases(pool,streamerId))await notifyShop(pool,streamerId,`@${released.username} — Achat annulé, points libérés.`);
  for(const released of await reconcileRemovedShopCalls(pool,streamerId)){
-  await notifyShop(pool,streamerId,`@${released.username} — Ton call a été retiré : les points réservés sont libérés. ${walletSummary(released.wallet)}`);
+  await notifyShop(pool,streamerId,`@${released.username} — Call retiré, points libérés.`);
  }
  const rain=await inTransaction(pool,async c=>{
   await c.query(`SELECT pg_advisory_xact_lock($1)`,[streamerId]);
@@ -29,7 +28,7 @@ export async function tickPointsRain(pool:Pool,streamerId:number){
   return r.rows[0];
  });
  if(rain&&!rain.announced_at){
-  const notified=await notifyShop(pool,streamerId,`🌧️ Rain Automod ! Tape !rain dans les 2 minutes pour recevoir ${SHOP_RULES.rainPoints} points. Une participation par personne.`);
+  const notified=await notifyShop(pool,streamerId,`🌧️ Rain Automod ! !rain · +${SHOP_RULES.rainPoints} pts · 2 minutes !`);
   if(notified.sent)await pool.query(`UPDATE automod_points_rains SET announced_at=NOW() WHERE streamer_id=$1 AND id=$2`,[streamerId,rain.id]);
  }
  return rain?{id:rain.id,closesAt:rain.closes_at,points:SHOP_RULES.rainPoints}:null;

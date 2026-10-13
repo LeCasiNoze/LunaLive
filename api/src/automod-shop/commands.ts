@@ -49,24 +49,24 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
   if(!cmd)return null;
   if(cmd.kind==='balance'){
     if(Math.abs(Date.now()-m.createdAt.getTime())>120000)return null;
-    return `@${m.username} — ${walletSummary(await readWallet(pool,m.streamerId,m.userId))} !profil pour ton niveau ; !shop pour tes options.`;
+    return `@${m.username} — ${walletSummary(await readWallet(pool,m.streamerId,m.userId))}`;
   }
   const control=await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`,[m.streamerId]);
   if(control.rows[0]?.desired_enabled!==true)return `@${m.username} — Le shop et les points sont disponibles pendant l’Automod.`;
-  if(!shopCommandAllowed(control.rows[0],cmd.kind))return `@${m.username} — Cette option n’est pas disponible dans le mode actuel. Aucun point réservé. Consulte !shop.`;
-  if(cmd.kind==='duration'&&control.rows[0].dashboard_settings?.mode==='auto-hunt'&&control.rows[0].dashboard_settings?.hunt?.jail===true)return `@${m.username} — La durée est désactivée en Jail Hunt : la machine reste jusqu’au bonus ou à la limite de spins. Aucun point réservé.`;
+  if(!shopCommandAllowed(control.rows[0],cmd.kind))return `@${m.username} — Option indisponible dans ce mode. !shop`;
+  if(cmd.kind==='duration'&&control.rows[0].dashboard_settings?.mode==='auto-hunt'&&control.rows[0].dashboard_settings?.hunt?.jail===true)return `@${m.username} — Durée indisponible en Jail Hunt.`;
   // SSE init replays old messages: do not turn them into new orders or rain joins.
   if(Date.now()-m.createdAt.getTime()>120_000 || m.createdAt.getTime()>Date.now()+30_000)return null;
   try{
-    if(cmd.kind==='shop')return `@${m.username} — Le shop Automod : ${SHOP_URL} Choisis une option, puis copie sa commande ici. Aucun compte nécessaire !`;
+    if(cmd.kind==='shop')return `@${m.username} — Shop : ${SHOP_URL}`;
     if(cmd.kind==='rain'){
       return await inTransaction(pool,async c=>{
         await c.query(`SELECT pg_advisory_xact_lock($1)`,[m.streamerId]);
         const rain=await c.query(`SELECT id,points FROM automod_points_rains WHERE streamer_id=$1 AND closes_at>NOW() ORDER BY opened_at DESC LIMIT 1`,[m.streamerId]);
-        if(!rain.rows[0])return `@${m.username} — Pas de rain en cours. Le bot annoncera le prochain !`;
+        if(!rain.rows[0])return `@${m.username} — Pas de rain en cours.`;
         await lockWallet(c,m.streamerId,m.userId,m.username);
         const added=await walletEntry(c,m.streamerId,m.userId,`rain:${rain.rows[0].id}:${m.userId}`,Number(rain.rows[0].points),0,'rain');
-        return `@${m.username} — ${added?`+${rain.rows[0].points} points, rain récupéré !`:'Tu as déjà récupéré ce rain.'} ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`;
+        return `@${m.username} — ${added?`+${rain.rows[0].points} points, rain récupéré !`:'Tu as déjà récupéré ce rain.'}`;
       });
     }
     if(cmd.kind==='choose'){
@@ -80,7 +80,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
         const price=discountedPoints(bonusPointPrice(offer.costCents),Number(order.discount_percent)),delta=price-Number(order.reserved_points);
         if(delta)await walletEntry(c,m.streamerId,m.userId,`order:${order.id}:choice:${offer.id}`,0,delta,'bonus-choice-reservation');
         await c.query(`UPDATE automod_shop_orders SET status='chosen',selected_offer=$3,offer_id=$4,reserved_points=$5,updated_at=NOW() WHERE streamer_id=$1 AND id=$2`,[m.streamerId,order.id,JSON.stringify(offer),offer.id,price]);
-        return `@${m.username} — ${offer.label} sélectionné (${(offer.costCents/100).toFixed(2)} €, ${price} points réservés). ${walletSummary(await readWallet(c,m.streamerId,m.userId))} Achat dès la fin du round ou bonus en cours.`;
+        return `@${m.username} — ${offer.label} choisi : ${price} pts réservés.`;
       });
     }
     if(cmd.kind==='globalstake'){
@@ -100,7 +100,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
         await walletEntry(c,m.streamerId,m.userId,`order:${id}:reserve`,0,price,'global-stake-reservation');
         await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,reserved_points,discount_percent)
           VALUES($1,$2,$3,$4,$5,'globalstake','session','Session Automod','all',1,$6,$7)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,price,discount]);
-        return `@${m.username} — Mise de session ×3 pour une heure : ${price} points réservés. Début au premier spin confirmé sur la prochaine machine ; aucun cumul de boosts. ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`;
+        return `@${m.username} — Mise ×3 pendant 1 h dès la prochaine machine : ${price} pts réservés.`;
       });
     }
     // Resolve exact catalogue identity before any points are reserved.
@@ -195,26 +195,26 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
           if(wallet.available<difference)throw Error('insufficient_points');
           await walletEntry(c,m.streamerId,m.userId,`order:${old.id}:upgrade:${m.messageId}`,0,difference,'shop-upgrade-reservation');
           await c.query(`UPDATE automod_shop_orders SET tier=$3,reserved_points=$4,discount_percent=$5,updated_at=NOW() WHERE streamer_id=$1 AND id=$2`,[m.streamerId,old.id,cmd.tier,points,discount]);
-          return `@${m.username} — ${slot.name} : palier ${cmd.tier} réservé, seulement ${difference} points supplémentaires. ${walletSummary(await readWallet(c,m.streamerId,m.userId))}`;
+          return `@${m.username} — ${slot.name} : palier ${cmd.tier}, +${difference} pts réservés.`;
         }
       }
       if(wallet.available<points)throw Error('insufficient_points');
       await walletEntry(c,m.streamerId,m.userId,`order:${id}:reserve`,0,points,'shop-reservation');
       await c.query(`INSERT INTO automod_shop_orders(id,streamer_id,rumble_user_id,username,request_key,kind,slot_key,slot_name,provider,tier,offer_id,selected_offer,call_id,reserved_points,discount_percent,result)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[id,m.streamerId,m.userId,m.username,`rumble:${m.messageId}`,cmd.kind,keyText(slot.name),slot.name,provider,'tier'in cmd?cmd.tier:null,cmd.kind==='buy'?cmd.offerId:null,offer?JSON.stringify(offer):null,call.id,points,discount,challengeId?JSON.stringify({challengeId}):null]);
-      return `@${m.username} — ${slot.name} : ${points} points réservés. ${walletSummary(await readWallet(c,m.streamerId,m.userId))} ${cmd.kind==='buy'?(offer?'Bonus choisi, achat vérifié au passage sur la machine.':'Passage prioritaire ; choix du bonus dans le chat. Sans réponse : moitié du plus petit achat vérifié, uniquement si la machine joue.'):cmd.kind==='stake'?`Mise ×${SHOP_RULES.stake[cmd.tier-1]!.factor} demandée, Golden inclus dans le contrôle du coût.`:`Durée ×${SHOP_RULES.duration[cmd.tier-1]!.factor}.`}`;
+      return `@${m.username} — ${slot.name} : ${cmd.kind==='buy'?(offer?offer.label:'achat prioritaire, choix dans le chat'):cmd.kind==='stake'?`mise ×${SHOP_RULES.stake[cmd.tier-1]!.factor}`:`durée ×${SHOP_RULES.duration[cmd.tier-1]!.factor}`} · ${points} pts réservés.${cmd.kind==='buy'&&!offer?' Sans choix : frais de priorité si la machine joue.':''}`;
     });
   }catch(error){
     const key=error instanceof Error?error.message:'';
-    if(key==='challenge_not_ready')return `@${m.username} — Le Défi est en préparation ou terminé. Réessaie quand les camps sont ouverts ; aucun point réservé.`;
-    if(key==='challenge_choose_camp')return `@${m.username} — Choisis d’abord !camp pragma ou !camp hacksaw, puis améliore un call de ce camp.`;
-    if(key==='challenge_other_camp')return `@${m.username} — Tu peux améliorer uniquement les calls de ton camp. Aucun point réservé.`;
-    if(key==='shop_mode_unavailable')return `@${m.username} — Le mode a changé : cette option n’est plus disponible. Aucun point réservé. Consulte !shop.`;
-    if(key==='automod_bonus_pending')return `@${m.username} — Cette machine a un bonus en attente d’ouverture. Réessaie après son ouverture ; aucun point réservé.`;
-    if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé. Ils ne se cumulent pas.`;
-    if(key==='boost_already_covered')return `@${m.username} — Le boost de session couvre déjà cette mise. Aucun point réservé ; choisis un palier supérieur.`;
-    if(key==='buy_slot_already_waiting')return `@${m.username} — Cette machine est déjà en cours ou en attente. Attends la fin de son call avant de demander un achat dessus. Aucun point réservé.`;
-    const labels:Record<string,string>={insufficient_points:'Points disponibles insuffisants.',buy_already_pending:'Tu as déjà un achat en attente.',bonus_menu_changed:'Menu du bonus non connu à cette mise. Utilise !achat + nom complet pour le découvrir.',call_limit:'Ta limite de calls en attente est atteinte. !profil pour la consulter ; !compte pour l’améliorer.',call_already_started:'Cette amélioration doit être choisie avant le début du call.',boost_already_set:'Cette amélioration est déjà réservée pour ce call.',automod_disabled:'L’Automod est arrêté.'};
-    return `@${m.username} — ${key.startsWith('cooldown:')?`Prochain achat possible dans ${key.split(':')[1]} min.`:labels[key]??'Demande non enregistrée. Réessaie dans un instant ; aucun débit partiel.'}`;
+    if(key==='challenge_not_ready')return `@${m.username} — Aucun Défi ouvert.`;
+    if(key==='challenge_choose_camp')return `@${m.username} — Choisis ton camp : !camp pragma ou !camp hacksaw.`;
+    if(key==='challenge_other_camp')return `@${m.username} — Ce call appartient à l’autre camp.`;
+    if(key==='shop_mode_unavailable')return `@${m.username} — Option indisponible dans ce mode. !shop`;
+    if(key==='automod_bonus_pending')return `@${m.username} — Bonus en attente : réessaie après son ouverture.`;
+    if(key==='global_boost_already_active')return `@${m.username} — Un boost de session est déjà actif ou réservé.`;
+    if(key==='boost_already_covered')return `@${m.username} — Mise déjà couverte par le boost de session. Choisis un palier supérieur.`;
+    if(key==='buy_slot_already_waiting')return `@${m.username} — Machine déjà en cours ou en attente. Attends la fin du call.`;
+    const labels:Record<string,string>={insufficient_points:'Points disponibles insuffisants.',buy_already_pending:'Tu as déjà un achat en attente.',bonus_menu_changed:'Menu du bonus non connu à cette mise. Utilise !achat + nom complet pour le découvrir.',call_limit:'Limite de calls atteinte. !compte pour l’augmenter.',call_already_started:'Cette amélioration doit être choisie avant le début du call.',boost_already_set:'Cette amélioration est déjà réservée pour ce call.',automod_disabled:'L’Automod est arrêté.'};
+    return `@${m.username} — ${key.startsWith('cooldown:')?`Prochain achat possible dans ${key.split(':')[1]} min.`:labels[key]??'Demande non enregistrée. Réessaie.'}`;
   }
 }
