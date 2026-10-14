@@ -552,14 +552,26 @@ test('daily greeting follows native identity across rename, Paris day and curren
  await pool.query(`UPDATE automod_control SET runtime_seen_at=$2,runtime_status='{"publisherActive":true,"mode":"session-buy"}' WHERE streamer_id=$1`,[sid,now]);
  const viewer={streamerId:sid,userId:'7315',username:'Viewer',createdAt:now};
  const replies=await Promise.all([dailyViewerGreeting(pool,viewer,now),dailyViewerGreeting(pool,{...viewer,username:'Renamed'},now)]);
- assert.equal(replies.filter(Boolean).length,1);assert.match(replies.find(Boolean)!,/3 achats/);
+ assert.equal(replies.filter(Boolean).length,1);assert.match(replies.find(Boolean)!,/^Bienvenue sur la chaîne/);assert.match(replies.find(Boolean)!,/session achat/);
  assert.equal(await dailyViewerGreeting(pool,viewer,now),null);
  const next=new Date('2026-10-08T22:01:00Z');
  await pool.query(`UPDATE automod_control SET runtime_seen_at=$2,runtime_status='{"publisherActive":true,"mode":"auto-hunt"}' WHERE streamer_id=$1`,[sid,next]);
- assert.match((await dailyViewerGreeting(pool,{...viewer,createdAt:next},next))!,/collecte les bonus/);
+ const returning=(await dailyViewerGreeting(pool,{...viewer,createdAt:next},next))!;
+ assert.match(returning,/^Salut @Viewer/);assert.match(returning,/AutoHunt/);assert.doesNotMatch(returning,/follow|!shop|!points|!call/i);
  await pool.query('UPDATE automod_control SET desired_enabled=FALSE WHERE streamer_id=$1',[sid]);
  assert.equal(await dailyViewerGreeting(pool,{...viewer,userId:'7316',createdAt:next},next),null);
- assert.doesNotMatch(greetingText('Follower','automod',true,false),/Follow pour/);
+ assert.doesNotMatch(greetingText('Known','automod',false),/follow/i);
+ assert.match(greetingText('New','provider-challenge',true),/!camp pragma ou !camp hacksaw/);
+});
+
+test('historical native accounts receive a short daily hello, not a first welcome',async()=>{
+ const sid=331,now=new Date('2026-10-14T10:00:00Z');await streamer(sid);
+ await pool.query(`UPDATE automod_control SET runtime_seen_at=$2,runtime_status='{"publisherActive":true,"mode":"provider-challenge"}' WHERE streamer_id=$1`,[sid,now]);
+ await pool.query('INSERT INTO rumble_chat_messages(streamer_id,rumble_user_id,created_at) VALUES($1,$2,$3)',[sid,'7331',new Date(now.getTime()-86400000)]);
+ const viewer={streamerId:sid,userId:'7331',username:'Known',createdAt:now};
+ assert.match((await dailyViewerGreeting(pool,viewer,now))!,/^Salut @Known/);
+ assert.equal(await dailyViewerGreeting(pool,{...viewer,username:'Changed'},now),null);
+ assert.equal(await dailyViewerGreeting(pool,{...viewer,userId:'7332',createdAt:new Date(now.getTime()-121000)},now),null);
 });
 
 test('autoposts need fresh human activity and a durable twenty minute interval',async()=>{
