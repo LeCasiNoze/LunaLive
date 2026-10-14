@@ -21,7 +21,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Pool } from "pg";
-import {fetchAutomodProfile} from './lunalive-api.js';
+import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames} from './lunalive-api.js';
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
 import {
   handleNozeBotCommand,
@@ -486,12 +486,19 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   });
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
-    if(message.author.bot||message.guildId!==config.guildId||!/^!(profil|points|shop|help)\s*$/i.test(message.content))return;
+    if(message.author.bot||message.guildId!==config.guildId||!/^!(profil|solde|points|shop|help)\s*$/i.test(message.content))return;
     const now=Date.now();if(now-(profileCooldown.get(message.author.id)??0)<15000)return;
     for(const [uid,at] of profileCooldown)if(now-at>60000)profileCooldown.delete(uid);
     profileCooldown.set(message.author.id,now);
     void (async()=>{
       const command=message.content.trim().toLowerCase();
+      if(process.env.NOZECOINS_ENABLED==='true'){
+       const result=await coinRequest(config.commands.lunaLive,message.author.id,'profile');const p=result.profile;
+       const content=command==='!shop'?'Utilise /shop pour le menu privé des améliorations NozeCoins.'
+        :command==='!help'?'NozeCoins : /link · /claim · /solde · /profil · /slot · /shop. Rain : !rain sur Rumble uniquement.'
+        :p?`${p.username} : ${p.balance} NozeCoins · ${p.automod} points Automod disponibles.`:'Lie ton compte Rumble avec /link.';
+       await message.reply({content,allowedMentions:{parse:[],repliedUser:false}});return;
+      }
       const content=command==='!shop'?'Shop Automod : https://lecasinoze.onrender.com/automod-shop/'
         :command==='!help'?'Sur Rumble : !call + slot · !points · !profil · !shop · !music. Ici : /automodlink pour lier ton compte, puis !profil.'
         :(await fetchAutomodProfile(config.commands.lunaLive,message.author.id)).profile?.message
@@ -503,6 +510,24 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
 
   let stopped = false;
   let gatewayUnavailableSince = 0;
+  let nicknameSyncRunning=false,nicknameCursor='';
+  const nicknameSync=setInterval(()=>{
+   if(stopped||nicknameSyncRunning||!client.isReady()||process.env.NOZECOINS_ENABLED!=='true')return;
+   nicknameSyncRunning=true;
+   void(async()=>{
+    const guild=await client.guilds.fetch(config.guildId);const me=await guild.members.fetchMe();
+    if(!me.permissions.has(PermissionFlagsBits.ManageNicknames))return;
+    const result=await fetchLinkedCoinNames(config.commands.lunaLive,client.user!.id,nicknameCursor);
+    for(const link of result.links){
+     const member=await guild.members.fetch(link.discordId).catch(()=>null);
+     const nickname=link.username.replace(/[\r\n\u0000-\u001f]/g,'').trim().slice(0,32);
+     if(member?.manageable&&nickname&&member.nickname!==nickname){
+      await member.setNickname(nickname,'Pseudo du compte Rumble vérifié').catch(()=>undefined);
+     }
+    }
+    nicknameCursor=result.nextCursor??'';
+   })().catch(()=>console.warn('[nozebot] synchronisation surnoms indisponible')).finally(()=>{nicknameSyncRunning=false;});
+  },60_000);
 
   client.once(Events.ClientReady, (readyClient) => {
     gatewayUnavailableSince = 0;
@@ -597,6 +622,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   return async () => {
     stopped = true;
     clearInterval(gatewayWatchdog);
+    clearInterval(nicknameSync);
     stopLiveAlerts();
     client.destroy();
   };

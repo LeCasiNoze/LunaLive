@@ -116,6 +116,16 @@ export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string
  return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId);
 }
 
+export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;
+ rules:{claim:number;claimMs:number;rain:number;bet:number};tiers:Record<string,number>};
+export function coinRequest(config:LunaLiveApiConfig,discordUserId:string,action:'profile'|'claim'|'slot'|'upgrade',receipt?:string,upgrade?:string,expectedTier?:number){
+ return post<{ok:boolean;error?:string;nextAt?:string;profile?:CoinProfile;balance?:number;delta?:number;art?:string;bet?:number;payout?:number;replayed?:boolean}>(
+  config,`/internal/bot/nozebot/coins/${action}`,discordUserId,{receipt,upgrade,expectedTier});
+}
+export function fetchLinkedCoinNames(config:LunaLiveApiConfig,discordUserId:string,cursor=''){
+ return post<{ok:true;links:Array<{discordId:string;username:string}>;nextCursor:string|null}>(config,'/internal/bot/nozebot/coins/links',discordUserId,{cursor});
+}
+
 async function post<T>(
   config: LunaLiveApiConfig,
   path: string,

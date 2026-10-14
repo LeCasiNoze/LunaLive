@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import {requestAutomodDiscordLink,automodDiscordProfile} from '../automod-shop/discord-profile.js';
+import {coinsProfile,coinAction,linkedCoins} from '../nozecoins/wallet.js';
+import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
+import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { pool } from "../db.js";
 import { createLinkCode, getLinkedUser } from "../discord/link.js";
@@ -48,6 +50,30 @@ function readIdentity(req: Request, res: Response): { discordUserId: string; dis
   }
   return { discordUserId, discordGuildId };
 }
+
+internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,a(async(req,res)=>{
+ const identity=readIdentity(req,res);if(!identity)return;
+ if(process.env.NOZECOINS_ENABLED!=='true')return res.status(503).json({ok:false,error:'coins_disabled'});
+ const sid=Number((await pool.query("SELECT id FROM streamers WHERE lower(slug)='lecasinoze' LIMIT 1")).rows[0]?.id);
+ if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
+ try{
+  if(req.params.action==='links'){
+   await discordProfileSchema(pool);const cursor=String(req.body?.cursor||'');
+   if(cursor&&!/^\d{17,20}$/.test(cursor))return res.status(400).json({ok:false,error:'bad_cursor'});
+   const links=(await pool.query(`SELECT discord_user_id AS "discordId",username FROM automod_discord_links WHERE streamer_id=$1 AND discord_user_id>$2 ORDER BY discord_user_id LIMIT 100`,[sid,cursor])).rows;
+   return res.json({ok:true,links,nextCursor:links.length===100?links.at(-1).discordId:null});
+  }
+  const link=await linkedCoins(pool,sid,identity.discordUserId);
+  if(req.params.action==='profile')return res.json({ok:true,profile:await coinsProfile(pool,sid,link.rumble_user_id,link.username),shop:UPGRADES});
+  if(!['claim','slot','upgrade'].includes(req.params.action))return res.status(400).json({ok:false,error:'bad_action'});
+  const receipt=String(req.body?.receipt||'');if(!/^\d{17,20}$/.test(receipt))return res.status(400).json({ok:false,error:'bad_receipt'});
+  const upgrade=req.body?.upgrade;if(req.params.action==='upgrade'&&(!upgrade||!Object.hasOwn(UPGRADES,upgrade)))return res.status(400).json({ok:false,error:'bad_upgrade'});
+  const result=await coinAction(pool,sid,link.rumble_user_id,link.username,req.params.action as 'claim'|'slot'|'upgrade',`discord:${req.params.action}:${receipt}`,upgrade as Upgrade,req.body?.expectedTier);
+  return res.json(result);
+ }catch(e){const code=e instanceof Error?e.message:'';
+  if(['rumble_not_linked','insufficient_coins','max_tier','bad_upgrade','stale_shop'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
+ }
+}));
 
 internalNozeBotRouter.post('/internal/bot/nozebot/automod/:action',requireNozeBot,a(async(req,res)=>{
  const identity=readIdentity(req,res);if(!identity)return;
