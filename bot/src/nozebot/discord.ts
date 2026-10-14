@@ -534,7 +534,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
      const receipt=`CNZ ${week} / ${rewards.map(r=>r.rumbleId).sort().join(',')}`;
      const recent=await channel.messages.fetch({limit:100});
      if(!recent.some(m=>m.author.id===client.user!.id&&m.embeds.some(e=>e.footer?.text===receipt))){
-      await channel.send({embeds:[new EmbedBuilder().setColor(0xd64065).setTitle('CNZ · Merci pour votre soutien').setDescription(`**+25 NozeCoins** pour les membres liés portant CNZ dans leur pseudo Rumble, vérifié cette semaine.\n\n${rewards.map(r=>`<@${r.discordId}>`).join(' · ')}\n\nUne récompense par semaine et par compte. Points gratuits, sans valeur monétaire.`).setFooter({text:receipt})],allowedMentions:{parse:[],users:rewards.map(r=>r.discordId)}});
+      await channel.send({content:rewards.map(r=>`<@${r.discordId}>`).join(' · '),embeds:[new EmbedBuilder().setColor(0xd64065).setTitle('CNZ · Merci pour votre soutien').setDescription('**+25 NozeCoins** pour les membres liés portant CNZ dans leur pseudo Rumble, vérifié cette semaine.\n\nUne récompense par semaine et par compte. Points gratuits, sans valeur monétaire.').setFooter({text:receipt})],allowedMentions:{parse:[],users:rewards.map(r=>r.discordId)}});
      }
      await acknowledgeSupportRewards(config.commands.lunaLive,client.user!.id,week,rewards.map(r=>r.rumbleId));
     }
