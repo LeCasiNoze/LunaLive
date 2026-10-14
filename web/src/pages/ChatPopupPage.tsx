@@ -1,6 +1,7 @@
 import * as React from "react";
 import { useParams } from "react-router-dom";
 import { ChatPanel } from "../components/ChatPanel";
+import { PopupLiveStats } from "../components/chat/PopupLiveStats";
 import { LoginModal } from "../components/LoginModal";
 
 export default function ChatPopupPage() {
@@ -27,8 +28,9 @@ export default function ChatPopupPage() {
       }}
     >
       <div style={{ padding: 10, flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ fontWeight: 950, color: "white", fontSize: 13, opacity: 0.95 }}>Chat pop-up</div>
-        <div style={{ fontSize: 12, opacity: 0.65, color: "white", marginTop: 2 }}>Chaîne: {s || "—"}</div>
+        <div style={{ fontWeight: 950, color: "white", fontSize: 13, opacity: 0.95 }}>Chat détaché</div>
+        <div style={{ fontSize: 12, opacity: 0.65, color: "white", marginTop: 2 }}>Chaîne : {s || "—"}</div>
+        {s && <PopupLiveStats key={s} slug={s} />}
       </div>
 
       <div style={{ flex: 1, minHeight: 0 }}>

@@ -531,6 +531,8 @@ publicRouter.get(
     }
 
     row.viewers = viewersNow;
+    row.lunaLiveViewers = viewersNow;
+    row.rumbleViewers = 0;
 
     // ✅ choisir la chaîne DLive effective
     const useLinked = !!row.dliveUseLinked;
@@ -590,7 +592,7 @@ publicRouter.get(
         5_000,
         async () => {
           const rumbleInfo = await pool.query(
-            `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id,
+            `SELECT is_live, title, viewers_count, hls_url, video_url, thumbnail_url, live_id, live_started_at,
                     (is_live = TRUE
                      AND hls_url IS NOT NULL
                      AND updated_at >= (NOW() - ($2::int * INTERVAL '1 second'))) AS "freshIsLive"
@@ -613,6 +615,9 @@ publicRouter.get(
         if (row.isLive) {
           row.title = rumble.title || row.title;
           row.viewers = rumble.viewers_count || row.viewers;
+          row.rumbleViewers = rumble.viewers_count == null ? null : Math.max(0, Number(rumble.viewers_count) || 0);
+          const startedAtMs = Number(rumble.live_started_at);
+          if (Number.isFinite(startedAtMs) && startedAtMs > 0) row.liveStartedAt = new Date(startedAtMs).toISOString();
 
           (row as any).rumbleHlsUrl = rumble.hls_url;
           (row as any).rumbleVideoUrl = rumble.video_url;
@@ -629,6 +634,12 @@ publicRouter.get(
         console.log(`[public] ${slugLog}: No Rumble data found (static URL exposed)`);
       }
     }
+
+    if (!row.isLive) {
+      row.lunaLiveViewers = 0;
+      row.rumbleViewers = 0;
+    }
+    row.totalViewers = row.lunaLiveViewers + (row.rumbleViewers ?? 0);
 
     const followsCount = await getOrLoadPublicCache<number>(
       `streamer-follows:${row.id}`,

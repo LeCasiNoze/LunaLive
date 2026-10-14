@@ -327,6 +327,10 @@ export type ApiStreamerPage = {
   title: string;
   viewers: number;
   isLive: boolean;
+  lunaLiveViewers?: number;
+  rumbleViewers?: number | null;
+  totalViewers?: number;
+  liveStartedAt?: string | null;
 
   ownerUserId?: number; // <= utile
   user?: {
