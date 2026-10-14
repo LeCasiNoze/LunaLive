@@ -259,6 +259,8 @@ export async function startNozeBotBlackjack(params: {
     );
     if (existing.rows[0]) {
       const row = sessionFrom(existing.rows[0]);
+      if (row.discord_guild_id !== params.discordGuildId) throw new NozeBotBlackjackError("session_other_guild", 409);
+      if (Number(row.user_id) !== params.userId) throw new NozeBotBlackjackError("session_forbidden", 403);
       const cooldown = await cooldownState(client, params.discordUserId, params.userId, false);
       const balance = await balanceFor(client, params.userId);
       await client.query("COMMIT");
