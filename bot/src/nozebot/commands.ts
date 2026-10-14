@@ -72,7 +72,7 @@ const COIN_COMMANDS=[
 ];
 const COIN_NAMES=new Set(COIN_COMMANDS.map(c=>c.name));
 export async function handleCoinCommand(interaction:ChatInputCommandInteraction|ButtonInteraction,config:NozeBotCommandConfig){
- await interaction.deferReply({ephemeral:true});
+ await interaction.deferReply({ephemeral:!(!interaction.isButton()&&interaction.commandName==='slot'&&interaction.channelId===config.commandsChannelId)});
  const button=interaction.isButton();
  if(button&&interaction.customId.split(':')[2]!==interaction.user.id){await interaction.editReply('Ce menu appartient à un autre compte. Utilise /shop.');return;}
   const command=button?'upgrade':interaction.commandName;

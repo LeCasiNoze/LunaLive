@@ -40,3 +40,9 @@ test('legacy Rubis blackjack is not dispatched after activation',async()=>{
  process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>{throw Error('must not fetch');};
  assert.equal(await handleNozeBotCommand(interaction('blackjack') as any,config),false);
 });
+test('slot result can be watched publicly in the games channel without replaying debit',async()=>{
+ process.env.NOZECOINS_ENABLED='true';let visibility:any;
+ globalThis.fetch=async()=>new Response(JSON.stringify({ok:true,art:'OOOXXX',bet:20,payout:20,balance:100,replayed:true}));
+ const i={...interaction('slot'),channelId:config.commandsChannelId,deferReply:async(x:any)=>{visibility=x;}};
+ await handleNozeBotCommand(i as any,config);assert.equal(visibility.ephemeral,false);assert.match(i.replies[0],/\[OOO XXX\]/);
+});
