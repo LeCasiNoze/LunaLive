@@ -234,7 +234,7 @@ export async function playLunaLiveSlot(
 }
 
 export async function coinSupportRewards(config:LunaLiveApiConfig,botId:string){
- return post<{ok:true;rewards:Array<{week:string;discordId:string;rumbleId:string;username:string}>}>(config,'/internal/bot/nozebot/coins/cnz',botId);
+ return post<{ok:true;rewards:Array<{week:string;discordId:string;rumbleId:string;username:string;amount?:number}>}>(config,'/internal/bot/nozebot/coins/cnz',botId);
 }
 export async function acknowledgeSupportRewards(config:LunaLiveApiConfig,botId:string,week:string,ids:string[]){
  return post<{ok:true}>(config,'/internal/bot/nozebot/coins/cnz-ack',botId,{week,ids});

@@ -94,8 +94,9 @@ test('weekly CNZ rewards require a fresh tagged native identity and cannot dupli
  await observeCoinName(pool,1,'284177710','CNZ Viewer',new Date());
  const before=(await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance;
  const pending=await weeklyCnz(pool,1);assert.equal(pending.length,1);
- assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+25);
- await weeklyCnz(pool,1);assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+25);
+ assert.equal(pending[0].amount,200);
+ assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+200);
+ await weeklyCnz(pool,1);assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+200);
  await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW()');
  assert.equal((await weeklyCnz(pool,1)).length,0);
 });

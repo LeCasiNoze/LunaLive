@@ -18,17 +18,17 @@ Mini-jeu : mise fixe 20, puis 30/40/50 ; prix 300/600/1200. Cooldown 30 minutes.
 
 | Résultat | Probabilité | Retour brut |
 |---|---:|---:|
-| XXXXXX | 55 % | 0× |
-| 0XXXXX | 25 % | 1× |
-| 00XXXX | 12 % | 2× |
-| 000XXX | 5 % | 3× |
-| 0000XX | 2 % | 5× |
-| 00000X | 0,8 % | 10× |
-| 000000 | 0,18 % | 25× |
-| 777777 | 0,019 % | 100× |
-| MAX WIN | 0,001 % | 250× |
+| [XXX XXX] | 20 % | 0× |
+| [OXX XXX] | 25 % | 0,25× |
+| [OOX XXX] | 25 % | 0,5× |
+| [OOO XXX] | 20 % | 1× |
+| [OOO OXX] | 9 % | 4× |
+| [OOO OOX] | 0,8 % | 10× |
+| [OOO OOO] | 0,18 % | 25× |
+| [777 777] | 0,019 % | 100× |
+| [MAX WIN] | 0,001 % | 250× |
 
-Le retour théorique moyen est 0,8865 fois la mise ; ce n’est pas une promesse individuelle. Tirage `crypto.randomInt`, plages disjointes exhaustives. La mise est débitée et le retour crédité atomiquement. Pas de mise libre ni de relance automatique.
+Le retour théorique moyen est 0,894 fois la mise avant arrondi ; ce n’est pas une promesse individuelle. Tirage `crypto.randomInt`, plages disjointes exhaustives. La mise est débitée et le retour crédité atomiquement. Pas de mise libre ni de relance automatique.
 
 ## Déploiement et sécurité
 
@@ -52,10 +52,21 @@ Connexion persistante sur le site, soundboard OBS, quiz, saison et conversion co
 
 ## Soutien CNZ hebdomadaire
 
-25 NozeCoins par semaine UTC (lundi à dimanche), compte lié, marque CNZ distincte dans le pseudo Rumble, observée dans un message frais cette semaine. Aucun historique de pseudo seul ne suffit. Crédit lors du premier contrôle après cette observation, contrôle toutes les dix minutes, reçu permanent `cnz:YYYY-MM-DD` attaché à l’ID natif. Pas de doublon lors d’une reliaison. Announcement différé dans News officielles, uniquement pour les bénéficiaires ; aucune mention everyone. Outbox persistante ; recherche des 100 derniers messages du bot pour récupérer un envoi dont l’accusé API a échoué. Une indisponibilité prolongée dépassant cet historique reste une limite de déduplication des annonces, pas des crédits. Activation explicite `NOZEBOT_CNZ_ENABLED=true`.
+200 NozeCoins par semaine UTC (lundi à dimanche), compte lié, marque CNZ distincte dans le pseudo Rumble, observée dans un message frais cette semaine. Aucun historique de pseudo seul ne suffit. Crédit lors du premier contrôle après cette observation, contrôle toutes les dix minutes, reçu permanent `cnz:YYYY-MM-DD` attaché à l’ID natif. Pas de doublon lors d’une reliaison. Announcement différé dans News officielles, uniquement pour les bénéficiaires ; aucune mention everyone. Outbox persistante ; recherche des 100 derniers messages du bot pour récupérer un envoi dont l’accusé API a échoué. Une indisponibilité prolongée dépassant cet historique reste une limite de déduplication des annonces, pas des crédits. Activation explicite `NOZEBOT_CNZ_ENABLED=true`.
 
 Rôle `Lié` sans permissions supplémentaires, synchronisé chaque minute via `NOZEBOT_LINKED_ROLE_ID`, uniquement sur les membres ayant une liaison vérifiée. Une révocation/modification manuelle de liaison reste à traiter par modération (pas d’outil de reliaison livré).
 
 ## Roadmap — Journal de progression (non activé)
 
 Parcours : lier Rumble → consulter profil et les deux soldes → premier claim → premier mini-jeu → première rain en live → première amélioration → découvrir les commandes de chaîne. Puis étapes longues de présence/participation plafonnée. Blackjack NozeCoins, inscription au tournoi, quiz et saison : chapitres futurs, ne pas annoncer les commandes comme existantes. Séparer portefeuille dépensable permanent et scores d’événement/saison. Définir ultérieurement la durée de saison et les récompenses ; aucun reset implicite du portefeuille.
+
+
+## Mise à jour : animation, relais et talents
+
+Le mini-jeu utilise O (lettre) et rembourse exactement la mise à trois O. Les retours sont arrondis à l’entier inférieur. Discord révèle un résultat déjà enregistré, une seule réponse éditée, arrêt du suspense au premier X. Un retry conserve le résultat historique et son retour, même si le barème a changé.
+
+Le soutien CNZ passe à 200 pour les prochaines attributions ; les reçus de semaine déjà payés restent inchangés. Les annonces lisent le montant réel du reçu.
+
+`LECASINOZE_LUNA_CHAT_RELAY=true` active le relais des messages publics LunaLive acceptés vers le live Rumble frais de LeCasiNoze uniquement, sous le format pseudo: message. Commandes ! et /, bots connus et messages streamControl exclus. Anti-spam : un relais maximum par personne toutes les deux secondes. 200 caractères avec ellipse ; sender et queue résidentielle existants. La boucle retour ne peut pas réentrer dans chat:send. Validation de transport réel à faire avec un message utilisateur pendant un live ; aucun message de test n’est envoyé automatiquement.
+
+Le shop web affiche quatre branches de talents, trois nœuds chacune, détails avant/après et préparation de commande. Niveaux enregistrés dans le portefeuille serveur ; aucune simulation de propriété dans le navigateur. Une connexion authentifiée reste nécessaire pour afficher un arbre personnalisé automatiquement. Automod intégré comme composant réutilisé sans modification de règles ou de commandes.

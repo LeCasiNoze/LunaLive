@@ -16,10 +16,10 @@ export function accountRules(row:{claim_tier?:number;cooldown_tier?:number;rain_
 }
 // Mutually exclusive outcomes; virtual coins only, no purchase or cash/Rubis conversion.
 export const SLOT_OUTCOMES = [
-  {weight:55000,art:'XXXXXX',multiplier:0}, {weight:25000,art:'0XXXXX',multiplier:1},
-  {weight:12000,art:'00XXXX',multiplier:2}, {weight:5000,art:'000XXX',multiplier:3},
-  {weight:2000,art:'0000XX',multiplier:5}, {weight:800,art:'00000X',multiplier:10},
-  {weight:180,art:'000000',multiplier:25}, {weight:19,art:'777777',multiplier:100},
+  {weight:20000,art:'XXXXXX',multiplier:0}, {weight:25000,art:'OXXXXX',multiplier:0.25},
+  {weight:25000,art:'OOXXXX',multiplier:0.5}, {weight:20000,art:'OOOXXX',multiplier:1},
+  {weight:9000,art:'OOOOXX',multiplier:4}, {weight:800,art:'OOOOOX',multiplier:10},
+  {weight:180,art:'OOOOOO',multiplier:25}, {weight:19,art:'777777',multiplier:100},
   {weight:1,art:'MAX WIN',multiplier:250},
 ] as const;
 export function slotOutcome(draw=randomInt(100000)) {
@@ -29,6 +29,7 @@ export function slotOutcome(draw=randomInt(100000)) {
 }
 export function formatSlotArt(art:string) {
   if(art==='MAX WIN')return '[MAX WIN]';
-  if(!/^[X07]{6}$/.test(art))throw Error('bad_slot_art');
+  art=art.replaceAll('0','O'); // Old operation receipts remain readable without changing their payouts.
+  if(!/^[XO7]{6}$/.test(art))throw Error('bad_slot_art');
   return `[${art.slice(0,3)} ${art.slice(3)}]`;
 }

@@ -28,6 +28,7 @@ import {
 } from "./lunalive-api.js";
 import { renderBlackjackTable } from "./blackjack-renderer.js";
 import { renderSlotMachine } from "./slot-renderer.js";
+import {revealCoinSlot} from './coin-reveal.js';
 
 export type NozeBotCommandConfig = {
   guildId: string;
@@ -84,7 +85,7 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
    await interaction.editReply('**NozeCoins · V1**\nPoints gratuits, non achetables, non transférables, sans valeur monétaire ni conversion en Rubis.\n'
     +'Claim : 100 / 24 h, jusqu’à 175 / 20 h avec améliorations. Rain sur Rumble uniquement : toutes les 30 min de live personnel, fenêtre 2 min, 25 à 40 points.\n'
     +'Mini-jeu : mise fixe 20 (améliorable jusqu’à 50), délai 30 minutes, pas de mise personnalisée. Les améliorations ne changent pas les probabilités.\n'
-    +'Retours bruts : [XXX XXX] 55 % → ×0 ; [0XX XXX] 25 % → ×1 ; [00X XXX] 12 % → ×2 ; [000 XXX] 5 % → ×3 ; [000 0XX] 2 % → ×5 ; [000 00X] 0,8 % → ×10 ; [000 000] 0,18 % → ×25 ; [777 777] 0,019 % → ×100 ; [MAX WIN] 0,001 % → ×250. La mise est débitée avant le retour.\n'
+    +'Retours bruts : [XXX XXX] 20 % → ×0 ; [OXX XXX] 25 % → ×0,25 ; [OOX XXX] 25 % → ×0,5 ; [OOO XXX] 20 % → ×1 (mise remboursée) ; [OOO OXX] 9 % → ×4 ; [OOO OOX] 0,8 % → ×10 ; [OOO OOO] 0,18 % → ×25 ; [777 777] 0,019 % → ×100 ; [MAX WIN] 0,001 % → ×250. Retours arrondis à l’entier inférieur ; la mise est débitée avant le retour.\n'
     +'Les soldes Automod restent séparés. Aucun reset du portefeuille. /link · /claim · /solde · /profil · /slot · /shop');return;
   }
   if(command==='link'){
@@ -111,8 +112,13 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
    const embed=new EmbedBuilder().setColor(0xd64065).setTitle(`${p.username} · LeCasiNoze`).addFields(fields)
     .setFooter({text:'NozeCoins gratuits, non achetables, non transférables et sans conversion en argent ou Rubis.'});
    await interaction.editReply({embeds:[embed]});
-  }else await interaction.editReply(command==='slot'?`**${formatCoinSlot(String(result.art))}**\nMise : ${result.bet} · Retour : ${result.payout} NozeCoins\nSolde : **${result.balance}** NozeCoins`
-   :`${action==='upgrade'?'Amélioration achetée':`+${result.delta} NozeCoins`} · Solde : **${result.balance}** NozeCoins${result.nextAt?`\nProchain claim : ${discordTimestamp(result.nextAt)}`:''}`);
+  }else if(command==='slot'){
+   const final=`**${formatCoinSlot(String(result.art))}**\nMise : ${result.bet} · Retour : ${result.payout} NozeCoins\nSolde : **${result.balance}** NozeCoins`;
+   // The debit and immutable result already exist before visual suspense begins.
+   try{if(result.replayed)await interaction.editReply(final);else await revealCoinSlot(text=>interaction.editReply(text),String(result.art),final);}
+   catch{await interaction.editReply(final).catch(()=>undefined);}
+  }else await interaction.editReply(
+   `${action==='upgrade'?'Amélioration achetée':`+${result.delta} NozeCoins`} · Solde : **${result.balance}** NozeCoins${result.nextAt?`\nProchain claim : ${discordTimestamp(result.nextAt)}`:''}`);
  }catch(e){
   const code=e instanceof LunaLiveApiError?e.code:'';
   await interaction.editReply(code==='rumble_not_linked'?'Lie ton compte Rumble avec /link pour utiliser les NozeCoins.'
@@ -125,7 +131,7 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
  }
 }
 
-export function formatCoinSlot(art:string){return art==='MAX WIN'?'[MAX WIN]':`[${art.slice(0,3)} ${art.slice(3)}]`;}
+export function formatCoinSlot(art:string){art=art.replaceAll('0','O');return art==='MAX WIN'?'[MAX WIN]':`[${art.slice(0,3)} ${art.slice(3)}]`;}
 
 function fmt(value: number): string {
   return Number(value || 0).toLocaleString("fr-FR");

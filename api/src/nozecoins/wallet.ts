@@ -82,7 +82,7 @@ export async function coinAction(pool:Pool,sid:number,uid:string,name:string,act
    const next=row.last_slot_at?new Date(row.last_slot_at).getTime()+COIN_RULES.slotCooldownMs:0;
    if(next>now)return {ok:false,error:'cooldown',nextAt:new Date(next).toISOString()};
    if(Number(row.balance)<rules.bet)throw new InsufficientCoins(Number(row.balance),rules.bet);
-   const outcome=slotOutcome();const payout=rules.bet*outcome.multiplier;
+   const outcome=slotOutcome();const payout=Math.floor(rules.bet*outcome.multiplier);
    delta=payout-rules.bet;extra={art:outcome.art,bet:rules.bet,payout,multiplier:outcome.multiplier};
    await c.query('UPDATE nozecoin_accounts SET last_slot_at=NOW() WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,uid]);
   }
@@ -123,13 +123,13 @@ export async function weeklyCnz(pool:Pool,sid:number){
    const row=await lock(c,sid,link.rumble_user_id,link.username),key=`cnz:${week}`;
    const exists=(await c.query('SELECT 1 FROM nozecoin_ledger WHERE streamer_id=$1 AND rumble_user_id=$2 AND event_key=$3',[sid,link.rumble_user_id,key])).rows[0];
    if(exists)continue;
-   if(Number(row.balance)>1_000_000_000_000-25)continue;
-   await c.query('UPDATE nozecoin_accounts SET balance=balance+25 WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,link.rumble_user_id]);
-   const result={ok:true,delta:25,balance:Number(row.balance)+25};
-   await c.query(`INSERT INTO nozecoin_ledger(streamer_id,rumble_user_id,event_key,delta,reason,result) VALUES($1,$2,$3,25,'cnz',$4::jsonb)`,[sid,link.rumble_user_id,key,JSON.stringify(result)]);
+   if(Number(row.balance)>1_000_000_000_000-200)continue;
+   await c.query('UPDATE nozecoin_accounts SET balance=balance+200 WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,link.rumble_user_id]);
+   const result={ok:true,delta:200,balance:Number(row.balance)+200};
+   await c.query(`INSERT INTO nozecoin_ledger(streamer_id,rumble_user_id,event_key,delta,reason,result) VALUES($1,$2,$3,200,'cnz',$4::jsonb)`,[sid,link.rumble_user_id,key,JSON.stringify(result)]);
    await c.query('INSERT INTO nozecoin_cnz_announcements(streamer_id,week,discord_user_id,rumble_user_id,username) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[sid,week,link.discord_user_id,link.rumble_user_id,link.username]);
   }
-  const pending=(await c.query('SELECT week,discord_user_id AS "discordId",rumble_user_id AS "rumbleId",username FROM nozecoin_cnz_announcements WHERE streamer_id=$1 AND announced_at IS NULL ORDER BY week,rumble_user_id LIMIT 25',[sid])).rows;
+  const pending=(await c.query(`SELECT a.week,a.discord_user_id AS "discordId",a.rumble_user_id AS "rumbleId",a.username,l.delta::integer AS amount FROM nozecoin_cnz_announcements a JOIN nozecoin_ledger l ON l.streamer_id=a.streamer_id AND l.rumble_user_id=a.rumble_user_id AND l.event_key='cnz:'||a.week WHERE a.streamer_id=$1 AND a.announced_at IS NULL ORDER BY a.week,a.rumble_user_id LIMIT 25`,[sid])).rows;
   return pending;
  });
 }

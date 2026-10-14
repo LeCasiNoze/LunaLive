@@ -11,6 +11,7 @@ import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { handleGlobalCommand, isGlobalCommand } from "./services/global_commands.js";
 import { ensureDliveBridge } from "./dlive_chat_bridge.js";
 import { ensureRumbleBridge } from "./rumble_chat_bridge.js";
+import {relayAcceptedLunaMessage} from './nozecoins/relay.js';
 
 import {
   getChatSettings,
@@ -1094,6 +1095,11 @@ export function attachChat(io: Server) {
 
         // ✅ broadcast to both rooms (public + popup) WITHOUT duplicates
         emitChatAll(io, meta.slug, "chat:message", msg);
+
+        // Only authenticated, accepted public user messages enter this path.
+        // Bot emitters and mirrored Rumble messages never call chat:send.
+        if(!bang&&!streamControl&&u.role!=='bot')void relayAcceptedLunaMessage(pool,meta.slug,meta.id,u.id,u.username,text)
+          .catch(()=>console.warn('[chat] LunaLive → Rumble relay unavailable'));
 
         cb?.({ ok: true });
       } catch (e: any) {
