@@ -21,7 +21,7 @@ import {
   type TextChannel,
 } from "discord.js";
 import type { Pool } from "pg";
-import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames} from './lunalive-api.js';
+import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames,coinSupportRewards,acknowledgeSupportRewards} from './lunalive-api.js';
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
 import {
   handleNozeBotCommand,
@@ -486,13 +486,23 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   });
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
-    if(message.author.bot||message.guildId!==config.guildId||!/^!(profil|solde|points|shop|help)\s*$/i.test(message.content))return;
+    if(message.author.bot||message.guildId!==config.guildId||!/^!(?:(profil|solde|points|shop|help)\s*|ameliorer (claim|cooldown|rain|slot) [1-3])$/i.test(message.content))return;
     const now=Date.now();if(now-(profileCooldown.get(message.author.id)??0)<15000)return;
     for(const [uid,at] of profileCooldown)if(now-at>60000)profileCooldown.delete(uid);
     profileCooldown.set(message.author.id,now);
     void (async()=>{
       const command=message.content.trim().toLowerCase();
       if(process.env.NOZECOINS_ENABLED==='true'){
+       const purchase=/^!ameliorer (claim|cooldown|rain|slot) ([1-3])$/i.exec(command);
+       if(purchase){
+        if(message.channelId!==config.commands.commandsChannelId){await message.reply({content:`Colle cette commande dans <#${config.commands.commandsChannelId}>.`,allowedMentions:{parse:[],repliedUser:false}});return;}
+        try{const r=await coinRequest(config.commands.lunaLive,message.author.id,'upgrade',message.id,purchase[1],Number(purchase[2])-1);
+         await message.reply({content:`Amélioration achetée · Solde : ${r.balance} NozeCoins.`,allowedMentions:{parse:[],repliedUser:false}});
+        }catch(e){const err=e as {code?:string;details?:Record<string,unknown>};const d=err.details??{};
+         await message.reply({content:err.code==='insufficient_coins'?`Solde : ${d.balance} · Prix : ${d.cost} · Il manque ${d.missing} NozeCoins. Rien n’a été débité.`:err.code==='stale_shop'?'Palier incorrect : consulte /profil et choisis le prochain palier sur le site.':err.code==='rumble_not_linked'?'Lie ton compte avec /link avant d’acheter.':'Achat non confirmé. Consulte /solde avant de réessayer.',allowedMentions:{parse:[],repliedUser:false}});
+        }return;
+       }
+       if(command==='!shop'){await message.reply({content:'Shop : https://lecasinoze.onrender.com/shop/',allowedMentions:{parse:[],repliedUser:false}});return;}
        const result=await coinRequest(config.commands.lunaLive,message.author.id,'profile');const p=result.profile;
        const content=command==='!shop'?'Utilise /shop pour le menu privé des améliorations NozeCoins.'
         :command==='!help'?'NozeCoins : /link · /claim · /solde · /profil · /slot · /shop. Rain : !rain sur Rumble uniquement.'
@@ -511,17 +521,37 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   let stopped = false;
   let gatewayUnavailableSince = 0;
   let nicknameSyncRunning=false,nicknameCursor='';
+  let supportRunning=false,supportLastRun=0;
+  const supportSync=setInterval(()=>{
+   if(stopped||supportRunning||!client.isReady()||process.env.NOZECOINS_ENABLED!=='true'||process.env.NOZEBOT_CNZ_ENABLED!=='true'||Date.now()-supportLastRun<600_000)return;
+   supportRunning=true;supportLastRun=Date.now();
+   void(async()=>{
+    const channel=await client.channels.fetch('1260676129673576479');
+    if(!channel||!('messages' in channel)||!('send' in channel))return;
+    const result=await coinSupportRewards(config.commands.lunaLive,client.user!.id);
+    const groups=new Map<string,typeof result.rewards>();for(const r of result.rewards){const group=groups.get(r.week)??[];group.push(r);groups.set(r.week,group);}
+    for(const [week,rewards] of groups){
+     const receipt=`CNZ ${week} / ${rewards.map(r=>r.rumbleId).sort().join(',')}`;
+     const recent=await channel.messages.fetch({limit:100});
+     if(!recent.some(m=>m.author.id===client.user!.id&&m.embeds.some(e=>e.footer?.text===receipt))){
+      await channel.send({embeds:[new EmbedBuilder().setColor(0xd64065).setTitle('CNZ · Merci pour votre soutien').setDescription(`**+25 NozeCoins** pour les membres liés portant CNZ dans leur pseudo Rumble, vérifié cette semaine.\n\n${rewards.map(r=>`<@${r.discordId}>`).join(' · ')}\n\nUne récompense par semaine et par compte. Points gratuits, sans valeur monétaire.`).setFooter({text:receipt})],allowedMentions:{parse:[],users:rewards.map(r=>r.discordId)}});
+     }
+     await acknowledgeSupportRewards(config.commands.lunaLive,client.user!.id,week,rewards.map(r=>r.rumbleId));
+    }
+   })().catch(()=>console.warn('[nozebot] soutien CNZ temporairement indisponible')).finally(()=>{supportRunning=false;});
+  },60_000);
   const nicknameSync=setInterval(()=>{
    if(stopped||nicknameSyncRunning||!client.isReady()||process.env.NOZECOINS_ENABLED!=='true')return;
    nicknameSyncRunning=true;
    void(async()=>{
     const guild=await client.guilds.fetch(config.guildId);const me=await guild.members.fetchMe();
-    if(!me.permissions.has(PermissionFlagsBits.ManageNicknames))return;
+    const linkedRole=process.env.NOZEBOT_LINKED_ROLE_ID;
     const result=await fetchLinkedCoinNames(config.commands.lunaLive,client.user!.id,nicknameCursor);
     for(const link of result.links){
      const member=await guild.members.fetch(link.discordId).catch(()=>null);
+     if(member&&linkedRole&&me.permissions.has(PermissionFlagsBits.ManageRoles)&&!member.roles.cache.has(linkedRole))await member.roles.add(linkedRole,'Compte Rumble vérifié').catch(()=>undefined);
      const nickname=link.username.replace(/[\r\n\u0000-\u001f]/g,'').trim().slice(0,32);
-     if(member?.manageable&&nickname&&member.nickname!==nickname){
+     if(me.permissions.has(PermissionFlagsBits.ManageNicknames)&&member?.manageable&&nickname&&member.nickname!==nickname){
       await member.setNickname(nickname,'Pseudo du compte Rumble vérifié').catch(()=>undefined);
      }
     }
@@ -623,6 +653,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     stopped = true;
     clearInterval(gatewayWatchdog);
     clearInterval(nicknameSync);
+    clearInterval(supportSync);
     stopLiveAlerts();
     client.destroy();
   };

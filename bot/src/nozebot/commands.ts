@@ -66,21 +66,25 @@ const COIN_COMMANDS=[
  new SlashCommandBuilder().setName('solde').setDescription('Tes NozeCoins et tes points Automod'),
  new SlashCommandBuilder().setName('profil').setDescription('Ton profil, tes soldes et tes améliorations'),
  new SlashCommandBuilder().setName('shop').setDescription('Consulter et acheter des améliorations en NozeCoins'),
+ new SlashCommandBuilder().setName('ameliorer').setDescription('Acheter un palier préparé sur le site').addStringOption(o=>o.setName('branche').setDescription('Branche à améliorer').setRequired(true).addChoices(...['claim','cooldown','rain','slot'].map(value=>({name:value,value})))).addIntegerOption(o=>o.setName('palier').setDescription('Palier souhaité').setRequired(true).setMinValue(1).setMaxValue(3)),
  new SlashCommandBuilder().setName('regles').setDescription('Règles, délais et probabilités des NozeCoins'),
 ];
 const COIN_NAMES=new Set(COIN_COMMANDS.map(c=>c.name));
-const COIN_COSTS={claim:[300,600,1200],cooldown:[400,800,1600],rain:[300,600,1200],slot:[300,600,1200]} as const;
 export async function handleCoinCommand(interaction:ChatInputCommandInteraction|ButtonInteraction,config:NozeBotCommandConfig){
  await interaction.deferReply({ephemeral:true});
  const button=interaction.isButton();
  if(button&&interaction.customId.split(':')[2]!==interaction.user.id){await interaction.editReply('Ce menu appartient à un autre compte. Utilise /shop.');return;}
   const command=button?'upgrade':interaction.commandName;
   try{
+  if(button){await interaction.editReply('Ce menu a été remplacé. Ouvre https://lecasinoze.onrender.com/shop/ pour préparer ton achat.');return;}
+  if(command==='shop'){
+   await interaction.editReply({content:'**Le shop LeCasiNoze**\nChoisis une amélioration sur le site, copie sa commande puis colle-la dans le salon jeux et commandes. Le bot vérifie ton solde avant tout achat.',components:[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setLabel('Ouvrir le shop').setStyle(ButtonStyle.Link).setURL('https://lecasinoze.onrender.com/shop/'))]});return;
+  }
   if(command==='regles'){
    await interaction.editReply('**NozeCoins · V1**\nPoints gratuits, non achetables, non transférables, sans valeur monétaire ni conversion en Rubis.\n'
-    +'Claim : 100 / 24 h, jusqu’à 175 / 20 h avec améliorations. Rain sur Rumble uniquement : toutes les 15 min de live personnel, fenêtre 2 min, 25 à 40 points.\n'
-    +'Mini-jeu : mise fixe 20 (améliorable jusqu’à 50), délai 30 secondes, pas de mise personnalisée. Les améliorations ne changent pas les probabilités.\n'
-    +'Retours bruts : XXXXXX 55 % → ×0 ; 0XXXXX 25 % → ×1 ; 00XXXX 12 % → ×2 ; 000XXX 5 % → ×3 ; 0000XX 2 % → ×5 ; 00000X 0,8 % → ×10 ; 000000 0,18 % → ×25 ; 777777 0,019 % → ×100 ; MAX WIN 0,001 % → ×250. La mise est débitée avant le retour.\n'
+    +'Claim : 100 / 24 h, jusqu’à 175 / 20 h avec améliorations. Rain sur Rumble uniquement : toutes les 30 min de live personnel, fenêtre 2 min, 25 à 40 points.\n'
+    +'Mini-jeu : mise fixe 20 (améliorable jusqu’à 50), délai 30 minutes, pas de mise personnalisée. Les améliorations ne changent pas les probabilités.\n'
+    +'Retours bruts : [XXX XXX] 55 % → ×0 ; [0XX XXX] 25 % → ×1 ; [00X XXX] 12 % → ×2 ; [000 XXX] 5 % → ×3 ; [000 0XX] 2 % → ×5 ; [000 00X] 0,8 % → ×10 ; [000 000] 0,18 % → ×25 ; [777 777] 0,019 % → ×100 ; [MAX WIN] 0,001 % → ×250. La mise est débitée avant le retour.\n'
     +'Les soldes Automod restent séparés. Aucun reset du portefeuille. /link · /claim · /solde · /profil · /slot · /shop');return;
   }
   if(command==='link'){
@@ -88,9 +92,10 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
    await interaction.editReply(link.linked?`Compte Rumble lié : **${link.username}**. /claim · /solde · /shop`
     :`Dans le chat Rumble de LeCasiNoze, colle ce code privé (10 minutes, usage unique) :\n\`${link.command}\``);return;
   }
-  const upgrade=button?interaction.customId.split(':')[3]:undefined;
-  const expectedTier=button?Number(interaction.customId.split(':')[4]):undefined;
-  const result=await coinRequest(config.lunaLive,interaction.user.id,['claim','slot','upgrade'].includes(command)?command as 'claim'|'slot'|'upgrade':'profile',interaction.id,upgrade,expectedTier);
+  const upgrade=command==='ameliorer'&&!interaction.isButton()?interaction.options.getString('branche',true):undefined;
+  const expectedTier=command==='ameliorer'&&!interaction.isButton()?interaction.options.getInteger('palier',true)-1:undefined;
+  const action=command==='ameliorer'?'upgrade':command;
+  const result=await coinRequest(config.lunaLive,interaction.user.id,['claim','slot','upgrade'].includes(action)?action as 'claim'|'slot'|'upgrade':'profile',interaction.id,upgrade,expectedTier);
   if(!result.ok){await interaction.editReply(`Délai en cours. Prochaine récupération : ${result.nextAt?discordTimestamp(result.nextAt):'plus tard'}.`);return;}
   const p=result.profile;
   if(p){
@@ -105,29 +110,22 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
     {name:'Rain',value:`${p.rules.rain} NozeCoins`,inline:true},{name:'Mise du mini-jeu',value:`${p.rules.bet} NozeCoins`,inline:true}];
    const embed=new EmbedBuilder().setColor(0xd64065).setTitle(`${p.username} · LeCasiNoze`).addFields(fields)
     .setFooter({text:'NozeCoins gratuits, non achetables, non transférables et sans conversion en argent ou Rubis.'});
-   if(command==='shop'){
-    embed.setDescription('3 paliers par branche, achats successifs. Claim : +25 par palier (max 175). Rain : +5 (max 40). Délai claim : 24 → 23 → 22 → 20 h. Mise : 20 → 30 → 40 → 50 ; aucune hausse des probabilités. Le prix est débité au clic.');
-    const rows=new ActionRowBuilder<ButtonBuilder>();
-    for(const [key,costs] of Object.entries(COIN_COSTS)){
-     const tier=p.tiers[key]||0;const cost=costs[tier];
-     rows.addComponents(new ButtonBuilder().setCustomId(`nz:c:${interaction.user.id}:${key}:${tier}`).setStyle(ButtonStyle.Secondary)
-      .setLabel(`${key==='cooldown'?'Claim rapide':key==='claim'?'Claim +25':key==='rain'?'Rain +5':'Mise +10'} · ${cost===undefined?'MAX':cost+' NC'}`).setDisabled(cost===undefined||p.balance<cost));
-    }
-    await interaction.editReply({embeds:[embed],components:[rows]});
-   }else await interaction.editReply({embeds:[embed]});
-  }else await interaction.editReply(command==='slot'?`**${result.art}**\nMise : ${result.bet} · Retour : ${result.payout} NozeCoins\nSolde : **${result.balance}** NozeCoins`
-   :`${command==='upgrade'?'Amélioration achetée':`+${result.delta} NozeCoins`} · Solde : **${result.balance}** NozeCoins${result.nextAt?`\nProchain claim : ${discordTimestamp(result.nextAt)}`:''}`);
+   await interaction.editReply({embeds:[embed]});
+  }else await interaction.editReply(command==='slot'?`**${formatCoinSlot(String(result.art))}**\nMise : ${result.bet} · Retour : ${result.payout} NozeCoins\nSolde : **${result.balance}** NozeCoins`
+   :`${action==='upgrade'?'Amélioration achetée':`+${result.delta} NozeCoins`} · Solde : **${result.balance}** NozeCoins${result.nextAt?`\nProchain claim : ${discordTimestamp(result.nextAt)}`:''}`);
  }catch(e){
   const code=e instanceof LunaLiveApiError?e.code:'';
   await interaction.editReply(code==='rumble_not_linked'?'Lie ton compte Rumble avec /link pour utiliser les NozeCoins.'
    :code==='cooldown'&&e instanceof LunaLiveApiError?`Délai en cours. Prochaine récupération : ${typeof e.details.nextAt==='string'?discordTimestamp(e.details.nextAt):'plus tard'}.`
-   :code==='insufficient_coins'?'Pas assez de NozeCoins. Ton solde est inchangé.'
+   :code==='insufficient_coins'&&e instanceof LunaLiveApiError?`Pas assez de NozeCoins : solde ${e.details.balance??'insuffisant'}, prix ${e.details.cost??'non disponible'}, il manque ${e.details.missing??'des'} points. Rien n’a été débité.`
    :code==='max_tier'?'Cette amélioration est déjà au maximum.'
    :code==='stale_shop'?'Ce menu n’est plus à jour. Rouvre /shop avant d’acheter.'
    :code==='coins_disabled'?'Les NozeCoins ne sont pas encore activés.'
    :'Opération non confirmée. Consulte /solde avant de réessayer.');
  }
 }
+
+export function formatCoinSlot(art:string){return art==='MAX WIN'?'[MAX WIN]':`[${art.slice(0,3)} ${art.slice(3)}]`;}
 
 function fmt(value: number): string {
   return Number(value || 0).toLocaleString("fr-FR");
@@ -507,7 +505,7 @@ export async function registerNozeBotCommands(client: Client, config: NozeBotCom
   await guild.commands.set(commands.map((command) => command.toJSON()));
   console.log("[nozebot] commandes LunaLive enregistrées", {
     guildId: config.guildId,
-    commands: [...COMMAND_NAMES],
+    commands: [...(process.env.NOZECOINS_ENABLED==='true'?COIN_NAMES:COMMAND_NAMES)],
   });
 }
 

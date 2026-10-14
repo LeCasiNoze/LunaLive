@@ -2,7 +2,7 @@ import test,{before,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import type {Pool} from 'pg';
-import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName} from '../src/nozecoins/wallet.js';
+import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName,weeklyCnz} from '../src/nozecoins/wallet.js';
 import {handleCoinsChat} from '../src/nozecoins/chat.js';
 
 // Real PostgreSQL WASM engine, isolated in memory. A single serialized connection
@@ -86,4 +86,13 @@ test('nickname observations follow native IDs and ignore older events',async()=>
  assert.equal((await linkedCoins(pool,1,'1188913226990235800')).username,'Newest');
  await observeCoinName(pool,1,'284177710','Stale',new Date(now.getTime()-180000));
  assert.equal((await linkedCoins(pool,1,'1188913226990235800')).username,'Newest');
+});
+test('weekly CNZ rewards require a fresh tagged native identity and cannot duplicate',async()=>{
+ await observeCoinName(pool,1,'284177710','CNZ Viewer',new Date());
+ const before=(await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance;
+ const pending=await weeklyCnz(pool,1);assert.equal(pending.length,1);
+ assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+25);
+ await weeklyCnz(pool,1);assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+25);
+ await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW()');
+ assert.equal((await weeklyCnz(pool,1)).length,0);
 });

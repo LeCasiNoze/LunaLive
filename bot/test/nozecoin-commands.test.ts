@@ -26,7 +26,15 @@ test('enabled server registers only channel currency commands',async()=>{
  process.env.NOZECOINS_ENABLED='true';let commands:any[]=[];
  const client={guilds:{fetch:async()=>({commands:{set:async(c:any[])=>{commands=c;}}})}};
  await registerNozeBotCommands(client as any,config);
- assert.deepEqual(commands.map(c=>c.name),['link','claim','slot','solde','profil','shop','regles']);
+ assert.deepEqual(commands.map(c=>c.name),['link','claim','slot','solde','profil','shop','ameliorer','regles']);
+});
+test('shop redirects to the site without fetching or debiting a wallet',async()=>{
+ process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>{throw Error('must not fetch');};
+ const i=interaction('shop');await handleNozeBotCommand(i as any,config);assert.match(i.replies[0].content,/shop/);assert.equal(i.replies[0].components[0].components[0].data.url,'https://lecasinoze.onrender.com/shop/');
+});
+test('insufficient funds give the actual shortfall',async()=>{
+ process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>new Response(JSON.stringify({ok:false,error:'insufficient_coins',balance:10,cost:20,missing:10}),{status:409});
+ const i=interaction('slot');await handleNozeBotCommand(i as any,config);assert.match(i.replies[0],/solde 10, prix 20, il manque 10/);
 });
 test('legacy Rubis blackjack is not dispatched after activation',async()=>{
  process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>{throw Error('must not fetch');};

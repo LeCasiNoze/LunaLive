@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import {coinsProfile,coinAction,linkedCoins} from '../nozecoins/wallet.js';
+import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz} from '../nozecoins/wallet.js';
 import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
 import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -57,6 +57,13 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
  const sid=Number((await pool.query("SELECT id FROM streamers WHERE lower(slug)='lecasinoze' LIMIT 1")).rows[0]?.id);
  if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
  try{
+  if(['cnz','cnz-ack'].includes(req.params.action)){
+   if(identity.discordUserId!=='1432436833253326929')return res.status(403).json({ok:false,error:'bad_actor'});
+   if(req.params.action==='cnz')return res.json({ok:true,rewards:await weeklyCnz(pool,sid)});
+   const week=String(req.body?.week||''),ids=req.body?.ids;
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(week)||!Array.isArray(ids)||ids.length>25||ids.some(x=>typeof x!=='string'||!/^\d+$/.test(x)))return res.status(400).json({ok:false,error:'bad_ack'});
+   await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW() WHERE streamer_id=$1 AND week=$2 AND rumble_user_id=ANY($3::text[])',[sid,week,ids]);return res.json({ok:true});
+  }
   if(req.params.action==='links'){
    await discordProfileSchema(pool);const cursor=String(req.body?.cursor||'');
    if(cursor&&!/^\d{17,20}$/.test(cursor))return res.status(400).json({ok:false,error:'bad_cursor'});
@@ -71,6 +78,7 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
   const result=await coinAction(pool,sid,link.rumble_user_id,link.username,req.params.action as 'claim'|'slot'|'upgrade',`discord:${req.params.action}:${receipt}`,upgrade as Upgrade,req.body?.expectedTier);
   return res.json(result);
  }catch(e){const code=e instanceof Error?e.message:'';
+  if(e instanceof InsufficientCoins)return res.status(409).json({ok:false,error:e.message,balance:e.balance,cost:e.cost,missing:e.cost-e.balance});
   if(['rumble_not_linked','insufficient_coins','max_tier','bad_upgrade','stale_shop'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
  }
 }));

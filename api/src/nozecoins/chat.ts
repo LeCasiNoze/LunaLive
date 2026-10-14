@@ -3,7 +3,7 @@ import {inTransaction} from '../automod-shop/wallet.js';
 import {validRumbleIdentity} from '../automod-shop/rules.js';
 import {notifyShop} from '../automod-shop/notify.js';
 import {coinsSchema,coinAction,coinsProfile} from './wallet.js';
-import {COIN_RULES} from './rules.js';
+import {COIN_RULES,formatSlotArt} from './rules.js';
 type Message={streamerId:number;userId:string;username:string;messageId:string;text:string;createdAt:Date};
 export async function handleCoinsChat(pool:Pool,m:Message){
  if(process.env.NOZECOINS_ENABLED!=='true'||!/^!(claim|slot|solde|profil|profile|rain)\s*$/i.test(m.text.trim()))return null;
@@ -21,7 +21,7 @@ export async function handleCoinsChat(pool:Pool,m:Message){
   const result=await coinAction(pool,m.streamerId,m.userId,m.username,command as 'claim'|'slot'|'rain',`rumble:${command}:${m.messageId}`);
   if(result.replayed)return command==='rain'?`@${m.username} — Rain déjà récupérée.`:null;
   if(!result.ok)return `@${m.username} — Délai en cours : ${Math.max(1,Math.ceil((new Date(String(result.nextAt)).getTime()-Date.now())/60000))} min.`;
-  return `@${m.username} — ${command==='slot'?`${result.art} · mise ${result.bet}, retour ${result.payout}`:`+${result.delta}`} NozeCoins · solde ${result.balance}.`;
+  return `@${m.username} — ${command==='slot'?`${formatSlotArt(String(result.art))} · mise ${result.bet}, retour ${result.payout}`:`+${result.delta}`} NozeCoins · solde ${result.balance}.`;
  }catch(e){const code=e instanceof Error?e.message:'';
   if(code==='no_rain')return `@${m.username} — Pas de rain NozeCoins en cours.`;
   if(code==='insufficient_coins')return `@${m.username} — Pas assez de NozeCoins. !claim pour ton bonus quotidien.`;

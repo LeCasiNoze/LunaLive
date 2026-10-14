@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 
 export const COIN_RULES = Object.freeze({ claim:100, claimHours:[24,23,22,20], rain:25,
-  rainIntervalMs:900_000, rainWindowMs:120_000, slotCooldownMs:30_000, bets:[20,30,40,50] });
+  rainIntervalMs:1_800_000, rainWindowMs:120_000, slotCooldownMs:1_800_000, bets:[20,30,40,50] });
 export const UPGRADES = {
   claim:{label:'Claim généreux',costs:[300,600,1200]},
   cooldown:{label:'Claim rapide',costs:[400,800,1600]},
@@ -26,4 +26,9 @@ export function slotOutcome(draw=randomInt(100000)) {
   if(!Number.isInteger(draw)||draw<0||draw>=100000)throw Error('bad_draw');
   let threshold=0;for(const item of SLOT_OUTCOMES){threshold+=item.weight;if(draw<threshold)return item;}
   throw Error('bad_distribution');
+}
+export function formatSlotArt(art:string) {
+  if(art==='MAX WIN')return '[MAX WIN]';
+  if(!/^[X07]{6}$/.test(art))throw Error('bad_slot_art');
+  return `[${art.slice(0,3)} ${art.slice(3)}]`;
 }
