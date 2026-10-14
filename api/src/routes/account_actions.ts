@@ -201,29 +201,30 @@ accountActionsRouter.post(
     if (code.length < 4) return res.status(400).json({ ok: false, error: "code_required" });
 
     // username unique (avant tx: ok)
-    const u1 = await pool.query(`SELECT 1 FROM users WHERE lower(username)=lower($1) LIMIT 1`, [newUsername]);
+    const u1 = await pool.query(`SELECT 1 FROM users WHERE lower(username)=lower($1) AND id<>$2 LIMIT 1`, [newUsername, userId]);
     if (u1.rows[0]) return res.status(400).json({ ok: false, error: "username_taken" });
 
-    const u = await pool.query(`SELECT username, rubis, role, last_rename_at FROM users WHERE id=$1 LIMIT 1`, [userId]);
-    const me = u.rows[0];
-    if (!me) return res.status(401).json({ ok: false, error: "unauthorized" });
-
-    const days = daysSince(me.last_rename_at);
     const COOLDOWN_DAYS = 30;
     const PRICE = 1000;
-
-    const needsPay = Number.isFinite(days) && days < COOLDOWN_DAYS;
-
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      // Serialize confirmations for one account before computing cooldown/payment.
+      const u = await client.query(`SELECT username, last_rename_at FROM users WHERE id=$1 FOR UPDATE`, [userId]);
+      const me = u.rows[0];
+      if (!me) {
+        await client.query("ROLLBACK");
+        return res.status(401).json({ ok: false, error: "unauthorized" });
+      }
+      const days = daysSince(me.last_rename_at);
+      const needsPay = Number.isFinite(days) && days < COOLDOWN_DAYS;
 
       // ✅ vérifie le code (mais ne le consomme pas si cooldown sans paiement)
       let codeId: number;
       try {
         codeId = await verifyLatestCodeUserTx(client, userId, "rename", code);
       } catch (e: any) {
-        await client.query("ROLLBACK");
+        await client.query("COMMIT");
         return res.status(400).json({ ok: false, error: String(e?.message || "bad_code") });
       }
 
@@ -288,6 +289,7 @@ accountActionsRouter.post(
       });
     } catch (e: any) {
       try { await client.query("ROLLBACK"); } catch {}
+      if (e?.code === "23505") return res.status(409).json({ ok: false, error: "username_taken" });
       const msg = String(e?.message || "server_error");
       if (msg === "insufficient_rubis") return res.status(400).json({ ok: false, error: "insufficient_rubis" });
       return res.status(500).json({ ok: false, error: "server_error" });

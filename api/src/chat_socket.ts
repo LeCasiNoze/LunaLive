@@ -850,6 +850,7 @@ export function attachChat(io: Server) {
           // ✅ IMPORTANT: join ONLY ONE chat room (no legacy room => no duplicates)
           socket.join(`chat:${meta.slug}:${m}`);
 
+          if (data.user) data.user.username = await getUsernameById(data.user.id);
           const rp = await computeRolePerms(meta.id, meta.ownerUserId, data.user);
           data.role = rp.role;
           data.perms = rp.perms;
@@ -971,6 +972,8 @@ export function attachChat(io: Server) {
       try {
         const u = data.user;
         if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+        u.username = await getUsernameById(u.id);
 
         const s = String(slug || data.slug || "").trim();
         if (!s) return cb?.({ ok: false, error: "bad_slug" });
@@ -1126,6 +1129,9 @@ export function attachChat(io: Server) {
       try {
         const s = String(slug || data.slug || "").trim();
         if (!s) return cb?.({ ok: false, error: "bad_slug" });
+        if (data.slug?.toLowerCase() !== s.toLowerCase() || !socket.rooms.has(`chat:${data.slug}:${data.chatMode || "public"}`)) {
+          return cb?.({ ok: false, error: "chat_room_lost" });
+        }
 
         const meta = await getStreamerMetaBySlug(s);
         if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });

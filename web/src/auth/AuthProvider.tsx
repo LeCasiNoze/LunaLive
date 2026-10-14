@@ -60,6 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() => loadToken());
   const [user, setUser] = React.useState<ApiUser | null>(null);
 
+  React.useEffect(() => {
+    const syncToken = () => {
+      const next = loadToken();
+      setToken((current) => current === next ? current : next);
+      if (!next) setUser(null);
+    };
+    window.addEventListener("storage", syncToken);
+    return () => window.removeEventListener("storage", syncToken);
+  }, []);
+
   // ✅ popup daily bonus (state complet)
   const [dailyBonusPopup, setDailyBonusPopup] = React.useState<DailyBonusState | null>(null);
 

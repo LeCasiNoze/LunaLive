@@ -212,6 +212,7 @@ function Hint({ msg }: { msg: string | null }) {
 // ─── Settings section (inline tab, replaces modal) ───────────────────────────
 
 function SettingsSection({ token, onAfterChange }: { token: string; onAfterChange: () => void }) {
+  const { setAuth } = useAuth();
   const [newUsername, setNewUsername]     = React.useState("");
   const [renameCodeSent, setRenameCodeSent] = React.useState(false);
   const [renameCode, setRenameCode]       = React.useState("");
@@ -317,7 +318,7 @@ function SettingsSection({ token, onAfterChange }: { token: string; onAfterChang
         return;
       }
       if (!r.ok || (data && data.ok === false)) throw new Error(data?.error || `HTTP ${r.status}`);
-      try { localStorage.setItem("token", String(data.token || "")); } catch {}
+      setAuth(data.token, data.user);
       setRenameHint(`Pseudo mis à jour ✅${data.paid ? ` (payé ${data.paid} rubis)` : ""}`);
       onAfterChange(); window.location.reload();
     } catch (e: any) { setRenameHint(String(e?.message || "Erreur rename")); } finally { setRenameBusy(false); }

@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
+import { startChatRecovery, reconcileChatHistory } from "../lib/chatRecovery";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
@@ -1749,22 +1750,6 @@ export function ChatPanel({
   }
 
   /* -------------------------
-     Load last messages
-     ------------------------- */
-  async function loadLastMessages(s: string) {
-    try {
-      setInitialLoading(true);
-      const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`);
-      const j = await r.json();
-      if (!j?.ok) throw new Error(j?.error || "messages_failed");
-      setMessages(j.messages || []);
-      pendingInitScrollRef.current = true;
-    } finally {
-      setInitialLoading(false);
-    }
-  }
-
-  /* -------------------------
      Chat settings (gear)
      ------------------------- */
   const canManageSettings = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
@@ -1985,9 +1970,43 @@ export function ChatPanel({
     });
 
     sockRef.current = socket;
+    setSocketConnected(false);
+    let disposed = false;
+    let historyRequest: AbortController | null = null;
+    let arrived: ChatMsg[] = [];
+    let deletedDuringHistory = new Set<number>();
+    const syncHistory = async () => {
+      if (disposed || historyRequest) return;
+      const controller = new AbortController();
+      historyRequest = controller;
+      arrived = [];
+      deletedDuringHistory = new Set();
+      const timeout = window.setTimeout(() => controller.abort(), 10000);
+      try {
+        const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/messages?limit=50`, {
+          signal: controller.signal, cache: "no-store",
+        });
+        const j = await r.json();
+        if (!r.ok || !j?.ok) throw new Error(j?.error || "messages_failed");
+        if (disposed || controller.signal.aborted) return;
+        const liveMessages = arrived;
+        const deletedIds = deletedDuringHistory;
+        setMessages(current => reconcileChatHistory<ChatMsg>(
+          j.messages || [], liveMessages, current.filter(message => message.id < 0),
+        ).filter(message => !deletedIds.has(message.id)));
+        pendingInitScrollRef.current = true;
+        setError(null);
+      } catch (e: any) {
+        if (!disposed && !controller.signal.aborted) setError(String(e?.message || "messages_failed"));
+      } finally {
+        window.clearTimeout(timeout);
+        if (historyRequest === controller) historyRequest = null;
+        if (!disposed) setInitialLoading(false);
+      }
+    };
+    const cancelHistory = () => { historyRequest?.abort(); historyRequest = null; };
+    socket.on("disconnect", cancelHistory);
 
-    socket.on("connect", () => setSocketConnected(true));
-    socket.on("disconnect", () => setSocketConnected(false));
     socket.on("connect_error", (e: any) => {
       setSocketConnected(false);
       setError(String(e?.message || "socket_connect_error"));
@@ -2037,6 +2056,7 @@ export function ChatPanel({
         actEngine.open(msg.type as any, msg.data || {});
         return;
       }
+      if (historyRequest) arrived.push(msg);
       animatedMsgIdsRef.current.add(msg.id);
       setMessages((prev) => {
         // Dédup par id : un même socket peut être dans plusieurs rooms (public+popup)
@@ -2073,6 +2093,7 @@ export function ChatPanel({
     });
 
     socket.on("chat:cleared", () => {
+      cancelHistory();
       setMessages([]);
       pendingInitScrollRef.current = true;
       requestAnimationFrame(() => scrollToBottom("auto"));
@@ -2081,6 +2102,7 @@ export function ChatPanel({
     socket.on("chat:message_deleted", (payload: any) => {
       const id = Number(payload?.id || 0);
       if (!id) return;
+      if (historyRequest) deletedDuringHistory.add(id);
       setMessages((prev) => prev.filter((m) => m.id !== id));
     });
 
@@ -2100,31 +2122,33 @@ export function ChatPanel({
     });
 
     const mode = visualMode === "popup" ? "popup" : "public";
-    socket.emit("chat:join", { slug: s, mode }, async (ack: JoinAck) => {
-      if (!ack?.ok) {
-        setJoin(null);
-        setError(ack?.error || "join_failed");
-        setInitialLoading(false);
-        return;
-      }
-
-      setJoin(ack);
-      setError(null);
-
-      setAppearance(normalizeAppearance(ack.appearance));
-      await loadLastMessages(s);
-
-      if (ack?.role === "mod" || ack?.role === "streamer" || ack?.role === "admin") {
-        await fetchSettings();
-      }
-      fetchEmotes();
-
-      if (autoFocus) {
-        window.setTimeout(() => inputRef.current?.focus(), 50);
-      }
+    const recovery = startChatRecovery(socket, {
+      slug: s, mode,
+      onStatus: setSocketConnected,
+      onError: (error) => { setError(error); setInitialLoading(false); },
+      onSync: () => { void syncHistory(); },
+      onJoined: (ack: JoinAck) => {
+        setJoin(ack);
+        setError(null);
+        setAppearance(normalizeAppearance(ack.appearance));
+        void syncHistory();
+        if (ack.role === "mod" || ack.role === "streamer" || ack.role === "admin") void fetchSettings();
+        void fetchEmotes();
+        if (autoFocus) window.setTimeout(() => { if (!disposed) inputRef.current?.focus(); }, 50);
+      },
     });
+    const onVisible = () => { if (document.visibilityState === "visible") recovery.recover(); };
+    window.addEventListener("online", recovery.recover);
+    window.addEventListener("pageshow", recovery.recover);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      disposed = true;
+      recovery.dispose();
+      historyRequest?.abort();
+      window.removeEventListener("online", recovery.recover);
+      window.removeEventListener("pageshow", recovery.recover);
+      document.removeEventListener("visibilitychange", onVisible);
       try {
         try {
           socket.off("stream:follows");
@@ -2133,7 +2157,7 @@ export function ChatPanel({
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, token]);
+  }, [slug, token, visualMode]);
 
   /* -------------------------
      Send message
