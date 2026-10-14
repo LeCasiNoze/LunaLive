@@ -174,6 +174,23 @@ test('banked and scored bonus rows cannot block Automod replenishment; playable 
  assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1',[sid])).rows[0].n,2,'banked and scored rows remain intact');
 });
 
+test('pending AutoHunt bonuses do not reserve personal or classic calls and remain available for hunt resume',async()=>{
+ const sid=9414;await streamer(sid);
+ await pool.query(`UPDATE automod_control SET desired_enabled=FALSE,dashboard_settings=dashboard_settings||'{"mode":"auto-hunt"}'::jsonb WHERE streamer_id=$1`,[sid]);
+ await pool.query(`INSERT INTO automod_hunt_reservations(streamer_id,entry_id,slot_key,slot_name,status)
+  VALUES($1,'saved-personal-bandit','lebandit','Le Bandit','pending')`,[sid]);
+ const personal=await addCall(pool,sid,41,'PersonalViewer','Le Bandit','hacksaw',{bypassLimit:true});
+ assert.equal(personal.ok,true,'an inactive AutoHunt must not block a personal call');
+ await pool.query('DELETE FROM calls_queue WHERE streamer_id=$1',[sid]);
+ await pool.query(`UPDATE automod_control SET desired_enabled=TRUE,dashboard_settings=dashboard_settings||'{"mode":"automod"}'::jsonb WHERE streamer_id=$1`,[sid]);
+ const classic=await addCall(pool,sid,0,'Automod','Le Bandit','hacksaw',{bypassLimit:true,automodRequestId:randomUUID()});
+ assert.equal(classic.ok,true,'classic Automod must be independent of stored AutoHunt bonuses');
+ await pool.query('DELETE FROM calls_queue WHERE streamer_id=$1',[sid]);
+ await pool.query(`UPDATE automod_control SET dashboard_settings=dashboard_settings||'{"mode":"auto-hunt"}'::jsonb WHERE streamer_id=$1`,[sid]);
+ assert.deepEqual(await addCall(pool,sid,41,'HuntViewer','Le Bandit','hacksaw',{bypassLimit:true}),{ok:false,error:'automod_bonus_pending'});
+ assert.equal((await pool.query('SELECT status FROM automod_hunt_reservations WHERE streamer_id=$1',[sid])).rows[0].status,'pending','mode changes never delete the saved bonus');
+});
+
 test('challenge rewards native callers, frozen late eligibility, bets and concurrent settlement exactly once',async()=>{
  const sid=9401;await streamer(sid);
  const e=await createChallenge(pool,sid,'rewards',{stakeCents:20,slotDurationMs:240000,goldenEnabled:true});

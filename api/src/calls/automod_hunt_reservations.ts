@@ -6,7 +6,14 @@ export function huntSlotKey(name:string):string {
 export async function huntSlotReserved(client:PoolClient,streamerId:number,name:string):Promise<boolean>{
   // Failed openings remain in the recovery history, not in the call lock.
   // Recalling them lets the runner reconcile an existing bonus on entry.
-  const result=await client.query(`SELECT 1 FROM automod_hunt_reservations WHERE streamer_id=$1 AND slot_key=$2 AND status IN ('pending','opening') LIMIT 1`,[streamerId,huntSlotKey(name)]);
+  // Reservations belong to AutoHunt. Keep them for a later hunt resume, but
+  // do not let them own admission while stopped, on a personal live, or in
+  // another Automod mode. A paused enabled AutoHunt retains its protection.
+  const result=await client.query(`SELECT 1 FROM automod_hunt_reservations r
+    JOIN automod_control a ON a.streamer_id=r.streamer_id
+    WHERE r.streamer_id=$1 AND r.slot_key=$2 AND r.status IN ('pending','opening')
+      AND a.desired_enabled=TRUE AND a.dashboard_settings->>'mode'='auto-hunt'
+    LIMIT 1`,[streamerId,huntSlotKey(name)]);
   return result.rowCount!==0;
 }
 export async function syncHuntReservations(pool:Pool,streamerId:number,input:unknown){
