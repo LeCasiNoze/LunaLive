@@ -46,6 +46,8 @@ test('slot insufficient funds rolls back; replay does not reroll or charge',asyn
  const again=await coinAction(pool,1,'284177712','Empty','slot','slot:one');
  assert.equal(again.art,first.art);assert.equal(again.balance,first.balance);assert.equal(again.replayed,true);
  assert.equal((await coinAction(pool,1,'284177712','Empty','slot','slot:two')).error,'cooldown');
+ const wait=await coinAction(pool,1,'284177712','Empty','slot','slot:three');
+ assert.ok(new Date(String(wait.nextAt)).getTime()-Date.now()>29*60000);
 });
 test('shop insufficient funds and stale menu never debit or grant tiers',async()=>{
  await coinAction(pool,1,'284177713','Buyer','claim','seed');
@@ -88,6 +90,7 @@ test('nickname observations follow native IDs and ignore older events',async()=>
  assert.equal((await linkedCoins(pool,1,'1188913226990235800')).username,'Newest');
 });
 test('weekly CNZ rewards require a fresh tagged native identity and cannot duplicate',async()=>{
+ await pool.query(`INSERT INTO automod_discord_links(streamer_id,discord_user_id,rumble_user_id,username) VALUES(1,'100000000000000003','284177718','CNZ Old')`);
  await observeCoinName(pool,1,'284177710','CNZ Viewer',new Date());
  const before=(await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance;
  const pending=await weeklyCnz(pool,1);assert.equal(pending.length,1);
