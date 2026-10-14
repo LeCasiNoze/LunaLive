@@ -28,9 +28,6 @@ import { startAurixBot } from "./aurix/bot.js";
 import { startEventsEnginePoller } from "./events/engine.js";
 import { startInstagramScheduler } from "./instagram_scheduler.js";
 import { startIgCommentScheduler } from "./ig_comment_scheduler.js";
-import { startAgencyFeeReminder } from "./agency_fee_reminder.js";
-import { startAgencyFeesBoard } from "./agency_fees_board.js";
-import { startInstagramAgendaBoard } from "./instagram_agenda_board.js";
 import { refreshAllAffiPageSnapshots } from "./routes/affi_pages.js";
 import { ensureRumbleOutreachSeeded } from "./routes/rumble_outreach.js";
 import { startRumbleRecruitmentMonitor } from "./rumble_recruitment_monitor.js";
@@ -213,9 +210,6 @@ function setupProcessCrashGuards() {
   startClipsMp4Cleanup();
   startInstagramScheduler();
   startIgCommentScheduler();
-  // startAgencyFeeReminder(); // désactivé : le board #frais est suffisant
-  startAgencyFeesBoard();
-  startInstagramAgendaBoard();
 
   if (process.env.DISCORD_BOT_TOKEN) {
     restoreOpenSupportTicketPermissionsRest(process.env.DISCORD_BOT_TOKEN, {

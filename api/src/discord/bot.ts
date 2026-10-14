@@ -6,20 +6,6 @@ import {
   handleBlackjackButton,
 } from "./blackjack.js";
 
-import {
-  FEES_BOARD_REFRESH_CID,
-  handleFeesBoardRefreshButton,
-} from "../agency_fees_board.js";
-
-import {
-  IG_AGENDA_REFRESH_CID,
-  handleIgAgendaRefreshButton,
-} from "../instagram_agenda_board.js";
-import {
-  LANDING_VERIF_REFRESH_CID,
-  handleLandingVerifRefreshButton,
-} from "../aurix/landings_verif.js";
-
 import { routeAdminInteraction } from "./admin_commands.js";
 
 import {
@@ -345,23 +331,6 @@ export async function startDiscordBot(ctx: BotCtx) {
         .catch((e) => ctx.log(`[discord] periodic sync failed: ${e?.message || e}`));
     }, 6 * 3600_000);
 
-    // Aurix Landing Verif: salon heberge dans le guild LunaLive sous
-    // categorie AGENCE. La logique de verif tourne dans aurix/landings_verif.ts
-    // mais poste via le client LunaLive.
-    try {
-      const { ensureLandingVerifChannelInGuild, startLandingVerifCron } = await import(
-        "../aurix/landings_verif.js"
-      );
-      const r = await ensureLandingVerifChannelInGuild(client, guildId);
-      if (r.ok) {
-        ctx.log(`[discord] landing-verif salon ready (id=${r.channelId})`);
-        startLandingVerifCron(client);
-      } else {
-        ctx.log(`[discord] landing-verif setup KO: ${r.reason}`);
-      }
-    } catch (e) {
-      ctx.log(`[discord] landing-verif wiring failed: ${String(e)}`);
-    }
   });
 
   client.on("guildMemberAdd", async (member) => {
@@ -484,24 +453,9 @@ export async function startDiscordBot(ctx: BotCtx) {
 
   client.on("interactionCreate", async (interaction: Interaction) => {
     try {
-      // ── Admin commands (frais / agence / landing / dette / tiktok +
-      // boutons mark-paid). Routeur retourne true si géré.
+      // ── Modération Discord (purge)
+      // Routeur retourne true si géré.
       if (await routeAdminInteraction(interaction)) return;
-
-      // ── Agency fees board — bouton refresh ────────────────────────────────
-      if (interaction.isButton() && interaction.customId === FEES_BOARD_REFRESH_CID) {
-        await handleFeesBoardRefreshButton(interaction); return;
-      }
-
-      // ── Instagram agenda board — bouton refresh ───────────────────────────
-      if (interaction.isButton() && interaction.customId === IG_AGENDA_REFRESH_CID) {
-        await handleIgAgendaRefreshButton(interaction); return;
-      }
-
-      // ── Landing verif — relance manuelle en direct ───────────────────────
-      if (interaction.isButton() && interaction.customId === LANDING_VERIF_REFRESH_CID) {
-        await handleLandingVerifRefreshButton(interaction); return;
-      }
 
       // ── Fabiozsis — notif rôles (toggle) ──────────────────────────────────
       if (interaction.isButton() && interaction.customId.startsWith(CID_STATS_LIST)) {

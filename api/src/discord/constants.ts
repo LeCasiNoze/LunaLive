@@ -150,59 +150,12 @@ export const SLASH_COMMANDS: any[] = [
   { name: "profil", description: "Afficher ta fiche profil complète" },
   { name: "succes", description: "Afficher tes récompenses débloquées" },
 
-  // ─── Outils admin AGENCE / FSB (default_member_permissions: "0" =
-  // invisibles à tous sauf admins. Tu peux étendre via Server Settings →
-  // Integrations → LunaBot. Plus check runtime sur le salon QG).
-  {
-    name: "frais",
-    description: "Frais d'agence",
-    options: [
-      { name: "ajouter", description: "Ajouter un frais (modal)", type: 1 },
-    ],
-  },
-  {
-    name: "agence",
-    description: "Outils agence",
-    options: [
-      { name: "recap", description: "Récap mensuel agence", type: 1, options: [
-        { name: "mois", description: "YYYY-MM (défaut: mois courant)", type: 3, required: false },
-      ]},
-    ],
-  },
-  {
-    name: "landing",
-    description: "Landing pages affiliées",
-    options: [
-      { name: "creer", description: "Créer une landing rapide (V3)", type: 1 },
-      { name: "list",  description: "Lister mes landings avec URLs", type: 1 },
-    ],
-  },
-  {
-    name: "dette",
-    description: "Snapshot rapide des frais d'agence impayés",
-  },
-  {
-    name: "tiktok",
-    description: "TikTok outreach",
-    options: [
-      { name: "influenceur-add", description: "Ajouter un influenceur au réseau", type: 1, options: [
-        { name: "lien", description: "Lien TikTok ou handle (@xxx)", type: 3, required: true },
-      ]},
-    ],
-  },
+  // Modération Discord.
   {
     name: "purge",
     description: "Supprimer les X derniers messages du salon",
     options: [
       { name: "x", description: "Nombre de messages (1-100)", type: 4, required: true, min_value: 1, max_value: 100 },
-    ],
-  },
-  {
-    name: "todo",
-    description: "Ajouter un todo (apparaît sur le FSB Board)",
-    options: [
-      { name: "message", description: "Description du todo", type: 3, required: true },
-      { name: "fichier", description: "Pièce jointe (optionnel)", type: 11, required: false },
     ],
   },
 ];

@@ -62,7 +62,7 @@ import {
   handleAutoValidateRunButton,
   handleAutoValidateRefreshButton,
 } from "./watcher.js";
-import { triggerManualCheck } from "./landings_verif.js";
+
 
 export async function startAurixBot(): Promise<void> {
   const env = loadEnv();
@@ -143,27 +143,6 @@ export async function startAurixBot(): Promise<void> {
 
     startCutoffTask(c);
     startTelegramRefillHandler(c);
-    // Landing Verif a migre vers le guild LunaLive (categorie AGENCE).
-    // Le cron est demarre cote LunaLive bot. Ici on cleanup l'ancien
-    // salon si encore present dans le guild Aurix.
-    try {
-      if (guildId) {
-        const guild = c.guilds.cache.get(guildId);
-        if (guild) {
-          const channels = await guild.channels.fetch();
-          const stale = Array.from(channels.values()).find(
-            (ch) => !!ch && ch.type === 0 /* GuildText */ && /landing-verif/i.test(ch.name)
-          );
-          if (stale) {
-            await stale.delete("Aurix Landing Verif migre vers guild LunaLive").catch(() => {});
-            console.log(`[aurix] ancien salon landing-verif supprime (${stale.id})`);
-          }
-        }
-      }
-    } catch (e) {
-      console.error("[aurix] cleanup landing-verif failed:", e);
-    }
-
     await c.user.setPresence({
       activities: [{ name: `${cfg.BRAND.NAME} ${cfg.EMOJI.diamond}`, type: ActivityType.Watching }],
       status: "online",
@@ -317,16 +296,6 @@ export async function startAurixBot(): Promise<void> {
           case "aurix-resend-dm":
             await handleResendDmCommand(ci);
             return;
-          case "verify-landings": {
-            await ci.deferReply({ ephemeral: true });
-            const r = await triggerManualCheck(ci.client);
-            const lines = [
-              `${cfg.EMOJI.check} Vérif lancée : ${r.total} landings.`,
-              `✅ \`${r.counts.ok}\` · 🟡 \`${r.counts.celsius_changed}\` · 🔴 \`${r.counts.landing_missing + r.counts.taap_off_domain}\` · ⚠️ \`${r.counts.taap_unreachable}\``,
-            ];
-            await ci.editReply({ content: lines.join("\n") });
-            return;
-          }
           case "celsius-vip-invite": {
             await ci.deferReply({ ephemeral: true });
             const { sendVipInviteBlast } = await import("./celsius_dm.js");

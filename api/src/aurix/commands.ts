@@ -82,11 +82,7 @@ export const guildCommandDefinitions = [
     description: "(Admin) Envoie le DM d'invitation VIP à tous les vérifiés ≥750€ qui n'ont pas encore reçu.",
     default_member_permissions: String(PermissionFlagsBits.Administrator),
   },
-  {
-    name: "verify-landings",
-    description: "(Admin) Force une passe de vérification des landings maintenant.",
-    default_member_permissions: String(PermissionFlagsBits.Administrator),
-  },
+
   {
     name: "aurix-resend-dm",
     description: "(Admin) Renvoie le DM Celsius (confirmation/vérifié/refusé) à un viewer.",
