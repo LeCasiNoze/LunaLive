@@ -21,11 +21,21 @@
   explain(messages[error.code]||'Lecteur temporairement indisponible. Les demandes expirées seront remboursées.',true);
   if(error.status===401||error.status===403)disposed=true;
  }
+ function streamingInObs(){
+  if(typeof globalThis.obsstudio?.getStatus!=='function')return Promise.resolve(false);
+  return new Promise(resolve=>{
+   let finished=false;const timeout=setTimeout(()=>done(false),1000);
+   function done(streaming){if(finished)return;finished=true;clearTimeout(timeout);resolve(streaming);}
+   try{globalThis.obsstudio.getStatus(state=>done(state?.streaming===true));}catch{done(false);}
+  });
+ }
  async function heartbeat(){
   if(disposed||heartbeatBusy||showControls)return;
   if(document.hidden){ready=false;cancelPlayback();return;}
   heartbeatBusy=true;
-  try{const data=await post('heartbeat');ready=data.ready===true;
+  try{
+   if(!(await streamingInObs())){ready=false;cancelPlayback();explain('OBS ne diffuse pas, ou son état ne peut pas être lu. Aucune lecture autorisée.');return;}
+   const data=await post('heartbeat');ready=data.ready===true;
    explain(ready?'Lecteur prêt · live personnel vérifié.':'En attente d’un live personnel et de l’activation du propriétaire.');
    if(!ready)cancelPlayback();
   }catch(error){cancelPlayback();report(error);}finally{heartbeatBusy=false;}
@@ -65,6 +75,9 @@
  if(!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)||token.length>8192){explain('Configuration requise : jeton LunaLive du propriétaire absent. Aucun son ne peut être débité depuis cette page.',true);return;}
  controls.hidden=!showControls;panel.hidden=!showControls;
  if(showControls){explain('Panneau propriétaire. Cette page ne joue pas de son et ne remplace pas le lecteur OBS.');return;}
+ function stoppedStreaming(){ready=false;cancelPlayback();void post('control',{enabled:false}).catch(report);}
+ addEventListener('obsStreamingStopping',stoppedStreaming);
+ addEventListener('obsStreamingStopped',stoppedStreaming);
  void heartbeat();const beatTimer=setInterval(heartbeat,5000),pollTimer=setInterval(poll,1000);
  document.addEventListener('visibilitychange',()=>{if(document.hidden){ready=false;cancelPlayback();}else void heartbeat();});
  addEventListener('pagehide',()=>{disposed=true;ready=false;cancelPlayback();clearInterval(beatTimer);clearInterval(pollTimer);});
