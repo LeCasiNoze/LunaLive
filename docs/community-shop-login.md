@@ -19,3 +19,9 @@ Sept liens MyInstants fournis par le propriétaire le 15/10/2026 ; chemins MP3 r
 Le catalogue et ses préécoutes sont publics même quand les achats sont désactivés. `/sons son:identifiant` prépare une confirmation Discord sans débit. La présence d'un son sur MyInstants ne constitue pas une preuve de droits de diffusion.
 
 `NOZECOINS_SOUNDBOARD_ENABLED` reste désactivé avant test réel OBS. Aucun changement de ce flag n'est nécessaire pour voir et écouter le catalogue sur le site. Ni les tests SQL ni les tests simulés du lecteur ne prouvent la restitution audible en sortie OBS. Le contrôle propriétaire et l'état de diffusion OBS restent obligatoires pour l'admission d'un achat de son.
+
+## Source OBS personnelle
+
+Le lecteur installé dans « Live personnel » utilise `?autostart=1`. Il attend à la fois une diffusion OBS réelle et une session personnelle fraîche vérifiée par l'API (Automod exclu), puis active une seule fois cette session. Un arrêt propriétaire n'est pas réactivé par les heartbeats suivants. Recharger volontairement la source réarme la détection. Sans ce paramètre, le contrôle manuel reste inchangé.
+
+Le diagnostic local utilise une source navigateur temporaire, un son du catalogue et les vumètres OBS, sans diffusion, enregistrement, file de commandes ou débit de portefeuille. Cette mesure prouve l'entrée audio dans le mélangeur OBS ; elle ne remplace pas une vérification depuis un spectateur pendant un vrai live. La source temporaire est supprimée après le test.

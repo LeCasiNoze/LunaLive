@@ -6,6 +6,8 @@
  const panel=document.getElementById('panel'),status=document.getElementById('status'),controls=document.getElementById('controls');
  const toast=document.getElementById('toast'),label=document.getElementById('sound-name');
  const showControls=new URLSearchParams(location.search).get('control')==='1';
+ const autoStart=new URLSearchParams(location.search).get('autostart')==='1';
+ let armedSession=null;
  let disposed=false,ready=false,heartbeatBusy=false,pollBusy=false,pendingAck=null,cancelPlayback=()=>{};
  const consumerId=crypto.randomUUID();
  function explain(text,error=false){status.textContent=text;if(showControls||error)panel.hidden=false;}
@@ -34,8 +36,14 @@
   if(document.hidden){ready=false;cancelPlayback();return;}
   heartbeatBusy=true;
   try{
-   if(!(await streamingInObs())){ready=false;cancelPlayback();explain('OBS ne diffuse pas, ou son état ne peut pas être lu. Aucune lecture autorisée.');return;}
-   const data=await post('heartbeat');ready=data.ready===true;
+   if(!(await streamingInObs())){armedSession=null;ready=false;cancelPlayback();explain('OBS ne diffuse pas, ou son état ne peut pas être lu. Aucune lecture autorisée.');return;}
+   let data=await post('heartbeat');
+   // Arm once per verified personal live, never repeatedly override an owner's stop.
+   if(autoStart&&data.session&&armedSession!==data.session){
+    await post('control',{enabled:true});armedSession=data.session;
+    data=await post('heartbeat');
+   }
+   ready=data.ready===true;
    explain(ready?'Lecteur prêt · live personnel vérifié.':'En attente d’un live personnel et de l’activation du propriétaire.');
    if(!ready)cancelPlayback();
   }catch(error){cancelPlayback();report(error);}finally{heartbeatBusy=false;}
