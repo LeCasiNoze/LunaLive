@@ -408,7 +408,7 @@ export async function addCall(
       const isChannel=(await client.query("SELECT 1 FROM streamers WHERE id=$1 AND lower(slug)='lecasinoze'",[streamerId])).rowCount;
       if(isChannel){
        const limit=(await accountBenefits(client,streamerId,opts.rumbleUserId)).maxPendingCalls;
-       const count=Number((await client.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[streamerId,opts.rumbleUserId])).rows[0].n);
+       const count=Number((await client.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)',[streamerId,opts.rumbleUserId])).rows[0].n);
        if(count>=limit){await client.query('COMMIT');return {ok:false,error:'limit_reached'};}
       }
     }

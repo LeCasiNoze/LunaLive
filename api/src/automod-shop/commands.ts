@@ -169,7 +169,7 @@ export async function handleShopChat(pool:Pool,m:ShopChatMessage):Promise<string
       const runtimeCall=String(mode.rows[0].runtime_status?.slot?.callId??'');
       if(call?.id===runtimeCall)throw Error('call_already_started');
       if(!call){
-        const count=await c.query(`SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2`,[m.streamerId,m.userId]);
+        const count=await c.query(`SELECT COUNT(*)::int AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)`,[m.streamerId,m.userId]);
         if(Number(count.rows[0].n)>=(await accountBenefits(c,m.streamerId,m.userId)).maxPendingCalls)throw Error('call_limit');
         const pos=await c.query(`SELECT COALESCE(MAX(pos),0)+1 AS p FROM calls_queue WHERE streamer_id=$1`,[m.streamerId]);
         const added=await c.query(`INSERT INTO calls_queue(streamer_id,slot_name,slot_key,provider,user_id,username,pos,rumble_user_id,is_bonus)
