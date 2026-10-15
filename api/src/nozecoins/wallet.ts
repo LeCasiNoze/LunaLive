@@ -8,11 +8,14 @@ const namesReady=new WeakMap<Pool,Promise<void>>();
 export class InsufficientCoins extends Error {
  constructor(public balance:number,public cost:number){super('insufficient_coins');}
 }
-export async function observeCoinName(pool:Pool,sid:number,uid:string,name:string,createdAt:Date){
- if(process.env.NOZECOINS_ENABLED!=='true'||!validRumbleIdentity(uid)||Date.now()-createdAt.getTime()>120000||createdAt.getTime()>Date.now()+30000)return;
+export async function coinNamesSchema(pool:Pool){
  let setup=namesReady.get(pool);if(!setup){setup=discordProfileSchema(pool).then(async()=>{
   await pool.query("ALTER TABLE automod_discord_links ADD COLUMN IF NOT EXISTS rumble_username_seen_at timestamptz NOT NULL DEFAULT '-infinity'");
  }).catch(e=>{namesReady.delete(pool);throw e;});namesReady.set(pool,setup);}await setup;
+}
+export async function observeCoinName(pool:Pool,sid:number,uid:string,name:string,createdAt:Date){
+ if(process.env.NOZECOINS_ENABLED!=='true'||!validRumbleIdentity(uid)||Date.now()-createdAt.getTime()>120000||createdAt.getTime()>Date.now()+30000)return;
+ await coinNamesSchema(pool);
  await pool.query(`UPDATE automod_discord_links SET username=$3,rumble_username_seen_at=$4 WHERE streamer_id=$1 AND rumble_user_id=$2 AND rumble_username_seen_at<$4`,[sid,uid,name.slice(0,80),createdAt]);
 }
 export async function coinsSchema(pool:Pool){

@@ -23,6 +23,7 @@ import {
 import type { Pool } from "pg";
 import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames,coinSupportRewards,acknowledgeSupportRewards} from './lunalive-api.js';
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
+import { cnzRoleChange } from './cnz-role.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -546,10 +547,19 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
    void(async()=>{
     const guild=await client.guilds.fetch(config.guildId);const me=await guild.members.fetchMe();
     const linkedRole=process.env.NOZEBOT_LINKED_ROLE_ID;
+    const cnzRoleId=process.env.NOZEBOT_CNZ_ROLE_ID?.trim() || '1281868087330869260';
+    const cnzRole=await guild.roles.fetch(cnzRoleId).catch(()=>null);
+    const canManageCnz=cnzRole && !cnzRole.managed && cnzRole.permissions.bitfield===0n &&
+      me.permissions.has(PermissionFlagsBits.ManageRoles) && me.roles.highest.comparePositionTo(cnzRole)>0;
     const result=await fetchLinkedCoinNames(config.commands.lunaLive,client.user!.id,nicknameCursor);
     for(const link of result.links){
      const member=await guild.members.fetch(link.discordId).catch(()=>null);
      if(member&&linkedRole&&me.permissions.has(PermissionFlagsBits.ManageRoles)&&!member.roles.cache.has(linkedRole))await member.roles.add(linkedRole,'Compte Rumble vérifié').catch(()=>undefined);
+     if(member && canManageCnz){
+      const change=cnzRoleChange({...link,hasRole:member.roles.cache.has(cnzRoleId)});
+      if(change==='add')await member.roles.add(cnzRoleId,'Marque CNZ dans le dernier pseudo Rumble vérifié');
+      if(change==='remove')await member.roles.remove(cnzRoleId,'Marque CNZ retirée du dernier pseudo Rumble vérifié');
+     }
      const nickname=link.username.replace(/[\r\n\u0000-\u001f]/g,'').trim().slice(0,32);
      if(me.permissions.has(PermissionFlagsBits.ManageNicknames)&&member?.manageable&&nickname&&member.nickname!==nickname){
       await member.setNickname(nickname,'Pseudo du compte Rumble vérifié').catch(()=>undefined);

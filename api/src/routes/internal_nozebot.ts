@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz} from '../nozecoins/wallet.js';
+import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
 import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
 import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -67,7 +67,10 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
   if(req.params.action==='links'){
    await discordProfileSchema(pool);const cursor=String(req.body?.cursor||'');
    if(cursor&&!/^\d{17,20}$/.test(cursor))return res.status(400).json({ok:false,error:'bad_cursor'});
-   const links=(await pool.query(`SELECT discord_user_id AS "discordId",username FROM automod_discord_links WHERE streamer_id=$1 AND discord_user_id>$2 ORDER BY discord_user_id LIMIT 100`,[sid,cursor])).rows;
+   await coinNamesSchema(pool);
+   const links=(await pool.query(`SELECT discord_user_id AS "discordId",rumble_user_id AS "rumbleId",username,
+    CASE WHEN isfinite(rumble_username_seen_at) THEN rumble_username_seen_at ELSE NULL END AS "usernameVerifiedAt"
+    FROM automod_discord_links WHERE streamer_id=$1 AND discord_user_id>$2 ORDER BY discord_user_id LIMIT 100`,[sid,cursor])).rows;
    return res.json({ok:true,links,nextCursor:links.length===100?links.at(-1).discordId:null});
   }
   const link=await linkedCoins(pool,sid,identity.discordUserId);

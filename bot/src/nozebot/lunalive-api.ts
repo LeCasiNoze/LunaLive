@@ -123,7 +123,7 @@ export function coinRequest(config:LunaLiveApiConfig,discordUserId:string,action
   config,`/internal/bot/nozebot/coins/${action}`,discordUserId,{receipt,upgrade,expectedTier});
 }
 export function fetchLinkedCoinNames(config:LunaLiveApiConfig,discordUserId:string,cursor=''){
- return post<{ok:true;links:Array<{discordId:string;username:string}>;nextCursor:string|null}>(config,'/internal/bot/nozebot/coins/links',discordUserId,{cursor});
+ return post<{ok:true;links:Array<{discordId:string;username:string;rumbleId?:string;usernameVerifiedAt?:string|null}>;nextCursor:string|null}>(config,'/internal/bot/nozebot/coins/links',discordUserId,{cursor});
 }
 
 async function post<T>(
