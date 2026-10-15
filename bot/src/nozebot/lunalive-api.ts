@@ -116,7 +116,7 @@ export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string
  return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId);
 }
 
-export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;
+export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;journal?:Array<{id:string;label:string;complete:boolean}>;
  rules:{claim:number;claimMs:number;rain:number;bet:number};tiers:Record<string,number>};
 export function coinRequest(config:LunaLiveApiConfig,discordUserId:string,action:'profile'|'claim'|'slot'|'upgrade',receipt?:string,upgrade?:string,expectedTier?:number){
  return post<{ok:boolean;error?:string;nextAt?:string;profile?:CoinProfile;balance?:number;delta?:number;art?:string;bet?:number;payout?:number;replayed?:boolean}>(

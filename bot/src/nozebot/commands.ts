@@ -108,10 +108,17 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
    }
    const fields=[{name:'NozeCoins',value:String(p.balance),inline:true},{name:'Points Automod disponibles',value:String(p.automod),inline:true},
     {name:'Claim',value:`${p.rules.claim} NozeCoins / ${p.rules.claimMs/3600000} h`,inline:true},
-    {name:'Rain',value:`${p.rules.rain} NozeCoins`,inline:true},{name:'Mise du mini-jeu',value:`${p.rules.bet} NozeCoins`,inline:true}];
+    {name:'Rain',value:`${p.rules.rain} NozeCoins`,inline:true},{name:'Bet !slot',value:`${p.rules.bet} NozeCoins`,inline:true},
+    {name:'Prochain claim',value:p.nextClaimAt&&new Date(p.nextClaimAt).getTime()>Date.now()?discordTimestamp(p.nextClaimAt):'Disponible · /claim',inline:true},
+    {name:'Vos talents · niveaux enregistrés',value:[['claim','Valeur claim'],['cooldown','Cooldown claim'],['rain','Valeur rain'],['slot','Bet !slot']].map(([key,label])=>`${label} : **${p.tiers[key!]??0}/3**`).join('\n'),inline:false}];
    const embed=new EmbedBuilder().setColor(0xd64065).setTitle(`${p.username} · LeCasiNoze`).addFields(fields)
     .setFooter({text:'NozeCoins gratuits, non achetables, non transférables et sans conversion en argent ou Rubis.'});
-   await interaction.editReply({embeds:[embed]});
+   if(command==='profil'&&p.journal?.length)embed.addFields({name:`Journal · ${p.journal.filter(step=>step.complete).length}/${p.journal.length}`,value:p.journal.map(step=>`${step.complete?'✓':'○'} ${step.label}`).join('\n')});
+   const shortcuts=new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Mes améliorations').setURL('https://lecasinoze.onrender.com/shop/'),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Guide NozeBot').setURL(`https://discord.com/channels/${config.guildId}/1559957255288520836`),
+   );
+   await interaction.editReply({embeds:[embed],components:[shortcuts]});
   }else if(command==='slot'){
    const final=`**${formatCoinSlot(String(result.art))}**\nMise : ${result.bet} · Retour : ${result.payout} NozeCoins\nSolde : **${result.balance}** NozeCoins`;
    // The debit and immutable result already exist before visual suspense begins.

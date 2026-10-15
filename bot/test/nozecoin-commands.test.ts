@@ -40,6 +40,15 @@ test('legacy Rubis blackjack is not dispatched after activation',async()=>{
  process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>{throw Error('must not fetch');};
  assert.equal(await handleNozeBotCommand(interaction('blackjack') as any,config),false);
 });
+
+test('profile shows persisted talents and shortcuts without debit',async()=>{
+ process.env.NOZECOINS_ENABLED='true';let path='';
+ globalThis.fetch=async(url:any)=>{path=String(url);return new Response(JSON.stringify({ok:true,profile:{username:'CNZ Viewer',balance:321,automod:999,nextClaimAt:null,rules:{claim:125,claimMs:24*3600000,rain:25,bet:20},tiers:{claim:1,cooldown:0,rain:0,slot:0}}}));};
+ const i=interaction('profil');await handleNozeBotCommand(i as any,config);
+ assert.match(path,/coins\/profile$/);
+ const data=i.replies[0];assert.match(JSON.stringify(data.embeds[0].data.fields),/Valeur claim : \*\*1\/3\*\*/);
+ assert.equal(data.components[0].components[0].data.url,'https://lecasinoze.onrender.com/shop/');
+});
 test('slot result can be watched publicly in the games channel without replaying debit',async()=>{
  process.env.NOZECOINS_ENABLED='true';let visibility:any;
  globalThis.fetch=async()=>new Response(JSON.stringify({ok:true,art:'OOOXXX',bet:20,payout:20,balance:100,replayed:true}));

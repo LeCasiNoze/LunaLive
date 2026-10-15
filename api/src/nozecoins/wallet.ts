@@ -48,11 +48,16 @@ async function lock(c:PoolClient,sid:number,uid:string,name:string){
  return (await c.query('SELECT *,NOW() AS now FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid])).rows[0];
 }
 export async function coinsProfile(pool:Pool,sid:number,uid:string,name:string){
- await coinsSchema(pool);
+ await coinsSchema(pool);await discordProfileSchema(pool);
  return inTransaction(pool,async c=>{
   const row=await lock(c,sid,uid,name);const rules=accountRules(row);
   const automod=await readWallet(c,sid,uid);
+  const reasons=new Set((await c.query('SELECT DISTINCT reason FROM nozecoin_ledger WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,uid])).rows.map(r=>String(r.reason)));
+  const linked=(await c.query('SELECT 1 FROM automod_discord_links WHERE streamer_id=$1 AND rumble_user_id=$2 LIMIT 1',[sid,uid])).rows.length>0;
+  const journal=[{id:'link',label:'Lier Rumble et Discord',complete:linked},
+   ...[['claim','Premier claim'],['slot','Premier mini-jeu'],['rain','Première rain Rumble'],['upgrade','Première amélioration']].map(([id,label])=>({id,label,complete:reasons.has(id!)}))];
   return {username:name,balance:Number(row.balance),automod:automod.available,rules,
+   journal,
    nextClaimAt:row.last_claim_at?new Date(new Date(row.last_claim_at).getTime()+rules.claimMs).toISOString():null,
    tiers:{claim:row.claim_tier,cooldown:row.cooldown_tier,rain:row.rain_tier,slot:row.slot_tier}};
  });

@@ -34,6 +34,19 @@ test('claim credits 100 once, receipt replays, second request waits 24h',async()
  assert.equal((await coinAction(pool,1,uid,'Viewer','claim','claim:2')).error,'cooldown');
  assert.equal((await coinsProfile(pool,1,uid,'Viewer')).balance,100);
 });
+
+test('journal derives completion from real receipts and never grants extra points',async()=>{
+ const uid='284177799';
+ const before=await coinsProfile(pool,1,uid,'Journal');
+ assert.equal(before.journal.filter(step=>step.complete).length,0);
+ await coinAction(pool,1,uid,'Journal','claim','journal:claim');
+ const after=await coinsProfile(pool,1,uid,'Journal');
+ assert.equal(after.balance,100);
+ assert.equal(after.journal.find(step=>step.id==='claim')?.complete,true);
+ assert.equal(after.journal.find(step=>step.id==='slot')?.complete,false);
+ assert.equal(after.journal.find(step=>step.id==='link')?.complete,false);
+ assert.equal((await coinsProfile(pool,1,uid,'Journal')).balance,100);
+});
 test('retrying many claims never credits more than once',async()=>{
  const results=await Promise.all(Array.from({length:10},(_,i)=>coinAction(pool,1,'284177711','Two','claim',`race:${i}`)));
  assert.equal(results.filter(r=>r.ok).length,1);
