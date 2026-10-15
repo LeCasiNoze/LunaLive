@@ -29,6 +29,7 @@ import {
 import { renderBlackjackTable } from "./blackjack-renderer.js";
 import { renderSlotMachine } from "./slot-renderer.js";
 import {revealCoinSlot} from './coin-reveal.js';
+import {handleSoundboardInteraction} from './soundboard.js';
 
 export type NozeBotCommandConfig = {
   guildId: string;
@@ -69,6 +70,7 @@ const COIN_COMMANDS=[
  new SlashCommandBuilder().setName('shop').setDescription('Consulter et acheter des améliorations en NozeCoins'),
  new SlashCommandBuilder().setName('ameliorer').setDescription('Acheter un palier préparé sur le site').addStringOption(o=>o.setName('branche').setDescription('Branche à améliorer').setRequired(true).addChoices(...['claim','cooldown','rain','slot'].map(value=>({name:value,value})))).addIntegerOption(o=>o.setName('palier').setDescription('Palier souhaité').setRequired(true).setMinValue(1).setMaxValue(3)),
  new SlashCommandBuilder().setName('regles').setDescription('Règles, délais et probabilités des NozeCoins'),
+ new SlashCommandBuilder().setName('sons').setDescription('Choisir un son, écouter l’aperçu et confirmer son déclenchement'),
 ];
 const COIN_NAMES=new Set(COIN_COMMANDS.map(c=>c.name));
 export async function handleCoinCommand(interaction:ChatInputCommandInteraction|ButtonInteraction,config:NozeBotCommandConfig){
@@ -528,6 +530,7 @@ export async function handleNozeBotCommand(
 ): Promise<boolean> {
   if(process.env.NOZECOINS_ENABLED==='true'){
    if(interaction.guildId!==config.guildId)return false;
+   if(await handleSoundboardInteraction(interaction,config))return true;
    if(interaction.isButton()&&interaction.customId.startsWith('nz:c:')){await handleCoinCommand(interaction,config);return true;}
    if(interaction.isChatInputCommand()&&COIN_NAMES.has(interaction.commandName)){await handleCoinCommand(interaction,config);return true;}
    return false;

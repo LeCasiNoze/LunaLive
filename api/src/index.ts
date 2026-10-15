@@ -2,6 +2,7 @@
 import http from "http";
 import path from "path";
 import express from "express";
+import {startSoundboardMaintenance} from './nozecoins/soundboard-maintenance.js';
 import { Server as IOServer } from "socket.io";
 
 import { migrate, pool } from "./db.js";
@@ -176,6 +177,7 @@ function setupProcessCrashGuards() {
 
   // ✅ Crée l'app vite
   const app = createApp();
+  startSoundboardMaintenance(pool);
 
   // (tu as déjà du static uploads dans app.ts, mais tu l'avais aussi ici)
   app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));

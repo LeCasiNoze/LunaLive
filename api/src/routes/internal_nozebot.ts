@@ -17,6 +17,8 @@ import {
   type NozeBotBlackjackAction,
 } from "../services/nozebot_blackjack.js";
 import { NozeBotSlotError, playNozeBotSlot } from "../services/nozebot_slot.js";
+import {enqueueSound,SoundboardError} from '../nozecoins/soundboard.js';
+import {soundCatalogue,soundboardFeatureEnabled} from '../nozecoins/soundboard-config.js';
 
 export const internalNozeBotRouter = Router();
 
@@ -74,6 +76,15 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
    return res.json({ok:true,links,nextCursor:links.length===100?links.at(-1).discordId:null});
   }
   const link=await linkedCoins(pool,sid,identity.discordUserId);
+  if(req.params.action==='sound-catalogue')return res.json({ok:true,enabled:soundboardFeatureEnabled(),sounds:soundCatalogue()});
+  if(req.params.action==='sound'){
+   if(!soundboardFeatureEnabled())return res.status(503).json({ok:false,error:'soundboard_disabled'});
+   const sound=soundCatalogue().find(entry=>entry.id===req.body?.soundId);
+   if(!sound)return res.status(404).json({ok:false,error:'unknown_sound'});
+   if(req.body?.expectedCost!==sound.cost)return res.status(409).json({ok:false,error:'sound_price_changed'});
+   const receipt=String(req.body?.receipt||'');if(!/^\d{17,20}$/.test(receipt))return res.status(400).json({ok:false,error:'bad_receipt'});
+   return res.json({ok:true,...await enqueueSound(pool,{streamerId:sid,rumbleId:link.rumble_user_id,username:link.username,receipt,sound})});
+  }
   if(req.params.action==='profile')return res.json({ok:true,profile:await coinsProfile(pool,sid,link.rumble_user_id,link.username),shop:UPGRADES});
   if(!['claim','slot','upgrade'].includes(req.params.action))return res.status(400).json({ok:false,error:'bad_action'});
   const receipt=String(req.body?.receipt||'');if(!/^\d{17,20}$/.test(receipt))return res.status(400).json({ok:false,error:'bad_receipt'});
@@ -82,6 +93,7 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
   return res.json(result);
  }catch(e){const code=e instanceof Error?e.message:'';
   if(e instanceof InsufficientCoins)return res.status(409).json({ok:false,error:e.message,balance:e.balance,cost:e.cost,missing:e.cost-e.balance});
+  if(e instanceof SoundboardError)return res.status(409).json({ok:false,error:e.message});
   if(['rumble_not_linked','insufficient_coins','max_tier','bad_upgrade','stale_shop'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
  }
 }));

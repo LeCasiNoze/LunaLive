@@ -126,6 +126,10 @@ export function fetchLinkedCoinNames(config:LunaLiveApiConfig,discordUserId:stri
  return post<{ok:true;links:Array<{discordId:string;username:string;rumbleId?:string;usernameVerifiedAt?:string|null}>;nextCursor:string|null}>(config,'/internal/bot/nozebot/coins/links',discordUserId,{cursor});
 }
 
+export function soundRequest(config:LunaLiveApiConfig,discordUserId:string,action:'sound-catalogue'|'sound',body:Record<string,unknown>={}){
+ return post<{ok:true;enabled?:boolean;sounds?:Array<{id:string;label:string;audioUrl:string;cost:number;durationMs:number;volume:number}>;state?:string;balance?:number;requestId?:string;replayed?:boolean}>(config,`/internal/bot/nozebot/coins/${action}`,discordUserId,body);
+}
+
 async function post<T>(
   config: LunaLiveApiConfig,
   path: string,

@@ -66,6 +66,7 @@ import { automodFeedbackRouter } from './routes/automod_feedback.js';
 import { automodServiceRouter } from "./routes/automod_service.js";
 import { automodShopRouter } from "./routes/automod_shop.js";
 import { internalNozeBotRouter } from "./routes/internal_nozebot.js";
+import { nozecoinSoundboardRouter } from './routes/nozecoin_soundboard.js';
 
 // Bot module (clean)
 import meBotRouter from "./modules/bot/router.js";
@@ -271,6 +272,7 @@ export function createApp() {
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
   app.use(internalNozeBotRouter);
+  app.use(nozecoinSoundboardRouter);
 
   app.use(pushRouter);
   app.use(thumbsRouter);

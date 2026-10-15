@@ -26,7 +26,7 @@ test('enabled server registers only channel currency commands',async()=>{
  process.env.NOZECOINS_ENABLED='true';let commands:any[]=[];
  const client={guilds:{fetch:async()=>({commands:{set:async(c:any[])=>{commands=c;}}})}};
  await registerNozeBotCommands(client as any,config);
- assert.deepEqual(commands.map(c=>c.name),['link','claim','slot','solde','profil','shop','ameliorer','regles']);
+ assert.deepEqual(commands.map(c=>c.name),['link','claim','slot','solde','profil','shop','ameliorer','regles','sons']);
 });
 test('shop redirects to the site without fetching or debiting a wallet',async()=>{
  process.env.NOZECOINS_ENABLED='true';globalThis.fetch=async()=>{throw Error('must not fetch');};
