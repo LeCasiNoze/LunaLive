@@ -336,7 +336,7 @@ oauthRouter.get(
 
     const code = String(req.query.code || "").trim();
     const stateToken = String(req.query.state || "").trim();
-    if (!code || !stateToken) return res.redirect(302, doneUrl("error=oauth_failed"));
+    if (!stateToken) return res.redirect(302, doneUrl("error=oauth_failed"));
 
     let state: OAuthState;
     try {
@@ -346,6 +346,7 @@ oauthRouter.get(
       return res.redirect(302, doneUrl("error=oauth_failed"));
     }
 
+    if(!code)return res.redirect(302,state.communityChallenge?'https://lecasinoze.onrender.com/shop/#community_error=connexion_annulee':doneUrl('error=oauth_failed'));
     const { clientId, clientSecret } = providerCreds(providerParam);
     if (!clientId || !clientSecret) return res.redirect(302, doneUrl("error=oauth_not_configured"));
 
