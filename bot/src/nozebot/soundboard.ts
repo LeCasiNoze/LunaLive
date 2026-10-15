@@ -21,8 +21,9 @@ export async function handleSoundboardInteraction(interaction:Interaction,config
   if(!catalogue.enabled||!catalogue.sounds?.length){
    await interaction.editReply({content:'La soundboard est en préparation. Aucun achat ni débit possible pour le moment.',components:[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Le shop').setURL('https://lecasinoze.onrender.com/shop/#soundboard'))]});return true;
   }
-  if(select&&interaction.isStringSelectMenu()){
-   const sound=catalogue.sounds.find(entry=>entry.id===interaction.values[0]);
+  const requested=command&&interaction.isChatInputCommand()?interaction.options.getString('son'):null;
+  if(select&&interaction.isStringSelectMenu()||requested){
+   const sound=catalogue.sounds.find(entry=>entry.id===(interaction.isStringSelectMenu()?interaction.values[0]:requested));
    if(!sound){await interaction.editReply('Ce son n’est plus disponible. Rouvre /sons.');return true;}
    await interaction.editReply({embeds:[new EmbedBuilder().setColor(0xd64065).setTitle(sound.label).setDescription(`**${sound.cost} NozeCoins** · ${(sound.durationMs/1000).toLocaleString('fr-FR')} s\nLecture uniquement en live personnel, si le lecteur OBS est prêt.\n\nLe bouton Aperçu ouvre le fichier dans ton navigateur ; il ne dépense aucun point.`)],components:[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Aperçu gratuit').setURL(sound.audioUrl),new ButtonBuilder().setStyle(ButtonStyle.Primary).setLabel(`Déclencher · ${sound.cost} NC`).setCustomId(`nz:s:buy:${interaction.user.id}:${sound.id}:${sound.cost}`))]});return true;
   }

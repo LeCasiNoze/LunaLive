@@ -53,7 +53,7 @@
    cancelPlayback=()=>finish(false);
    // Both values come exclusively from the server-approved catalogue.
    audio.volume=Math.max(0,Math.min(0.7,Number(sound.volume)||0));
-   audio.onplaying=()=>{audio.onplaying=null;clearTimeout(loadTimeout);label.textContent=sound.label;toast.hidden=false;cutoff=setTimeout(()=>finish(false),Math.min(8000,sound.durationMs)+350);};
+   audio.onplaying=()=>{audio.onplaying=null;clearTimeout(loadTimeout);label.textContent=sound.label;toast.hidden=false;cutoff=setTimeout(()=>finish(false),Math.min(12000,sound.durationMs)+350);};
    audio.onended=()=>finish(true);audio.onerror=()=>finish(false);
    audio.src=sound.audioUrl;audio.play().catch(()=>finish(false));
   });

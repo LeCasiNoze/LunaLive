@@ -24,7 +24,7 @@ export function validateSoundCatalogue(input:unknown):SoundEntry[]{
   const own=url.hostname==='lecasinoze.onrender.com'&&/^\/soundboard\/[a-zA-Z0-9_-]+\.(mp3|ogg|wav)$/.test(url.pathname);
   if(url.protocol!=='https:'||url.username||url.password||url.port||url.search||url.hash||(!myinstants&&!own)||url.pathname.includes('..'))throw new SoundboardError('invalid_audio_url');
   if(!Number.isSafeInteger(v.cost)||Number(v.cost)<1||Number(v.cost)>10000)throw new SoundboardError('invalid_sound_cost');
-  if(!Number.isSafeInteger(v.durationMs)||Number(v.durationMs)<100||Number(v.durationMs)>8000)throw new SoundboardError('invalid_sound_duration');
+  if(!Number.isSafeInteger(v.durationMs)||Number(v.durationMs)<100||Number(v.durationMs)>12000)throw new SoundboardError('invalid_sound_duration');
   if(typeof v.volume!=='number'||!Number.isFinite(v.volume)||v.volume<=0||v.volume>0.7)throw new SoundboardError('invalid_sound_volume');
   return {id:v.id,label:v.label.trim(),audioUrl:url.href,cost:Number(v.cost),durationMs:Number(v.durationMs),volume:v.volume};
  });

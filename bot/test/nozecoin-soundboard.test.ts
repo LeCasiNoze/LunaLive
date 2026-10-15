@@ -29,6 +29,13 @@ test('another viewer cannot trigger a copied confirmation button',async()=>{
  const i=interaction('button',`nz:s:buy:${owner}:test-tone:25`,'100000000000000099');await handleSoundboardInteraction(i as any,config);
  assert.match(i.replies[0],/autre compte/);
 });
+test('a command copied from the shop selects its sound without purchasing',async()=>{
+ const requests:string[]=[];globalThis.fetch=async(url:any)=>{requests.push(String(url));return new Response(JSON.stringify(catalogue));};
+ const i={...interaction('command'),options:{getString:(name:string)=>name==='son'?'test-tone':null}};
+ await handleSoundboardInteraction(i as any,config);
+ assert.equal(requests.length,1);assert.match(requests[0]!,/sound-catalogue$/);
+ assert.equal(i.replies[0].components[0].components[1].data.custom_id,`nz:s:buy:${owner}:test-tone:25`);
+});
 test('confirmed request carries a unique receipt and expected price, no viewer URL',async()=>{
  let request:any;globalThis.fetch=async(url:any,options:any)=>{request={url:String(url),body:JSON.parse(options.body)};return new Response(JSON.stringify({ok:true,state:'queued',balance:75}));};
  const i=interaction('button',`nz:s:buy:${owner}:test-tone:25`);await handleSoundboardInteraction(i as any,config);

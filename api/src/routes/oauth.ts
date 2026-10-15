@@ -14,6 +14,7 @@ import { a } from "../utils/async.js";
 import { hashPassword, signToken } from "../auth.js";
 import { getClientIp } from "../utils/client_ip.js";
 import { defaultAvatarPath } from "./auth.js";
+import {issueCommunityCode,validChallenge} from '../nozecoins/community-session.js';
 
 export const oauthRouter = Router();
 
@@ -40,6 +41,7 @@ type OAuthState = {
   ref: string | null;
   utm: string | null; // JSON déjà nettoyé (mêmes clés que /auth/register), ou null
   n: string;
+  communityChallenge?: string;
 };
 
 function signState(state: OAuthState) {
@@ -94,12 +96,12 @@ function buildGoogleAuthUrl(clientId: string, redirectUri: string, state: string
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-function buildDiscordAuthUrl(clientId: string, redirectUri: string, state: string) {
+function buildDiscordAuthUrl(clientId: string, redirectUri: string, state: string, identifyOnly=false) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: "identify email",
+    scope: identifyOnly ? "identify" : "identify email",
     state,
   });
   return `https://discord.com/oauth2/authorize?${params.toString()}`;
@@ -122,12 +124,15 @@ oauthRouter.get(
       if (typeof raw === "string" && raw.trim()) utm = sanitizeUtm(JSON.parse(raw));
     } catch {}
 
-    const state = signState({ p: providerParam, ref, utm, n: randomBytes(8).toString("hex") });
+    const community=req.query.community==='1';
+    const challenge=req.query.challenge;
+    if(community&&(providerParam!=='discord'||!validChallenge(challenge)))return res.status(400).json({ok:false,error:'invalid_challenge'});
+    const state = signState({ p: providerParam, ref, utm, n: randomBytes(8).toString("hex"),...(community?{communityChallenge:String(challenge)}:{}) });
     const redirectUri = redirectUriFor(providerParam);
     const authUrl =
       providerParam === "google"
         ? buildGoogleAuthUrl(clientId, redirectUri, state)
-        : buildDiscordAuthUrl(clientId, redirectUri, state);
+        : buildDiscordAuthUrl(clientId, redirectUri, state, community);
 
     res.redirect(302, authUrl);
   })
@@ -343,6 +348,17 @@ oauthRouter.get(
 
     const { clientId, clientSecret } = providerCreds(providerParam);
     if (!clientId || !clientSecret) return res.redirect(302, doneUrl("error=oauth_not_configured"));
+
+    if(state.communityChallenge){
+      const destination='https://lecasinoze.onrender.com/shop/';
+      try{
+        if(providerParam!=='discord'||!validChallenge(state.communityChallenge))throw Error('bad_community_state');
+        const profile=await exchangeDiscord(code,clientId,clientSecret,redirectUriFor('discord'));
+        if(!profile)throw Error('discord_failed');
+        const communityCode=await issueCommunityCode(pool,profile.providerUserId,state.communityChallenge);
+        return res.redirect(302,destination+'#community_code='+encodeURIComponent(communityCode));
+      }catch{return res.redirect(302,destination+'#community_error=connexion_impossible');}
+    }
 
     try {
       const redirectUri = redirectUriFor(providerParam);

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 import type {Pool} from 'pg';
 import {coinAction} from '../src/nozecoins/wallet.js';
+import {DEFAULT_SOUND_CATALOGUE} from '../src/nozecoins/sound-catalogue.js';
 import {validateSoundCatalogue,soundboardSchema,controlSoundboard,heartbeatSoundboard,enqueueSound,takeNextSound,settleSound,sweepSoundboard} from '../src/nozecoins/soundboard.js';
 
 // Isolated SQL fixtures, no real Discord member, media download, or production points.
@@ -36,8 +37,10 @@ async function buy(receipt='interaction-one',uid=user){return enqueueSound(pool,
 async function balance(){return Number((await pool.query('SELECT balance FROM nozecoin_accounts WHERE streamer_id=1 AND rumble_user_id=$1',[user])).rows[0].balance);}
 
 test('catalogue accepts only bounded explicitly supplied entries and HTTPS media hosts',()=>{
+ assert.equal(validateSoundCatalogue(DEFAULT_SOUND_CATALOGUE).length,7);
+ assert.equal(DEFAULT_SOUND_CATALOGUE.find(s=>s.id==='here-comes-the-money')?.durationMs,9091);
  assert.deepEqual(validateSoundCatalogue([]),[]);assert.equal(validateSoundCatalogue([sound])[0]?.cost,25);
- for(const change of [{cost:-1},{cost:1.5},{durationMs:8001},{volume:2},{id:'../private'},{audioUrl:'http://127.0.0.1/a.mp3'},
+ for(const change of [{cost:-1},{cost:1.5},{durationMs:12001},{volume:2},{id:'../private'},{audioUrl:'http://127.0.0.1/a.mp3'},
   {audioUrl:'https://www.myinstants.com.evil.test/media/sounds/a.mp3'},{audioUrl:'https://www.myinstants.com/media/sounds/a.mp3?token=secret'},
   {audioUrl:'https://user:secret@myinstants.com/media/sounds/a.mp3'}])assert.throws(()=>validateSoundCatalogue([{...sound,...change}]));
  assert.throws(()=>validateSoundCatalogue([sound,sound]),/invalid_sound_id/);
