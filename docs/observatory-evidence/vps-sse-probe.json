@@ -1,0 +1,58 @@
+{
+  "observedAt": "2026-10-15T13:45:00.191Z",
+  "elapsedSeconds": 30.182,
+  "categoryComplete": false,
+  "discoveredVideos": 5,
+  "error": "manual_category_seed_not_automated_discovery",
+  "counts": {
+    "categoryBytes": 0,
+    "sseBytes": 59693,
+    "categoryRequests": 0,
+    "sseRequests": 4
+  },
+  "sseSamples": [
+    {
+      "channel": "CrashkillTV",
+      "viewers": 9,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 16380,
+      "error": null
+    },
+    {
+      "channel": "Put4click",
+      "viewers": 58,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 16729,
+      "error": null
+    },
+    {
+      "channel": "LILBCAZ",
+      "viewers": 34,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 16487,
+      "error": null
+    },
+    {
+      "channel": "SlinderPigCamz",
+      "viewers": 4,
+      "opened": true,
+      "initMessagesIgnored": 17,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 10097,
+      "error": null
+    }
+  ],
+  "rssMiB": 84.5,
+  "cpuMs": 526.795,
+  "note": "Finite public read-only sample. Initial history ignored, accounts not verified humans; not a 15/60-minute coverage measurement. Body bytes only, not provider billing."
+}

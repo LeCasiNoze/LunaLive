@@ -1,0 +1,31 @@
+{
+  "bots": [
+    "lunalive_bot",
+    "therumblebot",
+    "nozbot"
+  ],
+  "botEvidence": {
+    "lunalive_bot": "existing owner service",
+    "therumblebot": "verified platform service name; resolve identity via SSE",
+    "nozbot": "owner confirmed in brief"
+  },
+  "languages": {
+    "lecasinoze": "fr",
+    "put4click": "fr",
+    "crashkilltv": "fr",
+    "lilbcaz": "fr"
+  },
+  "owners": {
+    "lecasinoze": [
+      "lecasinoze",
+      "casinoz"
+    ]
+  },
+  "modes": [],
+  "languageEvidence": {
+    "lecasinoze": "owner brief, 2026-10-15",
+    "put4click": "French public stream title, 2026-10-15; spoken language not independently verified",
+    "crashkilltv": "French public stream title, 2026-10-15; spoken language not independently verified",
+    "lilbcaz": "French public stream title, 2026-10-15; spoken language not independently verified"
+  }
+}

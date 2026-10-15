@@ -1,3 +1,6 @@
+import { fetchPublicCategoryPage } from "./observatory/category.js";
+import { recordDiscovery } from "./observatory/discovery-metrics.js";
+import { parseRumbleCategoryLives as parseObservedCategory } from "./observatory/category.js";
 // api/src/rumble.ts
 
 import { pool } from "./db.js";
@@ -24,6 +27,7 @@ export type RumbleCategoryLive = {
   videoId: string;
   videoIdNumeric: string | null;
   viewersCount: number;
+  viewersKnown?: boolean;
   title: string | null;
   thumbnailUrl: string | null;
   videoUrl: string;
@@ -48,53 +52,24 @@ type RumbleCategoryPage = {
   lives: Map<string, RumbleCategoryLive>;
   itemCount: number;
   limit: number;
+  hasMore?: boolean;
 };
 
 function parseRumbleCategoryLives(html: string): RumbleCategoryPage {
-  const gridStart = html.indexOf("<rum-videos-grid");
-  if (gridStart < 0) throw new Error("rumble_category_grid_missing");
-  const gridEnd = html.indexOf(">", gridStart);
-  if (gridEnd < 0) throw new Error("rumble_category_grid_unclosed");
-  const gridTag = html.slice(gridStart, gridEnd + 1).replaceAll("&amp;", "&");
-  if (!/collection=["']category\.videos["']/i.test(gridTag) ||
-      !/filter=["'][^"']*category=gambling-slots[^"']*video_type=live/i.test(gridTag)) {
-    throw new Error("rumble_category_grid_unexpected");
-  }
-  const limit = Math.max(1, Math.min(100, Number(gridTag.match(/\blimit=["'](\d+)["']/i)?.[1] || 24)));
-  const scriptStart = html.indexOf('<script type="application/json">', gridStart);
-  if (scriptStart < 0) throw new Error("rumble_category_json_missing");
-  const jsonStart = html.indexOf(">", scriptStart) + 1;
-  const jsonEnd = html.indexOf("</script>", jsonStart);
-  if (jsonEnd < 0) throw new Error("rumble_category_json_unclosed");
-  const payload = JSON.parse(html.slice(jsonStart, jsonEnd)) as { items?: unknown };
-  if (!Array.isArray(payload.items)) throw new Error("rumble_category_items_missing");
-  const items = payload.items as any[];
-  const lives = new Map<string, RumbleCategoryLive>();
-  for (const item of items) {
-    if (item?.object_type !== "video" || item?.live !== true) continue;
-    const profilePath = String(item?.by?.relative_url || "");
-    const username = profilePath.split("/").filter(Boolean).at(-1) || String(item?.by?.name || "");
-    const videoId = String(item?.permalink_id || "").toLowerCase();
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(username) || !/^v[a-z0-9]{5,}$/i.test(videoId)) continue;
-    const viewers = Number(item?.watching_now);
-    const followers = Number(item?.by?.followers);
-    lives.set(username.toLowerCase(), {
-      username,
-      videoId,
-      videoIdNumeric: Number.isFinite(Number(item?.id)) ? String(item.id) : null,
-      viewersCount: Number.isFinite(viewers) ? Math.max(0, Math.round(viewers)) : 0,
-      title: typeof item?.title === "string" ? item.title : null,
-      thumbnailUrl: typeof item?.thumb === "string" ? item.thumb : null,
-      videoUrl: typeof item?.url === "string" ? item.url : `https://rumble.com/${videoId}.html`,
-      profileUrl: typeof item?.by?.url === "string" ? item.by.url : `https://rumble.com/user/${username}`,
-      followers: Number.isFinite(followers) ? Math.max(0, Math.round(followers)) : 0,
-      createdAt: typeof item?.live_streamed_on === "string" ? item.live_streamed_on : null,
-    });
-  }
-  return { lives, itemCount: items.length, limit };
+  const page = parseObservedCategory(html);
+  // Preserve the legacy callers' numeric contract; the observatory retains null.
+  return {...page, lives:new Map([...page.lives].map(([key,live]) => [key,{...live,viewersCount:live.viewersCount ?? 0,viewersKnown:live.viewersCount!=null}]))};
 }
 
 async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage> {
+  // Same public JSON endpoint used by rum-videos-grid (observed 2026-10-15).
+  // Prefer it over loading a full category document; retain legacy fallback.
+  try {
+    let publicBytes=0;
+    let parsed;try{parsed=await fetchPublicCategoryPage(page,n=>{publicBytes+=n;});}finally{recordDiscovery("rumble",publicBytes);}
+    return {...parsed,lives:new Map([...parsed.lives].map(([key,live])=>[key,{...live,viewersKnown:live.viewersCount!=null,viewersCount:live.viewersCount??0}]))};
+  }catch{}
+
   const url = page === 1 ? RUMBLE_GAMBLING_CATEGORY_URL : `${RUMBLE_GAMBLING_CATEGORY_URL}?page=${page}`;
   try {
     const response = await fetch(url, {
@@ -106,7 +81,8 @@ async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage
       },
     });
     if (!response.ok) throw new Error(`rumble_category_http_${response.status}`);
-    return parseRumbleCategoryLives(await response.text());
+    const text=await response.text();recordDiscovery("rumble",Buffer.byteLength(text));
+    return parseRumbleCategoryLives(text);
   } catch (directError) {
     const base = String(process.env.NIVORA_API_BASE || "").replace(/\/$/, "");
     const key = String(process.env.NIVORA_BOT_INTERNAL_KEY || "");
@@ -116,7 +92,8 @@ async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage
       headers: { accept: "application/json", "x-nivora-bot-key": key },
     });
     if (!response.ok) throw new Error(`rumble_category_relay_http_${response.status}`);
-    const payload = await response.json() as { ok?: unknown; lives?: unknown; itemCount?: unknown; limit?: unknown };
+    const relayText=await response.text();recordDiscovery("nivora",Buffer.byteLength(relayText));
+    const payload = JSON.parse(relayText) as { ok?: unknown; lives?: unknown; itemCount?: unknown; limit?: unknown };
     if (payload.ok !== true || !Array.isArray(payload.lives)) throw new Error("rumble_category_relay_invalid");
     const lives = new Map<string, RumbleCategoryLive>();
     for (const raw of payload.lives as any[]) {
@@ -128,6 +105,7 @@ async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage
         videoId,
         videoIdNumeric: typeof raw?.videoIdNumeric === "string" ? raw.videoIdNumeric : null,
         viewersCount: Math.max(0, Math.round(Number(raw?.viewersCount) || 0)),
+        viewersKnown: raw?.viewersKnown === true || Number(raw?.viewersCount)>0,
         title: typeof raw?.title === "string" ? raw.title : null,
         thumbnailUrl: typeof raw?.thumbnailUrl === "string" ? raw.thumbnailUrl : null,
         videoUrl: typeof raw?.videoUrl === "string" ? raw.videoUrl : `https://rumble.com/${videoId}.html`,
@@ -166,7 +144,7 @@ export async function fetchRumbleGamblingCategoryLives(): Promise<RumbleCategory
           break;
         }
         for (const [username, live] of parsed.lives) lives.set(username, live);
-        if (parsed.itemCount < parsed.limit) {
+        if (parsed.hasMore === false || (parsed.hasMore == null && parsed.itemCount < parsed.limit)) {
           complete = true;
           break;
         }

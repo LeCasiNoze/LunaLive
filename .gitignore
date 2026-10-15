@@ -34,3 +34,6 @@ scripts/twitch_casino_scout_out.json
 scripts/twitch_casino_streamers.csv
 scripts/twitch_casino_board.html
 scripts/twitch_scout.log
+
+# Prepared observatory runtime (generated, no secrets)
+/api/.runtime/observatory-bundle/

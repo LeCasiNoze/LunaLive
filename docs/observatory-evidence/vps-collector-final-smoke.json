@@ -1,0 +1,27 @@
+{
+  "observedAt": "2026-10-15T14:41:45.710Z",
+  "elapsedSeconds": 65.536,
+  "categoryComplete": true,
+  "channels": 6,
+  "storedPseudonymousNewMessages": 10,
+  "latestPoint": [
+    1792075320000,
+    210,
+    null,
+    null,
+    null,
+    null,
+    0,
+    6,
+    null
+  ],
+  "categoryBodyBytes": 13249,
+  "sseBytes": 80299,
+  "snapshotRawBytes": 3893,
+  "snapshotGzipBytes": 753,
+  "sqliteBytes": 73728,
+  "rssMiB": 94.07421875,
+  "cpuMs": 765.709,
+  "dataDirectory": "/tmp/rumble-observatory-live-smoke-bzyvWG",
+  "note": "Real finite read-only Rumble observation. API ingestion intercepted locally; Render bytes are fixture bookkeeping. 15/60-minute metrics remain null during bootstrap. All probes stopped."
+}

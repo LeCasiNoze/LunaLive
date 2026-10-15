@@ -1,0 +1,36 @@
+[Unit]
+Description=Read-only Rumble observatory (Gambling & Slots)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+StateDirectory=rumble-observatory
+StateDirectoryMode=0700
+EnvironmentFile=/etc/rumble-observatory/secrets.env
+Environment=OBSERVATORY_CONFIG=/etc/rumble-observatory/config.json
+Environment=OBSERVATORY_DATA_DIR=/var/lib/rumble-observatory
+WorkingDirectory=/opt/rumble-observatory/api
+ExecStart=/usr/bin/flock --nonblock /var/lib/rumble-observatory/collector.lock /usr/bin/node scripts/observatory/collector.mjs
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=30
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=20%
+MemoryHigh=160M
+MemoryMax=256M
+TasksMax=32
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

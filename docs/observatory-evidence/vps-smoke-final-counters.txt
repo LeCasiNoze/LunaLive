@@ -1,0 +1,18 @@
+{
+  "costs": {
+    "day": "2026-10-15",
+    "rumbleBytes": 61791,
+    "renderBytes": 4566,
+    "nivoraBytes": 0,
+    "requests": 7,
+    "reconnects": 5,
+    "dbBytes": 329224,
+    "vpsDailyBudget": 209715200,
+    "apiDailyBudget": 20971520
+  },
+  "minuteRows": 14
+}
+UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+To show all installed unit files use 'systemctl list-unit-files'.
