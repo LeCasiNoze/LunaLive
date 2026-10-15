@@ -58,3 +58,7 @@ test('automatic source cannot arm from an offline OBS preview',async()=>{
  const r=runtime({autoStart:true,session:'live-123',obsStreaming:false});await flush();
  assert.equal(r.requests.length,0);
 });
+test('a recovered player hides its transient error panel instead of covering the live',async()=>{
+ const r=runtime();await flush();r.nodes.get('panel').hidden=false;
+ await r.timers[0]!();await flush();assert.equal(r.nodes.get('panel').hidden,true);
+});

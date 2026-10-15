@@ -10,7 +10,7 @@
  let armedSession=null;
  let disposed=false,ready=false,heartbeatBusy=false,pollBusy=false,pendingAck=null,cancelPlayback=()=>{};
  const consumerId=crypto.randomUUID();
- function explain(text,error=false){status.textContent=text;if(showControls||error)panel.hidden=false;}
+ function explain(text,error=false){status.textContent=text;panel.hidden=!(showControls||error);}
  async function post(action,body={}){
   const response=await fetch(`https://lunalive-api.onrender.com/me/nozecoins/soundboard/${action}`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({consumerId,...body}),signal:AbortSignal.timeout(10000),credentials:'omit',cache:'no-store'});
   const data=await response.json().catch(()=>({}));
