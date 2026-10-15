@@ -1,3 +1,6 @@
+import { fetchRumbleGamblingCategoryLives as observatoryDiscovery } from "./rumble.js";
+import { observatoryRouter } from "./observatory/router.js";
+import { pool as observatoryPool } from "./db.js";
 // api/src/app.ts
 import express from "express";
 import cors from "cors";
@@ -155,6 +158,7 @@ export function createApp() {
   app.use(cors());
 
   app.get("/healthz", (_req, res) => res.status(200).send("ok"));
+  app.use("/observatory", observatoryRouter(observatoryPool, process.env.OBSERVATORY_INGEST_TOKEN, observatoryDiscovery));
   app.use(express.json({ limit: "3mb" }));
 
   // HLS proxy enregistré en premier — avant tout middleware d'auth

@@ -1,3 +1,4 @@
+import { readPublicChat } from "./observatory/sse.js";
 import {rewardFollow} from './automod-shop/follows.js';
 import {observeCnz} from './automod-shop/account-benefits.js';
 import {dailyViewerGreeting} from './automod-shop/viewer-greeting.js';
@@ -284,66 +285,9 @@ export async function connectRumbleChatSse(
 
   (async () => {
     try {
-      const r = await fetch(`${RUMBLE_CHAT_HOST}/chat/api/chat/${encodeURIComponent(videoIdNumeric)}/stream`, {
-        method: "GET",
-        signal: ac.signal,
-        headers: {
-          // Le flux entrant est public. Ne pas le coupler a la session du bot,
-          // reservee aux POST, sinon une session expiree coupe tout le mirror.
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-          "accept": "text/event-stream",
-          "cache-control": "no-cache",
-          "origin": "https://rumble.com",
-          "referer": "https://rumble.com/",
-        },
-      });
-
-      if (!r.ok || !r.body) {
-        // 204 No Content = Rumble dit "ce vid n'a pas de chat actif"
-        // (live terminé, vid invalide, ou stream qui n'a jamais eu de chat).
-        // On signale différemment pour que le caller backoff au lieu de boucler.
-        const noChat = r.status === 204;
-        console.warn(`[rumble_chat] SSE connect http=${r.status}${noChat ? " (no chat available)" : ""}`);
-        notifyClose(noChat);
-        return;
-      }
-
-      console.log(`[rumble_chat] SSE connected for vid=${videoIdNumeric}`);
-
-      const reader = r.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buf = "";
-
-      // Parse SSE: les events sont séparés par "\n\n", chaque event a une ou plusieurs
-      // lignes "field: value". On s'intéresse à `data:` (concaténer si plusieurs).
-      while (!stopped) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        // Certains edge Rumble émettent du SSE en CRLF. Sans normalisation,
-        // la recherche de "\n\n" ne trouve jamais les séparateurs d'events.
-        buf = buf.replace(/\r\n/g, "\n");
-
-        let idx;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const block = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-          const dataLines: string[] = [];
-          for (const line of block.split("\n")) {
-            if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-            // event: name → on l'ignore, le `type` est dans le JSON
-          }
-          if (dataLines.length === 0) continue;
-          const json = dataLines.join("\n");
-          try {
-            const env = JSON.parse(json);
-            handleEnvelope(env);
-          } catch (e: any) {
-            console.warn("[rumble_chat] SSE parse error", e?.message || e, json.slice(0, 120));
-          }
-        }
-      }
+      await readPublicChat(videoIdNumeric, ac.signal, handleEnvelope, () => {});
     } catch (e: any) {
+      if(e?.message === "chat_http_204") notifyClose(true);
       if (e?.name !== "AbortError") {
         console.warn("[rumble_chat] SSE error", e?.message || e);
       }

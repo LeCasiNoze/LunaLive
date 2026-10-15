@@ -1,0 +1,17 @@
+{
+  "observedAt": "2026-10-15T13:34:21.257Z",
+  "elapsedSeconds": 0.189,
+  "categoryComplete": false,
+  "discoveredVideos": 0,
+  "error": "category_http_403",
+  "counts": {
+    "categoryBytes": 0,
+    "sseBytes": 0,
+    "categoryRequests": 1,
+    "sseRequests": 0
+  },
+  "sseSamples": [],
+  "rssMiB": 74.1171875,
+  "cpuMs": 178.926,
+  "note": "Finite public read-only sample. Initial history ignored, accounts not verified humans; not a 15/60-minute coverage measurement. Body bytes only, not provider billing."
+}

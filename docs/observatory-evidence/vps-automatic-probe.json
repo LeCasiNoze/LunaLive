@@ -1,0 +1,58 @@
+{
+  "observedAt": "2026-10-15T13:54:28.172Z",
+  "elapsedSeconds": 30.824,
+  "categoryComplete": true,
+  "discoveredVideos": 5,
+  "error": null,
+  "counts": {
+    "categoryBytes": 11402,
+    "sseBytes": 60694,
+    "categoryRequests": 1,
+    "sseRequests": 4
+  },
+  "sseSamples": [
+    {
+      "channel": "vitapvpey",
+      "viewers": 106,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 3,
+      "activeAccounts": 2,
+      "bytes": 17159,
+      "error": null
+    },
+    {
+      "channel": "Put4click",
+      "viewers": 75,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 16785,
+      "error": null
+    },
+    {
+      "channel": "CrashkillTV",
+      "viewers": 13,
+      "opened": true,
+      "initMessagesIgnored": 50,
+      "newMessages": 1,
+      "activeAccounts": 1,
+      "bytes": 17499,
+      "error": null
+    },
+    {
+      "channel": "SlinderPigCamz",
+      "viewers": 5,
+      "opened": true,
+      "initMessagesIgnored": 15,
+      "newMessages": 0,
+      "activeAccounts": 0,
+      "bytes": 9251,
+      "error": null
+    }
+  ],
+  "rssMiB": 82.296875,
+  "cpuMs": 549.193,
+  "note": "Finite public read-only sample. Initial history ignored, accounts not verified humans; not a 15/60-minute coverage measurement. Body bytes only, not provider billing."
+}
