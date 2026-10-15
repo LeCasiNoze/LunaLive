@@ -1,3 +1,4 @@
+import {generateHuntCalls,validateGeneration} from '../calls/random-hunt.js';
 // api/src/routes/calls_hunt.ts
 import express from "express";
 import { pool } from "../db.js";
@@ -222,6 +223,22 @@ callsHuntRouter.post("/:slug/hunt/save", async (req: AuthedReq, res) => {
     const id = await archiveCallsHunt(streamer, String(req.body?.title || "").slice(0, 160));
     return res.json({ ok: true, id });
   } catch (error) { console.error(error); return res.status(500).json({ ok: false, error: "server_error" }); }
+});
+
+callsHuntRouter.post("/:slug/hunt/generate", async (req:AuthedReq,res)=>{
+ try{
+  const slug=String(req.params.slug);const streamer=await getStreamerBySlug(slug);
+  if(!streamer)return res.status(404).json({ok:false,error:'streamer_not_found'});
+  if(!await canControlStreamer(streamer.id,streamer.ownerUserId,req.user))return res.status(403).json({ok:false,error:'forbidden'});
+  validateGeneration(req.body?.count,req.body?.requestId);
+  await ensureSession(streamer.id);
+  return res.json(await generateHuntCalls(pool,streamer.id,slug,req.body.count,req.body.requestId));
+ }catch(error){
+  const reason=String((error as Error).message);
+  const expected=['invalid_count','invalid_request','calls_disabled','hunt_not_farming','automod_active','queue_full','no_eligible_slots'];
+  if(expected.includes(reason))return res.status(400).json({ok:false,error:reason});
+  console.error(error);return res.status(500).json({ok:false,error:'server_error'});
+ }
 });
 
 callsHuntRouter.post("/:slug/hunt/add", async (req: AuthedReq, res) => {

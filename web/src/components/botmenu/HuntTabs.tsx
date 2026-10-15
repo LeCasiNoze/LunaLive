@@ -173,6 +173,11 @@ export function HuntTabs({
   const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
   const [showOpts, setShowOpts] = React.useState(false);
+  const [generateCount,setGenerateCount]=React.useState(10);
+  const [generateMessage,setGenerateMessage]=React.useState<string|null>(null);
+  const generationRequest=React.useRef<{slug:string,count:number,id:string}|null>(null);
+  const generationBusy=React.useRef(false);
+
 
   const [optsSection, setOptsSection] = React.useState<"options" | "bans">("options");
   const [bansTab, setBansTab] = React.useState<"slot" | "provider">("slot");
@@ -265,6 +270,24 @@ export function HuntTabs({
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j?.ok === false) throw new Error(j?.error || `HTTP ${r.status}`);
     return j as T;
+  }
+
+  async function doGenerateHunt(){
+    if(!canModerate||generationBusy.current)return;
+    generationBusy.current=true;setBusy(true);setErr(null);setGenerateMessage(null);
+    if(!generationRequest.current||generationRequest.current.slug!==streamerSlug||generationRequest.current.count!==generateCount)
+      generationRequest.current={slug:streamerSlug,count:generateCount,id:crypto.randomUUID()};
+    try{
+      const result=await apiJson<{added:number}>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/generate`,{
+        method:'POST',body:JSON.stringify({count:generateCount,requestId:generationRequest.current.id})});
+      generationRequest.current=null;
+      setGenerateMessage(`${result.added} machines ajoutées.`);
+      window.dispatchEvent(new Event(CALLS_QUEUE_CHANGED_EVT));
+      await load().catch(()=>{});
+    }catch(e:any){
+      const labels:Record<string,string>={hunt_not_farming:'Repasse en farm pour ajouter des machines.',automod_active:'Arrête l’AutoMod avant de générer un hunt personnel.',calls_disabled:'Active les calls pour générer un hunt.',no_eligible_slots:'Aucune nouvelle machine disponible avec tes bans.',queue_full:'La file contient déjà beaucoup de machines. Joue quelques calls avant d’en ajouter.'};
+      setErr(labels[String(e?.message)]||'Ajout non confirmé. Réessaie pour vérifier.');
+    }finally{generationBusy.current=false;setBusy(false);}
   }
 
   async function load() {
@@ -1288,6 +1311,21 @@ async function doPass() {
                 </div>
 
                 <div style={{ flex: "1 1 100%", height: 1, background: "rgba(255,255,255,0.08)" }} />
+
+                <div style={{width:'100%',padding:12,borderRadius:12,border:'1px solid rgba(124,77,255,0.3)'}}>
+                  <div style={{fontWeight:950,marginBottom:8}}>Générer un hunt</div>
+                  <div className="muted" style={{fontSize:12,marginBottom:10}}>Pragmatic · Hacksaw / Backseat · Nolimit · AvatarUX · BGaming · ELK</div>
+                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <label htmlFor="hunt-generate-count">Machines à ajouter</label>
+                    <select id="hunt-generate-count" value={generateCount} disabled={busy} onChange={e=>setGenerateCount(Number(e.target.value))}
+                      style={{padding:8,borderRadius:8,background:'#211a32',color:'inherit'}}>
+                      {[10,20,30].map(n=><option key={n} value={n}>{n}</option>)}
+                    </select>
+                    <SmallBtn disabled={busy||opening} onClick={doGenerateHunt}>Ajouter {generateCount} machines</SmallBtn>
+                  </div>
+                  <div className="muted" style={{fontSize:12,marginTop:8}}>Les calls viewers passent avant les machines aléatoires, après le call en cours.</div>
+                  {generateMessage?<div role="status" style={{marginTop:8}}>{generateMessage}</div>:null}
+                </div>
 
                 <SmallBtn
                   disabled={busy}

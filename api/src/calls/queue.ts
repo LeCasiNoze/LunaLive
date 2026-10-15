@@ -1,3 +1,4 @@
+import {viewerCallPosition} from './generated-order.js';
 // api/src/calls/queue.ts
 import {accountBenefits} from '../automod-shop/account-benefits.js';
 import type { Pool } from "pg";
@@ -450,7 +451,7 @@ export async function addCall(
         );
       }
     } else {
-      nextPos = maxPos + 1;
+      nextPos = opts?.automodRequestId ? maxPos + 1 : await viewerCallPosition(client,streamerId);
     }
 
     const ins = await client.query(
