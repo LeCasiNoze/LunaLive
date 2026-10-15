@@ -499,7 +499,7 @@ export async function handleCallsCommand(opts: {
 
   // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
   if (isDliveViewer && lim > 0 && actorUsername) {
-    const n = rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
+    const n = rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
     if (n >= lim) {
       await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
       return { handled: true, showOriginalInChat };
