@@ -13,7 +13,7 @@ export async function callProviderAdmission(pool: Pool, streamerId: number, prov
   const control = rows[0];
   const automod = automodRequest || control?.desired_enabled === true;
   if (!automod) return {automod:false,allowed:true};
-  const allowed = control.dashboard_settings?.allowedProviders ?? control.runtime_status?.config?.allowedProviders ?? ["hacksaw", "pragmatic"];
+  const allowed = control?.dashboard_settings?.allowedProviders ?? control?.runtime_status?.config?.allowedProviders ?? ["hacksaw", "pragmatic"];
   return {automod:true,allowed:automodProviderAllowed(provider, allowed)};
 }
 

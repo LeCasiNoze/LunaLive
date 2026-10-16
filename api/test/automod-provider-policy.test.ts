@@ -33,6 +33,11 @@ test('a generated Automod request retains its own provider policy outside a runn
  assert.deepEqual(await callProviderAdmission(db,1,'NetEnt',true),{automod:true,allowed:false});
  assert.deepEqual(await callProviderAdmission(db,1,'Pragmatic Play',true),{automod:true,allowed:true});
 });
+test('a generated request with no control row uses safe Automod defaults',async()=>{
+ const db:any={query:async()=>({rows:[]})};
+ assert.deepEqual(await callProviderAdmission(db,1,'Pragmatic Play',true),{automod:true,allowed:true});
+ assert.deepEqual(await callProviderAdmission(db,1,'NetEnt',true),{automod:true,allowed:false});
+});
 
 test('Automod admission never consults the conflicting personal provider allow-list',async()=>{
  const db:any={query:async(sql:string)=>{
