@@ -4,7 +4,7 @@ import {accountBenefits} from '../automod-shop/account-benefits.js';
 import type { Pool } from "pg";
 import { keyText, normText } from "./normalize.js";
 import { normalizeProvider } from "./provider_aliases.js";
-import { automodCallProviderAllowed } from "./automod_provider_policy.js";
+import { callProviderAdmission } from "./automod_provider_policy.js";
 import { huntSlotReserved } from './automod_hunt_reservations.js';
 import { excludedSlotName } from './excluded-slot.js';
 import {challengeSchema,challengeCallAllowedInTransaction} from '../automod-shop/provider-challenge.js';
@@ -342,13 +342,17 @@ export async function addCall(
 
   const settings = await getCallsSettings(pool, streamerId);
   if (!settings.enabled) return { ok: false, error: "calls_disabled" };
-  if (!(await automodCallProviderAllowed(pool, streamerId, providerRaw))) return { ok: false, error: "automod_provider_not_allowed" };
+  const providerAdmission = await callProviderAdmission(pool, streamerId, providerRaw, Boolean(opts?.automodRequestId));
+  if (!providerAdmission.allowed) return { ok: false, error: "automod_provider_not_allowed" };
 
   // bans / policy / limits
   if (await isUserBannedFromCalls(pool, streamerId, userId, username)) return { ok: false, error: "user_banned" };
   if (await isSlotBanned(pool, streamerId, slotKey)) return { ok: false, error: "slot_banned" };
   if (providerLower && (await isProviderBanned(pool, streamerId, providerLower))) return { ok: false, error: "provider_banned" };
-  if (!(await isProviderAllowedByPolicy(pool, streamerId, providerLower))) return { ok: false, error: "provider_not_allowed" };
+  // Session admission is exclusive: the personal policy must not veto an
+  // Automod family already accepted by the dashboard (including generated calls).
+  // Explicit slot/provider bans above remain common to both modes.
+  if (!providerAdmission.automod && !(await isProviderAllowedByPolicy(pool, streamerId, providerLower))) return { ok: false, error: "provider_not_allowed" };
 
   if (!opts?.bypassLimit) {
     const lim = typeof opts?.perUserLimit === "number" ? effectiveLimit(opts!.perUserLimit) : settings.perUserLimit;
