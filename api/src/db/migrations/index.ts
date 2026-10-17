@@ -1,3 +1,4 @@
+import {mig150_multichat_bridge} from "./mig150_multichat_bridge.js";
 import {mig149_external_accounts} from "./mig149_external_accounts.js";
 import { mig148_rumble_observatory } from "./mig148_rumble_observatory.js";
 import {mig147_random_hunt_calls} from './mig147_random_hunt_calls.js';
@@ -333,6 +334,7 @@ export async function migrateAll(pool: Pool) {
   await mig147_random_hunt_calls(pool);
   await mig148_rumble_observatory(pool);
   await mig149_external_accounts(pool);
+  await mig150_multichat_bridge(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);
