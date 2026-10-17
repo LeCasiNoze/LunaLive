@@ -75,6 +75,16 @@ test('HTTP 401 refreshes and retries once; successful message must have a provid
   const api=new PlatformApi('twitch',vault,{fetchImpl:async url=>{if(url.includes('/token'))return new Response(JSON.stringify({access_token:'new',refresh_token:'next',expires_in:3600,scope:value.scopes}));if(++sent===1)return new Response('{}',{status:401});return new Response(JSON.stringify({data:[{is_sent:true,message_id:'id-123'}]}));}});
   assert.equal(await api.send('Test technique'),'id-123');assert.equal(sent,2);assert.equal(vault.value.refreshToken,'next');
 });
+
+test('Kick subscription creation is confirmed through the list endpoint',async()=>{
+  const c={clientId:'fixture',clientSecret:'fixture',accessToken:'fixture',expiresAt:Date.now()+3600_000,channelId:'42'};
+  let listed=0,created=0;
+  const api=new PlatformApi('kick',{async get(){return c;}},{fetchImpl:async(_url,options)=>{
+    if(options.method==='POST'){created++;return new Response(JSON.stringify({data:[{name:'chat.message.sent',subscription_id:'fixture'}]}));}
+    return new Response(JSON.stringify({data:++listed===1?[]:[{event:'chat.message.sent',version:1,broadcaster_user_id:42}]}));
+  }});
+  await api.subscribeKick();assert.equal(created,1);assert.equal(listed,2);
+});
 test('relay waits for the central idempotent bridge before acknowledging synchronization',async()=>{
   const store=new Store(':memory:');store.receive('event-key',{platform:'twitch',channelId:'42',messageId:'msg',userId:'1',username:'Alice',text:'!discord'});
   let requests=0;const worker=new RelayWorker({store,apis:{},apiBase:'https://api.example',botKey:'fixture',fetchImpl:async()=>{requests++;return new Response(JSON.stringify({ok:true,replies:[{id:80,body:'Discord : https://discord.gg/test'}]}));}});

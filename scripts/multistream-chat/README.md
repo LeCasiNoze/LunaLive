@@ -36,3 +36,25 @@ Isolated VPS service connecting the official Kick webhook and Twitch EventSub We
 `node --test *.test.mjs` checks the relay, signatures, dedupe, OAuth states, token rotation and uncertain sends. API TypeScript tests cover real HTTP requests against injected fixtures, with no live queue or third-party side effects.
 
 Pause in the panel to stop both the database tail and outgoing messages. Systemd may remain running to preserve its private status/configuration UI. Video fan-out is a separate service and must not be confused with chat readiness.
+
+## OBS video controls
+
+`install-video.py` installs a private Unix-socket control service, without relaxing the chat service's `NoNewPrivileges` setting or granting it sudo. The root helper accepts only status, destination configuration, enable/disable, and start/stop of the existing manual publisher. Its socket is limited to `lunalive-worker` and also verifies the peer UID. Stream keys are stored in `/etc/lunalive-multistream/destinations.json` (root:automod, 0640; directory 0750), never returned by the panel.
+
+The manual publisher keeps its existing `publication_guard` lease and OBS ingest `rtmp://127.0.0.1:1936/manual/live`; the existing SSH tunnel remains necessary. Preparing OBS switches the persistent owner to manual only if the existing owner/output locks are free. An active Automod publisher is never interrupted. The panel reports the conflict instead. Stop the Automod publication with its usual controls before preparing OBS.
+
+The fan-out copies H.264/AAC through three independent FFmpeg outputs without encoding. Queues are bounded; a slow or failed destination reconnects independently. Each destination can be disabled immediately. Runtime status means bytes were fed to the destination process, not a guarantee that the platform shows a public live. This module controls the manual OBS publication only; it does not modify an already running Automod encoder.
+
+Deployment: transfer all top-level runtime files, both installers and both service units to `/home/ubuntu/multichat-stage`. With the manual OBS publisher stopped, run `sudo python3 /home/ubuntu/multichat-stage/install-video.py`, then `sudo python3 /home/ubuntu/multichat-stage/install-vps.py`. Restart `lunalive-multistream-admin` and `lunalive-multichat` after code updates. No public stream is started by either installer.
+
+Video tests: `python3 test_multistream.py` on Linux checks official ingest allowlists, safe owner switching, refusal while a publisher holds the lock, blocked-destination isolation, and three local FLV outputs preserving all 100 frames plus H.264/AAC and duration. These use synthetic media and temporary files only.
+
+## Verified deployment — 18 October 2026
+
+- API PR #43 merged at `59ee99a1a702468ccb7f911aa9ade2ecfc5ee6e1`, Render deploy `dep-dba08h3rjlhs73c5f85g` live. The additive migration and authenticated bridge respond successfully.
+- Both real accounts authorized, official subscriptions established. A Twitch `!ping` reached LunaLive, received its Twitch response and appeared on Kick. A Kick `!discord` reached LunaLive, and the shared Discord response appeared on Twitch.
+- Real refresh grants succeeded for both providers using the runtime user; the private credential files remained owned by `lunalive-worker` with mode 0600. The service restarted, reconnected, and retained its durable queues.
+- Twitch's official `bandwidthtest=true` mode accepted 360 synthetic frames over RTMPS, exit 0; the streams API confirmed no public stream. Kick's real public video ingest has not been tested publicly.
+- Kick/Twitch/Rumble manual destinations are configured and enabled for the next OBS session. The manual video service is stopped; the existing Automod publication still owns its lease and has been preserved.
+- BotRix already answers `!discord` on Kick with a different invitation. Avoid keeping two competing command responders when calibrating that channel.
+- Ordinary external viewer messages are not forwarded into Twitch by default. Neutral shared Discord invitations and replies to commands entered on Twitch are supported. No merged-chat overlay is introduced.

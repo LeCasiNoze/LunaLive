@@ -2,6 +2,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
+import {createConnection} from 'node:net';
 import {Store} from './store.mjs';
 import {Vault,PlatformApi,TwitchReceiver} from './platforms.mjs';
 import {RelayWorker} from './worker.mjs';
@@ -51,6 +52,18 @@ function reply(res,status,body,type='application/json; charset=utf-8'){
   res.end(typeof body==='string'?body:JSON.stringify(body));
 }
 async function rawBody(req,limit=64*1024){let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>limit)throw Error('body_too_large');chunks.push(chunk);}return Buffer.concat(chunks);}
+async function streamAdmin(action,body){
+  if(!['status','configure','control','start','stop'].includes(action))throw Error('invalid_stream_action');
+  return new Promise((resolve,reject)=>{
+    const socket=createConnection('/run/lunalive-multistream/admin.sock');
+    let output='',finished=false;
+    const timeout=setTimeout(()=>{socket.destroy();if(!finished){finished=true;reject(Error('stream_helper_timeout'));}},25_000);
+    socket.on('data',chunk=>{output+=chunk.toString();if(output.length>32_000)socket.destroy();});
+    socket.on('error',()=>{clearTimeout(timeout);if(!finished){finished=true;reject(Error('stream_helper_unavailable'));}});
+    socket.on('end',()=>{clearTimeout(timeout);if(finished)return;finished=true;try{const value=JSON.parse(output);if(value.ok!==true){reject(Error(value.error==='publication_busy'?'publication_busy':'stream_helper_failed'));return;}resolve(value);}catch{reject(Error('stream_helper_failed'));}});
+    socket.on('connect',()=>socket.end(JSON.stringify({...body,action})+'\n'));
+  });
+}
 const auth=req=>dashboardSessionValid(req.headers.cookie,secret);
 const server=createServer(async(req,res)=>{try{
   const url=new URL(req.url,origin),path=url.pathname,platform=path.split('/')[3];
@@ -79,6 +92,12 @@ const server=createServer(async(req,res)=>{try{
   if(!['GET','HEAD'].includes(req.method)&&req.headers.origin!==origin)return reply(res,403,{ok:false,error:'same_origin_required'});
   if(req.method==='GET'&&['/multichat','/multichat/'].includes(path))return reply(res,200,await readFile(new URL('./dashboard.html',import.meta.url),'utf8'),'text/html; charset=utf-8');
   if(req.method==='GET'&&path==='/multichat/dashboard.js')return reply(res,200,await readFile(new URL('./dashboard.js',import.meta.url),'utf8'),'text/javascript; charset=utf-8');
+  if(req.method==='GET'&&path==='/multichat/api/stream')return reply(res,200,await streamAdmin('status'));
+  if(req.method==='POST'&&path==='/multichat/api/stream'){
+    const body=JSON.parse(await rawBody(req,8000));
+    if(!['configure','control','start','stop'].includes(body.action))return reply(res,400,{ok:false,error:'invalid_stream_action'});
+    return reply(res,200,await streamAdmin(body.action,body));
+  }
   if(req.method==='GET'&&path==='/multichat/api/status'){
     const platforms={};for(const p of ['kick','twitch']){const c=await vault.get(p);platforms[p]={applicationConfigured:Boolean(c.clientId&&c.clientSecret),connected:Boolean(c.accessToken),login:c.login||null,channelId:c.channelId||null,expiresAt:c.expiresAt?new Date(c.expiresAt).toISOString():null,scopes:c.scopes||[],lastError:c.lastError||null};}
     return reply(res,200,{ok:true,enabled:store.get('enabled',false),platforms,runtime,queues:store.counts(),bridge:{mode:'shared_lunalive_api',endpoint:'/internal/bot/multichat/event',twitchExternalChat:false},recentEvents});
