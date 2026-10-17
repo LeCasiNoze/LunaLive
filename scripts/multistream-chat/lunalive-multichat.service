@@ -1,0 +1,33 @@
+[Unit]
+Description=LeCasiNoze Kick and Twitch authenticated chat relay
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=lunalive-worker
+Group=lunalive-worker
+WorkingDirectory=/opt/lunalive-multichat
+EnvironmentFile=/etc/lunalive-multichat.env
+Environment=NODE_ENV=production
+Environment=PORT=3140
+Environment=MULTICHAT_DATA=/opt/lunalive-multichat/data
+ExecStart=/usr/bin/node /opt/lunalive-multichat/server.mjs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/lunalive-multichat/data
+MemoryMax=256M
+CPUQuota=30%
+TasksMax=32
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

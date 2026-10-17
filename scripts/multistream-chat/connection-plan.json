@@ -1,0 +1,37 @@
+{
+  "status": "oauth_connected_pending_live_tests",
+  "streamerSlug": "lecasinoze",
+  "botDisplayName": "LunaLive_Bot",
+  "channels": {
+    "kick": {"url": "https://kick.com/lecasinoze", "login": "lecasinoze", "id": "24912362"},
+    "twitch": {"url": "https://www.twitch.tv/lecasinoze", "login": "lecasinoze", "id": "535777475"}
+  },
+  "botAccounts": {
+    "kick": {"login": "lunalive_bot", "id": null, "existenceConfirmed": false},
+    "twitch": {"login": "lunalive_bot", "id": null, "existenceConfirmed": false}
+  },
+  "temporarySender": {"approvedByOwner": true, "kick": "lecasinoze", "twitch": "lecasinoze"},
+  "oauthScopes": {
+    "kick": ["user:read", "channel:read", "chat:write", "events:subscribe"],
+    "twitch": ["user:read:chat", "user:write:chat"]
+  },
+  "rules": {
+    "allowedStreamer": "lecasinoze",
+    "callsQueue": "existing_lunalive_queue",
+    "commandReplies": "origin_channel",
+    "externalUserIdentity": "platform_plus_verified_user_id",
+    "automaticExternalModerationPrivileges": false,
+    "mergedExternalMessagesIntoTwitch": false,
+    "aggregateChatDashboard": "private_operator_view",
+    "commands": ["call", "discord"],
+    "durableInboxAndOutboundRetries": "required_before_live_enable"
+  },
+  "beforeConnection": [
+    "Verify or create the LunaLive_Bot accounts with the human owner.",
+    "Register the official OAuth applications and authorize the bot identities.",
+    "Resolve and validate the broadcaster and bot IDs from each official API.",
+    "Implement and verify the signed Kick webhook and Twitch EventSub receiver.",
+    "Connect the tested routing policy to the existing command handlers and reliable send queues.",
+    "Test in an isolated queue, then verify permitted public chat messages with the owner."
+  ]
+}
