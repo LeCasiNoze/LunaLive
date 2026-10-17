@@ -143,6 +143,8 @@ export function observatoryRouter(
         videoId: l.videoId,
         videoIdNumeric: l.videoIdNumeric,
         viewersCount: l.viewersKnown === true ? l.viewersCount : null,
+        title: typeof l.title === 'string' ? l.title.slice(0,160) : null,
+        followers: l.followersKnown === true ? l.followers : null,
         createdAt: l.createdAt,
       }));
       const raw = Buffer.from(
@@ -237,7 +239,7 @@ export function observatoryRouter(
           ? {
               ...current,
               channels: current.channels.map(
-                ({ history, daily, sessions, ...c }) => ({...c, diagnostics: publicDiagnostics(history)}),
+                ({ history, daily, sessions, metrics, recent, ...c }) => ({...c, diagnostics: publicDiagnostics(history)}),
               ),
               costs: { ...current.costs, apiDailyBudget: budget },
             }

@@ -9,6 +9,7 @@ export type CategoryLive = {
   videoUrl: string;
   profileUrl: string;
   followers: number;
+  followersKnown?: boolean;
   createdAt: string | null;
 };
 export type CategoryPage = {
@@ -82,7 +83,8 @@ function normalizeCategoryItems(items: any[], limit: number): CategoryPage {
         /^\d+$/.test(item.watching_now))
         ? Number(item.watching_now)
         : NaN;
-    const followers = Number(item?.by?.followers);
+    const rawFollowers = item?.by?.followers;
+    const followers = (typeof rawFollowers === 'number' || (typeof rawFollowers === 'string' && /^\d+$/.test(rawFollowers))) ? Number(rawFollowers) : NaN;
     lives.set(username.toLowerCase(), {
       username,
       videoId,
@@ -106,6 +108,7 @@ function normalizeCategoryItems(items: any[], limit: number): CategoryPage {
       followers: Number.isFinite(followers)
         ? Math.max(0, Math.round(followers))
         : 0,
+      followersKnown: Number.isSafeInteger(followers) && followers >= 0,
       createdAt:
         typeof item?.live_streamed_on === "string"
           ? item.live_streamed_on

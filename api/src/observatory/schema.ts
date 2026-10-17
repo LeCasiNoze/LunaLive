@@ -14,6 +14,8 @@ export const pointSchema = z.tuple([
   nullable,
 ]);
 const history = z.array(pointSchema).max(744);
+const followerSample = z.object({at:stamp,total:count}).strict();
+const periodMetric = z.object({since:stamp,until:stamp,retentionLimited:z.boolean(),uniqueChatters:nullable,messages:nullable,conversation:nullable,followersFirst:followerSample.nullable(),followersLast:followerSample.nullable()}).strict();
 const cohort = z
   .object({
     firstObserved: count,
@@ -54,6 +56,11 @@ export const snapshotSchema = z
             lastSeen: stamp,
             sourceStart: z.string().datetime({ offset: true }).nullable(),
             latest: pointSchema,
+            recent: z.array(pointSchema).max(36).optional(),
+            title: z.string().max(160).nullable().optional(),
+            followers: nullable.optional(),
+            growth: z.object({since:stamp,until:stamp,delta:z.number().int().min(-1e9).max(1e9)}).strict().nullable().optional(),
+            metrics: z.object({day:periodMetric,week:periodMetric,month:periodMetric}).strict().optional(),
             history,
             daily: history,
             sessions: z
@@ -61,6 +68,7 @@ export const snapshotSchema = z
                 z
                   .object({
                     video: z.string().regex(/^v[a-z0-9]{5,20}$/),
+                    title: z.string().max(160).nullable().optional(),
                     first: stamp,
                     last: stamp,
                     minuteSamples: count,
@@ -115,7 +123,7 @@ export const snapshotSchema = z
       s.series.fr,
       s.daily.all,
       s.daily.fr,
-      ...s.channels.flatMap((c) => [c.history, c.daily, [c.latest]]),
+      ...s.channels.flatMap((c) => [c.history, c.daily, c.recent ?? [], [c.latest]]),
     ]) {
       let last = 0;
       for (const p of series) {
