@@ -1,4 +1,4 @@
-import {readFile, writeFile, rename, mkdir, chmod} from 'node:fs/promises';
+import {readFile, writeFile, rename, mkdir, chmod, stat, chown} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
 import {normalizeTwitchEvent, twitchReconnectUrl, twitchReplyAllowed} from './security.mjs';
@@ -26,7 +26,10 @@ export class Vault {
     if (!Object.hasOwn(SPECS,platform)) throw Error('unsupported_platform');
     await mkdir(this.directory,{recursive:true,mode:0o700});
     const path=join(this.directory,platform+'.json'),tmp=path+'.tmp';
-    await writeFile(tmp,JSON.stringify(value),{mode:0o600}); await chmod(tmp,0o600); await rename(tmp,path);
+    const owner=await stat(path).catch(error=>{if(error.code==='ENOENT')return stat(this.directory);throw error;});
+    await writeFile(tmp,JSON.stringify(value),{mode:0o600}); await chmod(tmp,0o600);
+    if(process.getuid?.()===0)await chown(tmp,owner.uid,owner.gid);
+    await rename(tmp,path);
   }
 }
 
@@ -120,8 +123,11 @@ export class PlatformApi {
   async subscribeKick() {
     const credential=await this.credential(), existing=await this.request('/events/subscriptions');
     if(existing.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event==='chat.message.sent'&&Number(item.version)===1))return;
-    const result=await this.request('/events/subscriptions',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(credential.channelId),events:[{name:'chat.message.sent',version:1}],method:'webhook'})});
-    if(!result.data?.some(item=>item.event==='chat.message.sent'&&!item.error))throw new ApiError('kick_subscription_not_confirmed');
+    await this.request('/events/subscriptions',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(credential.channelId),events:[{name:'chat.message.sent',version:1}],method:'webhook'})});
+    // Kick's create response differs from its list representation. Confirm the
+    // durable subscription through GET instead of reporting a false failure.
+    const confirmed=await this.request('/events/subscriptions');
+    if(!confirmed.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event==='chat.message.sent'&&Number(item.version)===1))throw new ApiError('kick_subscription_not_confirmed');
   }
   async send(text) {
     const credential=await this.credential();
