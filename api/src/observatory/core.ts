@@ -33,6 +33,8 @@ export type Channel = {
   video: string;
   numeric: string | null;
   viewers: number | null;
+  title: string | null;
+  followers: number | null;
   seen: number;
   first: number;
   sourceStart: string | null;
@@ -101,6 +103,8 @@ export class Activity {
         video: l.videoId,
         numeric: l.videoIdNumeric,
         viewers: l.viewersCount,
+        title: typeof l.title === 'string' ? l.title.slice(0,160) : null,
+        followers: typeof l.followers === 'number' && Number.isSafeInteger(l.followers) && l.followers >= 0 ? l.followers : null,
         seen: now,
         first: same ? old!.first : now,
         sourceStart: l.createdAt,

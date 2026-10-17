@@ -32,6 +32,8 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
               videoId: "v123abc",
               videoIdNumeric: "123456",
               viewersCount: 50,
+              title: "Observed stream title",
+              followers: 12,
               createdAt: null,
             },
           ],
@@ -104,6 +106,11 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
       /collector_already_running/,
     );
     assert.equal(snapshot.channels.length, 1);
+    assert.equal(snapshot.channels[0].title, "Observed stream title");
+    assert.equal(snapshot.channels[0].sessions[0].title, "Observed stream title");
+    assert.equal(snapshot.channels[0].metrics.day.followersLast.total, 12);
+    assert.equal(snapshot.channels[0].growth, null);
+    assert.equal(snapshot.channels[0].metrics.day.uniqueChatters, null);
     assert.equal(snapshot.latest.fr[2], null);
     assert.ok(snapshot.startedAt >= t);
     assert.equal(requests.filter((r) => r.method === "POST").length, 1);

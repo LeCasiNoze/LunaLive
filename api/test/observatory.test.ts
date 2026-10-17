@@ -74,7 +74,7 @@ test("shared category parser preserves missing vs true zero and canonical slugs"
           id: 456,
           permalink_id: "v456abc",
           watching_now: 0,
-          by: { relative_url: "/user/Beta" },
+          by: { relative_url: "/user/Beta", followers: 0 },
         },
       ],
     }) +
@@ -82,6 +82,9 @@ test("shared category parser preserves missing vs true zero and canonical slugs"
   const p = parseRumbleCategoryLives(html);
   assert.equal(p.lives.get("alpha")?.viewersCount, null);
   assert.equal(p.lives.get("beta")?.viewersCount, 0);
+  assert.equal(p.lives.get("alpha")?.followersKnown, false);
+  assert.equal(p.lives.get("beta")?.followersKnown, true);
+  assert.equal(p.lives.get("beta")?.followers, 0);
   assert.equal(p.itemCount, 2);
   assert.throws(() => parseRumbleCategoryLives("403"));
 });

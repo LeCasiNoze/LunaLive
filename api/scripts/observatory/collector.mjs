@@ -14,6 +14,7 @@ import {
   firstObservedReport,
 } from "../../dist/observatory/core.js";
 import { snapshotSchema } from "../../dist/observatory/schema.js";
+import { dashboardMetrics } from './dashboard-metrics.mjs';
 
 export async function runCollector(env = process.env) {
   const dir = resolve(
@@ -84,6 +85,8 @@ export async function runCollector(env = process.env) {
     .prepare("PRAGMA table_info(sessions)")
     .all()
     .map((c) => c.name);
+  if (!sessionColumns.includes('title')) db.exec('ALTER TABLE sessions ADD COLUMN title TEXT');
+  db.exec('CREATE TABLE IF NOT EXISTS followers(channel TEXT NOT NULL,t INTEGER NOT NULL,total INTEGER NOT NULL,PRIMARY KEY(channel,t))');
   if (!sessionColumns.includes("minuteSamples"))
     db.exec(
       "ALTER TABLE sessions ADD COLUMN minuteSamples INTEGER NOT NULL DEFAULT 0",
@@ -466,7 +469,7 @@ export async function runCollector(env = process.env) {
           (t - 366 * 24 * HOUR) +
           "; DELETE FROM sessions WHERE last<" +
           (t - 31 * 24 * HOUR) +
-          "; DELETE FROM channels WHERE slug NOT IN (SELECT channel FROM sessions); PRAGMA wal_checkpoint(PASSIVE); PRAGMA incremental_vacuum(128);",
+          "; DELETE FROM followers WHERE t<" + (t-31*24*HOUR) + "; DELETE FROM channels WHERE slug NOT IN (SELECT channel FROM sessions); PRAGMA wal_checkpoint(PASSIVE); PRAGMA incremental_vacuum(128);",
       );
       if (t % HOUR === 0) db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
       costs.dbBytes =
@@ -499,6 +502,8 @@ export async function runCollector(env = process.env) {
           lastSeen: c.seen,
           sourceStart: validDate(c.sourceStart),
           latest: p,
+          title: c.title,
+          followers: c.followers,
         };
         db.prepare(
           "INSERT INTO channels VALUES(?,?) ON CONFLICT(slug) DO UPDATE SET metadata=excluded.metadata",
@@ -515,6 +520,12 @@ export async function runCollector(env = process.env) {
           p[6] >= 0.9 ? 1 : 0,
           t,
         );
+        if (c.title != null) db.prepare('UPDATE sessions SET title=? WHERE channel=? AND video=?').run(c.title,c.slug,c.video);
+        if (c.followers != null) {
+          // Keep the first actual observation in each hour. The timestamp is not rounded.
+          const prior = db.prepare('SELECT t FROM followers WHERE channel=? ORDER BY t DESC LIMIT 1').get(c.slug);
+          if (!prior || Math.floor(prior.t/HOUR)<Math.floor(t/HOUR)) db.prepare('INSERT OR IGNORE INTO followers VALUES(?,?,?)').run(c.slug,c.seen,c.followers);
+        }
       }
       writePoint("points", "@all", activity.point(t));
       writePoint("points", "@fr", activity.point(t, undefined, "fr"));
@@ -644,11 +655,13 @@ export async function runCollector(env = process.env) {
         // A channel's last known value is visibly stale; it is not declared offline.
         channels.push({
           ...metadata,
+          ...dashboardMetrics(db,row.slug,now,started),
+          recent: series('points',row.slug,now-3*HOUR).filter(p=>p[0]%(5*MINUTE)===0).slice(-36),
           history: series("hourly", row.slug, now - 72 * HOUR),
           daily: series("daily", row.slug, now - 30 * 24 * HOUR),
           sessions: db
             .prepare(
-              "SELECT video,first,last,sourceStart,mode,minuteSamples,coveredSamples FROM sessions WHERE channel=? ORDER BY first DESC LIMIT 100",
+              "SELECT video,title,first,last,sourceStart,mode,minuteSamples,coveredSamples FROM sessions WHERE channel=? ORDER BY first DESC LIMIT 100",
             )
             .all(row.slug)
             .reverse()
@@ -707,6 +720,9 @@ export async function runCollector(env = process.env) {
         costs,
       };
       snapshotSchema.parse(snapshot);
+      // Recent detail is optional: protect the existing hard ingestion budget first.
+      if (Buffer.byteLength(JSON.stringify(snapshot)) > 524288 || gzipSync(JSON.stringify(snapshot)).length > 65536)
+        for (const channel of snapshot.channels) delete channel.recent;
       const body = Buffer.from(JSON.stringify(snapshot));
       if (body.length > 524288) throw new Error("aggregate_size_cap");
       const compressed = gzipSync(body);
