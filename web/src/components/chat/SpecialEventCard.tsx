@@ -71,6 +71,7 @@ export default function SpecialEventCard(props: {
   onFollowChannel: (slug: string, asFollowEvent?: boolean) => void;
   onSubscribe: () => void;
   onBossPage: () => void;
+  readOnly?: boolean;
 }): React.JSX.Element {
   const { type, data } = props;
   const [ggClicked, setGgClicked] = React.useState(false);
@@ -280,7 +281,7 @@ export default function SpecialEventCard(props: {
         </div>
         {value ? <div className="lle-ev__value">{value}</div> : null}
       </div>
-      <div className="lle-ev__actions">{actions}</div>
+      {!props.readOnly && <div className="lle-ev__actions">{actions}</div>}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import ChatEventLine from "./chat/ChatEventLine";
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -2684,38 +2685,7 @@ function openChatPopup() {
           {(() => {
             return messages.map((m) => {
             // Ligne récap centrée (fin de rain, résultat prédiction, combo terminé…)
-            if ((m.type as any) === "recap") {
-              return (
-                <div
-                  key={m.id}
-                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
-                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{
-                    alignSelf: "center", fontSize: 11.5, fontWeight: 700,
-                    color: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)", padding: "5px 12px", borderRadius: 999,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: String(m.data?.html || "") }}
-                />
-              );
-            }
-
-            // Message système (participation actionnable : "X a récupéré…")
-            if ((m.type as any) === "sys") {
-              return (
-                <div
-                  key={m.id}
-                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
-                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{
-                    alignSelf: "stretch", fontSize: 11.5, fontWeight: 600,
-                    color: "rgba(180,170,220,0.82)", background: "rgba(124,92,252,0.07)",
-                    border: "1px solid rgba(124,92,252,0.14)", padding: "5px 12px", borderRadius: 9,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: `<span style="opacity:.6">🔔</span> ${String(m.data?.html || "")}` }}
-                />
-              );
-            }
+            if(m.type==='sys'||m.type==='recap')return <div key={m.id} className={animatedMsgIdsRef.current.has(m.id)?`chat-enter ${CHAT_ENTER_ANIM}`:undefined} onAnimationEnd={()=>animatedMsgIdsRef.current.delete(m.id)} style={{alignSelf:m.type==='recap'?'center':'stretch'}}><ChatEventLine kind={m.type} html={String(m.data?.html||'')}/></div>;
 
             // Carte actionnable (rain / roue / prédiction / coffre) — pilotée
             // par le moteur v2, synchronisée avec le chip épinglé.

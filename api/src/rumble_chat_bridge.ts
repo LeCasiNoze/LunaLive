@@ -1,3 +1,4 @@
+import {handleExternalCommunityChat,observeExternalAccount} from "./community/external-chat.js";
 import { readPublicChat } from "./observatory/sse.js";
 import {rewardFollow} from './automod-shop/follows.js';
 import {observeCnz} from './automod-shop/account-benefits.js';
@@ -433,6 +434,15 @@ export function ensureRumbleBridge(opts: {
       if(greeting)for(const chunk of shopReplyChunks(greeting))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);
     }).catch(()=>{});
 
+    const externalMessage={provider:'rumble' as const,externalId:m.userId,streamerId:opts.streamerId,slug:opts.slug,username:m.username,text:m.text,createdAt:m.createdAt};
+    try{
+      const communityReply=await handleExternalCommunityChat(opts.pool,opts.io,externalMessage);
+      if(communityReply){for(const chunk of shopReplyChunks(communityReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
+    }catch(error){
+      console.warn('[community-chat]',opts.slug,(error as any)?.code||'unavailable');
+      if(/^!(?:rain\s*$|lier\s+LL-)/i.test(m.text.trim())){await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',`@${m.username} — Service indisponible. Réessaie dans un instant.`);return;}
+    }
+    void observeExternalAccount(opts.pool,externalMessage).catch(()=>{});
     if(opts.slug==='lecasinoze'){
       await observeCoinName(opts.pool,opts.streamerId,m.userId,m.username,m.createdAt);
       const coinReply=await handleCoinsChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,text:m.text,createdAt:m.createdAt});

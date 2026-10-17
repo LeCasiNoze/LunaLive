@@ -1,3 +1,5 @@
+import {assertDiscordBinding} from "../../community/discord-binding.js";
+import {discordIdentityBindingsSql} from '../../community/external-accounts.js';
 // api/src/routes/bot/me_discord_link.ts
 import { Router } from "express";
 import crypto from "crypto";
@@ -31,9 +33,19 @@ meDiscordLinkRouter.get("/me/discord-link", requireAuth, async (req, res) => {
 
   const r = await pool.query(
     `
-    SELECT discord_user_id, linked_at, updated_at, last_sync_at
+    SELECT discord_user_id, linked_at, updated_at, last_sync_at, FALSE AS oauth, FALSE AS inherited
     FROM discord_links
     WHERE user_id = $1
+    UNION ALL
+    SELECT provider_user_id, NULL::timestamptz, NULL::timestamptz, NULL::timestamptz, TRUE, FALSE
+    FROM user_oauth_identities WHERE user_id=$1 AND provider='discord'
+      AND NOT EXISTS(SELECT 1 FROM discord_links WHERE user_id=$1)
+    UNION ALL
+    SELECT DISTINCT r.discord_user_id,NULL::timestamptz,NULL::timestamptz,NULL::timestamptz,FALSE,TRUE
+    FROM automod_discord_links r JOIN external_account_links e ON e.provider='rumble' AND e.external_id=r.rumble_user_id
+    WHERE e.user_id=$1 AND NOT EXISTS(SELECT 1 FROM discord_links WHERE user_id=$1)
+      AND NOT EXISTS(SELECT 1 FROM user_oauth_identities WHERE provider='discord' AND user_id=$1)
+      AND NOT EXISTS(SELECT 1 FROM (${discordIdentityBindingsSql}) b WHERE b.discord_user_id=r.discord_user_id AND b.user_id<>$1)
     LIMIT 1
     `,
     [userId]
@@ -49,6 +61,8 @@ meDiscordLinkRouter.get("/me/discord-link", requireAuth, async (req, res) => {
           linkedAt: row.linked_at,
           updatedAt: row.updated_at,
           lastSyncAt: row.last_sync_at ?? null,
+          oauth: !!row.oauth,
+          inherited: !!row.inherited,
         }
       : null,
   });
@@ -87,6 +101,7 @@ meDiscordLinkRouter.post("/me/discord-link/consume", requireAuth, async (req, re
     }
 
     const discordUserId = String(row.discord_user_id);
+    await assertDiscordBinding(client,discordUserId,userId);
 
     // one-to-one : on nettoie avant d'insérer
     await client.query(`DELETE FROM discord_links WHERE user_id = $1`, [userId]);
@@ -114,6 +129,7 @@ meDiscordLinkRouter.post("/me/discord-link/consume", requireAuth, async (req, re
     try {
       await client.query("ROLLBACK");
     } catch {}
+    if(e?.message==='identity_conflict')return res.status(409).json({ok:false,error:'identity_conflict'});
     return res.status(500).json({ ok: false, error: e?.message || "server_error" });
   } finally {
     client.release();
@@ -124,7 +140,7 @@ meDiscordLinkRouter.post("/me/discord-link/consume", requireAuth, async (req, re
 meDiscordLinkRouter.post("/me/discord-link/sync", requireAuth, async (_req, res) => {
   const userId = Number((_req as any).user!.id);
 
-  const r = await pool.query(`SELECT discord_user_id FROM discord_links WHERE user_id = $1 LIMIT 1`, [userId]);
+  const r = await pool.query(`SELECT discord_user_id FROM (${discordIdentityBindingsSql}) bindings WHERE user_id=$1 LIMIT 1`,[userId]);
   const row = r.rows?.[0];
   if (!row) return res.status(404).json({ ok: false, error: "not_linked" });
 

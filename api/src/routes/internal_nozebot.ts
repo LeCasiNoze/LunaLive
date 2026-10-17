@@ -1,10 +1,11 @@
+import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
 import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
 import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
 import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { pool } from "../db.js";
-import { createLinkCode, getLinkedUser } from "../discord/link.js";
+import { getLinkedUser } from "../discord/link.js";
 import { getDiscordClaimMultiplier, getLevelInfo, awardXpTx } from "../economy/xp.js";
 import { earnRubisTx } from "../wallet_engine.js";
 import { discordDailyClaimTxClient } from "./bot/games_claim.js";
@@ -112,29 +113,7 @@ internalNozeBotRouter.post("/internal/bot/nozebot/link", requireNozeBot, a(async
   const identity = readIdentity(req, res);
   if (!identity) return;
 
-  const linked = await getLinkedUser(identity.discordUserId);
-  if (linked) {
-    res.json({
-      ok: true,
-      linked: true,
-      user: {
-        id: Number(linked.id),
-        username: String(linked.username),
-        role: String(linked.role || "viewer"),
-      },
-    });
-    return;
-  }
-
-  const link = await createLinkCode(identity.discordUserId, {
-    log: (message) => console.log(`[nozebot-link] ${message}`),
-  });
-  res.json({
-    ok: true,
-    linked: false,
-    code: link.code,
-    expiresAt: link.expiresAt.toISOString(),
-  });
+  res.json(await prepareDiscordConnections(identity.discordUserId));
 }));
 
 internalNozeBotRouter.post("/internal/bot/nozebot/profile", requireNozeBot, a(async (req, res) => {

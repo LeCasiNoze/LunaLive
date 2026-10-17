@@ -1,3 +1,4 @@
+import ChatEventLine from "../components/chat/ChatEventLine";
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { io } from "socket.io-client";
@@ -7,6 +8,9 @@ import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
 import { useScreenViewer } from "./fsb/StreamControlPage";
 import { ChatMessageBubble, type ChatMsgLike } from "../components/chat/ChatMessageBubble";
 import { DEFAULT_APPEARANCE, normalizeAppearance, type StreamerAppearance } from "../lib/appearance";
+import SpecialEventCard, {type SpecialEventType} from '../components/chat/SpecialEventCard';
+import {useActionableEngine,ActionableChatCard,WheelOverlay,type ActKind} from '../components/chat/ActionableEvents';
+import {normalizeOverlayMessage,mergeOverlayMessages,recoverOverlayHistory,ACTIONABLE_TYPES,CELEBRATION_TYPES,type OverlayMessage} from '../components/chat/overlayMessages';
 
 const LUNA_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)
   ?? "https://lunalive-api.onrender.com";
@@ -742,7 +746,7 @@ export function NativeOverlayChat({
   msgBgOpacity?: number;
   borderRadius?: number;
 }) {
-  const [messages, setMessages] = React.useState<ChatMsgLike[]>(() => previewMessage ? [{
+  const [messages, setMessages] = React.useState<OverlayMessage[]>(() => previewMessage ? [{
     id: "preview-initial",
     userId: 0,
     username: "Apercu",
@@ -755,6 +759,11 @@ export function NativeOverlayChat({
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_APPEARANCE);
   const cosmeticsCache = React.useRef<Record<string, any>>({});
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const eventEngine=useActionableEngine({me:'',poolNames:[],simulate:false,emitSystem:()=>{},emitRecap:()=>{},
+    addChatCard:actId=>setMessages(previous=>mergeOverlayMessages(previous,[{id:`overlay-${actId}`,userId:0,username:'LunaLive',body:'',createdAt:new Date().toISOString(),type:'act',data:{actId}}],maxMessages))});
+  const engineRef=React.useRef(eventEngine);engineRef.current=eventEngine;
+  const roomRef=React.useRef(`${slug}|${socketBase}`);
+  React.useEffect(()=>{const key=`${slug}|${socketBase}`;if(roomRef.current!==key){roomRef.current=key;setMessages([]);cosmeticsCache.current={};engineRef.current.reset();}},[slug,socketBase]);
 
   // Charger l'apparence publique du streamer
   React.useEffect(() => {
@@ -803,56 +812,55 @@ export function NativeOverlayChat({
       transports: ["websocket", "polling"],
       withCredentials: false,
     });
+    let disposed=false;
+    let historyController:AbortController|null=null;
+    let rainController:AbortController|null=null;
+    const rainUpdates=new Map<string,{count?:number;resolved?:boolean}>();
+    let deletedDuringHistory=new Set<string>();
+    const recoverHistory=async()=>{
+      historyController?.abort();const controller=new AbortController();historyController=controller;deletedDuringHistory=new Set();
+      const timer=setTimeout(()=>controller.abort(),8000);
+      try{const response=await fetch(`${socketBase}/chat/${encodeURIComponent(slug)}/messages?limit=${Math.min(50,maxMessages)}`,{signal:controller.signal,cache:'no-store'});
+        if(!response.ok)return;const result=await response.json();if(disposed||controller.signal.aborted||!Array.isArray(result.messages))return;
+        const parsed=result.messages.map((message:any)=>normalizeOverlayMessage(message,slug)).filter((message:OverlayMessage|null):message is OverlayMessage=>!!message&&!ACTIONABLE_TYPES.has(message.type??''));
+        const deleted=new Set(deletedDuringHistory);setMessages(current=>recoverOverlayHistory(parsed,current,deleted,maxMessages));
+      }catch{}finally{clearTimeout(timer);if(historyController===controller)historyController=null;}
+    };
+    const recoverRain=async()=>{
+      rainController?.abort();const controller=new AbortController();rainController=controller;
+      const timer=setTimeout(()=>controller.abort(),8000);
+      try{const response=await fetch(`${socketBase}/chat/${encodeURIComponent(slug)}/rain`,{signal:controller.signal,cache:'no-store'});
+        if(!response.ok)return;const state=await response.json();if(disposed||controller.signal.aborted||!state.rain)return;
+        const update=rainUpdates.get(String(state.rain.round));if(update?.resolved)return;
+        engineRef.current.open('rain',state.rain);engineRef.current.patchByRound('rain',state.rain.round,{serverCount:Math.max(Number(state.rain.count??0),Number(update?.count??0))});
+      }catch{}finally{clearTimeout(timer);if(rainController===controller)rainController=null;}
+    };
 
-    const normalizeMsg = (p: any): ChatMsgLike | null => {
-      const payload = p?.msg ?? p?.message ?? p;
-      if (!payload) return null;
-      const username = payload.username ?? payload.user?.username ?? payload.user?.displayName ?? payload.user?.name ?? "user";
-      const body = payload.body ?? payload.text ?? payload.message ?? payload.content ?? "";
-      const createdAt = payload.createdAt ?? payload.created_at ?? payload.ts ?? new Date().toISOString();
-      const avatarUrl = payload.avatarUrl ?? payload.avatar_url ?? payload.user?.avatarUrl ?? payload.user?.avatar_url ?? null;
-      const userId = Number(payload.userId ?? payload.user_id ?? payload.user?.id ?? 0) || 0;
-      const id = payload.id ?? payload.messageId ?? `${createdAt}-${userId}-${username}`;
-      const cosmetics = payload.cosmetics ?? payload.user?.cosmetics ?? null;
-      const role = payload.role ?? payload.user?.role ?? null;
-      const isBot = !!(payload.isBot ?? payload.user?.isBot ?? (String(username).toLowerCase() === "lunabot"));
-
-      const out = {
-        id,
-        userId,
-        username: String(username),
-        body: String(body),
-        createdAt: String(createdAt),
-        avatarUrl: avatarUrl ? String(avatarUrl) : null,
-        cosmetics: cosmetics || null,
-        role,
-        isBot,
-        rumble: !!payload.rumble,
-        rumbleLinked: !!payload.rumbleLinked,
-      } as unknown as ChatMsgLike;
-
-      const key = String(username).toLowerCase();
-      if (out.cosmetics) cosmeticsCache.current[key] = out.cosmetics;
-      else if (cosmeticsCache.current[key]) out.cosmetics = cosmeticsCache.current[key];
-
-      return out;
+    const normalizeMsg = (p: any): OverlayMessage | null => {
+      const normalized=normalizeOverlayMessage(p,slug);
+      if(!normalized)return null;
+      const cacheKey=normalized.username.toLowerCase();
+      if(normalized.cosmetics)cosmeticsCache.current[cacheKey]=normalized.cosmetics;
+      else if(cosmeticsCache.current[cacheKey])normalized.cosmetics=cosmeticsCache.current[cacheKey];
+      return normalized;
     };
 
     const handleIncoming = (payload: any) => {
       if (Array.isArray(payload)) {
-        const parsed = payload.map(normalizeMsg).filter(Boolean) as ChatMsgLike[];
-        setMessages((prev) => [...prev, ...parsed].slice(-maxMessages));
+        payload.forEach(handleIncoming);
         return;
       }
+      if(Array.isArray(payload?.messages)){payload.messages.forEach(handleIncoming);return;}
       const n = normalizeMsg(payload);
       if (!n) return;
+      if(n.type&&ACTIONABLE_TYPES.has(n.type)){
+        engineRef.current.open(n.type as ActKind,{...n.data,real:true,createdAt:n.createdAt,messageId:n.id});return;
+      }
       const evSlug = String(payload?.slug ?? payload?.streamerSlug ?? payload?.channelSlug ?? "").trim().toLowerCase();
       if (evSlug && evSlug !== slug.toLowerCase()) return;
 
       setMessages((prev) => {
-        const next = [...prev, n];
-        if (next.length > maxMessages) return next.slice(-maxMessages);
-        return next;
+        return mergeOverlayMessages(prev,[n],maxMessages);
       });
     };
 
@@ -861,6 +869,8 @@ export function NativeOverlayChat({
       try {
         sock.emit("chat:join", { slug, mode: "popup" }, (ack: any) => {
           if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
+          if(ack?.ok)void recoverRain();
+          if(ack?.ok)void recoverHistory();
         });
       } catch {}
     });
@@ -871,17 +881,33 @@ export function NativeOverlayChat({
 
     sock.on("chat:cleared", () => {
       setMessages([]);
+      engineRef.current.reset();
+      historyController?.abort();
+      rainController?.abort();rainUpdates.clear();
     });
 
     sock.on("chat:message_deleted", (payload: any) => {
       const id = payload?.id;
-      if (id) setMessages((prev) => prev.filter((m) => m.id !== id));
+      if(id!=null)deletedDuringHistory.add(String(id));
+      if (id!=null) setMessages((prev) => prev.filter((m) => String(m.id) !== String(id)));
+    });
+    for(const kind of ['rain','wheel','chest','predict'] as const)sock.on(`act:${kind}`,(p:any)=>{
+      if(!p||p.round==null)return;
+      if(kind==='rain'){
+        const key=String(p.round),previous=rainUpdates.get(key);rainUpdates.set(key,{count:p.count??previous?.count,resolved:!!p.resolved||previous?.resolved});
+        if(rainUpdates.size>50)rainUpdates.delete(rainUpdates.keys().next().value!);
+      }
+      if(kind==='wheel'&&Array.isArray(p.names)&&p.winner){engineRef.current.applyWheelResult(p.round,p.names.map(String),String(p.winner));return;}
+      engineRef.current.patchByRound(kind,p.round,{serverCount:p.count==null?undefined:Number(p.count),pctYes:p.pctYes==null?undefined:Number(p.pctYes),resolved:!!p.resolved});
     });
 
     const events = ["chat:message", "chat:msg", "chat:new", "chat:history", "chat:messages", "stream:chat", "stream:message", "message"];
     events.forEach((ev) => sock.on(ev, handleIncoming));
 
     return () => {
+      disposed=true;
+      historyController?.abort();
+      rainController?.abort();
       sock.disconnect();
     };
   }, [slug, socketBase, maxMessages]);
@@ -933,12 +959,16 @@ export function NativeOverlayChat({
       >
         {messages.map((m) => (
           <div key={m.id} className="chat-enter slide" style={{ width: "100%", flexShrink: 0 }}>
-            <ChatMessageBubble
+            {m.type==='act'?<ActionableChatCard event={eventEngine.events.find(e=>e.id===m.data?.actId)??null} engine={eventEngine} isStreamer={false} readOnly />
+            :m.type&&CELEBRATION_TYPES.has(m.type)?<SpecialEventCard type={m.type as SpecialEventType} data={m.data??{}} currentUsername={null} onGg={()=>{}} onCombo={()=>{}} onFollowChannel={()=>{}} onSubscribe={()=>{}} onBossPage={()=>{}} readOnly />
+            :m.type==='sys'||m.type==='recap'?<ChatEventLine kind={m.type} html={String(m.data?.html??m.body)} />
+            :<ChatMessageBubble
               msg={m}
               streamerAppearance={appearance}
-            />
+            />}
           </div>
         ))}
+        <WheelOverlay overlay={eventEngine.overlay} onClose={()=>{}} />
       </div>
     </div>
   );

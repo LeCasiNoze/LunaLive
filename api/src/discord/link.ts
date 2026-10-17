@@ -1,5 +1,7 @@
 // api/src/discord/link.ts
 import { pool } from "../db.js";
+import type {Pool} from 'pg';
+import {discordIdentityBindingsSql} from '../community/external-accounts.js';
 import type { BotCtx } from "./utils.ts";
 import { genCode, getTtlMin, hashCode } from "./utils.js";
 
@@ -20,30 +22,9 @@ export async function createLinkCode(discordUserId: string, ctx: BotCtx) {
   return { code, expiresAt };
 }
 
-export async function getLinkedUser(discordUserId: string) {
-  try {
-    const r = await pool.query(
-      `
-      SELECT u.id, u.username, u.role, u.email
-      FROM discord_links dl
-      JOIN users u ON u.id = dl.user_id
-      WHERE dl.discord_user_id = $1
-      LIMIT 1
-      `,
-      [discordUserId]
-    );
-    return r.rows?.[0] || null;
-  } catch {
-    const r = await pool.query(
-      `
-      SELECT u.id, u.username, u.role
-      FROM discord_links dl
-      JOIN users u ON u.id = dl.user_id
-      WHERE dl.discord_user_id = $1
-      LIMIT 1
-      `,
-      [discordUserId]
-    );
-    return r.rows?.[0] || null;
-  }
+export async function getLinkedUser(discordUserId: string,db:Pick<Pool,'query'>=pool) {
+ const result=await db.query(`SELECT DISTINCT u.id,u.username,u.role FROM users u JOIN (
+  SELECT user_id FROM (${discordIdentityBindingsSql}) bindings WHERE discord_user_id=$1
+ ) linked ON linked.user_id=u.id LIMIT 2`,[discordUserId]);
+ return result.rows.length===1?result.rows[0]:null;
 }
