@@ -8,6 +8,7 @@ import { Server as IOServer } from "socket.io";
 import { migrate, pool } from "./db.js";
 import { createApp } from "./app.js";
 import { startOutboundHttpMetrics } from "./utils/outbound_http_metrics.js";
+import { startBotRainScheduler } from "./routes/bot_rain.js";
 import { attachChat } from "./chat_socket.js";
 // import { startDlivePoller } from "./dlive_poller.js"; // DLive shut down
 import { startRumblePoller } from "./rumble_poller.js";
@@ -196,6 +197,7 @@ function setupProcessCrashGuards() {
   app.set("io", io);
 
   attachChat(io);
+  startBotRainScheduler(app);
 
   // ✅ Démarre le serveur TOUT DE SUITE (Render sera content)
   server.listen(port, () => console.log(`[api] listening on :${port}`));

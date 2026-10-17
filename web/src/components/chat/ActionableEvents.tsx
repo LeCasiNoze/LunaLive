@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import "./specialEvents.css";
+import { eventDeadline, secondsRemaining, eventIdentity } from "./eventTiming";
 
 export type ActKind = "rain" | "wheel" | "predict" | "chest";
 
@@ -37,7 +38,8 @@ export type ActEvent = {
   // Mode RÉEL (vrai chat) : la participation passe par le backend et l'état
   // (compteur, résolution) arrive par socket. real=false = simulation (banc).
   real?: boolean;
-  round?: number;               // round backend (rain) pour matcher les updates
+  endsAtMs?: number;
+  round?: number | string;               // round backend (rain) pour matcher les updates
   serverCount?: number;         // compteur diffusé par le serveur (prioritaire)
 };
 
@@ -60,8 +62,8 @@ type EngineOpts = {
   // les vrais participants (backend) rejoignent.
   simulate?: boolean;
   // Vrai chat : participation RÉELLE. Le parent route vers le vrai endpoint.
-  onRealJoin?: (e: ActEvent) => void;                       // rain/roue/coffre : participer
-  onRealVote?: (e: ActEvent, opt: "yes" | "no") => void;    // prédiction : miser
+  onRealJoin?: (e: ActEvent) => void | Promise<boolean | void>;                       // rain/roue/coffre : participer
+  onRealVote?: (e: ActEvent, opt: "yes" | "no") => void | Promise<boolean | void>;    // prédiction : miser
   onRealResolveWheel?: (e: ActEvent) => void;               // streamer : tirer la roue (backend)
   onRealResolvePredict?: (e: ActEvent, winner: "yes" | "no") => void; // streamer : résoudre
 };
@@ -76,6 +78,9 @@ export function useActionableEngine(opts: EngineOpts) {
   const optsRef = React.useRef(opts); optsRef.current = opts;
   const eventsRef = React.useRef<ActEvent[]>(events); eventsRef.current = events;
   const seqRef = React.useRef(0);
+  const seenRef = React.useRef(new Set<string>());
+  const joiningRef = React.useRef(new Set<string>());
+  const reset = React.useCallback(() => { seenRef.current.clear(); joiningRef.current.clear(); setEvents([]); setOverlay(null); setListFor(null); }, []);
 
   // Tick 1s : countdown + lock à 0 + drift des % (predict). Le countdown est
   // pur ; l'arrivée des participants passe par simJoin (pour émettre un
@@ -84,11 +89,11 @@ export function useActionableEngine(opts: EngineOpts) {
     const iv = setInterval(() => {
       setEvents((prev) => prev.map((e) => {
         if (e.resolved) return e;
-        let remaining = e.remaining - 1;
+        let remaining = e.endsAtMs ? secondsRemaining(e.endsAtMs) : e.remaining - 1;
         let locked = e.locked;
         if (remaining <= 0) { remaining = 0; locked = true; }
         let pctYes = e.pctYes;
-        if (e.kind === "predict" && !locked) {
+        if (!e.real && e.kind === "predict" && !locked) {
           pctYes = Math.min(92, Math.max(8, pctYes + (Math.random() * 6 - 3)));
         }
         return { ...e, remaining, locked, pctYes };
@@ -98,14 +103,19 @@ export function useActionableEngine(opts: EngineOpts) {
   }, []);
 
   const open = React.useCallback((kind: ActKind, data?: any) => {
+    const key = eventIdentity(kind, data);
+    if (key && seenRef.current.has(key)) return;
+    if (key) seenRef.current.add(key);
     const id = `act_${++seqRef.current}`;
     const dur = Number(data?.durationSec) > 0 ? Math.round(Number(data.durationSec)) : DUR[kind];
+    const endsAtMs = eventDeadline(data, dur);
+    if (secondsRemaining(endsAtMs) <= 0) return;
     const ev: ActEvent = {
-      id, kind, joined: false, participants: [], remaining: dur, duration: dur,
+      id, kind, joined: false, participants: [], remaining: secondsRemaining(endsAtMs), duration: dur, endsAtMs,
       locked: false, resolved: false,
       question: data?.question, opt1: data?.option1 ?? "OUI", opt2: data?.option2 ?? "NON",
       pctYes: 50, myVote: null, pot: data?.pot, loot: data?.loot,
-      real: !!data?.real, round: data?.round != null ? Number(data.round) : undefined,
+      real: !!data?.real, round: data?.round ?? undefined,
       serverCount: data?.real ? 0 : undefined,
     };
     setEvents((prev) => [...prev, ev]);
@@ -121,13 +131,17 @@ export function useActionableEngine(opts: EngineOpts) {
   // peut être rappelé 2× en StrictMode → messages dupliqués).
   const join = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
-    if (!e || e.joined || e.locked || e.resolved) return;
+    if (!e || e.joined || e.locked || e.resolved || joiningRef.current.has(id)) return;
     // Marque "rejoint" (optimiste) dans les 2 cas.
     setEvents((prev) => prev.map((x) => x.id === id && !x.joined && !x.locked ? { ...x, joined: true } : x));
     if (e.real) {
       // Vrai chat : le parent appelle le vrai endpoint ; le message système et
       // le compteur arrivent ensuite par socket (backend). Pas d'emit local.
-      optsRef.current.onRealJoin?.(e);
+      joiningRef.current.add(id);
+      Promise.resolve().then(() => optsRef.current.onRealJoin ? optsRef.current.onRealJoin(e) : false)
+        .then(ok => { if (ok === false) setEvents(prev => prev.map(x => x.id === id ? { ...x, joined: false } : x)); })
+        .catch(() => setEvents(prev => prev.map(x => x.id === id ? { ...x, joined: false } : x)))
+        .finally(() => joiningRef.current.delete(id));
       return;
     }
     const me = optsRef.current.me;
@@ -146,11 +160,15 @@ export function useActionableEngine(opts: EngineOpts) {
 
   const vote = React.useCallback((id: string, opt: "yes" | "no") => {
     const ev = eventsRef.current.find((x) => x.id === id);
-    if (!ev || ev.locked || ev.myVote || ev.resolved) return;
+    if (!ev || ev.locked || ev.myVote || ev.resolved || joiningRef.current.has(id)) return;
     setEvents((prev) => prev.map((e) => e.id === id && !e.locked && !e.myVote ? { ...e, myVote: opt, joined: true } : e));
     if (ev.real) {
       // Vrai chat : mise réelle via le backend ; le % arrive par socket.
-      optsRef.current.onRealVote?.(ev, opt);
+      joiningRef.current.add(id);
+      Promise.resolve().then(() => optsRef.current.onRealVote ? optsRef.current.onRealVote(ev, opt) : false)
+        .then(ok => { if (ok === false) setEvents(prev => prev.map(x => x.id === id ? { ...x, joined: false, myVote: null } : x)); })
+        .catch(() => setEvents(prev => prev.map(x => x.id === id ? { ...x, joined: false, myVote: null } : x)))
+        .finally(() => joiningRef.current.delete(id));
       return;
     }
     setEvents((prev) => prev.map((e) => e.id === id
@@ -223,11 +241,12 @@ export function useActionableEngine(opts: EngineOpts) {
   // Mise à jour depuis le SOCKET backend (event real) : compteur partagé, %
   // live, résolution. Matche par (kind, round) — round comparé en string
   // (ids rain=number, coffre/prédiction=string).
-  const patchByRound = React.useCallback((kind: ActKind, round: number | string, patch: { serverCount?: number; resolved?: boolean; pctYes?: number }) => {
+  const patchByRound = React.useCallback((kind: ActKind, round: number | string, patch: { serverCount?: number; resolved?: boolean; pctYes?: number; joined?: boolean }) => {
     setEvents((prev) => prev.map((e) => {
       if (!e.real || e.kind !== kind || String(e.round) !== String(round) || e.resolved) return e;
       return {
         ...e,
+        joined: patch.joined ?? e.joined,
         serverCount: patch.serverCount != null ? patch.serverCount : e.serverCount,
         pctYes: patch.pctYes != null ? patch.pctYes : e.pctYes,
         resolved: patch.resolved ? true : e.resolved,
@@ -268,7 +287,7 @@ export function useActionableEngine(opts: EngineOpts) {
       if (e.resolved || e.remaining > 0) continue;
       // rain réel = résolu par le backend (act:rain). Coffre réel = auto-fermé
       // au décompte côté back sans broadcast → on résout localement au timer.
-      if (e.real && e.kind === "rain") continue;
+      if (e.real) continue;
       if ((e.kind === "rain" || e.kind === "chest") && !autoResolvedRef.current.has(e.id)) {
         autoResolvedRef.current.add(e.id);
         if (e.kind === "rain") rainPayout(e.id); else resolveChest(e.id);
@@ -277,7 +296,7 @@ export function useActionableEngine(opts: EngineOpts) {
   }, [events, rainPayout, resolveChest]);
 
   return {
-    events, overlay, listFor, setListFor,
+    events, overlay, listFor, setListFor, reset,
     open, join, vote, addParticipant, removeParticipant,
     resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss, patchByRound, applyWheelResult,
   };
@@ -296,10 +315,10 @@ const META: Record<ActKind, { ic: string; t: string; cls: string }> = {
   predict: { ic: "🔮", t: "Prédiction", cls: "lle-chip--predict" },
   chest: { ic: "📦", t: "Coffre commu.", cls: "lle-chip--chest" },
 };
-const fmt = (s: number) => "00:" + String(Math.max(0, s)).padStart(2, "0");
+const fmt = (s: number) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0")}:${String(Math.max(0, s) % 60).padStart(2, "0")}`;
 
 function joinLabel(e: ActEvent): string {
-  if (e.joined) return e.kind === "rain" ? "✓ Récupéré" : "✓ Inscrit";
+  if (e.joined) return "✓ Inscrit";
   return e.kind === "rain" ? "Récupérer 💎" : e.kind === "wheel" ? "Participer 🎡" : e.kind === "chest" ? "Participer 📦" : "Voter";
 }
 
@@ -354,7 +373,7 @@ function PredictBars({ e, engine, big }: { e: ActEvent; engine: ActionableEngine
 
 /** Barre épinglée (compacte) — un chip par event actionnable. */
 export function ActionablePinnedBar({ engine, isStreamer }: { engine: ActionableEngine; isStreamer: boolean }) {
-  const evs = engine.events.filter((e) => !e.resolved);
+  const evs = engine.events.filter((e) => !e.resolved && !e.locked && e.remaining > 0);
   if (!evs.length) return null;
   return (
     <div className="lle-pinbar">

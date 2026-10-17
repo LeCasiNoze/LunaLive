@@ -17,7 +17,7 @@ export type ActiveEvent = {
 const DUR = { rain: 45, wheel: 60, predict: 120, chest: 30, comboIdle: 15 };
 
 function fmt(s: number): string {
-  return "00:" + String(Math.max(0, s)).padStart(2, "0");
+  return `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0")}:${String(Math.max(0, s) % 60).padStart(2, "0")}`;
 }
 
 /* ─── Rain ───────────────────────────────────────────────── */

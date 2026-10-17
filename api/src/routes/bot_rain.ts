@@ -370,7 +370,7 @@ async function hasJoined(streamerId: number, roundId: number, userId: number) {
  * Avance la state machine si nécessaire.
  * Important: transitions + side-effects doivent être atomiques => transaction + FOR UPDATE.
  */
-async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
+export async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
   const now = Date.now();
 
   // disabled => juste mettre phase=disabled (sans casser nextAt)
@@ -419,6 +419,91 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
     const closeAtMs = st.closeAtMs != null ? Number(st.closeAtMs) : null;
     const roundId = Number(st.roundId || 0);
     const offlineSinceMs = st.offlineSinceMs != null ? Number(st.offlineSinceMs) : null;
+
+    if (phase === "open" && closeAtMs != null && now >= closeAtMs) {
+      // payout
+      const curRound = roundId;
+      const joins = await client.query(
+        `SELECT user_id, username FROM bot_rain_joins WHERE streamer_id=$1 AND round_id=$2`,
+        [streamer.streamerId, curRound]
+      );
+
+      const userIds = (joins.rows || []).map((x: any) => Number(x.user_id)).filter((x: number) => x > 0);
+      const boostByUser = await getRainBoostLevels(client, userIds);
+      const premiumSet = await getPremiumViewerSet(client, userIds);
+
+      let totalPaid = 0;
+      for (const r of joins.rows || []) {
+        const uid = Number(r.user_id);
+        if (!uid) continue;
+
+        const level = boostByUser.get(uid) ?? 0;
+
+        // payout normal (base + talent)
+        const payoutBase = applyRainBoost(cfg.rubiesPerUser, level);
+
+        // bonus premium "mint" (créé de nulle part, en plus)
+        const isPremium = premiumSet.has(uid);
+        const premiumBonus = isPremium ? applyPremiumBonus(payoutBase) : 0;
+
+        const payoutTotal = payoutBase + premiumBonus;
+        totalPaid += payoutTotal;
+
+        await earnRubisTx(client, uid, "event_platform", payoutTotal, {
+          kind: "rain",
+          base: cfg.rubiesPerUser,
+          payoutBase,
+          premiumBonus,
+          premiumViewer: isPremium,
+          premiumBonusMult: RAIN_PREMIUM_BONUS_MULT,
+          talent: { code: RAIN_TALENT_CODE, level },
+          streamerId: streamer.streamerId,
+          slug: streamer.slug,
+          roundId: curRound,
+        });
+      }
+
+      const next = now + cfg.intervalMin * 60_000;
+
+      await client.query(
+        `UPDATE bot_rain_state
+         SET phase='waiting',
+             next_at_ms=$2,
+             open_at_ms=NULL,
+             close_at_ms=NULL,
+             updated_at=NOW()
+         WHERE streamer_id=$1`,
+        [streamer.streamerId, next]
+      );
+
+      await client.query("COMMIT");
+
+      const n = (joins.rows || []).length;
+      await sendBotChatAndToast({
+        req,
+        streamerId: streamer.streamerId,
+        slug: streamer.slug,
+        body:
+          n > 0
+            ? `✅ Rain terminée : ${n} participant(s), ${totalPaid} rubis distribués.`
+            : `✅ Rain terminée : aucun participant.`,
+        appearance: streamer.appearance,
+      });
+
+      // Carte v2 : clôture + recap partagés.
+      try {
+        const io = req.app?.locals?.io;
+        emitChatAll(io, streamer.slug, "act:rain", { round: curRound, resolved: true });
+        emitChatLine(
+          io, streamer.slug, "recap",
+          n > 0
+            ? `🌧️ Rain terminée — <b>${n}</b> ont partagé ${totalPaid} rubis`
+            : `🌧️ Rain terminée — aucun participant`
+        );
+      } catch {}
+
+      return;
+    }
 
     // offline handling
     if (!streamer.isLive) {
@@ -508,94 +593,13 @@ async function advanceIfNeeded(req: any, streamer: any, cfg: any) {
         pot: cfg.rubiesPerUser,
         round: newRoundId,
         durationSec: cfg.joinWindowSec,
+        endsAtMs: closeAt,
         real: true,
       });
 
       return;
     }
 
-    if (phase === "open" && closeAtMs != null && now >= closeAtMs) {
-      // payout
-      const curRound = roundId;
-      const joins = await client.query(
-        `SELECT user_id, username FROM bot_rain_joins WHERE streamer_id=$1 AND round_id=$2`,
-        [streamer.streamerId, curRound]
-      );
-
-      const userIds = (joins.rows || []).map((x: any) => Number(x.user_id)).filter((x: number) => x > 0);
-      const boostByUser = await getRainBoostLevels(client, userIds);
-      const premiumSet = await getPremiumViewerSet(client, userIds);
-
-      for (const r of joins.rows || []) {
-        const uid = Number(r.user_id);
-        if (!uid) continue;
-
-        const level = boostByUser.get(uid) ?? 0;
-
-        // payout normal (base + talent)
-        const payoutBase = applyRainBoost(cfg.rubiesPerUser, level);
-
-        // bonus premium "mint" (créé de nulle part, en plus)
-        const isPremium = premiumSet.has(uid);
-        const premiumBonus = isPremium ? applyPremiumBonus(payoutBase) : 0;
-
-        const payoutTotal = payoutBase + premiumBonus;
-
-        await earnRubisTx(client, uid, "event_platform", payoutTotal, {
-          kind: "rain",
-          base: cfg.rubiesPerUser,
-          payoutBase,
-          premiumBonus,
-          premiumViewer: isPremium,
-          premiumBonusMult: RAIN_PREMIUM_BONUS_MULT,
-          talent: { code: RAIN_TALENT_CODE, level },
-          streamerId: streamer.streamerId,
-          slug: streamer.slug,
-          roundId: curRound,
-        });
-      }
-
-      const next = now + cfg.intervalMin * 60_000;
-
-      await client.query(
-        `UPDATE bot_rain_state
-         SET phase='waiting',
-             next_at_ms=$2,
-             open_at_ms=NULL,
-             close_at_ms=NULL,
-             updated_at=NOW()
-         WHERE streamer_id=$1`,
-        [streamer.streamerId, next]
-      );
-
-      await client.query("COMMIT");
-
-      const n = (joins.rows || []).length;
-      await sendBotChatAndToast({
-        req,
-        streamerId: streamer.streamerId,
-        slug: streamer.slug,
-        body:
-          n > 0
-            ? `✅ Rain terminée : ${n} participant(s) ont reçu ${cfg.rubiesPerUser} rubis.`
-            : `✅ Rain terminée : aucun participant.`,
-        appearance: streamer.appearance,
-      });
-
-      // Carte v2 : clôture + recap partagés.
-      try {
-        const io = req.app?.locals?.io;
-        emitChatAll(io, streamer.slug, "act:rain", { round: curRound, resolved: true });
-        emitChatLine(
-          io, streamer.slug, "recap",
-          n > 0
-            ? `🌧️ Rain terminée — <b>${n}</b> ont partagé ${cfg.rubiesPerUser} rubis`
-            : `🌧️ Rain terminée — aucun participant`
-        );
-      } catch {}
-
-      return;
-    }
 
     await client.query("COMMIT");
   } catch (e: any) {
@@ -644,6 +648,7 @@ botRainRouter.get("/public", async (req: any, res: any) => {
       slug: streamer.slug,
       enabled: cfg.enabled,
       intervalMin: cfg.intervalMin,
+      joinWindowSec: cfg.joinWindowSec,
       rubiesPerUser: cfg.rubiesPerUser,
       isLive: !!streamer.isLive,
       phase,
@@ -707,13 +712,17 @@ botRainRouter.post("/join", async (req: any, res: any) => {
         return res.status(409).json({ ok: false, error: "not_open" });
       }
 
-      await client.query(
+      const inserted = await client.query(
         `INSERT INTO bot_rain_joins(streamer_id, round_id, user_id, username)
          VALUES ($1,$2,$3,$4)
-         ON CONFLICT (streamer_id, round_id, user_id) DO NOTHING`,
+         ON CONFLICT (streamer_id, round_id, user_id) DO NOTHING RETURNING user_id`,
         [streamer.streamerId, roundId, userId, username]
       );
 
+      if (!inserted.rowCount) {
+        await client.query("COMMIT");
+        return res.json({ ok: true, alreadyJoined: true, roundId });
+      }
       await client.query("COMMIT");
 
       // État partagé : diffuse le nouveau compteur (act:rain) + un message
@@ -726,7 +735,7 @@ botRainRouter.post("/join", async (req: any, res: any) => {
         );
         const count = Number(cntRes.rows?.[0]?.n ?? 0);
         emitChatAll(io, streamer.slug, "act:rain", { round: roundId, count });
-        emitChatLine(io, streamer.slug, "sys", `💎 <b>${username}</b> a récupéré ses rubis`);
+        emitChatLine(io, streamer.slug, "sys", `💎 <b>${username}</b> participe à la rain`);
       } catch {}
 
       return res.json({ ok: true, roundId });
@@ -808,3 +817,32 @@ botRainRouter.post("/config", async (req: any, res: any) => {
     return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
+
+// Server-owned clock: opening, payout and closure must not depend on a viewer opening BotMenu.
+export async function tickBotRains(app: any) {
+  await ensureSchema();
+  const { rows } = await pool.query(`SELECT s.slug FROM bot_rain_cfg c JOIN streamers s ON s.id=c.streamer_id WHERE c.enabled=TRUE`);
+  for (const row of rows) {
+    try {
+      const streamer = await getStreamerBySlug(String(row.slug));
+      if (!streamer) continue;
+      const cfg = await ensureCfg(streamer.streamerId);
+      await ensureState(streamer.streamerId, cfg.intervalMin);
+      await advanceIfNeeded({ app }, streamer, cfg);
+    } catch (error) { console.warn("[bot-rain] tick failed", row.slug, error); }
+  }
+}
+export function startBotRainScheduler(app: any) {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try { await tickBotRains(app); }
+    catch (error) { console.warn("[bot-rain] scheduler failed", error); }
+    finally { running = false; }
+  };
+  void tick();
+  const timer = setInterval(() => void tick(), 5000);
+  timer.unref();
+  return () => clearInterval(timer);
+}

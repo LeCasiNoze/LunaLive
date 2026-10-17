@@ -1456,7 +1456,7 @@ export function ChatPanel({
      Rain join
      ------------------------- */
   async function joinRain(_from: "toast" | "chat" = "toast") {
-    if (!token) return onRequireLogin();
+    if (!token) { onRequireLogin(); return false; }
 
     try {
       const r = await fetch(`${apiBase()}/me/bot/bot_rain/join`, {
@@ -1483,16 +1483,18 @@ export function ChatPanel({
             detail: { kind: err === "already_joined" ? "info" : "error", title: "🌧️ Rain", message: msg },
           })
         );
-        return;
+        return err === "already_joined";
       }
 
       window.dispatchEvent(
         new CustomEvent("ui:toast", { detail: { kind: "success", title: "🌧️ Rain", message: "Inscription validée ✅" } })
       );
+      return true;
     } catch (e: any) {
       window.dispatchEvent(
         new CustomEvent("ui:toast", { detail: { kind: "error", title: "🌧️ Rain", message: String(e?.message || "Erreur") } })
       );
+      return false;
     }
   }
 
@@ -1560,30 +1562,37 @@ export function ChatPanel({
     simulate: false,
     // Participation RÉELLE : chaque action de carte route vers le vrai endpoint
     // LunaLive ; l'état (compteur, %, résultat) revient par socket.
-    onRealJoin: (e) => {
-      if (e.kind === "rain") { void joinRain("chat"); return; }
-      if (!token) return onRequireLogin();
-      if (e.kind === "wheel") {
-        void fetch(`${apiBase()}/me/bot/bot_wheel/join`, {
+    onRealJoin: async (e) => {
+      if (e.kind === "rain") return joinRain("chat");
+      if (!token) { onRequireLogin(); return false; }
+      const path = e.kind === "wheel" ? "/me/bot/bot_wheel/join" : `/streamers/${encodeURIComponent(slug)}/chest/join`;
+      try {
+        const response = await fetch(`${apiBase()}${path}`, {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ slug }),
-        }).catch(() => {});
-      } else if (e.kind === "chest") {
-        void fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}/chest/join`, {
-          method: "POST", headers: { Authorization: `Bearer ${token}` },
-        }).then((x) => x.json()).then((r) => {
-          if (r && r.ok === false) window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "📦 Coffre", message: r.error === "need_watchtime" ? "Il faut regarder le stream plus longtemps." : "Participation refusée." } }));
-        }).catch(() => {});
+        });
+        const result = await response.json();
+        if (!response.ok || result?.ok === false) throw new Error(result.error === "need_watchtime" ? "Il faut regarder le stream plus longtemps." : "Participation refusée.");
+        return true;
+      } catch (error: any) {
+        window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Participation", message: error?.message || "Réessaie dans un instant." } }));
+        return false;
       }
     },
-    onRealVote: (_e, opt) => {
-      if (!token) return onRequireLogin();
-      void fetch(`${apiBase()}/api/bot/predictions/bet`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ streamerSlug: slug, choice: opt === "yes" ? 1 : 2 }),
-      }).then((x) => x.json()).then((r) => {
-        if (r && r.ok === false) window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "🔮 Prédiction", message: r.reason === "not_enough_rubis" ? "Pas assez de rubis." : "Mise refusée." } }));
-      }).catch(() => {});
+    onRealVote: async (_e, opt) => {
+      if (!token) { onRequireLogin(); return false; }
+      try {
+        const response = await fetch(`${apiBase()}/api/bot/predictions/bet`, {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ streamerSlug: slug, choice: opt === "yes" ? 1 : 2 }),
+        });
+        const result = await response.json();
+        if (!response.ok || result?.ok === false) throw new Error(result.reason === "not_enough_rubis" ? "Pas assez de rubis." : "Mise refusée.");
+        return true;
+      } catch (error: any) {
+        window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Prédiction", message: error?.message || "Mise refusée." } }));
+        return false;
+      }
     },
     onRealResolveWheel: () => {
       if (!token) return;
@@ -1599,7 +1608,8 @@ export function ChatPanel({
       }).catch(() => {});
     },
   });
-  const isStreamerRole = join?.role === "mod" || join?.role === "streamer" || join?.role === "admin";
+  const isStreamerRole = join?.role === "streamer" || join?.role === "admin";
+  React.useEffect(() => { actEngine.reset(); setActiveEvents([]); }, [slug, actEngine.reset]);
 
   // Prompt "annoncer ton rank-up ?" : si le viewer a monté de niveau ailleurs
   // sur le site dans les 10 dernières minutes, on lui propose à l'ouverture du
@@ -2053,7 +2063,7 @@ export function ChatPanel({
       // Events actionnables (rain/roue/prédiction/coffre) → moteur v2 : carte
       // dans le flux + chip épinglé synchronisés (actEngine.open est stable).
       if (msg && typeof msg.type === "string" && ACTIONABLE_TYPES.has(msg.type)) {
-        actEngine.open(msg.type as any, msg.data || {});
+        actEngine.open(msg.type as any, { ...(msg.data || {}), createdAt: msg.createdAt, messageId: msg.id });
         return;
       }
       if (historyRequest) arrived.push(msg);
@@ -2122,13 +2132,27 @@ export function ChatPanel({
     });
 
     const mode = visualMode === "popup" ? "popup" : "public";
+    const syncRain = async () => {
+      if (!token) return;
+      try {
+        const response = await fetch(`${apiBase()}/me/bot/bot_rain/public?slug=${encodeURIComponent(s)}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(10000),
+        });
+        const state = await response.json();
+        if (disposed || !state.ok || state.phase !== "open") return;
+        actEngine.open("rain", { real: true, round: state.roundId, pot: state.rubiesPerUser,
+          durationSec: state.joinWindowSec || 120, endsAtMs: Number(state.joinCloseAtMs) });
+        actEngine.patchByRound("rain", state.roundId, { serverCount: state.participants, joined: !!state.joined });
+      } catch {}
+    };
     const recovery = startChatRecovery(socket, {
       slug: s, mode,
       onStatus: setSocketConnected,
       onError: (error) => { setError(error); setInitialLoading(false); },
-      onSync: () => { void syncHistory(); },
+      onSync: () => { void syncHistory(); void syncRain(); },
       onJoined: (ack: JoinAck) => {
         setJoin(ack);
+        void syncRain();
         setError(null);
         setAppearance(normalizeAppearance(ack.appearance));
         void syncHistory();

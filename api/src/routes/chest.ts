@@ -495,6 +495,7 @@ chestRouter.post("/streamers/:slug/chest/open", requireAuth, async (req: any, re
       const openingId = String(ins.rows?.[0]?.id || "");
       emitSpecialCard(req.app?.locals?.io, streamer.slug, "chest", {
         round: openingId,
+        endsAtMs: closesAt.getTime(),
         durationSec,
         real: true,
       });

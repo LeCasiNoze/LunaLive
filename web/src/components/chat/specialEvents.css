@@ -223,3 +223,21 @@
   .lle-ev{animation:lle-evIn .3s both}
   .lle-pf{display:none}
 }
+
+/* Touch targets and long event text must fit a narrow chat column. */
+.lle-ev, .lla-card { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.lle-ev__actions, .lla-strm, .lla-pred { flex-wrap: wrap; }
+.lle-chip__row { flex-wrap: wrap; }
+.lle-chip__mid { flex-basis: 100px; }
+.lle-btn, .lle-chip__cta, .lle-pbar, .lla-strm-btn { touch-action: manipulation; }
+@media (max-width: 600px) {
+  .lle-pinbar { gap: 8px; padding: 8px; scroll-snap-type: x proximity; }
+  .lle-chip { min-width: 240px; max-width: min(320px, calc(100vw - 32px)); scroll-snap-align: start; }
+  .lle-chip__cta, .lle-btn, .lle-pbar, .lla-strm-btn, .lla-modal-x { min-height: 44px; }
+  .lle-chip .lle-pbar { height: auto; min-height: 44px; }
+  .lle-ev__actions { gap: 8px; }
+  .lle-ev__body { flex-wrap: wrap; }
+  .lle-ev__text { flex: 1 1 140px; min-width: 0; }
+  .lle-ev__value, .lle-btn { max-width: 100%; white-space: normal; }
+  .lla-modal-box { max-height: calc(100dvh - 24px); overflow-y: auto; }
+}
