@@ -1,3 +1,4 @@
+import ExternalAccountsPanel from "../components/profile/ExternalAccountsPanel";
 // web/src/pages/ProfilePage.tsx — Rework v3
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -277,10 +278,11 @@ function SettingsSection({ token, onAfterChange }: { token: string; onAfterChang
       const { r, data } = await post("/me/discord-link/consume", { code: dCode.trim() });
       if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
       setDHint("Compte Discord lié ✅"); setDCode("");
-      await loadDiscordStatus(); onAfterChange();
+      await loadDiscordStatus(); window.dispatchEvent(new Event('community:connections_changed')); onAfterChange();
     } catch (e: any) {
       const msg = String(e?.message || "Erreur liaison Discord");
       if (msg === "code_not_found_or_expired") setDHint("Code invalide ou expiré.");
+      else if(msg==='identity_conflict')setDHint('Un de ces comptes est déjà lié ailleurs. Vérifie tes connexions.');
       else if (msg === "bad_code_format") setDHint("Format invalide. Exemple : LL-ABC123");
       else setDHint(msg);
     } finally { setDBusy(false); }
@@ -419,6 +421,7 @@ function SettingsSection({ token, onAfterChange }: { token: string; onAfterChang
       </Card>
 
       <SectionLabel>Connexions</SectionLabel>
+      <Card style={{marginBottom:16}}><ExternalAccountsPanel token={token} onAfterChange={onAfterChange}/></Card>
       <Card style={{ marginBottom: 22, overflow: "hidden", padding: 0 }}>
         <SettingsRow icon="🔗" title="Discord" desc="Lie ton compte Discord pour accéder aux rôles et avantages.">
           {dLoading ? (
@@ -436,7 +439,7 @@ function SettingsSection({ token, onAfterChange }: { token: string; onAfterChang
               )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btnGhost" onClick={syncDiscordNow} disabled={dBusy}>🔄 Synchroniser</button>
-                <button className="btnGhost" onClick={unlinkDiscord} disabled={dBusy}>❌ Délier</button>
+                {!dInfo?.oauth&&!dInfo?.inherited&&<button className="btnGhost" onClick={unlinkDiscord} disabled={dBusy}>❌ Délier</button>}
               </div>
               <Hint msg={dHint} />
             </div>
@@ -705,7 +708,7 @@ function AchievementSidebar({
 
 function ProfilePageDesktop() {
   const { user, token, refreshMe } = useAuth();
-  const [tab, setTab]               = React.useState<Tab>("personalisation");
+  const [tab, setTab]               = React.useState<Tab>(()=>new URLSearchParams(window.location.search).get("tab")==="settings"?"settings":"personalisation");
   const [achOpen, setAchOpen]       = React.useState(false);
   const [achievements, setAchievements] = React.useState<ApiAchievement[]>([]);
   const [achLoading, setAchLoading] = React.useState(false);

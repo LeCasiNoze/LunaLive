@@ -1,3 +1,4 @@
+import {mig149_external_accounts} from "./mig149_external_accounts.js";
 import { mig148_rumble_observatory } from "./mig148_rumble_observatory.js";
 import {mig147_random_hunt_calls} from './mig147_random_hunt_calls.js';
 import {mig146_community_benefits} from './mig146_community_benefits.js';
@@ -331,6 +332,7 @@ export async function migrateAll(pool: Pool) {
   await mig146_community_benefits(pool);
   await mig147_random_hunt_calls(pool);
   await mig148_rumble_observatory(pool);
+  await mig149_external_accounts(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

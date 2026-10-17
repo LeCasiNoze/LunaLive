@@ -31,6 +31,7 @@ export type ActEvent = {
   opt1?: string;
   opt2?: string;
   pctYes: number;               // 0-100, évolue en temps réel
+  percentagesKnown?: boolean;
   myVote: "yes" | "no" | null;
   // rain / chest
   pot?: number;
@@ -114,7 +115,8 @@ export function useActionableEngine(opts: EngineOpts) {
       id, kind, joined: false, participants: [], remaining: secondsRemaining(endsAtMs), duration: dur, endsAtMs,
       locked: false, resolved: false,
       question: data?.question, opt1: data?.option1 ?? "OUI", opt2: data?.option2 ?? "NON",
-      pctYes: 50, myVote: null, pot: data?.pot, loot: data?.loot,
+      pctYes: data?.pctYes!=null&&Number.isFinite(Number(data.pctYes))?Math.min(100,Math.max(0,Number(data.pctYes))):50,
+      percentagesKnown:!data?.real||data?.pctYes!=null,myVote: null, pot: data?.pot, loot: data?.loot,
       real: !!data?.real, round: data?.round ?? undefined,
       serverCount: data?.real ? 0 : undefined,
     };
@@ -249,6 +251,7 @@ export function useActionableEngine(opts: EngineOpts) {
         joined: patch.joined ?? e.joined,
         serverCount: patch.serverCount != null ? patch.serverCount : e.serverCount,
         pctYes: patch.pctYes != null ? patch.pctYes : e.pctYes,
+        percentagesKnown:patch.pctYes!=null?true:e.percentagesKnown,
         resolved: patch.resolved ? true : e.resolved,
         locked: patch.resolved ? true : e.locked,
       };
@@ -354,19 +357,20 @@ function StreamerControls({ e, engine }: { e: ActEvent; engine: ActionableEngine
 }
 
 /* Barres de prédiction (partagées carte + chip), % live. */
-function PredictBars({ e, engine, big }: { e: ActEvent; engine: ActionableEngine; big?: boolean }) {
+function PredictBars({ e, engine, big, readOnly=false }: { e: ActEvent; engine: ActionableEngine; big?: boolean; readOnly?: boolean }) {
   const noPct = 100 - e.pctYes;
-  const disabled = e.locked || !!e.myVote || e.resolved;
+  const disabled = readOnly || e.locked || !!e.myVote || e.resolved;
+  const Tag = readOnly ? 'div' : 'button';
   return (
     <div className={`lla-pred${big ? " lla-pred--big" : ""}`}>
-      <button className="lle-pbar lle-yes" disabled={disabled} style={{ opacity: e.myVote && e.myVote !== "yes" ? .5 : 1 }} onClick={() => engine.vote(e.id, "yes")}>
+      <Tag className="lle-pbar lle-yes" disabled={readOnly?undefined:disabled} style={{ opacity: e.myVote && e.myVote !== "yes" ? .5 : 1 }} onClick={readOnly?undefined:() => engine.vote(e.id, "yes")}>
         <span className="lle-fill" style={{ ["--w" as any]: `${Math.round(e.pctYes)}%` }} />
-        <span className="lle-lbl">{e.opt1}</span><span className="lle-pct">{Math.round(e.pctYes)}%</span>
-      </button>
-      <button className="lle-pbar lle-no" disabled={disabled} style={{ opacity: e.myVote && e.myVote !== "no" ? .5 : 1 }} onClick={() => engine.vote(e.id, "no")}>
+        <span className="lle-lbl">{e.opt1}</span><span className="lle-pct">{e.real&&!e.percentagesKnown?'—':`${Math.round(e.pctYes)}%`}</span>
+      </Tag>
+      <Tag className="lle-pbar lle-no" disabled={readOnly?undefined:disabled} style={{ opacity: e.myVote && e.myVote !== "no" ? .5 : 1 }} onClick={readOnly?undefined:() => engine.vote(e.id, "no")}>
         <span className="lle-fill" style={{ ["--w" as any]: `${Math.round(noPct)}%` }} />
-        <span className="lle-lbl">{e.opt2}</span><span className="lle-pct">{Math.round(noPct)}%</span>
-      </button>
+        <span className="lle-lbl">{e.opt2}</span><span className="lle-pct">{e.real&&!e.percentagesKnown?'—':`${Math.round(noPct)}%`}</span>
+      </Tag>
     </div>
   );
 }
@@ -385,7 +389,7 @@ export function ActionablePinnedBar({ engine, isStreamer }: { engine: Actionable
               <span className="lle-chip__ic">{m.ic}</span>
               <div className="lle-chip__mid">
                 <div className="lle-chip__t">{m.t}</div>
-                <div className="lle-chip__meta">{fmt(e.remaining)} · {e.kind === "predict" ? `${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : `${pCount(e)} pers.`}</div>
+                <div className="lle-chip__meta">{fmt(e.remaining)} · {e.kind === "predict" ? e.real&&!e.percentagesKnown?'En attente des votes':`${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : `${pCount(e)} pers.`}</div>
               </div>
               {e.kind !== "predict" && (
                 <button className="lle-chip__cta" disabled={e.joined || e.locked} onClick={() => engine.join(e.id)}>{joinLabel(e)}</button>
@@ -402,11 +406,11 @@ export function ActionablePinnedBar({ engine, isStreamer }: { engine: Actionable
 }
 
 /** Carte dans le flux du chat (plus grande) — même état que le chip (sync). */
-export function ActionableChatCard({ event, engine, isStreamer }: { event: ActEvent | null; engine: ActionableEngine; isStreamer: boolean }) {
+export function ActionableChatCard({ event, engine, isStreamer, readOnly=false }: { event: ActEvent | null; engine: ActionableEngine; isStreamer: boolean; readOnly?: boolean }) {
   if (!event) return <div className="lla-card lla-card--done">Événement terminé</div>;
   const e = event;
   const m = META[e.kind];
-  const value = e.kind === "rain" ? `${e.pot ?? 0} rubis` : e.kind === "chest" ? `${e.loot ?? 0} rubis` : e.kind === "wheel" ? `${pCount(e)} inscrits` : null;
+  const value = e.kind === "rain"&&e.pot!=null ? `${e.pot} rubis` : e.kind === "chest"&&e.loot!=null ? `${e.loot} rubis` : e.kind === "wheel" ? `${pCount(e)} inscrits` : null;
   return (
     <div className={`lle-ev lle-ev--${e.kind} lla-card`} data-tier="epic">
       <div className="lle-ev__body">
@@ -419,13 +423,13 @@ export function ActionableChatCard({ event, engine, isStreamer }: { event: ActEv
         </div>
         {value ? <div className="lle-ev__value">{value}</div> : null}
       </div>
-      {e.kind === "predict" && <div className="lle-pred-bars"><PredictBars e={e} engine={engine} big /></div>}
-      <div className="lle-ev__actions">
+      {e.kind === "predict" && <div className="lle-pred-bars"><PredictBars e={e} engine={engine} big readOnly={readOnly} /></div>}
+      {!readOnly && <div className="lle-ev__actions">
         {e.kind !== "predict" && (
           <button className="lle-btn" disabled={e.joined || e.locked || e.resolved} onClick={() => engine.join(e.id)}>{joinLabel(e)}</button>
         )}
         {isStreamer && <div style={{ flex: 1 }}><StreamerControls e={e} engine={engine} /></div>}
-      </div>
+      </div>}
     </div>
   );
 }

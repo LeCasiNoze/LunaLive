@@ -1,3 +1,4 @@
+import {externalAccountsRouter} from "./routes/external_accounts.js";
 import { fetchRumbleGamblingCategoryLives as observatoryDiscovery } from "./rumble.js";
 import { observatoryRouter } from "./observatory/router.js";
 import { pool as observatoryPool } from "./db.js";
@@ -292,6 +293,7 @@ export function createApp() {
   app.use(oauthRouter);
   app.use(accountActionsRouter);
   app.use(meDiscordLinkRouter);
+  app.use(externalAccountsRouter);
 
   app.use(streamerRouter);
   app.use(adminRouter);

@@ -1,3 +1,4 @@
+import {assertDiscordBinding} from "../../community/discord-binding.js";
 // api/src/routes/bot/discord_link_consume.ts
 import { Router } from "express";
 import crypto from "crypto";
@@ -69,6 +70,7 @@ discordLinkConsumeRouter.post("/discord/link/consume", requireAuth, async (req, 
     }
 
     const discordUserId = String(row.discord_user_id);
+    await assertDiscordBinding(client,discordUserId,userId);
 
     // consume
     await client.query(`UPDATE discord_link_codes SET consumed_at = NOW() WHERE id = $1`, [row.id]);
@@ -95,6 +97,7 @@ discordLinkConsumeRouter.post("/discord/link/consume", requireAuth, async (req, 
       await client.query("ROLLBACK");
     } catch {}
     console.warn("[discord-link] consume failed", e?.message || e);
+    if(e?.message==='identity_conflict')return res.status(409).json({ok:false,error:'identity_conflict'});
     return res.status(500).json({ ok: false, error: "server_error" });
   } finally {
     client.release();

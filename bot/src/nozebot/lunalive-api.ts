@@ -167,8 +167,8 @@ async function post<T>(
 
 export function requestLunaLiveLink(config: LunaLiveApiConfig, discordUserId: string) {
   return post<
-    | { ok: true; linked: true; user: { id: number; username: string; role: string } }
-    | { ok: true; linked: false; code: string; expiresAt: string }
+    | { ok: true; linked: true; rumble?: {linked:boolean;username?:string;command?:string;retryAfterSec?:number}; user: { id: number; username: string; role: string } }
+    | { ok: true; linked: false; rumble?: {linked:boolean;username?:string;command?:string;retryAfterSec?:number}; code: string; expiresAt: string }
   >(config, "/internal/bot/nozebot/link", discordUserId);
 }
 
