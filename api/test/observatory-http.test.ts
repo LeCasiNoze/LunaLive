@@ -76,6 +76,38 @@ function http(
     },
   );
 }
+test("public diagnostics summarize only covered aggregates, without histories or participant data", async () => {
+  const h = 3600000;
+  const channel = (slug: string, coverage: number, active: number) => ({
+    slug, name: slug, language: "unknown", languageConfidence: "unknown", mode: "unknown",
+    firstSeen: t - 4 * h, lastSeen: t, sourceStart: null,
+    latest: [t, 50, active, null, 2, 1, coverage, 1, active],
+    history: [t - 3 * h, t - 2 * h].map(at => [at, 50, active, null, 2, 1, coverage, 1, active]),
+    daily: [], sessions: [],
+  });
+  const payload = {...snapshot, channels: [channel("flagged",1,1), channel("partial",0.5,0), channel("ordinary",1,8)]};
+  const app = express();
+  app.use("/observatory", observatoryRouter({query: async () => ({rows: [{payload}]})}, token));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>(r => server.once("listening", r));
+  try {
+    const response = await http((server.address() as any).port,"/snapshot","GET",undefined,{"accept-encoding":"gzip"});
+    assert.equal(response.status,200);
+    const summary = JSON.parse(gunzipSync(response.body).toString());
+    assert.equal(summary.channels[0].diagnostics.coveredHours,2);
+    assert.deepEqual(summary.channels[0].diagnostics.signals,[{code:"low_chat",hours:2,samples:2}]);
+    assert.equal(summary.channels[1].diagnostics.coveredHours,0);
+    assert.deepEqual(summary.channels[1].diagnostics.signals,[]);
+    assert.equal(summary.channels[2].diagnostics.coveredHours,2);
+    assert.deepEqual(summary.channels[2].diagnostics.signals,[]);
+    assert.equal(summary.channels[0].history,undefined);
+    assert.equal(summary.channels[0].sessions,undefined);
+    const detailResponse = await http((server.address() as any).port,"/channels/flagged","GET",undefined,{"accept-encoding":"gzip"});
+    const detail = JSON.parse(gunzipSync(detailResponse.body).toString());
+    assert.equal(detail.channel.history.length,2);
+    assert.deepEqual(detail.channel.diagnostics,summary.channels[0].diagnostics);
+  } finally { server.close(); }
+});
 test("HTTP gzip ingestion, ETag, no message payload and one read per cache interval", async () => {
   let stored: any = null,
     reads = 0,
