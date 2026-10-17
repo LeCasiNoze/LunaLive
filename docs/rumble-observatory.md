@@ -24,6 +24,8 @@
 
 Le token dédié n’est jamais envoyé au navigateur. Il n’est pas une clé AutoMod ou admin générale. Les erreurs publiques ne contiennent ni détails de validation ni payloads de chat.
 
+Évolution du 17 octobre : les snapshots et fiches publics incluent diagnostics, résumé calculé depuis les seules heures agrégées déjà stockées : coveredHours, since, until et codes/hours/samples des écarts descriptifs. Seules les heures à ≥90 % de couverture avec viewers et actifs connus sont exploitables. Les historiques et sessions restent retirés du snapshot global. Aucun nouvel appel Rumble, aucun identifiant de participant et aucun verdict de botting ; l’absence de signal ne certifie pas l’absence de bots. Le détail complet de la route /diagnostics reste authentifié.
+
 ## Sens des métriques
 
 Les points sont des tuples : timestamp UTC millisecondes, viewers déclarés, comptes actifs distincts 15 min, distincts 60 min, messages/minute hors services, conversations/minute hors commandes, couverture continue 15 min, chaînes visibles, actifs bruts 15 min avant exclusions.

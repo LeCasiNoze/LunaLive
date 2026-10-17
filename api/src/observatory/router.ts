@@ -4,6 +4,15 @@ import { gzipSync } from "node:zlib";
 import { snapshotSchema, type Snapshot } from "./schema.js";
 import { discoveryMetrics } from "./discovery-metrics.js";
 import { anomaly } from "./core.js";
+function publicDiagnostics(history: Snapshot["series"]["all"]) {
+  const coveredHours = history.filter(p => p[6] >= 0.9 && p[1] != null && p[2] != null).length;
+  return {
+    coveredHours,
+    since: history[0]?.[0] ?? null,
+    until: history.at(-1)?.[0] ?? null,
+    signals: anomaly(history).map(({code, hours, samples}) => ({code, hours, samples})),
+  };
+}
 type Db = { query: (sql: string, params?: any[]) => Promise<any> };
 export function observatoryRouter(
   db: Db,
@@ -222,13 +231,13 @@ export function observatoryRouter(
       const value = slug
         ? {
             capturedAt: current!.capturedAt,
-            channel,
+            channel: { ...channel, diagnostics: publicDiagnostics(channel!.history) },
           }
         : current
           ? {
               ...current,
               channels: current.channels.map(
-                ({ history, daily, sessions, ...c }) => c,
+                ({ history, daily, sessions, ...c }) => ({...c, diagnostics: publicDiagnostics(history)}),
               ),
               costs: { ...current.costs, apiDailyBudget: budget },
             }
