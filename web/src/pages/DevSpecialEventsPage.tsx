@@ -449,7 +449,7 @@ const S: Record<string, React.CSSProperties> = {
   h1: { fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: "-.3px" },
   hsub: { fontSize: 13, opacity: .65, margin: "4px 0 0" },
   warn: { fontSize: 12.5, lineHeight: 1.6, padding: "10px 14px", borderRadius: 12, border: "1px solid rgba(245,158,11,.32)", background: "rgba(245,158,11,.10)", color: "rgba(253,230,138,.92)", marginBottom: 16 },
-  split: { display: "grid", gridTemplateColumns: "minmax(340px, 1fr) minmax(360px, 1fr)", gap: 20, alignItems: "start" },
+  split: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 20, alignItems: "start" },
   chatCol: { position: "sticky", top: 12 },
   chatShell: { display: "flex", flexDirection: "column", height: "78vh", borderRadius: 18, overflow: "hidden", border: "1px solid rgba(124,92,252,.20)", background: "rgba(15,10,24,.97)", boxShadow: "0 30px 80px rgba(0,0,0,.5)" },
   chatTop: { padding: "10px 14px", fontSize: 12, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "rgba(167,155,220,.6)", borderBottom: "1px solid rgba(255,255,255,.06)" },
