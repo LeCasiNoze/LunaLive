@@ -6,7 +6,7 @@ import { requireAuth } from "../auth.js";
 import { getActivePrediction, addBet, resolvePrediction } from "./predictions.store.js";
 import { createPredictionSafe, assertStreamerLive } from "./predictions.service.js";
 
-import { spendRubis } from "../wallet_engine.js";
+
 import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
 
 async function predSlug(streamerId: number): Promise<string> {
@@ -29,6 +29,12 @@ async function predPctYes(predictionId: number): Promise<number> {
 }
 
 export const predictionsRouter = express.Router();
+async function canManagePrediction(req: any, streamerId: number) {
+  if (req.user?.role === "admin") return true;
+  const result = await pool.query(`SELECT user_id FROM streamers WHERE id=$1`, [streamerId]);
+  return Number(result.rows[0]?.user_id) === Number(req.user?.id);
+}
+
 
 /**
  * ⚠️ IMPORTANT
@@ -168,6 +174,7 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
       return res.status(400).json({ ok: false, reason: "invalid_params" });
     }
 
+    if (!await canManagePrediction(req, Number(streamerId))) return res.status(403).json({ ok: false, reason: "forbidden" });
     const dur = Math.max(30, Number(durationSec) || 180);
     const pred = await createPredictionSafe(
       pool,
@@ -189,6 +196,8 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
         option1: String(option1).trim(),
         option2: String(option2).trim(),
         durationSec: dur,
+        endsAtMs: new Date(pred.bets_close_at).getTime(),
+        count: 0, totalStake: 0, pctYes: null,
         real: true,
       });
     } catch {}
@@ -235,7 +244,7 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
     const pred = await getActivePrediction(pool, streamerId);
     if (!pred) return res.status(404).json({ ok: false, reason: "no_active_prediction" });
 
-    if (pred.status !== "open") return res.status(400).json({ ok: false, reason: "bets_closed" });
+    if (pred.status !== "open" || new Date(pred.bets_close_at).getTime() <= Date.now()) return res.status(400).json({ ok: false, reason: "bets_closed" });
 
     // ✅ stakes autorisés
     const level = await getBetLevel(userId);
@@ -250,27 +259,17 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
       stake = allowed[0];
     }
 
-    // 💸 spend rubis (SINK)
-    await spendRubis({
-      userId,
-      amount: stake,
-      spendKind: "sink",
-      spendType: "prediction_bet",
-      streamerId,
-      meta: { predictionId: pred.id, choice, stake },
-    });
-
-    // ✅ addBet n'effectue PAS de spend (sinon double)
+    if (req.body?.round != null && String(req.body.round) !== String(pred.id)) return res.status(409).json({ ok: false, reason: "prediction_changed" });
     await addBet(pool, pred, userId, choice as 1 | 2, stake);
-
-    await setLastStake(userId, stake);
 
     // % live partagé à tous.
     try {
       const io = (req as any).app?.locals?.io;
       const slug = await predSlug(Number(streamerId));
-      const pctYes = await predPctYes(Number((pred as any).id));
-      emitChatAll(io, slug, "act:predict", { round: (pred as any).id, pctYes });
+      const stats = await pool.query(`SELECT COUNT(*)::int AS count, COALESCE(SUM(amount),0)::int AS total FROM prediction_bets WHERE prediction_id=$1`, [pred.id]);
+      const totalStake = Number(stats.rows[0]?.total || 0);
+      const pctYes = totalStake ? await predPctYes(Number(pred.id)) : null;
+      emitChatAll(io, slug, "act:predict", { round: pred.id, pctYes, count: Number(stats.rows[0]?.count || 0), totalStake });
     } catch {}
 
     return res.json({ ok: true, stake, allowed, level });
@@ -292,11 +291,13 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
 
     if (!streamerId) return res.status(400).json({ ok: false, reason: "bad_streamer" });
 
+    if (!await canManagePrediction(req, streamerId)) return res.status(403).json({ ok: false, reason: "forbidden" });
     await assertStreamerLive(pool, streamerId);
 
     const pred = await getActivePrediction(pool, streamerId);
     if (!pred) return res.status(404).json({ ok: false, reason: "no_active_prediction" });
     if (pred.status === "resolved") return res.status(400).json({ ok: false, reason: "already_resolved" });
+    if (req.body?.round != null && String(req.body.round) !== String(pred.id)) return res.status(409).json({ ok: false, reason: "prediction_changed" });
 
     await resolvePrediction(pool, pred, winning as 1 | 2);
 
@@ -304,7 +305,7 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
     try {
       const io = (req as any).app?.locals?.io;
       const slug = await predSlug(Number(streamerId));
-      const winnerLabel = winning === 1 ? String((pred as any).option1 || "Option 1") : String((pred as any).option2 || "Option 2");
+      const winnerLabel = winning === 1 ? String(pred.option1_label) : String(pred.option2_label);
       emitChatAll(io, slug, "act:predict", { round: (pred as any).id, resolved: true, winner: winning === 1 ? "yes" : "no" });
       emitChatLine(io, slug, "recap", `🔮 Résultat : <b>${winnerLabel}</b> l'emporte`);
     } catch {}

@@ -1,3 +1,5 @@
+import {prepareDiscordConnections} from "../community/discord-connections.js";
+import {CONNECTIONS_URL} from "../community/external-accounts.js";
 // api/src/discord/bot.ts
 import { pool } from "../db.js";
 
@@ -1107,55 +1109,11 @@ export async function startDiscordBot(ctx: BotCtx) {
         }
 
         if (interaction.commandName === "link") {
-          const already = await getLinkedUser(String(interaction.user.id));
-          if (already) {
-            const mail = maskEmail((already as any).email ?? null);
-            await interaction.reply({
-              ephemeral: true,
-              content:
-                `Votre compte est déjà lié ✅\n` +
-                `Pseudo LunaLive : **${already.username}**\n` +
-                (mail ? `Email : **${mail}**\n` : "") +
-                `Rôle LunaLive : **${already.role}**`,
-            });
-            return;
-          }
-
-          const secretPresent = String(process.env.DISCORD_LINK_CODE_SECRET ?? "").trim();
-          if (!secretPresent) {
-            await interaction.reply({
-              ephemeral: true,
-              content: "Configuration manquante côté serveur (DISCORD_LINK_CODE_SECRET). Contactez un administrateur.",
-            });
-            await safeDm(
-              discordClient,
-              String(interaction.user.id),
-              "Impossible de générer un code pour le moment : DISCORD_LINK_CODE_SECRET n'est pas chargé sur le serveur.",
-              ctx
-            );
-            return;
-          }
-
-          const { code, expiresAt } = await createLinkCode(String(interaction.user.id), ctx);
-
-          await interaction.reply({
-            ephemeral: true,
-            content:
-              `Code de liaison généré ✅\n` +
-              `➡️ **${code}**\n\n` +
-              `Rendez-vous sur LunaLive → Profil → Lier Discord, puis collez ce code.\n` +
-              `Expiration : ${expiresAt.toLocaleString("fr-FR")}`,
-          });
-
-          await safeDm(
-            discordClient,
-            String(interaction.user.id),
-            `🔗 Liaison LunaLive — Code\n\nVotre code : **${code}**\nExpiration : ${expiresAt.toLocaleString(
-              "fr-FR"
-            )}\n\nÀ faire : allez sur LunaLive → Profil → Lier Discord et collez ce code.\n\nAprès validation, votre pseudo et vos rôles seront synchronisés automatiquement.`,
-            ctx
-          );
-          return;
+          await interaction.deferReply({ephemeral:true});
+          const info=await prepareDiscordConnections(String(interaction.user.id));
+          const luna=info.linked?`LunaLive ✅ **${info.user.username}**`:`LunaLive : colle \`${info.code}\` dans **Profil → Paramètres → Discord**.`;
+          const rumble=info.rumble?.linked?`Rumble ✅ **${info.rumble.username}**`:info.rumble?.command?`Rumble : colle \`${info.rumble.command}\` dans le chat du live.`:'Rumble : /automodlink dans une minute.';
+          await interaction.editReply(`${luna}\n${rumble}\nGérer mes connexions : ${CONNECTIONS_URL}`);return;
         }
       }
 

@@ -1,3 +1,4 @@
+import {externalAccountsRouter} from "./routes/external_accounts.js";
 import { fetchRumbleGamblingCategoryLives as observatoryDiscovery } from "./rumble.js";
 import { observatoryRouter } from "./observatory/router.js";
 import { pool as observatoryPool } from "./db.js";
@@ -63,6 +64,7 @@ import { meProfileRouter } from "./routes/me_profile.js";
 import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
+import { multichatBridgeRouter } from "./routes/multichat_bridge.js";
 import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
 import { automodControlRouter } from "./routes/automod_control.js";
 import { automodFeedbackRouter } from './routes/automod_feedback.js';
@@ -75,6 +77,7 @@ import {communityShopRouter} from './routes/community_shop.js';
 // Bot module (clean)
 import meBotRouter from "./modules/bot/router.js";
 import { botWheelRouter } from "./routes/bot_wheel.js";
+import { chatEventsRouter } from "./routes/chat_events.js";
 import { botRainRouter } from "./routes/bot_rain.js";
 import { botClipsRouter } from "./bot_clips/router.js";
 
@@ -274,6 +277,7 @@ export function createApp() {
   app.use(casinosPublicRouter);
   app.use("/me/casinos", requireAuth, casinosMeRouter);
 
+  app.use(multichatBridgeRouter);
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
   app.use(internalNozeBotRouter);
@@ -285,6 +289,8 @@ export function createApp() {
   app.use(moderationRouter);
   app.use(clipsPublicRouter);
 
+  // Public snapshots must precede the account/wallet routers' auth middleware.
+  app.use(chatEventsRouter);
   app.use(publicContentRouter);
   app.use(publicRouter);
   app.use("/public", publicRouter);
@@ -292,6 +298,7 @@ export function createApp() {
   app.use(oauthRouter);
   app.use(accountActionsRouter);
   app.use(meDiscordLinkRouter);
+  app.use(externalAccountsRouter);
 
   app.use(streamerRouter);
   app.use(adminRouter);

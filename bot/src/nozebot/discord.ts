@@ -23,6 +23,7 @@ import {
 import type { Pool } from "pg";
 import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames,coinSupportRewards,acknowledgeSupportRewards} from './lunalive-api.js';
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
+import {startPublicationAnnouncements} from './publication-announcements.js';
 import { cnzRoleChange } from './cnz-role.js';
 import {
   handleNozeBotCommand,
@@ -645,6 +646,13 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   } else {
     console.warn("[nozebot][live] pool PostgreSQL absent, alertes désactivées");
   }
+  let stopPublications: () => void = () => undefined;
+  let publicationStarting=false,publicationReady=false;
+  const ensurePublications=async()=>{if(!pool||stopped||publicationStarting||publicationReady)return;publicationStarting=true;
+    try{stopPublications=await startPublicationAnnouncements(client,pool);publicationReady=true;if(stopped)stopPublications();}
+    catch{console.warn('[nozebot][publications] startup unavailable; retry in 60s');}finally{publicationStarting=false;}};
+  const publicationStartup=setInterval(()=>void ensurePublications(),60000);
+  void ensurePublications();
   const gatewayWatchdog = setInterval(() => {
     if (stopped || client.isReady()) {
       gatewayUnavailableSince = 0;
@@ -665,6 +673,8 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     clearInterval(nicknameSync);
     clearInterval(supportSync);
     stopLiveAlerts();
+    stopPublications();
+    clearInterval(publicationStartup);
     client.destroy();
   };
 }

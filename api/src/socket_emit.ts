@@ -75,7 +75,8 @@ export type SpecialType =
 
 // Ligne "système" (kind "sys") ou "recap" dans le flux du chat (ex.
 // "X a récupéré ses rubis", "Rain terminée — N ont partagé…"). Éphémère.
-let __sysSeq = 0;
+let lastEphemeralId=0;
+export function nextEphemeralChatId(){lastEphemeralId=Math.max(Date.now()*1024,lastEphemeralId+1);return -lastEphemeralId;}
 export function emitChatLine(
   io: Server | null | undefined,
   slug: string,
@@ -85,8 +86,7 @@ export function emitChatLine(
   if (!io) return false;
   const s = slugRoom(slug);
   if (!s) return false;
-  __sysSeq = (__sysSeq + 1) % 100000;
-  const id = -(Date.now() * 100000 + 50000 + __sysSeq);
+  const id = nextEphemeralChatId();
   const msg = {
     id, userId: 0, username: "LunaLive", body: "",
     createdAt: new Date().toISOString(), type: kind, data: { html },
@@ -99,7 +99,6 @@ export function emitChatLine(
   }
 }
 
-let __specialSeq = 0;
 export function emitSpecialCard(
   io: Server | null | undefined,
   slug: string,
@@ -120,8 +119,7 @@ export function emitSpecialCard(
 
   // Actionnables/live : éphémère, id synthétique négatif (jamais en collision
   // avec les BIGSERIAL positifs).
-  __specialSeq = (__specialSeq + 1) % 100000;
-  const id = -(Date.now() * 100000 + __specialSeq);
+  const id = nextEphemeralChatId();
   const msg = {
     id, userId: 0, username: String(username || "LunaLive"),
     body: "", createdAt: new Date().toISOString(),

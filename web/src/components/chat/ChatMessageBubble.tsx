@@ -20,6 +20,7 @@ import AnimatedUsername from "../../fx/username/AnimatedUsername";
 import FrameFxOverlay from "../../fx/username/FrameFxOverlay";
 import { FRAME_FX_CODES } from "../../fx/username/frameFxCodes";
 import { resolveEngineUsernameFx } from "../../fx/username/engineCodes";
+import { messagePresentation } from './messagePresentation';
 
 export type ChatMsgLike = {
   id: number | string;
@@ -33,6 +34,9 @@ export type ChatMsgLike = {
   dliveRestreamFrom?: string | null;
   rumble?: boolean;
   rumbleLinked?: boolean;
+  externalSource?: string | null;
+  msgColor?: string | null;
+  style?: {msgColor?: string | null};
   /** Rôle de l'auteur (attaché par l'API) : viewer | mod | streamer | admin | bot */
   role?: string | null;
 };
@@ -64,6 +68,8 @@ const ROLE_META: Record<string, { icon: string; label: string }> = {
   admin: { icon: "👑", label: "Admin LunaLive" },
   bot: { icon: "🤖", label: "Bot" },
   rumble: { icon: "▶", label: "Viewer Rumble" },
+  twitch: { icon: "◈", label: "Viewer Twitch" },
+  kick: { icon: "K", label: "Viewer Kick" },
 };
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -237,6 +243,7 @@ function ChatMessageBubbleImpl({
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
   const isRumble = !!(msg as any)?.rumble;
   const rumbleLinked = !!(msg as any)?.rumbleLinked;
+  const sourcePresentation = messagePresentation(msg);
   const configuredBotUserId = Number((import.meta as any)?.env?.VITE_BOT_USER_ID || 0);
   const isBot = !!(msg as any)?.isBot || msg.username === "LunaBot" ||
     (configuredBotUserId > 0 && msg.userId === configuredBotUserId);
@@ -282,7 +289,7 @@ function ChatMessageBubbleImpl({
   // Variante "slim" (aucun badge) : avatar réduit sur la ligne du pseudo,
   // contenu pleine largeur — économise la colonne et de la hauteur.
   const slim = badges.length === 0;
-  const roleKey = isBot ? "bot" : isRumble ? "rumble" : String((msg as any)?.role || "viewer");
+  const roleKey = isBot ? "bot" : sourcePresentation.platform || (isRumble ? "rumble" : String((msg as any)?.role || "viewer"));
   const roleMeta = ROLE_META[roleKey] ?? ROLE_META.viewer;
 
   const hatAsset = hatIdNorm && !hatImgErr ? HAT_ASSETS[hatIdNorm] : null;
@@ -323,6 +330,13 @@ function ChatMessageBubbleImpl({
         background:"linear-gradient(135deg,rgba(48,12,25,.96),rgba(27,10,22,.94))",
         boxShadow:"0 10px 40px rgba(0,0,0,.32),0 0 18px rgba(239,68,68,.10)",
       }
+    : sourcePresentation.accent
+    ? {
+        borderRadius:16, borderLeft:`3px solid ${sourcePresentation.accent}`,
+        outline:`1px solid ${sourcePresentation.accent}55`,
+        background:`linear-gradient(135deg,${sourcePresentation.accent}16,rgba(16,11,24,.97))`,
+        boxShadow:"0 12px 34px rgba(0,0,0,.28)",
+      }
     : isDlive
     ? { borderRadius:14, outline:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }
     : isRumble
@@ -345,6 +359,7 @@ function ChatMessageBubbleImpl({
         isPinged     ? "chatPinged"       : "",
         isDlive      ? "chatMsgRow--dlive" : "",
         isRumble     ? "chatMsgRow--rumble" : "",
+        sourcePresentation.platform ? `chatMsgRow--${sourcePresentation.platform}` : "",
         isBot        ? "chatMsgRow--bot"   : "",
         isGrouped    ? "chatMsgRow--grouped" : "",
       ].filter(Boolean).join(" ")}
@@ -455,6 +470,10 @@ function ChatMessageBubbleImpl({
                       </span>
                     ) : null}
 
+                    {sourcePresentation.label ? <span title={`Message envoyé depuis ${sourcePresentation.label}`} style={{
+                      display:'inline-flex',marginLeft:7,padding:'1px 7px',borderRadius:999,fontSize:11,fontWeight:800,
+                      border:`1px solid ${sourcePresentation.accent}66`,background:`${sourcePresentation.accent}22`,color:sourcePresentation.accent!,verticalAlign:'middle',
+                    }}>{sourcePresentation.label}</span> : null}
                     {/* Pill Rumble */}
                     {isRumble ? (
                       <span style={{
@@ -510,7 +529,7 @@ function ChatMessageBubbleImpl({
                 minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
                 wordBreak:"break-word", lineHeight:1.35,
                 opacity: isDlive ? .92 : undefined,
-                color:"var(--chat-msg-color,rgba(235,232,255,.88))",
+                color:sourcePresentation.textColor || "var(--chat-msg-color,rgba(235,232,255,.88))",
               }}>
               {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
             </div>
@@ -533,6 +552,8 @@ function bubblePropsEqual(
   const b = next.msg as any;
   if (a.id !== b.id || a.body !== b.body || a.deleted !== b.deleted) return false;
   if (a.rumble !== b.rumble || a.rumbleLinked !== b.rumbleLinked) return false;
+  if (a.externalSource !== b.externalSource || a.msgColor !== b.msgColor) return false;
+  if (a.style?.msgColor !== b.style?.msgColor) return false;
   if (prev.isGrouped !== next.isGrouped) return false;
   if (prev.currentUsername !== next.currentUsername) return false;
   if (prev.streamerAppearance !== next.streamerAppearance) return false;

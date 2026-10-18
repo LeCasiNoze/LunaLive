@@ -2,12 +2,13 @@ import {accountBenefits} from '../automod-shop/account-benefits.js';
 // api/src/calls/commands.ts
 import type { Pool } from "pg";
 import type { Server } from "socket.io";
-import { emitUserToast } from "./toast.js";
+import { emitUserToast as defaultEmitUserToast, type UiToast } from "./toast.js";
 import { resolveSlot } from "./catalog.js";
 import {
   addCall,
   countUserCalls,
   countUserCallsByUsername,
+  countUserCallsByExternalKey,
   effectiveLimit,
   getCallsSettings,
   listCalls,
@@ -266,6 +267,8 @@ export async function handleCallsCommand(opts: {
   arg: string;
   rumbleVideoIdNumeric?: string | null;
   rumbleUserId?: string | null;
+  onFeedback?: (toast: UiToast) => void;
+  externalActorKey?: string;
 }): Promise<{ handled: true; showOriginalInChat: boolean } | { handled: false }> {
   const {
     pool,
@@ -282,6 +285,18 @@ export async function handleCallsCommand(opts: {
     rumbleVideoIdNumeric,
     rumbleUserId,
   } = opts;
+
+  const externalActorKey = opts.externalActorKey;
+  if (externalActorKey && (actorUserId !== 0 || !/^(kick|twitch):[0-9]{1,20}$/.test(externalActorKey))) {
+    throw new Error('invalid_external_call_identity');
+  }
+
+  // External viewers have no local user socket. Let their adapter relay the
+  // same feedback without inventing a local identity or granting privileges.
+  function emitUserToast(targetIo: Server, userId: number, toast: UiToast) {
+    defaultEmitUserToast(targetIo, userId, toast);
+    opts.onFeedback?.(toast);
+  }
 
   // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
   // On les intercepte aussi pour éviter qu'elles apparaissent comme de simples
@@ -466,7 +481,7 @@ export async function handleCallsCommand(opts: {
   }
 
   // cmd === call
-  if (await isUserBannedFromCalls(pool, streamerId, actorUserId, actorUsername)) {
+  if (await isUserBannedFromCalls(pool, streamerId, actorUserId, actorUsername) || (externalActorKey && await isUserBannedFromCalls(pool, streamerId, 0, externalActorKey))) {
     emitUserToast(io, actorUserId, {
       kind: "error",
       title: "Call refusé",
@@ -499,7 +514,7 @@ export async function handleCallsCommand(opts: {
 
   // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
   if (isDliveViewer && lim > 0 && actorUsername) {
-    const n = rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
+    const n = externalActorKey ? await countUserCallsByExternalKey(pool, streamerId, externalActorKey) : rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
     if (n >= lim) {
       await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
       return { handled: true, showOriginalInChat };
@@ -579,6 +594,7 @@ export async function handleCallsCommand(opts: {
     perUserLimit: lim,
     insertAfterCurrent: cmd === "pcall",
     rumbleUserId,
+    externalActorKey,
   });
 
   if (!add.ok) {

@@ -1,0 +1,26 @@
+Événements overlay et identités communautaires — 17 octobre 2026
+
+Le renderer NativeOverlayChat conserve type/data et utilise les mêmes SpecialEventCard, ActionableChatCard et ChatEventLine que le chat normal. Les onze cartes sont visibles dans OBS ; les boutons de participation sont retirés du flux vidéo. Les pourcentages réels restent inconnus jusqu'à réception du serveur. Les lignes sys/recap conservent leur emphase sans exécuter de HTML arbitraire.
+
+Socket : déduplication des alias et historiques par ID ; récupération de l'historique à la reconnexion ; suppressions durant la récupération conservées ; réinscription aux salons public/popup existants ; état rain récupérable sans authentification via GET /chat/:slug/rain, en lecture seule. Les autres événements actionnables restent éphémères comme dans le chat normal. La roue affiche le résultat reçu du serveur, sans tirage local dans OBS.
+
+Liaison : paramètres desktop et mobile, /profile?tab=settings#connections. POST /me/external-accounts/rumble/code crée une preuve à usage unique et limitée à dix minutes ; seul son hash est conservé. La commande !lier LL-... doit provenir du chat Rumble natif récent. Ni un pseudo, ni une identité transmise par le navigateur ne suffisent à lier un compte.
+
+Les chaînes de preuves Rumble -> Discord -> LunaLive et Discord -> Rumble -> LunaLive sont reconnues, y compris les connexions Discord OAuth existantes. Un conflit entre deux comptes LunaLive est refusé. Les endpoints Discord de consommation de code ne réaffectent plus un compte déjà associé à un autre propriétaire.
+
+Les deux bots Discord présentent dans /link l'état de LunaLive et Rumble, les codes manquants et un lien direct vers les connexions.
+
+!rain : un événement de rubis LunaLive ouvert prend la priorité sur les anciennes rains AutoMod et NozeCoins. Sans rain LunaLive ouverte, les commandes historiques gardent leur comportement. La commande Rumble et le bouton du site utilisent joinCommunityRain ; l'unicité est (streamer, round, user LunaLive). Une annonce n'est diffusée que lors de la première participation. Le règlement reste celui du scheduler existant et de wallet_tx ; aucun paiement n'est effectué par l'overlay ni lors de la liaison. Les commandes antérieures à l'ouverture de la rain ne sont pas inscrites.
+
+Futurs adaptateurs Kick/Twitch : handleExternalCommunityChat accepte provider, externalId, streamerId, slug, username, text et createdAt. L'appeler uniquement après authentification de l'identité native par l'adaptateur. Aucun connecteur Kick/Twitch ni OAuth de ces plateformes n'est activé dans cette livraison. Le schéma externe et l'admission rain sont communs et testés avec une identité Kick vérifiée fictive.
+
+Pseudos : synchronisation activable par le propriétaire du compte. Rumble est la référence. Les observations anciennes n'écrasent pas les nouvelles ; un pseudo LunaLive invalide ou déjà pris n'est pas attribué. Discord utilise le surnom des serveurs où le bot dispose des permissions nécessaires ; son nom global ne peut pas être modifié par ce bot. La liaison et les rubis restent valides si le renommage n'est pas possible.
+
+Vérifications locales exécutées :
+- api/test/external-community.test.ts + api/test/bot-rain.test.ts : 12 tests, base PGlite isolée, liaison/code expiré/rejoué/conflit, chaînes Discord/OAuth et preuve Rumble directe, admission partagée sans double inscription même si le socket est déconnecté, absence de paiement local, observation de pseudo avec consentement, identité future vérifiée et identifiants d'événements sûrs.
+- web/tests/overlayMessages.test.ts + eventTiming.test.ts + chatRecovery.test.ts : treize types de messages, body vide, UUID, déduplication, historique, suppression et reconnexion.
+- TypeScript bot/API/web ; build Vite de production et service worker.
+- Banc Socket.IO/API local entièrement simulé : onze cartes, zéro bouton OBS, compteurs 7, résultat terminé, expiration, suppression, effacement, reconnexion sans doublon, pourcentages 73/27 seulement après réception du serveur, HTML non exécutable.
+- Formulaire de connexions à 390 pixels, sans débordement horizontal ; code masqué à la confirmation de liaison.
+
+Aucun live n'a été interrompu pour ces tests. Aucun vrai compte n'a été lié ou renommé et aucun rubis de production n'a été attribué pendant la validation.

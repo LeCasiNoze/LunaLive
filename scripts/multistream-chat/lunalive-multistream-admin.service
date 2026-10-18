@@ -1,0 +1,24 @@
+[Unit]
+Description=Private local controls for LeCasiNoze OBS destinations
+After=network.target
+
+[Service]
+User=root
+Group=lunalive-worker
+ExecStart=/usr/bin/python3 /usr/local/sbin/lunalive-multistream-admin serve
+RuntimeDirectory=lunalive-multistream
+RuntimeDirectoryMode=0750
+UMask=0077
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/lunalive-multistream /run/lunalive-multistream /opt/automod/.runtime/publication
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=64M
+TasksMax=8
+
+[Install]
+WantedBy=multi-user.target

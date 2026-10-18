@@ -1,5 +1,6 @@
 // api/src/routes/internal_bot.ts
 import express from "express";
+import {nextEphemeralChatId} from '../socket_emit.js';
 import {accountBenefits} from '../automod-shop/account-benefits.js';
 import {validRumbleIdentity} from '../automod-shop/rules.js';
 import { pool } from "../db.js";
@@ -282,10 +283,10 @@ internalBotRouter.post(
 
     // Insérer le message dans la table chat_messages
     const ins = await pool.query(
-      `INSERT INTO chat_messages(streamer_id, user_id, username, body, created_at)
-       VALUES($1, $2, $3, $4, NOW())
+      `INSERT INTO chat_messages(streamer_id, user_id, username, body, created_at, data)
+       VALUES($1, $2, $3, $4, NOW(), $5::jsonb)
        RETURNING id, created_at AS "createdAt"`,
-      [streamerId, botUserId, botUsername, messageText]
+      [streamerId, botUserId, botUsername, messageText,JSON.stringify(body.reason==='autopost'?{botAutopost:true}:{})]
     );
 
     const row = ins.rows?.[0];
@@ -508,7 +509,6 @@ internalBotRouter.post(
 const SPECIAL_TYPES = new Set([
   "raid", "follow", "combo", "sub", "don", "chest", "rain", "wheel", "predict", "boss", "level",
 ]);
-let __specialSeq = 0;
 internalBotRouter.post(
   "/internal/bot/chat/special",
   express.json(),
@@ -534,8 +534,7 @@ internalBotRouter.post(
 
     // id synthétique négatif : jamais en collision avec les BIGSERIAL (positifs) de chat_messages,
     // et unique pour le dédoublonnage par id côté front.
-    __specialSeq = (__specialSeq + 1) % 100000;
-    const id = -(Date.now() * 100000 + __specialSeq);
+    const id = nextEphemeralChatId();
 
     const msg = {
       id,

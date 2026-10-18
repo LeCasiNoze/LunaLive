@@ -1,3 +1,4 @@
+import ExternalAccountsPanel from "../components/profile/ExternalAccountsPanel";
 // web/src/pages/ProfilePage.mobile.tsx — Rework v3
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -135,7 +136,7 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
 // ─── Settings section (inline, no modal) ─────────────────────────────────────
 
 function SettingsMobile({ token, onAfterChange }: { token: string; onAfterChange: () => void }) {
-  const [section, setSection]             = React.useState<"menu" | "rename" | "password" | "discord" | "notifs">("menu");
+  const [section, setSection]             = React.useState<"menu" | "rename" | "password" | "discord" | "rumble" | "notifs">(()=>window.location.hash==="#connections"?"rumble":"menu");
   const [newUsername, setNewUsername]     = React.useState("");
   const [renameCodeSent, setRenameCodeSent] = React.useState(false);
   const [renameCode, setRenameCode]       = React.useState("");
@@ -236,10 +237,11 @@ function SettingsMobile({ token, onAfterChange }: { token: string; onAfterChange
     try {
       const { r, data } = await post("/me/discord-link/consume", { code: dCode.trim() });
       if (!r.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${r.status}`);
-      setDHint("Discord lié ✅"); setDCode(""); await loadDiscordStatus(); onAfterChange();
+      setDHint("Discord lié ✅"); setDCode(""); await loadDiscordStatus(); window.dispatchEvent(new Event('community:connections_changed')); onAfterChange();
     } catch (e: any) {
       const msg = String(e?.message || "Erreur");
       if (msg === "code_not_found_or_expired") setDHint("Code invalide ou expiré.");
+      else if(msg==='identity_conflict')setDHint('Un de ces comptes est déjà lié ailleurs. Vérifie tes connexions.');
       else if (msg === "bad_code_format") setDHint("Format invalide. Ex : LL-ABC123");
       else setDHint(msg);
     } finally { setDBusy(false); }
@@ -271,6 +273,7 @@ function SettingsMobile({ token, onAfterChange }: { token: string; onAfterChange
   const menuItems = [
     { key: "rename",   icon: "✍️", title: "Changer de pseudo",     desc: "Gratuit /30j ou 1 000 rubis" },
     { key: "password", icon: "🔒", title: "Mot de passe",           desc: "Via code email" },
+    { key: "rumble", icon: "▶", title: "Rumble & LunaLive", desc: "Liaison du chat et rains de rubis" },
     { key: "discord",  icon: "🔗", title: "Lier Discord",           desc: "Rôles et avantages serveur" },
     { key: "notifs",   icon: "🔔", title: "Notifications",          desc: "Alertes et préférences" },
   ] as const;
@@ -339,6 +342,7 @@ function SettingsMobile({ token, onAfterChange }: { token: string; onAfterChange
           </div>
         )}
 
+        {section === "rumble" && <ExternalAccountsPanel token={token} onAfterChange={onAfterChange}/>}
         {section === "discord" && (
           <div>
             <div style={{ fontFamily: FONT, fontWeight: 700, fontSize: 16, color: TXT, marginBottom: 4 }}>🔗 Discord</div>
@@ -352,7 +356,7 @@ function SettingsMobile({ token, onAfterChange }: { token: string; onAfterChange
                 {dInfo?.lastSyncAt && <div style={{ fontFamily: FONT, fontSize: 12, color: TXT2 }}>Dernier sync : {new Date(dInfo.lastSyncAt).toLocaleString("fr-FR")}</div>}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button className="btnGhost" onClick={syncDiscordNow} disabled={dBusy}>🔄 Sync</button>
-                  <button className="btnGhost" onClick={unlinkDiscord} disabled={dBusy}>❌ Délier</button>
+                  {!dInfo?.oauth&&!dInfo?.inherited&&<button className="btnGhost" onClick={unlinkDiscord} disabled={dBusy}>❌ Délier</button>}
                 </div>
                 <Hint msg={dHint} />
               </div>
@@ -438,7 +442,7 @@ const TAB_LABELS: Record<MobileTabKey, { icon: string; label: string }> = {
 export default function ProfilePageMobile() {
   const { user, token, refreshMe } = useAuth() as any;
   const navigate = useNavigate();
-  const [tab, setTab]     = React.useState<MobileTabKey>("style");
+  const [tab, setTab]     = React.useState<MobileTabKey>(()=>new URLSearchParams(window.location.search).get("tab")==="settings"?"settings":"style");
   const [tabView, setTabView] = React.useState<MobileTabKey>("style");
   const [tabAnim, setTabAnim] = React.useState<{ stage: "idle" | "leaving" | "entering"; dir: -1 | 1 }>({ stage: "idle", dir: 1 });
   const tabAnimRef = React.useRef(tabAnim);

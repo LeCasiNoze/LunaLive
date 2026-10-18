@@ -1,0 +1,26 @@
+[Unit]
+Description=LunaClip personal YouTube replays, excluding Automod
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=lunaclip
+Group=lunaclip
+WorkingDirectory=/opt/lunaclip
+UMask=0077
+Environment=OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1
+Environment=PYTHONDONTWRITEBYTECODE=1 YOLO_CONFIG_DIR=/opt/lunaclip/data/yolo-replays MPLCONFIGDIR=/opt/lunaclip/data/matplotlib-replays
+ExecStartPre=/usr/bin/node /opt/lunaclip/replays/discover.mjs
+ExecStart=/opt/lunaclip/venv/bin/python /opt/lunaclip/replays/replays.py
+TimeoutStartSec=4h
+Nice=12
+IOSchedulingClass=idle
+CPUQuota=150%
+MemoryHigh=2G
+MemoryMax=3G
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/lunaclip/data /opt/lunaclip/worker/models
+

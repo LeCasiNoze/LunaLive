@@ -90,11 +90,7 @@ export async function handleCoinCommand(interaction:ChatInputCommandInteraction|
     +'Retours bruts : [XXX XXX] 20 % → ×0 ; [OXX XXX] 25 % → ×0,25 ; [OOX XXX] 25 % → ×0,5 ; [OOO XXX] 20 % → ×1 (mise remboursée) ; [OOO OXX] 9 % → ×4 ; [OOO OOX] 0,8 % → ×10 ; [OOO OOO] 0,18 % → ×25 ; [777 777] 0,019 % → ×100 ; [MAX WIN] 0,001 % → ×250. Retours arrondis à l’entier inférieur ; la mise est débitée avant le retour.\n'
     +'Les soldes Automod restent séparés. Aucun reset du portefeuille. /link · /claim · /solde · /profil · /slot · /shop');return;
   }
-  if(command==='link'){
-   const link=await requestAutomodLink(config.lunaLive,interaction.user.id);
-   await interaction.editReply(link.linked?`Compte Rumble lié : **${link.username}**. /claim · /solde · /shop`
-    :`Dans le chat Rumble de LeCasiNoze, colle ce code privé (10 minutes, usage unique) :\n\`${link.command}\``);return;
-  }
+  if(command==='link'){await handleLink(interaction,config);return;}
   const upgrade=command==='ameliorer'&&!interaction.isButton()?interaction.options.getString('branche',true):undefined;
   const expectedTier=command==='ameliorer'&&!interaction.isButton()?interaction.options.getInteger('palier',true)-1:undefined;
   const action=command==='ameliorer'?'upgrade':command;
@@ -422,37 +418,13 @@ async function handleSlotCommand(
 }
 
 async function handleLink(interaction: ChatInputCommandInteraction, config: NozeBotCommandConfig): Promise<void> {
-  await interaction.deferReply({ ephemeral: true });
-  const result = await requestLunaLiveLink(config.lunaLive, interaction.user.id);
-  if (result.linked) {
-    await interaction.editReply({
-      embeds: [new EmbedBuilder()
-        .setColor(0x22c55e)
-        .setTitle("✅ Compte déjà connecté")
-        .setDescription(`Ton Discord est lié à **${result.user.username}** sur LunaLive.\n\nTes Rubis, cooldowns, niveaux et succès sont partagés.`)
-        .setFooter({ text: "LeCasiNoze × LunaLive" })],
-    });
-    return;
-  }
-
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setStyle(ButtonStyle.Link)
-      .setLabel("Ouvrir mon profil LunaLive")
-      .setEmoji("🌙")
-      .setURL("https://lunalive.win/profile")
-  );
-  await interaction.editReply({
-    embeds: [new EmbedBuilder()
-      .setColor(0x9d7cff)
-      .setTitle("🔗 Connecte ton compte LunaLive")
-      .setDescription(
-        `Ton code personnel :\n## \`${result.code}\`\n` +
-        `Il expire ${discordTimestamp(result.expiresAt)}. Ouvre ton profil LunaLive, choisis **Lier Discord**, puis colle ce code.`
-      )
-      .setFooter({ text: "Ce message est visible uniquement par toi" })],
-    components: [row],
-  });
+  if(!interaction.deferred)await interaction.deferReply({ephemeral:true});
+  const result=await requestLunaLiveLink(config.lunaLive,interaction.user.id);
+  const lines=[result.linked?`LunaLive ✅ **${result.user.username}**`:'LunaLive : colle ce code dans **Profil → Paramètres → Discord** :',
+    ...(!result.linked?[`\`${result.code}\` · valable ${discordTimestamp(result.expiresAt)}`]:[]),
+    result.rumble?.linked?`Rumble ✅ **${result.rumble.username??'lié'}**`:result.rumble?.command?`Rumble : colle cette commande dans le chat du live :\n\`${result.rumble.command}\``:'Rumble : utilise /automodlink dans une minute.'];
+  await interaction.editReply({embeds:[new EmbedBuilder().setColor(0x9d7cff).setTitle('🔗 Mes comptes').setDescription(lines.join('\n'))],
+    components:[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Gérer mes connexions LunaLive').setURL('https://lunalive.win/profile?tab=settings#connections'))]});
 }
 
 async function handleClaim(interaction: ChatInputCommandInteraction, config: NozeBotCommandConfig): Promise<void> {

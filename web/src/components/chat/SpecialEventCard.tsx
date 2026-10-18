@@ -45,32 +45,51 @@ const RAID_STREAKS = [
 ];
 
 // Ligne "avatar + nom + bouton suivre" utilisée dans le raid.
-function FollowRow(props: { avatar?: string | null; name: string | null; slug: string; label: string; onFollow: (slug: string) => void }) {
-  const [done, setDone] = React.useState(false);
-  return (
-    <div className="lle-follow-row">
-      <span className="lle-follow-av">{props.avatar ? <img src={props.avatar} alt="" /> : (props.name?.[0] ?? "?")}</span>
-      <span className="lle-follow-name">{props.name ?? props.slug}</span>
-      <button className="lle-btn lle-mini" disabled={done} onClick={() => { props.onFollow(props.slug); setDone(true); }}>
-        {done ? "✓ Suivi" : props.label}
-      </button>
-    </div>
-  );
+function FollowRow(props: { avatar?: string | null; name: string | null; slug: string; label: string;
+  onFollow: (slug: string) => void | boolean | Promise<boolean | void>;
+  loadFollowing?: (slug: string) => Promise<boolean>;
+}) {
+  const [done,setDone]=React.useState(false);
+  const [ready,setReady]=React.useState(!props.loadFollowing);
+  const [pending,setPending]=React.useState(false);
+  const busy=React.useRef(false);
+  React.useEffect(()=>{
+    let alive=true;
+    if(!props.loadFollowing){setReady(true);return;}
+    setReady(false);
+    props.loadFollowing(props.slug).then(following=>{if(alive){setDone(following);setReady(true);}}).catch(()=>{});
+    return()=>{alive=false;};
+  },[props.slug,props.loadFollowing]);
+  const follow=async()=>{
+    if(busy.current||done||!ready||!props.slug) return;
+    busy.current=true;setPending(true);
+    try { if(await props.onFollow(props.slug)!==false) setDone(true); }
+    catch { /* The parent reports failures; keep the action available. */ }
+    finally {busy.current=false;setPending(false);}
+  };
+  return <div className="lle-follow-row">
+    <span className="lle-follow-av">{props.avatar?<img src={props.avatar} alt=""/>:(props.name?.[0]??"?")}</span>
+    <span className="lle-follow-name">{props.name??props.slug}</span>
+    <button className="lle-btn lle-mini" disabled={done||pending||!ready||!props.slug} onClick={()=>void follow()}>{done?"✓ Suivi":pending?"Suivi…":!ready?"Chargement…":props.label}</button>
+  </div>;
 }
 
 export default function SpecialEventCard(props: {
   type: SpecialEventType;
   data: any;
   currentUsername: string | null;
-  viewerFollows?: boolean;
-  viewerSubbed?: boolean;
+  viewerFollows?: boolean | null;
+  viewerSubbed?: boolean | null;
+  canFollow?: boolean;
+  loadFollowing?: (slug: string) => Promise<boolean>;
   onGg: (who: string | null, kind: SpecialEventType) => void;
-  onCombo: (nextMult: number, kind: "follow" | "sub") => void;
+  onCombo: (nextMult: number, kind: "follow" | "sub") => void | boolean | Promise<boolean | void>;
   // asFollowEvent : suivre la chaîne raidée déclenche EN PLUS une carte
   // "follow" contexte pour le viewer (cf spec raid).
-  onFollowChannel: (slug: string, asFollowEvent?: boolean) => void;
+  onFollowChannel: (slug: string, asFollowEvent?: boolean) => void | boolean | Promise<boolean | void>;
   onSubscribe: () => void;
   onBossPage: () => void;
+  readOnly?: boolean;
 }): React.JSX.Element {
   const { type, data } = props;
   const [ggClicked, setGgClicked] = React.useState(false);
@@ -82,9 +101,15 @@ export default function SpecialEventCard(props: {
     setGgClicked(true);
   }
 
-  function handleCombo(currentMult: number, kind: "follow" | "sub") {
-    props.onCombo(currentMult + 1, kind);
-    setAllDisabled(true);
+  const comboBusy=React.useRef(false);
+  async function handleCombo(currentMult: number, kind: "follow" | "sub") {
+    const gated=kind==="sub"?props.viewerSubbed:props.viewerFollows;
+    if(comboBusy.current||allDisabled||gated||gated===null||(kind==="follow"&&props.canFollow===false)) return;
+    if(kind==="sub"){props.onSubscribe();return;}
+    comboBusy.current=true;setAllDisabled(true);
+    try { if(await props.onCombo(currentMult+1,kind)===false) setAllDisabled(false); }
+    catch {setAllDisabled(false);}
+    finally {comboBusy.current=false;}
   }
 
   const combo = type === "combo";
@@ -146,8 +171,8 @@ export default function SpecialEventCard(props: {
       // la suivre déclenche une carte follow contexte). + bienvenue en dessous.
       actions = (
         <div className="lle-raid-follows">
-          <FollowRow avatar={data?.raiderAvatar} name={data?.raiderName ?? from} slug={data?.raiderSlug ?? ""} label="Soutenir 🙌" onFollow={(s) => props.onFollowChannel(s)} />
-          <FollowRow avatar={data?.raidedAvatar} name={data?.raidedName ?? null} slug={data?.raidedSlug ?? ""} label="Suivre 💜" onFollow={(s) => props.onFollowChannel(s, true)} />
+          <FollowRow avatar={data?.raiderAvatar} name={data?.raiderName ?? from} slug={data?.raiderSlug ?? ""} label="Soutenir 🙌" loadFollowing={props.loadFollowing} onFollow={(s) => props.onFollowChannel(s)} />
+          <FollowRow avatar={data?.raidedAvatar} name={data?.raidedName ?? null} slug={data?.raidedSlug ?? ""} label="Suivre 💜" loadFollowing={props.loadFollowing} onFollow={(s) => props.onFollowChannel(s, true)} />
           <button className="lle-btn" disabled={ggClicked} onClick={handleGg}>Souhaiter la bienvenue 👋</button>
         </div>
       );
@@ -172,16 +197,16 @@ export default function SpecialEventCard(props: {
           ) : null}
         </>
       );
-      title = combo ? `${subCombo ? "Combo sub" : "Combo follow"} ${mult}x` : "Nouveau follow";
+      title = combo ? `${subCombo ? "Combo sub" : "Combo follow"} ${mult}x` : `Nouveau follow${data?.platform==='kick'?' · Kick':data?.platform==='twitch'?' · Twitch':''}`;
       sub = <><b>{who}</b> {combo ? (subCombo ? "enchaîne les abos !" : "enchaîne le combo !") : "vient de suivre la chaîne"}</>;
       {
         const gated = subCombo ? props.viewerSubbed : props.viewerFollows;
         actions = (
           <>
             <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
-            {!gated ? (
-              <button className="lle-btn" disabled={allDisabled} onClick={() => handleCombo(mult, comboKind)}>
-                Combo {combo ? `${mult + 1}x` : ""} <span className="lle-k">{subCombo ? "tu t'abonnes aussi" : "tu follow aussi"}</span>
+            {!['kick','twitch'].includes(data?.platform) ? (
+              <button className="lle-btn" disabled={allDisabled || !!gated || gated===null || (!subCombo && props.canFollow===false)} onClick={() => void handleCombo(mult, comboKind)}>
+                {gated ? (subCombo?"✓ Déjà abonné":"✓ Déjà suivi") : gated===null?"Vérification…":!subCombo&&props.canFollow===false?"Ta chaîne":<>Combo {combo ? `${mult + 1}x` : ""} <span className="lle-k">{subCombo ? "tu t'abonnes aussi" : "tu follow aussi"}</span></>}
               </button>
             ) : null}
           </>
@@ -202,11 +227,11 @@ export default function SpecialEventCard(props: {
       actions = (
         <>
           <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
-          {!props.viewerSubbed ? (
-            <button className="lle-btn" disabled={subClicked} onClick={() => { props.onSubscribe(); handleCombo(mult, "sub"); setSubClicked(true); }}>
-              S'abonner aussi ⭐
+          {(
+            <button className="lle-btn" disabled={subClicked || !!props.viewerSubbed || props.viewerSubbed===null} onClick={() => { props.onSubscribe(); setSubClicked(true); window.setTimeout(()=>setSubClicked(false),1000); }}>
+              {props.viewerSubbed ? '✓ Déjà abonné' : props.viewerSubbed===null ? 'Vérification…' : "S'abonner aussi ⭐"}
             </button>
-          ) : null}
+          )}
         </>
       );
       break;
@@ -219,7 +244,7 @@ export default function SpecialEventCard(props: {
       epic = true;
       stage = null;
       title = <><span className="lle-who">{who}</span> a fait un don</>;
-      sub = data?.message ?? "« Continue comme ça, énorme ! »";
+      sub = data?.message ?? "Merci pour le soutien !";
       value = <>{amount.toFixed(2).replace(".", ",")} €</>;
       actions = <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>Remercier 💚</button>;
       break;
@@ -238,7 +263,7 @@ export default function SpecialEventCard(props: {
       sub = data?.by
         ? <>Coup fatal par <b>{data.by}</b> — la communauté a fait tomber le boss</>
         : "La communauté a fait tomber le boss";
-      value = <>×3<small>récompense</small></>;
+      value = data?.rewardMultiplier != null ? <>×{Number(data.rewardMultiplier)}<small>récompense</small></> : null;
       actions = (
         <>
           <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG ! 🏆</button>
@@ -280,7 +305,7 @@ export default function SpecialEventCard(props: {
         </div>
         {value ? <div className="lle-ev__value">{value}</div> : null}
       </div>
-      <div className="lle-ev__actions">{actions}</div>
+      {!props.readOnly && <div className="lle-ev__actions">{actions}</div>}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import {joinCommunityRain} from "../community/rain-join.js";
 // api/src/routes/bot_rain.ts
 import { Router } from "express";
 import { pool } from "../db.js";
@@ -689,64 +690,8 @@ botRainRouter.post("/join", async (req: any, res: any) => {
     const username = String(req.user?.username || req.user?.displayName || "user").slice(0, 64);
     if (!userId) return res.status(401).json({ ok: false, error: "auth_required" });
 
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      const stRes = await client.query(
-        `SELECT phase, close_at_ms AS "closeAtMs", round_id AS "roundId"
-         FROM bot_rain_state
-         WHERE streamer_id=$1
-         FOR UPDATE`,
-        [streamer.streamerId]
-      );
-
-      const st = stRes.rows?.[0];
-      const phase = String(st?.phase || "waiting");
-      const closeAtMs = st?.closeAtMs != null ? Number(st.closeAtMs) : null;
-      const roundId = Number(st?.roundId || 0);
-
-      const now = Date.now();
-      if (phase !== "open" || !closeAtMs || now >= closeAtMs) {
-        await client.query("ROLLBACK");
-        return res.status(409).json({ ok: false, error: "not_open" });
-      }
-
-      const inserted = await client.query(
-        `INSERT INTO bot_rain_joins(streamer_id, round_id, user_id, username)
-         VALUES ($1,$2,$3,$4)
-         ON CONFLICT (streamer_id, round_id, user_id) DO NOTHING RETURNING user_id`,
-        [streamer.streamerId, roundId, userId, username]
-      );
-
-      if (!inserted.rowCount) {
-        await client.query("COMMIT");
-        return res.json({ ok: true, alreadyJoined: true, roundId });
-      }
-      await client.query("COMMIT");
-
-      // État partagé : diffuse le nouveau compteur (act:rain) + un message
-      // système "X a récupéré ses rubis" à TOUS les viewers.
-      try {
-        const io = req.app?.locals?.io;
-        const cntRes = await pool.query(
-          `SELECT COUNT(*)::int AS n FROM bot_rain_joins WHERE streamer_id=$1 AND round_id=$2`,
-          [streamer.streamerId, roundId]
-        );
-        const count = Number(cntRes.rows?.[0]?.n ?? 0);
-        emitChatAll(io, streamer.slug, "act:rain", { round: roundId, count });
-        emitChatLine(io, streamer.slug, "sys", `💎 <b>${username}</b> participe à la rain`);
-      } catch {}
-
-      return res.json({ ok: true, roundId });
-    } catch (e: any) {
-      try {
-        await client.query("ROLLBACK");
-      } catch {}
-      throw e;
-    } finally {
-      client.release();
-    }
+    const result=await joinCommunityRain(pool,req.app?.locals?.io,streamer,{id:userId,username});
+    return res.status(result.ok?200:409).json(result);
   } catch (e: any) {
     console.error("[bot_rain/join] error", e?.message || e);
     return res.status(500).json({ ok: false, error: "server_error" });

@@ -50,6 +50,9 @@ export class LunaLiveDbTransport {
           const username = String(row.username);
           const body = String(row.body);
           const externalSource = row.external_source ? String(row.external_source) : null;
+          if(externalSource==='rumble-bot'){
+            this.lastId=Math.max(this.lastId,Number(row.id));continue;
+          }
 
           // The API bridge already handles !clip on the original Rumble message.
           // Preserve its chat/history mirror without executing the clip a second time.
@@ -143,7 +146,7 @@ export class LunaLiveDbTransport {
     this.starting = false;
   }
 
-  async send(text: string) {
+  async send(text: string,meta?: {reason?: 'send'|'autopost'|'clip'}) {
     const body = String(text || "").trim();
     if (!body) return;
 
@@ -178,6 +181,7 @@ export class LunaLiveDbTransport {
         body: JSON.stringify({
           streamerId: this.streamer.id,
           body,
+          reason: meta?.reason,
         }),
       });
 

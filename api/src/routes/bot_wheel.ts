@@ -164,17 +164,17 @@ botWheelRouter.post("/enroll", requireStreamer, express.json(), async (req: Auth
   );
   const prevOpen = Boolean(prevR.rows?.[0]?.enroll_open);
 
-  await pool.query(
+  const changed = await pool.query(
     `UPDATE bot_wheel_cfg
      SET enroll_open=$2, updated_at=NOW()
-     WHERE streamer_id=$1`,
+     WHERE streamer_id=$1 AND enroll_open IS DISTINCT FROM $2 RETURNING updated_at`,
     [streamerId, open]
   );
 
   // ✅ BOT MESSAGE on change (only if live)
-  if (prevOpen !== open) {
+  if (prevOpen !== open && changed.rows.length > 0) {
     const text = open
-      ? "🎡 Inscriptions à la roue OUVERTES ! Tape !wheel pour participer."
+      ? "🎡 Inscriptions à la roue OUVERTES ! Tape !join pour participer."
       : "🎡 Inscriptions à la roue FERMÉES.";
 
     const out = await sendBotChatMessage(streamerId, text);
@@ -188,7 +188,10 @@ botWheelRouter.post("/enroll", requireStreamer, express.json(), async (req: Auth
     const io = req.app.locals.io;
     const slug = out?.slug || (await wheelSlug(streamerId));
     if (open) {
-      emitSpecialCard(io, slug, "wheel", { round: streamerId, real: true });
+      const count = await pool.query(`SELECT COUNT(*)::int AS n FROM bot_wheel_entries WHERE streamer_id=$1`,[streamerId]);
+      emitSpecialCard(io, slug, "wheel", { round: streamerId, eventKey:`wheel:${streamerId}:${new Date(changed.rows[0].updated_at).getTime()}`, endsAtMs:null, count:Number(count.rows[0]?.n||0), real:true });
+    } else {
+      emitChatAll(io,slug,"act:wheel",{round:streamerId,resolved:true});
     }
   }
 
@@ -243,32 +246,31 @@ botWheelRouter.post("/clear", requireStreamer, async (req: AuthedReq, res) => {
 botWheelRouter.post("/draw", requireStreamer, async (req: AuthedReq, res) => {
   const streamerId = Number(req.streamerId);
 
-  const r = await pool.query(
-    `SELECT id, username
-     FROM bot_wheel_entries
-     WHERE streamer_id=$1
-     ORDER BY created_at ASC, id ASC`,
-    [streamerId]
-  );
-
-  const list = r.rows.map((x: any) => ({ id: Number(x.id), username: String(x.username) }));
-  if (!list.length) return res.json({ ok: true, winner: null, index: null });
-
-  const index = Math.floor(Math.random() * list.length);
-  const winner = list[index]?.username ?? null;
-
-  // Résultat PARTAGÉ : la roue apparaît et tourne vers le MÊME gagnant sur
-  // l'écran de tous les viewers, puis le gagnant est annoncé dans le chat.
+  await ensureCfg(streamerId);
+  const client = await pool.connect();
+  let list: {id:number;username:string}[];
+  let index:number;
+  let winner:string;
   try {
-    const io = req.app.locals.io;
-    const slug = await wheelSlug(streamerId);
-    const names = list.map((x) => x.username);
-    emitChatAll(io, slug, "act:wheel", { round: streamerId, names, winner, resolved: true });
-    if (winner) emitChatLine(io, slug, "recap", `🎡 <b>${winner}</b> remporte le tirage 🎉`);
-    // vide les inscriptions pour le prochain tour
-    await pool.query(`DELETE FROM bot_wheel_entries WHERE streamer_id=$1`, [streamerId]);
-    await pool.query(`UPDATE bot_wheel_cfg SET enroll_open=FALSE, updated_at=NOW() WHERE streamer_id=$1`, [streamerId]);
-  } catch {}
+    await client.query("BEGIN");
+    await client.query(`SELECT streamer_id FROM bot_wheel_cfg WHERE streamer_id=$1 FOR UPDATE`,[streamerId]);
+    const r=await client.query(`SELECT id,username FROM bot_wheel_entries WHERE streamer_id=$1 ORDER BY created_at,id`,[streamerId]);
+    list=r.rows.map((x:any)=>({id:Number(x.id),username:String(x.username)}));
+    if(!list.length){await client.query("ROLLBACK");return res.json({ok:true,winner:null,index:null});}
+    index=Math.floor(Math.random()*list.length);
+    winner=list[index].username;
+    await client.query(`DELETE FROM bot_wheel_entries WHERE streamer_id=$1`,[streamerId]);
+    await client.query(`UPDATE bot_wheel_cfg SET enroll_open=FALSE,updated_at=NOW() WHERE streamer_id=$1`,[streamerId]);
+    await client.query("COMMIT");
+  } catch(error) {
+    await client.query("ROLLBACK");
+    console.error("[bot_wheel] draw failed",(error as any)?.code);
+    return res.status(500).json({ok:false,error:"draw_failed"});
+  } finally {client.release();}
+  const io=req.app.locals.io;
+  const slug=await wheelSlug(streamerId);
+  emitChatAll(io,slug,"act:wheel",{round:streamerId,names:list.map(x=>x.username),winner,resolved:true});
+  emitChatLine(io,slug,"recap",`🎡 <b>${winner}</b> remporte le tirage 🎉`);
 
   res.json({ ok: true, winner, index });
 });
@@ -362,48 +364,28 @@ botWheelRouter.post("/join", requireAuth, express.json(), async (req: any, res) 
 
   await ensureCfg(streamerId);
 
-  const cfgR = await pool.query(
-    `SELECT enroll_open
-     FROM bot_wheel_cfg
-     WHERE streamer_id=$1
-     LIMIT 1`,
-    [streamerId]
-  );
-  const open = Boolean(cfgR.rows?.[0]?.enroll_open);
-
-  if (!open) {
-    return res.status(409).json({ ok: false, error: "closed" });
-  }
-
-  // TODO conditions future: follow-only / sub-only / etc (mêmes règles que !join)
-  const userId = Number(u.id);
-  const username = String(u.username || "").trim();
-  const usernameLc = username.toLowerCase();
-
-  let joined = false;
-  let already = false;
-
+  const userId=Number(u.id);
+  const profile=await pool.query(`SELECT username FROM users WHERE id=$1`,[userId]);
+  const username=String(profile.rows[0]?.username||u.username||"").trim();
+  if(!username) return res.status(400).json({ok:false,error:"username_required"});
+  const usernameLc=username.toLowerCase();
+  let joined=false;
+  const client=await pool.connect();
   try {
-    const ins = await pool.query(
-      `INSERT INTO bot_wheel_entries(streamer_id, user_id, username, username_lc)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (streamer_id, user_id) DO NOTHING
-       RETURNING id`,
-      [streamerId, userId, username, usernameLc]
-    );
-    joined = !!ins.rows?.[0];
-    already = !joined;
-  } catch {
-    const ins = await pool.query(
-      `INSERT INTO bot_wheel_entries(streamer_id, username, username_lc)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (streamer_id, username_lc) DO NOTHING
-       RETURNING id`,
-      [streamerId, username, usernameLc]
-    );
-    joined = !!ins.rows?.[0];
-    already = !joined;
-  }
+    await client.query("BEGIN");
+    const cfg=await client.query(`SELECT enroll_open FROM bot_wheel_cfg WHERE streamer_id=$1 FOR UPDATE`,[streamerId]);
+    if(!cfg.rows[0]?.enroll_open){await client.query("ROLLBACK");return res.status(409).json({ok:false,error:"closed"});}
+    const ins=await client.query(`INSERT INTO bot_wheel_entries(streamer_id,user_id,username,username_lc)
+      VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,[streamerId,userId,username,usernameLc]);
+    joined=!!ins.rows[0];
+    await client.query(`UPDATE bot_wheel_entries SET user_id=$2 WHERE streamer_id=$1 AND username_lc=$3 AND user_id IS NULL
+      AND NOT EXISTS(SELECT 1 FROM bot_wheel_entries WHERE streamer_id=$1 AND user_id=$2)`,[streamerId,userId,usernameLc]);
+    await client.query("COMMIT");
+  }catch(error){
+    await client.query("ROLLBACK");
+    console.error("[bot_wheel] join failed",(error as any)?.code);
+    return res.status(500).json({ok:false,error:"join_failed"});
+  }finally{client.release();}
 
   // État partagé : compteur + message système diffusés (sur un vrai nouveau join).
   if (joined) {

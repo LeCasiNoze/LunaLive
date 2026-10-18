@@ -342,6 +342,7 @@ function StreamerPageDesktop() {
   // carte sub — voir ChatPanel.handleSubscribe → dispatch ui:open_sub).
   React.useEffect(() => {
     const onOpenSub = () => setSubOpen(true);
+    if (new URLSearchParams(window.location.search).get("subscribe")==="1") setSubOpen(true);
     window.addEventListener("ui:open_sub", onOpenSub as any);
     return () => window.removeEventListener("ui:open_sub", onOpenSub as any);
   }, []);

@@ -1,3 +1,4 @@
+import ChatEventLine from "./chat/ChatEventLine";
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -17,6 +18,7 @@ import { startChatRecovery, reconcileChatHistory } from "../lib/chatRecovery";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
+import { messagePresentation } from './chat/messagePresentation';
 import type { ChatCosmetics } from "../lib/cosmetics";
 import { BotMenu } from "../components/BotMenu";
 import SpecialEventCard, { type SpecialEventType } from "./chat/SpecialEventCard";
@@ -65,6 +67,7 @@ type ChatMsg = {
   cosmetics?: ChatCosmetics | null;
   rumble?: boolean;
   rumbleLinked?: boolean;
+  externalSource?: string | null;
   // Messages spéciaux (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level).
   // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
   // "recap" = ligne centrée · "sys" = message système · "act" = carte
@@ -1222,7 +1225,7 @@ export function ChatPanel({
   /* -------------------------
      Auth + nav
      ------------------------- */
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate = useNavigate();
 
   /* -------------------------
@@ -1231,8 +1234,9 @@ export function ChatPanel({
   const [messages, setMessages] = React.useState<ChatMsg[]>([]);
   const [activeEvents, setActiveEvents] = React.useState<ActiveEvent[]>([]);
   const specialSeqRef = React.useRef(0);
-  const [viewerFollows, setViewerFollows] = React.useState(false);
-  const [viewerSubbed, setViewerSubbed] = React.useState(false);
+  const [viewerFollows, setViewerFollows] = React.useState<boolean | null>(null);
+  const [viewerSubbed, setViewerSubbed] = React.useState<boolean | null>(null);
+  const [predictionStake,setPredictionStake] = React.useState<number | null>(null);
   const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [socketConnected, setSocketConnected] = React.useState(true);
@@ -1552,7 +1556,17 @@ export function ChatPanel({
 
   // Moteur d'events actionnables v2 (état partagé chat ↔ épinglé). En vrai
   // chat : simulate=false (pas de faux participants ; le backend socket
-  // gérera la participation réelle partagée — phase 2).
+  // gère les participations et résultats partagés).
+  async function runEventAction(path:string,body:any) {
+    if(!token){onRequireLogin();return false;}
+    try {
+      const response=await fetch(`${apiBase()}${path}`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+      const result=await response.json();
+      if(!response.ok||result.ok===false) throw new Error(result.reason==="forbidden"?"Action réservée au streamer.":"Action refusée. Réessaie.");
+      if(path.endsWith("/draw")&&!result.winner) throw new Error("Aucun participant inscrit à la roue.");
+      return true;
+    }catch(error:any){window.dispatchEvent(new CustomEvent("ui:toast",{detail:{kind:"error",title:"Événement",message:error?.message||"Action indisponible."}}));return false;}
+  }
   const actEngine = useActionableEngine({
     me: join?.me?.username ?? "Toi",
     poolNames: [],
@@ -1560,6 +1574,7 @@ export function ChatPanel({
     emitRecap: pushRecap,
     addChatCard: pushActCard,
     simulate: false,
+    stake: predictionStake,
     // Participation RÉELLE : chaque action de carte route vers le vrai endpoint
     // LunaLive ; l'état (compteur, %, résultat) revient par socket.
     onRealJoin: async (e) => {
@@ -1569,7 +1584,7 @@ export function ChatPanel({
       try {
         const response = await fetch(`${apiBase()}${path}`, {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ slug }),
+          body: JSON.stringify({ slug }), signal: AbortSignal.timeout(10000),
         });
         const result = await response.json();
         if (!response.ok || result?.ok === false) throw new Error(result.error === "need_watchtime" ? "Il faut regarder le stream plus longtemps." : "Participation refusée.");
@@ -1584,9 +1599,10 @@ export function ChatPanel({
       try {
         const response = await fetch(`${apiBase()}/api/bot/predictions/bet`, {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ streamerSlug: slug, choice: opt === "yes" ? 1 : 2 }),
+          body: JSON.stringify({ streamerSlug: slug, choice: opt === "yes" ? 1 : 2, round: _e.round, stake: predictionStake }), signal: AbortSignal.timeout(10000),
         });
         const result = await response.json();
+        if (result.reason === "already_bet") return true;
         if (!response.ok || result?.ok === false) throw new Error(result.reason === "not_enough_rubis" ? "Pas assez de rubis." : "Mise refusée.");
         return true;
       } catch (error: any) {
@@ -1594,22 +1610,13 @@ export function ChatPanel({
         return false;
       }
     },
-    onRealResolveWheel: () => {
-      if (!token) return;
-      void fetch(`${apiBase()}/me/bot/bot_wheel/draw`, {
-        method: "POST", headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    },
-    onRealResolvePredict: (_e, winner) => {
-      if (!token) return;
-      void fetch(`${apiBase()}/api/bot/predictions/resolve`, {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ streamerSlug: slug, winning: winner === "yes" ? 1 : 2 }),
-      }).catch(() => {});
-    },
+    onRealResolveWheel: async () => runEventAction("/me/bot/bot_wheel/draw", { slug }),
+    onRealResolvePredict: async (event,winner) => runEventAction("/api/bot/predictions/resolve", { streamerSlug:slug,round:event.round,winning:winner==="yes"?1:2 }),
+
   });
   const isStreamerRole = join?.role === "streamer" || join?.role === "admin";
   React.useEffect(() => { actEngine.reset(); setActiveEvents([]); }, [slug, actEngine.reset]);
+  React.useEffect(() => { setPredictionStake(null); }, [token]);
 
   // Prompt "annoncer ton rank-up ?" : si le viewer a monté de niveau ailleurs
   // sur le site dans les 10 dernières minutes, on lui propose à l'ouverture du
@@ -1656,28 +1663,12 @@ export function ChatPanel({
     void sendBody(txt);
   }
 
-  // Bouton Combo → spawn une carte combo dans le flux + met à jour le chip
-  // épinglé. Deux chaînes distinctes (follow / sub) via un id de chip par kind.
-  function handleCombo(nextMult: number, kind: "follow" | "sub") {
-    const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
-    const who = join?.me?.username ?? "Un viewer";
-    const m: ChatMsg = {
-      id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
-      type: "combo", data: { mult: nextMult, who, kind },
-    };
-    animatedMsgIdsRef.current.add(id);
-    setMessages((prev) => {
-      const next = [...prev, m];
-      if (next.length > 50) next.splice(0, next.length - 50);
-      return next;
-    });
-    forceScrollBottomMultiPass();
-    const chipId = kind === "sub" ? "combo:sub" : "combo:follow";
-    setActiveEvents((prev) => {
-      const others = prev.filter((e) => e.id !== chipId);
-      const comboChip: ActiveEvent = { id: chipId, type: "combo", data: { mult: nextMult, kind } };
-      return [...others, comboChip].slice(-4);
-    });
+  // Combo : seule une action confirmée par le serveur déclenche une carte.
+  const followingBusy = React.useRef(new Set<string>());
+  async function handleCombo(_nextMult: number, kind: "follow" | "sub") {
+    if(kind==="sub"){handleSubscribe();return false;}
+    if(viewerFollows!==false) return false;
+    return handleFollowChannel(slug);
   }
 
   function removeActiveEvent(id: string) {
@@ -1692,22 +1683,27 @@ export function ChatPanel({
       return;
     }
     let alive = true;
-    (async () => {
+    setViewerFollows(null);setViewerSubbed(null);
+    const refreshMembership = async () => {
       try {
         const r = await fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((x) => x.json());
-        if (alive) setViewerFollows(!!r?.isFollowing);
+        if (alive && r?.ok !== false && typeof r?.isFollowing === "boolean") setViewerFollows(!!r?.isFollowing || Number(r?.ownerUserId)===Number(user?.id));
       } catch { /* ignore */ }
       try {
         const st = await fetch(`${apiBase()}/streamers/${encodeURIComponent(slug)}/gift-subs/status`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((x) => x.json());
-        if (alive) setViewerSubbed(!!st?.isSub);
+        if (alive && st?.ok && typeof st.isSub === "boolean") setViewerSubbed(st.isSub);
       } catch { /* ignore */ }
-    })();
-    return () => { alive = false; };
-  }, [token, slug]);
+    };
+    void refreshMembership();
+    const interval=window.setInterval(()=>void refreshMembership(),15000);
+    window.addEventListener("focus",refreshMembership);
+    window.addEventListener("ui:follow_changed",refreshMembership);
+    return () => {alive=false;window.clearInterval(interval);window.removeEventListener("focus",refreshMembership);window.removeEventListener("ui:follow_changed",refreshMembership);};
+  }, [token, slug, user?.id]);
 
   /* -------------------------
      Messages spéciaux : actions des cartes (follow / sub / boss)
@@ -1715,42 +1711,35 @@ export function ChatPanel({
   // Bouton "Suivre"/"Soutenir" (carte raid) → follow réel de la chaîne visée.
   // asFollowEvent (chaîne raidée) → spawn en plus une carte "follow" contexte
   // pour le viewer, comme un vrai follow apparaîtrait dans le chat.
-  function handleFollowChannel(chSlug: string, asFollowEvent?: boolean) {
-    if (!token) return onRequireLogin();
-    const s = String(chSlug || "").trim();
-    if (!s) return;
-    followStreamer(s, token)
-      .then(() =>
-        window.dispatchEvent(new CustomEvent("ui:toast", {
-          detail: { kind: "success", title: "💜 Suivi", message: `Tu suis désormais ${s}` },
-        }))
-      )
-      .catch(() =>
-        window.dispatchEvent(new CustomEvent("ui:toast", {
-          detail: { kind: "error", title: "Erreur", message: "Impossible de suivre cette chaîne." },
-        }))
-      );
-    if (asFollowEvent) {
-      const id = -(Date.now() * 100000 + (specialSeqRef.current = (specialSeqRef.current + 1) % 100000));
-      const who = join?.me?.username ?? "Un viewer";
-      const m: ChatMsg = {
-        id, userId: 0, username: "LunaLive", body: "", createdAt: new Date().toISOString(),
-        type: "follow", data: { who },
-      };
-      animatedMsgIdsRef.current.add(id);
-      setMessages((prev) => {
-        const next = [...prev, m];
-        if (next.length > 50) next.splice(0, next.length - 50);
-        return next;
-      });
-      forceScrollBottomMultiPass();
-    }
+  async function handleFollowChannel(chSlug: string, _asFollowEvent?: boolean) {
+    if(!token){onRequireLogin();return false;}
+    const target=String(chSlug||"").trim();
+    if(!target||followingBusy.current.has(target.toLowerCase())) return false;
+    followingBusy.current.add(target.toLowerCase());
+    try {
+      await followStreamer(target,token);
+      if(target.toLowerCase()===String(slug).toLowerCase()) setViewerFollows(true);
+      window.dispatchEvent(new CustomEvent("ui:toast",{detail:{kind:"success",title:"Suivi",message:`Tu suis désormais ${target}`}}));
+      return true;
+    } catch {
+      window.dispatchEvent(new CustomEvent("ui:toast",{detail:{kind:"error",title:"Suivi",message:"Impossible de suivre cette chaîne. Réessaie."}}));
+      return false;
+    } finally {followingBusy.current.delete(target.toLowerCase());}
   }
+  const loadFollowing=React.useCallback(async(target:string)=>{
+    if(!target) return true;
+    if(!token) return false;
+    const r=await fetch(`${apiBase()}/streamers/${encodeURIComponent(target)}`,{headers:{Authorization:`Bearer ${token}`},cache:"no-store"});
+    if(!r.ok) throw new Error("follow_status_failed");
+    const data=await r.json();
+    return !!data.isFollowing||Number(data.ownerUserId)===Number(user?.id);
+  },[token,user?.id]);
 
   // Bouton "S'abonner aussi" (carte sub) → ouvre la SubModal de la page
   // streamer (elle écoute cet event). Fallback : page streamer.
   function handleSubscribe() {
     if (!token) return onRequireLogin();
+    if (isPopup) { window.open(`/s/${encodeURIComponent(slug)}?subscribe=1`, `lunalive_sub_${slug}`, "noopener"); return; }
     window.dispatchEvent(new CustomEvent("ui:open_sub", { detail: { slug } }));
   }
 
@@ -2046,6 +2035,8 @@ export function ChatPanel({
       if (!p || p.round == null) return;
       actEngine.patchByRound("predict", p.round, {
         pctYes: p.pctYes != null ? Number(p.pctYes) : undefined,
+        serverCount: p.count != null ? Number(p.count) : undefined,
+        totalStake: p.totalStake != null ? Number(p.totalStake) : undefined,
         resolved: !!p.resolved,
       });
     });
@@ -2056,6 +2047,8 @@ export function ChatPanel({
         actEngine.applyWheelResult(p.round ?? null, p.names.map(String), String(p.winner));
       } else if (p.count != null && p.round != null) {
         actEngine.patchByRound("wheel", p.round, { serverCount: Number(p.count) });
+      } else if (p.resolved && p.round != null) {
+        actEngine.patchByRound("wheel", p.round, { resolved: true });
       }
     });
 
@@ -2065,6 +2058,10 @@ export function ChatPanel({
       if (msg && typeof msg.type === "string" && ACTIONABLE_TYPES.has(msg.type)) {
         actEngine.open(msg.type as any, { ...(msg.data || {}), createdAt: msg.createdAt, messageId: msg.id });
         return;
+      }
+      if (msg.type==="combo"&&msg.data?.real) {
+        const kind=msg.data.kind==="sub"?"sub":"follow";
+        setActiveEvents(prev=>[...prev.filter(e=>e.id!==`combo:${kind}`),{id:`combo:${kind}`,type:"combo",data:msg.data}]);
       }
       if (historyRequest) arrived.push(msg);
       animatedMsgIdsRef.current.add(msg.id);
@@ -2132,27 +2129,33 @@ export function ChatPanel({
     });
 
     const mode = visualMode === "popup" ? "popup" : "public";
-    const syncRain = async () => {
-      if (!token) return;
+    let syncingEvents=false;
+    const syncEvents = async () => {
+      if(disposed||syncingEvents) return;
+      syncingEvents=true;
+      const requestedAt=Date.now();
       try {
-        const response = await fetch(`${apiBase()}/me/bot/bot_rain/public?slug=${encodeURIComponent(s)}`, {
-          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(10000),
+        const response=await fetch(`${apiBase()}/chat/${encodeURIComponent(s)}/events`,{
+          headers:token?{Authorization:`Bearer ${token}`}:{},cache:"no-store",signal:AbortSignal.timeout(10000),
         });
-        const state = await response.json();
-        if (disposed || !state.ok || state.phase !== "open") return;
-        actEngine.open("rain", { real: true, round: state.roundId, pot: state.rubiesPerUser,
-          durationSec: state.joinWindowSec || 120, endsAtMs: Number(state.joinCloseAtMs) });
-        actEngine.patchByRound("rain", state.roundId, { serverCount: state.participants, joined: !!state.joined });
-      } catch {}
+        const state=await response.json();
+        if(disposed||!response.ok||!state.ok) return;
+        actEngine.sync(state.events||[],state.complete||[],requestedAt);
+        if(token){
+          const r=await fetch(`${apiBase()}/api/bot/predictions/stake`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
+          const stake=await r.json();if(!disposed&&r.ok&&stake.ok) setPredictionStake(Number(stake.selected));
+        }
+      } catch {} finally {syncingEvents=false;}
     };
+    const eventsPoll=window.setInterval(()=>{if(document.visibilityState==="visible") void syncEvents();},10000);
     const recovery = startChatRecovery(socket, {
       slug: s, mode,
       onStatus: setSocketConnected,
       onError: (error) => { setError(error); setInitialLoading(false); },
-      onSync: () => { void syncHistory(); void syncRain(); },
+      onSync: () => { void syncHistory(); void syncEvents(); },
       onJoined: (ack: JoinAck) => {
         setJoin(ack);
-        void syncRain();
+        void syncEvents();
         setError(null);
         setAppearance(normalizeAppearance(ack.appearance));
         void syncHistory();
@@ -2168,6 +2171,7 @@ export function ChatPanel({
 
     return () => {
       disposed = true;
+      window.clearInterval(eventsPoll);
       recovery.dispose();
       historyRequest?.abort();
       window.removeEventListener("online", recovery.recover);
@@ -2638,6 +2642,8 @@ function openChatPopup() {
         onVote={() => {}}
         onChestOpen={() => {}}
         onComboAdvance={handleCombo}
+        viewerFollows={viewerFollows}
+        viewerSubbed={viewerSubbed}
         recap={pushRecap}
       />
       <ActionablePinnedBar engine={actEngine} isStreamer={isStreamerRole} />
@@ -2684,38 +2690,7 @@ function openChatPopup() {
           {(() => {
             return messages.map((m) => {
             // Ligne récap centrée (fin de rain, résultat prédiction, combo terminé…)
-            if ((m.type as any) === "recap") {
-              return (
-                <div
-                  key={m.id}
-                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
-                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{
-                    alignSelf: "center", fontSize: 11.5, fontWeight: 700,
-                    color: "rgba(255,255,255,0.55)", background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)", padding: "5px 12px", borderRadius: 999,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: String(m.data?.html || "") }}
-                />
-              );
-            }
-
-            // Message système (participation actionnable : "X a récupéré…")
-            if ((m.type as any) === "sys") {
-              return (
-                <div
-                  key={m.id}
-                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
-                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{
-                    alignSelf: "stretch", fontSize: 11.5, fontWeight: 600,
-                    color: "rgba(180,170,220,0.82)", background: "rgba(124,92,252,0.07)",
-                    border: "1px solid rgba(124,92,252,0.14)", padding: "5px 12px", borderRadius: 9,
-                  }}
-                  dangerouslySetInnerHTML={{ __html: `<span style="opacity:.6">🔔</span> ${String(m.data?.html || "")}` }}
-                />
-              );
-            }
+            if(m.type==='sys'||m.type==='recap')return <div key={m.id} className={animatedMsgIdsRef.current.has(m.id)?`chat-enter ${CHAT_ENTER_ANIM}`:undefined} onAnimationEnd={()=>animatedMsgIdsRef.current.delete(m.id)} style={{alignSelf:m.type==='recap'?'center':'stretch'}}><ChatEventLine kind={m.type} html={String(m.data?.html||'')}/></div>;
 
             // Carte actionnable (rain / roue / prédiction / coffre) — pilotée
             // par le moteur v2, synchronisée avec le chip épinglé.
@@ -2747,6 +2722,8 @@ function openChatPopup() {
                     data={m.data || {}}
                     currentUsername={join?.me?.username ?? null}
                     viewerFollows={viewerFollows}
+                    canFollow={join?.role!=="streamer"}
+                    loadFollowing={loadFollowing}
                     viewerSubbed={viewerSubbed}
                     onGg={handleGg}
                     onCombo={handleCombo}
@@ -2761,7 +2738,7 @@ function openChatPopup() {
             // Les messages externes Rumble sont persistés avec userId=0 pour
             // ne jamais leur accorder de droits LunaLive. Ils restent pourtant
             // des messages de viewers et doivent passer par ChatMessageBubble.
-            const isSystem = m.userId === 0 && !m.rumble;
+            const isSystem = m.userId === 0 && !m.rumble && !messagePresentation(m).platform;
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 

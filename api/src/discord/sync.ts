@@ -1,3 +1,4 @@
+import {getLinkedUser} from "./link.js";
 // api/src/discord/sync.ts
 import crypto from "crypto";
 import { pool } from "../db.js";
@@ -84,18 +85,8 @@ export async function applyRolesAndNick(client: Client | null, guild: Guild, mem
 export async function syncUserEverywhere(client: Client | null, discordUserId: string, ctx: BotCtx) {
   if (!client) return;
 
-  const link = await pool.query(
-    `
-    SELECT dl.user_id, u.username, u.role
-    FROM discord_links dl
-    JOIN users u ON u.id = dl.user_id
-    WHERE dl.discord_user_id = $1
-    LIMIT 1
-    `,
-    [discordUserId]
-  );
-
-  const row = link.rows?.[0];
+  const linked=await getLinkedUser(discordUserId);
+  const row=linked?{user_id:linked.id,username:linked.username,role:linked.role}:null;
   if (!row) return;
 
   const ban = await getActiveSiteUserBan(Number(row.user_id));

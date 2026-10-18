@@ -1,0 +1,40 @@
+{
+  "status": "automod_multistream_live_obs_ready_kick_30fps_pending",
+  "streamerSlug": "lecasinoze",
+  "botDisplayName": "LunaLive_Bot",
+  "channels": {
+    "kick": {"url": "https://kick.com/lecasinoze", "login": "lecasinoze", "id": "24912362"},
+    "twitch": {"url": "https://www.twitch.tv/lecasinoze", "login": "lecasinoze", "id": "535777475"}
+  },
+  "botAccounts": {
+    "kick": {"login": "lunalive_bot", "id": null, "existenceConfirmed": false},
+    "twitch": {"login": "lunalive_bot", "id": null, "existenceConfirmed": false}
+  },
+  "temporarySender": {"approvedByOwner": true, "kick": "lecasinoze", "twitch": "lecasinoze"},
+  "oauthScopes": {
+    "kick": ["user:read", "channel:read", "chat:write", "events:subscribe"],
+    "twitch": ["user:read:chat", "user:write:chat"]
+  },
+  "rules": {
+    "allowedStreamer": "lecasinoze",
+    "callsQueue": "existing_lunalive_queue",
+    "commandReplies": "origin_channel",
+    "externalUserIdentity": "platform_plus_verified_user_id",
+    "automaticExternalModerationPrivileges": false,
+    "mergedExternalMessagesIntoTwitch": false,
+    "aggregateChatDashboard": "private_operator_view",
+    "commands": ["call", "listec", "discord", "help", "aide", "site", "ping"],
+    "durableInboxAndOutboundRetries": "verified",
+    "publicVideoTest": "automod_received_by_rumble_kick_twitch_region_restrictions_observed",
+    "twitchPrivateBandwidthTest": "passed_360_frames",
+    "obsManualRelay": "full_private_rtmp_test_passed_canonical_mode_controls_preserved",
+    "kickCadence": "active_24fps_warning_30fps_candidate_private_probe_passed_owner_restart_approval_pending"
+  },
+  "remaining": [
+    "Future optional migration from temporary LeCasiNoze senders to dedicated LunaLive_Bot accounts.",
+    "Stop the active Automod publication through its existing controls before selecting OBS mode.",
+    "An actual personal OBS public broadcast has not replaced the active Automod during this setup; its transport was tested privately.",
+    "Apply 30 FPS to the running Automod encoder only after precise owner approval; automatic review rejected that additional restart.",
+    "Reconcile the existing BotRix Discord command with the LunaLive response to avoid two different invitations."
+  ]
+}

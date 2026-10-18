@@ -1,3 +1,5 @@
+import {isDedicatedRelayEcho,relayDisplayBody} from "./multichat/rumble-echo.js";
+import {handleExternalCommunityChat,observeExternalAccount} from "./community/external-chat.js";
 import { readPublicChat } from "./observatory/sse.js";
 import {rewardFollow} from './automod-shop/follows.js';
 import {observeCnz} from './automod-shop/account-benefits.js';
@@ -216,7 +218,7 @@ export async function sendRumbleMessageReliable(
  */
 export async function connectRumbleChatSse(
   videoIdNumeric: string,
-  onMessage: (m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; requestId: string | null }) => void,
+  onMessage: (m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; requestId: string | null; relayEcho?: boolean }) => void,
   onClose: (noChatAvailable?: boolean) => void
 ): Promise<(() => void) | null> {
   const ac = new AbortController();
@@ -268,7 +270,7 @@ export async function connectRumbleChatSse(
 
   function emitOne(m: RumbleSseMessage, reqId: string | null, isOwn: boolean) {
     if (!m?.id || !m?.user_id) return;
-    if (isOwn) return; // ignore le rebond de nos propres messages
+    // Outgoing echoes may be shown, but must never enter command dispatch.
     const text = String(m.text ?? "").trim();
     if (!text) return;
     const username = userById.get(String(m.user_id)) || `rumble_${m.user_id}`;
@@ -280,6 +282,7 @@ export async function connectRumbleChatSse(
       text,
       createdAt: Number.isFinite(createdAt.getTime()) ? createdAt : new Date(),
       requestId: reqId,
+      relayEcho: isOwn,
     });
   }
 
@@ -393,7 +396,36 @@ export function ensureRumbleBridge(opts: {
     }
   }
 
-  async function broadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
+  let relayName='LunaLive_Bot',relayNameUntil=0;
+  async function broadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; relayEcho?: boolean }) {
+    if(Date.now()>relayNameUntil){
+      relayNameUntil=Date.now()+60_000;
+      try{const row=(await opts.pool.query('SELECT username FROM rumble_bot_session WHERE id=1')).rows[0];if(row?.username)relayName=String(row.username);}catch{}
+    }
+    // Independent API/worker processes do not share request-ID echo caches.
+    // Display-only path: the dedicated relay must never earn points or execute
+    // a command, even if its help text starts with !call.
+    if(m.relayEcho || isDedicatedRelayEcho(m.username,relayName,opts.slug)){
+      if(!m.msgId || seenIds.has(m.msgId))return;
+      const displayBody=relayDisplayBody(m.text);if(displayBody===null)return;
+      const inserted=await opts.pool.query(`INSERT INTO chat_messages
+        (streamer_id,user_id,username,body,created_at,external_source,external_msg_id)
+        SELECT $1,0,$2,$3,$4,'rumble-bot',$5 WHERE NOT EXISTS (
+          SELECT 1 FROM chat_messages WHERE streamer_id=$1
+          AND created_at>NOW()-INTERVAL '30 seconds'
+          AND (LEFT(body,200)=$6 OR LEFT(username||': '||body,200)=$6))
+        ON CONFLICT(streamer_id,external_source,external_msg_id)
+        WHERE external_source IS NOT NULL AND external_msg_id IS NOT NULL DO NOTHING
+        RETURNING id,created_at`,[opts.streamerId,m.username,displayBody,m.createdAt,m.msgId,m.text]);
+      addSeen(m.msgId);
+      const row=inserted.rows[0];if(!row)return;
+      const payload={id:Number(row.id),userId:0,username:m.username,body:displayBody,
+        createdAt:new Date(row.created_at).toISOString(),role:'bot',isBot:true,
+        externalSource:'rumble-bot',rumble:true,rumbleLinked:false};
+      if(publicOn)opts.io.to(`chat:${opts.slug}:public`).emit('chat:message',payload);
+      if(popupOn)opts.io.to(`chat:${opts.slug}:popup`).emit('chat:message',payload);
+      return;
+    }
     if (m.msgId && seenIds.has(m.msgId)) return;
     if (m.msgId) addSeen(m.msgId);
 
@@ -433,6 +465,15 @@ export function ensureRumbleBridge(opts: {
       if(greeting)for(const chunk of shopReplyChunks(greeting))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);
     }).catch(()=>{});
 
+    const externalMessage={provider:'rumble' as const,externalId:m.userId,streamerId:opts.streamerId,slug:opts.slug,username:m.username,text:m.text,createdAt:m.createdAt};
+    try{
+      const communityReply=await handleExternalCommunityChat(opts.pool,opts.io,externalMessage);
+      if(communityReply){for(const chunk of shopReplyChunks(communityReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
+    }catch(error){
+      console.warn('[community-chat]',opts.slug,(error as any)?.code||'unavailable');
+      if(/^!(?:rain\s*$|lier\s+LL-)/i.test(m.text.trim())){await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',`@${m.username} — Service indisponible. Réessaie dans un instant.`);return;}
+    }
+    void observeExternalAccount(opts.pool,externalMessage).catch(()=>{});
     if(opts.slug==='lecasinoze'){
       await observeCoinName(opts.pool,opts.streamerId,m.userId,m.username,m.createdAt);
       const coinReply=await handleCoinsChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,text:m.text,createdAt:m.createdAt});
@@ -514,7 +555,7 @@ export function ensureRumbleBridge(opts: {
   // Les résolutions de cosmétiques sont asynchrones. Cette chaîne conserve
   // strictement l'ordre des messages tel qu'il arrive depuis Rumble.
   let broadcastQueue = Promise.resolve();
-  function enqueueBroadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
+  function enqueueBroadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date; relayEcho?: boolean }) {
     broadcastQueue = broadcastQueue
       .then(() => broadcast(m))
       .catch((e: any) => console.warn("[rumble_chat] broadcast error", opts.slug, e?.message || e));

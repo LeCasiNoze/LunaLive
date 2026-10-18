@@ -907,8 +907,10 @@ publicRouter.post(
     // follow (ON CONFLICT DO NOTHING → rowCount 0 si déjà abonné).
     if ((ins.rowCount ?? 0) > 0 && io) {
       const followerName = String(req.user!.username);
-      emitSpecialCard(io, String(streamer.slug), "follow", {
-        who: followerName,
+      const recent = await pool.query(`SELECT COUNT(*)::int AS n FROM streamer_follows WHERE streamer_id=$1 AND created_at >= NOW() - INTERVAL '15 seconds'`, [Number(streamer.id)]);
+      const mult = Math.max(1, Number(recent.rows[0]?.n || 1));
+      emitSpecialCard(io, String(streamer.slug), mult > 1 ? "combo" : "follow", {
+        who: followerName, kind: "follow", mult, real: true,
       });
       await emitFollowOverlayAlert(pool, io, streamer, followerName).catch((error) => {
         console.error("[follow-overlay] emit failed", error);

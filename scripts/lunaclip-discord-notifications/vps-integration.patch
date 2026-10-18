@@ -1,0 +1,174 @@
+--- a/server/review-publisher.ts
++++ b/server/review-publisher.ts
+@@ -1,5 +1,7 @@
+ import type {Pool} from 'pg';
+ import fs from 'node:fs';
++import {tickPublicationDiscord} from './publication-discord.js';
++import {applyCaptionPolicy,refreshCurrencyReference} from './caption-currency.js';
+ import {getInstagramCredential,type InstagramAccountKey} from './instagram-accounts.js';
+ import {instagramApi} from './instagram-session.js';
+ import {choosePublication,nextPublicationDate,publicationCaption,publicationTitle,replaceCaptionTitle,replaceCaptionHashtags,parisHour,stripCaptionWebsite,type ArmObservation} from './publication-policy.js';
+@@ -88,6 +90,7 @@
+       const prior=typeof row.selection==='string'?JSON.parse(row.selection):row.selection||{};
+       const isUntracked=!row.has_tracking;
+       const manualOverride=prior.manualOverride===true||prior.manualOverride==='true';
++      if(manualOverride)continue; // Preserve explicit descriptions and render revisions.
+       const needsAssignment=!manualOverride&&(isUntracked||prior.version!=='ig-hashtags-v1');
+       const choice=needsAssignment?choosePublication(observations,Math.random,planned):null;
+       const hour=parisHour(row.scheduled_at);
+@@ -118,7 +121,7 @@
+   const url=new URL(instagramApi()+'/'+route);
+   if(!post)for(const [k,v] of Object.entries(fields))url.searchParams.set(k,v);
+   const response=await fetch(url,{method:post?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(post?{'Content-Type':'application/json'}:{})},...(post?{body:JSON.stringify(fields)}:{}),signal:AbortSignal.timeout(30000)});
+-  const data=await response.json() as {id?:string;status_code?:string;permalink?:string;error?:{code?:number}};
++  const data=await response.json() as {id?:string;status_code?:string;permalink?:string;thumbnail_url?:string;timestamp?:string;username?:string;caption?:string;media_product_type?:string;error?:{code?:number}};
+   if(!response.ok||data.error)throw new Error(`Instagram erreur ${data.error?.code??response.status}`);
+   return data;
+ }
+@@ -165,7 +168,9 @@
+     }
+     if(!credential.userId)throw new Error('Compte Instagram non configuré');
+     if(!r.container_id){
+-      const c=await graph(account,credential.userId+'/media',{media_type:'REELS',video_url:r.output_url,caption:r.description,share_to_feed:'true'},true);
++      const caption=applyCaptionPolicy(r.description||'',account);
++      if(caption!==r.description)await pool.query('UPDATE publish_jobs SET description=$2 WHERE id=$1',[id,caption]);
++      const c=await graph(account,credential.userId+'/media',{media_type:'REELS',video_url:r.output_url,caption,share_to_feed:'true'},true);
+       if(!c.id)throw new Error('Identifiant conteneur absent');
+       await pool.query("UPDATE review_publications SET container_id=$2,phase='processing',updated_at=NOW(),next_attempt_at=NOW()+INTERVAL '10 seconds' WHERE publish_job_id=$1",[id,c.id]);
+       return;
+@@ -198,5 +203,8 @@
+         WHERE id=$1 AND status<>'done'`,[id,message]);
+     }
+     console.warn('[review publisher]',message);
+-  }finally{ticking=false;}
+-}
++  }finally{ticking=false;
++    void tickPublicationDiscord(pool,(route,fields)=>graph('lecasinoze',route,fields)).catch(()=>console.warn('[publication-discord] collector unavailable'));
++    void refreshCurrencyReference();
++  }
++}
+--- a/server/manual-publication.ts
++++ b/server/manual-publication.ts
+@@ -1,4 +1,5 @@
+ import type {Pool} from 'pg';
++import {applyCaptionPolicy} from './caption-currency.js';
+ import {isCreatorStreamer} from './creator-export.js';
+ import type {InstagramAccountKey} from './instagram-accounts.js';
+ import {choosePublication,nextPublicationDate,publicationCaption,publicationTitle,parisHour,stripCaptionWebsite} from './publication-policy.js';
+@@ -39,10 +40,10 @@
+   const arm=choice.arm;
+   const title=publicationTitle(j.title||'',j.clip_id);
+   const baseCaption=publicationCaption(arm,j.title||'',j.streamer_slug,j.clip_id);
+-  const caption=accountKey==='lecasinoze'
++  const caption=applyCaptionPolicy(accountKey==='lecasinoze'
+    ? baseCaption.replace(`Extrait du live de ${j.streamer_slug} sur LunaLive.`,
+        'Extrait de mon live sur LunaLive et Rumble.\nhttps://lunalive.win')
+-   : baseCaption;
++   : baseCaption,accountKey);
+   let id:number;
+   if(adopted){
+    id=adopted.id;
+--- a/replays/youtube_delivery.py
++++ b/replays/youtube_delivery.py
+@@ -14,6 +14,18 @@
+     with path.open('rb') as f:
+         for chunk in iter(lambda:f.read(1024*1024),b''):h.update(chunk)
+     return h.hexdigest()
++
++def announcement_metadata(video):
++    """Only official API metadata; no guessed duration, cover or public date."""
++    snippet=video.get('snippet',{});details=video.get('contentDetails',{})
++    match=re.fullmatch(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?',details.get('duration',''))
++    duration=sum(float(n or 0)*factor for n,factor in zip(match.groups(),(3600,60,1))) if match else None
++    thumbs=snippet.get('thumbnails',{});thumbnail=next((thumbs[k]['url'] for k in ('maxres','standard','high','medium','default') if thumbs.get(k,{}).get('url')),None)
++    return {'platform':'youtube','mediaId':video['id'],'account':snippet.get('channelId'),
++        'visibility':video.get('status',{}).get('privacyStatus'),'title':snippet.get('title',''),
++        'description':snippet.get('description','').split('\n')[0],'url':'https://www.youtube.com/watch?v='+video['id'],
++        'thumbnail':thumbnail,'publishedAt':snippet.get('publishedAt'),'durationSeconds':duration,
++        'isShort':False,'kind':'vod'}
+ def checked_api(path):
+     if path.stat().st_mode & 0o077:raise ValueError('credential_file_not_private')
+     credentials=Credentials.from_authorized_user_file(str(path));credentials.refresh(Request())
+@@ -41,7 +53,7 @@
+     api,http=checked_api(Path(request['credentials']))
+     if request.get('action')=='inspect':
+         ids=request.get('ids',[]);rows=api.videos().list(part='status,statistics,processingDetails,contentDetails,snippet',id=','.join(ids)).execute().get('items',[]) if ids else []
+-        return {'ok':True,'videos':[{'id':v['id'],'channelId':v.get('snippet',{}).get('channelId'),'status':v.get('status',{}),'statistics':v.get('statistics',{}),'processingStatus':v.get('processingDetails',{}).get('processingStatus'),'contentRating':v.get('contentDetails',{}).get('contentRating',{})} for v in rows]}
++        return {'ok':True,'videos':[{'id':v['id'],'channelId':v.get('snippet',{}).get('channelId'),'status':v.get('status',{}),'statistics':v.get('statistics',{}),'processingStatus':v.get('processingDetails',{}).get('processingStatus'),'contentRating':v.get('contentDetails',{}).get('contentRating',{}),'announcement':announcement_metadata(v)} for v in rows]}
+     source=Path(request['source']).resolve(strict=True);receipt=Path(request['receipt']);receipt.parent.mkdir(parents=True,exist_ok=True)
+     if request['kind'] not in ('short','vod_preview','vod'):raise ValueError('unknown_delivery_kind')
+     tag=request['sourceTag'];hash_value=digest(source);size=source.stat().st_size
+@@ -103,7 +115,9 @@
+     elif processing in ('processing',None):state='processing'
+     else:state='blocked'
+     if processing in ('failed','terminated'):state='blocked'
+-    return {'ok':True,'videoId':video,'url':'https://youtu.be/'+video,'state':state,'privacy':status.get('privacyStatus'),'publishAt':status.get('publishAt'),'processingStatus':processing,'ageRating':row.get('contentDetails',{}).get('contentRating',{}).get('ytRating'),'statistics':row.get('statistics',{})}
++    announcement=announcement_metadata(row)
++    announcement.update(kind=request['kind'],isShort=request['kind']=='short')
++    return {'ok':True,'videoId':video,'url':'https://youtu.be/'+video,'state':state,'privacy':status.get('privacyStatus'),'publishAt':status.get('publishAt'),'processingStatus':processing,'ageRating':row.get('contentDetails',{}).get('contentRating',{}).get('ytRating'),'statistics':row.get('statistics',{}),'announcement':announcement}
+ if __name__=='__main__':
+     os.umask(0o077);p=argparse.ArgumentParser();p.add_argument('--request',required=True);a=p.parse_args()
+     try:print(json.dumps(deliver(json.loads(Path(a.request).read_text()))))
+--- a/replays/replays.py
++++ b/replays/replays.py
+@@ -120,6 +120,18 @@
+         'description':f'Rediffusion du live de LeCasiNoze du {date}.\nDébut de préparation retiré lorsque la première slot est identifiable ; suite du direct conservée.\n\nDiscord : https://discord.gg/6kq3PFu8B5\n\nContenu casino · 18+ · Jouer comporte des risques.\n#LeCasiNoze #Rediffusion',
+         'tags':['LeCasiNoze','Rediffusion','Stream FR']}
+ 
++def notify_discord(state):
++    """Outbox only. A Discord/database failure never changes the upload state."""
++    video=state.get('youtube',{});event=video.get('announcement')
++    if state.get('discordOutboxRecorded') or state.get('phase')!='published' or video.get('privacy')!='public' or video.get('processingStatus')!='succeeded' or not event:return
++    try:
++        result=subprocess.run(['node',str(ROOT/'node_modules/tsx/dist/cli.mjs'),str(ROOT/'youtube-outbox.mts')],
++            cwd=ROOT,input=json.dumps(event).encode(),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
++        if result.returncode==0 and json.loads(result.stdout).get('ok'):
++            state['discordOutboxRecorded']=True;state.pop('discordNotificationError',None)
++        else:state['discordNotificationError']='outbox_unavailable'
++    except Exception:state['discordNotificationError']='outbox_unavailable'
++
+ def tick(dry=False):
+     rows=json.loads((DATA/'candidates.json').read_text());report=[];worked=False
+     for row in rows:
+@@ -134,9 +146,12 @@
+                     if video is None:state.update(phase='blocked',error='published_video_not_found')
+                     else:
+                         state['youtube'].update(processingStatus=video['processingStatus'],statistics=video['statistics'],privacy=video['status'].get('privacyStatus'))
++                        if video.get('announcement'):state['youtube']['announcement']=video['announcement']
+                         if video['processingStatus'] in ('failed','terminated') or video['status'].get('privacyStatus')!='public':state.update(phase='blocked',error='published_video_unavailable')
+                     state['lastCheckedAt']=now();write_private(statefile,state)
+                 except Exception:state['inspectionError']='youtube_inspection_unavailable'
++            if not dry:
++                notify_discord(state);write_private(statefile,state)
+             # Only our reproducible cache; never touch originals in /vod-review or /outputs.
+             if not dry and state.get('phase')=='published' and state.get('youtube',{}).get('processingStatus')=='succeeded' and time.time()-epoch(state['confirmedPublishedAt'])>172800:
+                 for name in ('source.mp4','replay.mp4'):
+@@ -163,7 +178,7 @@
+         except Exception as error:
+             code=str(error) if isinstance(error,ValueError) and re.fullmatch('[a-z0-9_]+',str(error)) else type(error).__name__
+             state.update(phase='blocked' if 'uncertain' in code or 'wrong_youtube' in code else 'retry',error=code,updatedAt=now(),retryAfter=time.time()+900)
+-        write_private(statefile,state);report.append(state)
++        notify_discord(state);write_private(statefile,state);report.append(state)
+     snapshot={'updatedAt':now(),'account':'lecasinoze','policy':'ended_personal_over_one_hour_as_soon_as_ready','dryRun':dry,'items':report}
+     write_private(DATA/('dry-run-status.json' if dry else 'status.json'),snapshot)
+     # Public through the existing authenticated dashboard, without credentials or upload URIs.
+--- a/server/r2.ts
++++ b/server/r2.ts
+@@ -33,7 +33,7 @@
+  * Upload un fichier local vers R2.
+  * @returns URL publique du fichier uploadé
+  */
+-export async function uploadToR2(localPath: string, filename: string): Promise<string> {
++export async function uploadToR2(localPath: string, filename: string, contentType: "video/mp4" | "image/jpeg" | "image/png" | "image/webp" = "video/mp4"): Promise<string> {
+   if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS || !R2_PUBLIC_BASE_URL) {
+     throw new Error("R2 configuration incomplete");
+   }
+@@ -53,7 +53,7 @@
+       try {
+         await client.send(new PutObjectCommand({
+           Bucket: R2_BUCKET, Key: filename, Body: body,
+-          ContentType: "video/mp4", ContentLength: stat.size,
++          ContentType: contentType, ContentLength: stat.size,
+         }), { abortSignal: AbortSignal.timeout(120_000) });
+         const publicUrl = `${R2_PUBLIC_BASE_URL}/${filename.split("/").map(encodeURIComponent).join("/")}`;
+         console.log(`[R2] Upload OK (${(stat.size / 1024 / 1024).toFixed(1)} MB)`);
