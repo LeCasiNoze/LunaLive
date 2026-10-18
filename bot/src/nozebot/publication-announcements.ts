@@ -1,6 +1,6 @@
 import {ChannelType,PermissionFlagsBits,type Client} from 'discord.js';
 import type {Pool} from 'pg';
-import {PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,publicationMessage,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
+import {PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,PUBLICATION_NOTIFICATION_ROLE_IDS,resolvePublicationNotificationRoles,publicationMessage,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
 
 export interface AnnouncementTransport {
  reconcile(event:PublicationEvent,startedAt:Date):Promise<string|null>;
@@ -50,8 +50,20 @@ export async function startPublicationAnnouncements(client:Client,pool:Pool){
  if(!channel||channel.type!==ChannelType.GuildAnnouncement||channel.guildId!==PUBLICATION_GUILD)throw Error('publication_channel_mismatch');
  const me=await channel.guild.members.fetchMe();
  if(!channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.EmbedLinks,PermissionFlagsBits.ReadMessageHistory]))throw Error('publication_channel_permissions_missing');
+ const availableRoles=await channel.guild.roles.fetch();
+ const notificationRoles=resolvePublicationNotificationRoles(availableRoles.values(),!!channel.permissionsFor(me)?.has(PermissionFlagsBits.MentionEveryone));
+ console.log('[nozebot][publications] notification_roles',{
+  resolved:notificationRoles,
+  existing:availableRoles.filter(r=>PUBLICATION_NOTIFICATION_ROLE_IDS.includes(r.id)).map(r=>({id:r.id,name:r.name,mentionable:r.mentionable})),
+ });
  const transport:AnnouncementTransport={
-  async send(event){return (await channel.send(publicationMessage(event))).id;},
+  async send(event){
+   const id=notificationRoles[event.platform];
+   const role=id?await channel.guild.roles.fetch(id):null;
+   const canPing=!!role&&(role.mentionable||!!channel.permissionsFor(me)?.has(PermissionFlagsBits.MentionEveryone));
+   if(!canPing)console.warn('[nozebot][publications] notification_role_unavailable',{platform:event.platform});
+   return (await channel.send(publicationMessage(event,canPing?role!.id:undefined))).id;
+  },
   async reconcile(event,startedAt){
    // Paginate down to BEFORE the original attempt. Incomplete history, permission
    // failures or deletion uncertainty must never turn into an automatic resend.

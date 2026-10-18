@@ -4,6 +4,22 @@ import type {Pool} from 'pg';
 export const PUBLICATION_GUILD='1188913226990235800';
 export const PUBLICATION_CHANNEL='1544429390723682396';
 export const YOUTUBE_CHANNEL='UCbBVUwBBf4Mu3yZxe-Xrmyw';
+// Existing opt-in notification roles from NozeBot's preference selector.
+export const PUBLICATION_NOTIFICATION_ROLE_IDS:readonly string[]=[
+ '1556031808603291689','1188926242519523328','1188926088852799578','1217875557631393923','1188926393946484783',
+];
+export interface PublicationRole {id:string;name:string;mentionable:boolean}
+export function resolvePublicationNotificationRoles(roles:Iterable<PublicationRole>,canMentionRoles:boolean){
+ const candidates=[...roles].filter(r=>PUBLICATION_NOTIFICATION_ROLE_IDS.includes(r.id));
+ const result:Partial<Record<'instagram'|'youtube',string>>={};
+ for(const platform of ['instagram','youtube'] as const){
+  const expression=platform==='youtube'?/\b(?:youtube|yt)\b/:/\b(?:instagram|insta)\b/;
+  const matches=candidates.filter(r=>expression.test(r.name.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase()));
+  // Ambiguous labels or an unmentionable role must never ping a broader group.
+  if(matches.length===1&&(matches[0].mentionable||canMentionRoles))result[platform]=matches[0].id;
+ }
+ return result;
+}
 export const PUBLICATION_SCHEMA=`
 CREATE TABLE IF NOT EXISTS lunaclip_discord_config (
  channel_id text PRIMARY KEY, activated_at timestamptz NOT NULL DEFAULT clock_timestamp()
@@ -57,9 +73,11 @@ export async function enqueuePublication(pool:Pick<Pool,'query'>,event:Publicati
  return !!result.rowCount;
 }
 export function publicationNonce(e:PublicationEvent){return createHash('sha256').update(`${e.platform}:${e.mediaId}:${PUBLICATION_CHANNEL}`).digest('hex').slice(0,24);}
-export function publicationMessage(event:PublicationEvent){
+export function publicationMessage(event:PublicationEvent,notificationRoleId?:string){
  const e=sanitizedEvent(event),ig=e.platform==='instagram';
- return {allowedMentions:{parse:[] as never[]},nonce:publicationNonce(e),enforceNonce:true,
+ const role=notificationRoleId&&PUBLICATION_NOTIFICATION_ROLE_IDS.includes(notificationRoleId)?notificationRoleId:undefined;
+ return {...(role?{content:`<@&${role}>`}:{}),
+  allowedMentions:{parse:[] as never[],...(role?{roles:[role]}:{})},nonce:publicationNonce(e),enforceNonce:true,
   embeds:[{title:e.title,url:e.url,description:e.description||`Une nouvelle ${ig?'publication Instagram':'vidéo YouTube'} de LeCasiNoze est disponible.`,
    color:ig?0xe4405f:0xff0033,author:{name:`LeCasiNoze · ${ig?'Instagram':'YouTube'}`},timestamp:e.publishedAt,
    footer:{text:`LeCasiNoze · ${e.platform}:${e.mediaId}`},...(e.thumbnail?{image:{url:e.thumbnail}}:{})}],

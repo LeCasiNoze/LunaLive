@@ -74,7 +74,25 @@ Les erreurs journalisées sont des codes opérationnels, jamais des réponses AP
 brutes ou des credentials. Les covers Instagram sont recopiées sous une URL R2
 publique stable ; aucun lien CDN signé n'entre dans le message. Une couverture
 absente donne un embed sans image. Texte limité et nettoyé, bouton lien réel,
-`allowedMentions: {parse: []}` ; aucun ping ou faux compteur.
+`allowedMentions.parse: []` ; aucun faux compteur, ping de personne, `@here`
+ou `@everyone`. Depuis la demande explicite du 19 octobre, une nouvelle annonce
+peut mentionner uniquement le rôle de notification opt-in de sa plateforme.
+
+### Rôles de notification
+
+NozeBot résout les noms YouTube/Instagram (y compris les lettres Unicode
+décoratives) parmi les rôles déjà présents dans son sélecteur de préférences.
+Le message ne mentionne que le rôle de la plateforme et `allowedMentions.roles`
+contient seulement son ID. Le texte du média ne peut fournir aucun rôle.
+Un nom ambigu, un rôle disparu ou un rôle non mentionnable sans permission
+existante donne une annonce sans ping et un avertissement opérationnel ; le bot
+ne crée aucun rôle et n'élargit aucun droit. Le log `notification_roles` affiche
+la correspondance résolue et les rôles existants pour vérification.
+
+Les annonces déjà envoyées restent `sent` et ne sont jamais renvoyées pour
+tester un ping. Modifier un ancien message ne prouve pas qu'une notification
+Discord a été délivrée. Vérifier les pings sur la prochaine vraie publication,
+séparément des tests simulés et des reçus historiques sans ping.
 
 Les métadonnées d'un média archivé ou supprimé bénéficient d'une temporisation
 persistante privée (`data/discord-metadata-retries.json`). Cinq anciens médias
