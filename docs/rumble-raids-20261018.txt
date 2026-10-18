@@ -45,6 +45,7 @@ Déploiement
    refus Play'n GO/BGaming ne vient plus d'AutoMod pendant un live personnel.
 
 Validation exécutée
+- Types API/web et compilation Vite/PWA validés depuis le dossier web.
 - 32 tests API/web : droits, double clic concurrent, idempotence persistante,
   délais, confirmation incertaine, changement du live source, URL non Rumble,
   parsing et tri des spectateurs, migration rejouable, révisions de publication,
