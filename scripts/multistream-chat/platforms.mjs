@@ -40,12 +40,12 @@ export class PlatformApi {
     this.platform=platform; this.vault=vault; this.origin=origin; this.fetch=fetchImpl; this.refreshing=null;
   }
   redirect() {return this.origin+'/multichat/oauth/'+this.platform+'/callback';}
-  async authorization(state,verifier,{manageTitles=false}={}) {
+  async authorization(state,verifier,{titles=false,manageTitles=false}={}) {
+    titles ||= manageTitles;
     const credential=await this.vault.get(this.platform);
     if(!credential.clientId||!credential.clientSecret)throw Error('application_not_configured');
     const url=new URL(SPECS[this.platform].authorize);
-    const scopes=[...SCOPES[this.platform],...(manageTitles?[TITLE_SCOPES[this.platform]]:[])];
-    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:scopes.join(' '),state};
+    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:[...SCOPES[this.platform],...(titles?[TITLE_SCOPES[this.platform]]:[])].join(' '),state};
     if(this.platform==='kick')Object.assign(params,{code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
     else params.force_verify='true';
     for(const [key,value]of Object.entries(params))url.searchParams.set(key,value);
@@ -62,7 +62,7 @@ export class PlatformApi {
     if(SCOPES[this.platform].some(scope=>!scopes.includes(scope)))throw new ApiError('missing_required_scopes');
     return {...credential,accessToken:body.access_token,refreshToken:body.refresh_token||credential.refreshToken,expiresAt:Date.now()+Number(body.expires_in)*1000,scopes,refreshedAt:new Date().toISOString(),lastError:null};
   }
-  async exchange(code,verifier) {
+  async exchange(code,verifier,{titles=false}={}) {
     const old=await this.vault.get(this.platform);
     const credential=await this.tokenRequest(old,{grant_type:'authorization_code',code,redirect_uri:this.redirect(),...(this.platform==='kick'?{code_verifier:verifier}:{})});
     const headers=this.headers(credential);
@@ -75,6 +75,7 @@ export class PlatformApi {
     const channel=result.data?.[0];
     const channelId=String(this.platform==='twitch'?channel?.id:channel?.broadcaster_user_id||'');
     if(!channelId||String(this.platform==='twitch'?channel?.login:channel?.slug).toLowerCase()!=='lecasinoze')throw new ApiError('wrong_broadcaster');
+    if(titles&&(!credential.scopes.includes(TITLE_SCOPES[this.platform])||userId!==channelId||login!=='lecasinoze'))throw new ApiError('title_broadcaster_permission_required',403);
     Object.assign(credential,{login,userId,channelId,connectedAt:new Date().toISOString()});
     await this.vault.save(this.platform,credential);return credential;
   }
@@ -123,19 +124,6 @@ export class PlatformApi {
       if(String(data.user_id)!==credential.userId||data.client_id!==credential.clientId||SCOPES.twitch.some(scope=>!data.scopes?.includes(scope)))throw new ApiError('twitch_identity_or_scope_changed',403);
     } else await this.request('/users');
   }
-  async title(title,{stillAllowed=async()=>true}={}){
-    const c=await this.credential();
-    if(!c.scopes?.includes(TITLE_SCOPES[this.platform]))throw new ApiError('title_authorization_required',403);
-    if(c.userId!==c.channelId||c.login!=='lecasinoze')throw new ApiError('title_broadcaster_required',403);
-    if(typeof title!=='string'||!title.trim()||title.length>140)throw new ApiError('invalid_title');
-    if(!await stillAllowed())throw new ApiError('title_mode_changed');
-    await this.request(this.platform==='twitch'?'/channels?broadcaster_id='+encodeURIComponent(c.channelId):'/channels',{
-      method:'PATCH',body:JSON.stringify(this.platform==='twitch'?{title}:{stream_title:title}),
-    });
-    const proof=await this.request(this.platform==='twitch'?'/channels?broadcaster_id='+encodeURIComponent(c.channelId):'/channels?broadcaster_user_id='+encodeURIComponent(c.channelId));
-    const actual=proof.data?.[0];
-    if((this.platform==='twitch'?actual?.title:actual?.stream_title)!==title)throw new ApiError('title_not_confirmed');
-  }
   async subscribeKick() {
     const credential=await this.credential(), existing=await this.request('/events/subscriptions');
     if(existing.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event==='chat.message.sent'&&Number(item.version)===1))return;
@@ -154,6 +142,27 @@ export class PlatformApi {
     if(!sent?.is_sent||!sent.message_id)throw new ApiError('chat_send_rejected',422);
     return String(sent.message_id);
   }
+  async channelTitle(){
+    const c=await this.credential();
+    const body=await this.request(this.platform==='kick'?'/channels?broadcaster_user_id='+encodeURIComponent(c.channelId):'/channels?broadcaster_id='+encodeURIComponent(c.channelId));
+    const row=body.data?.[0];
+    if(!row||String(this.platform==='kick'?row.broadcaster_user_id:row.broadcaster_id)!==c.channelId)throw new ApiError('title_channel_mismatch',403);
+    const title=this.platform==='kick'?row.stream_title:row.title;
+    return typeof title==='string'&&title.trim()?title:null;
+  }
+  async setTitle(title,{stillAllowed=async()=>true}={}){
+    if(typeof title!=='string'||!title.trim()||title.length>140||/[\r\n\x00-\x1f]/.test(title))throw new ApiError('invalid_stream_title',400);
+    const c=await this.credential();
+    if(c.login!=='lecasinoze'||c.userId!==c.channelId||!c.scopes?.includes(TITLE_SCOPES[this.platform]))throw new ApiError('title_authorization_required',403);
+    if(await this.channelTitle()===title)return {status:'confirmed',title,changed:false};
+    // Re-read ownership immediately before an external write, after network reads.
+    if(!await stillAllowed())throw new ApiError('title_context_changed',409);
+    await this.request(this.platform==='kick'?'/channels':'/channels?broadcaster_id='+encodeURIComponent(c.channelId),{
+      method:'PATCH',body:JSON.stringify(this.platform==='kick'?{stream_title:title}:{title})});
+    const observed=await this.channelTitle();
+    return {status:observed===title?'confirmed':'verification_pending',title,observed,changed:true};
+  }
+  async title(title,options={}){return this.setTitle(title,options);}
 }
 
 export class TwitchReceiver {

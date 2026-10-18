@@ -6,7 +6,7 @@ import {createConnection} from 'node:net';
 import {Store} from './store.mjs';
 import {Vault,PlatformApi,TwitchReceiver} from './platforms.mjs';
 import {RelayWorker} from './worker.mjs';
-import {syncTitles,titlesForMode} from './mode-title-sync.mjs';
+import {TitleSynchronizer,contextWithAutomod} from './mode-title-sync.mjs';
 import {dashboardSessionValid,verifyKickWebhook,normalizeKickEvent} from './security.mjs';
 
 process.umask(0o077);
@@ -18,6 +18,7 @@ const store=new Store(join(root,'relay.sqlite')),vault=new Vault(join(root,'cred
 const apis={kick:new PlatformApi('kick',vault,{origin}),twitch:new PlatformApi('twitch',vault,{origin})};
 const runtime={startedAt:new Date().toISOString(),twitch:'not_connected',kick:'not_connected'},recentEvents=[];
 runtime.videoHealth=store.get('videoHealth');
+runtime.titleSync=store.get('titleSync');
 const require=createRequire(import.meta.url),{Pool}=require('pg');
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,max:2,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:15_000,idleTimeoutMillis:30_000,application_name:'lunalive-multichat'}):null;
 pool?.on('error',()=>{runtime.database='connection_interrupted';});
@@ -82,21 +83,6 @@ async function checkVideo(){
     }
     if(JSON.stringify(runtime.videoHealth?.platforms)!==JSON.stringify(health.platforms))console.log(JSON.stringify({event:'multistream_health',mode:health.mode,platforms:health.platforms}));
     runtime.videoHealth=health;store.set('videoHealth',health);
-    if(expected&&output.publicationOwner==='automod'){
-      try{
-        const r=await fetch('http://127.0.0.1:4317/api/status',{signal:AbortSignal.timeout(5000)});
-        if(r.ok){
-          const status=await r.json(),planned=titlesForMode(status,output.publicationOwner);
-          const stillAllowed=async()=>{
-            const latest=await streamAdmin('status');
-            if(latest.publicationOwner!=='automod'||!planned)return false;
-            const response=await fetch('http://127.0.0.1:4317/api/status',{signal:AbortSignal.timeout(5000)});
-            return response.ok&&titlesForMode(await response.json(),latest.publicationOwner)?.mode===planned.mode;
-          };
-          runtime.titleSync=await syncTitles({status,owner:output.publicationOwner,apis,store,stillAllowed});
-        }
-      }catch{runtime.titleSync={state:'status_unavailable'};}
-    }else runtime.titleSync=await syncTitles({status:null,owner:output.publicationOwner,apis,store});
   }finally{videoCheckBusy=false;}
 }
 const auth=req=>dashboardSessionValid(req.headers.cookie,secret);
@@ -114,7 +100,9 @@ const server=createServer(async(req,res)=>{try{
     const pending=store.consumeOauth(String(url.searchParams.get('state')||''),platform);
     if(url.searchParams.get('error'))return reply(res,400,{ok:false,error:'authorization_declined'});
     const code=url.searchParams.get('code');if(!code)return reply(res,400,{ok:false,error:'authorization_code_missing'});
-    await apis[platform].exchange(code,pending.verifier);
+    const titles=store.get('titleOauth:'+url.searchParams.get('state'))===true;
+    await apis[platform].exchange(code,pending.verifier,{titles});
+    if(titles){titleSync.retryAt[platform]=0;void titleSync.tick().catch(()=>{});}
     void maintain();
     // The existing dashboard cookie is SameSite=Strict. Finish on this origin
     // before following an internal link, instead of showing a false login error.
@@ -135,6 +123,7 @@ const server=createServer(async(req,res)=>{try{
   }
   if(req.method==='GET'&&path==='/multichat/api/status'){
     const platforms={};for(const p of ['kick','twitch']){const c=await vault.get(p);platforms[p]={applicationConfigured:Boolean(c.clientId&&c.clientSecret),connected:Boolean(c.accessToken),login:c.login||null,channelId:c.channelId||null,expiresAt:c.expiresAt?new Date(c.expiresAt).toISOString():null,scopes:c.scopes||[],lastError:c.lastError||null};}
+    runtime.titleSync=store.get('titleSync');
     return reply(res,200,{ok:true,enabled:store.get('enabled',false),platforms,runtime,queues:store.counts(),bridge:{mode:'shared_lunalive_api',endpoint:'/internal/bot/multichat/event',twitchExternalChat:false},recentEvents});
   }
   if(req.method==='POST'&&/^\/multichat\/api\/application\/(kick|twitch)$/.test(path)){
@@ -145,7 +134,9 @@ const server=createServer(async(req,res)=>{try{
     await vault.save(p,{...old,clientId:body.clientId,clientSecret:body.clientSecret});return reply(res,200,{ok:true});
   }
   if(req.method==='GET'&&/^\/multichat\/oauth\/(kick|twitch)\/start$/.test(path)){
-    const pending=store.oauth(platform),location=await apis[platform].authorization(pending.state,pending.verifier,{manageTitles:url.searchParams.get('titles')==='1'});
+    const titles=url.searchParams.get('titles')==='1',pending=store.oauth(platform);
+    if(titles)store.set('titleOauth:'+pending.state,true);
+    const location=await apis[platform].authorization(pending.state,pending.verifier,{titles});
     res.writeHead(303,{Location:location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});return res.end();
   }
   if(req.method==='POST'&&path==='/multichat/api/control'){
@@ -172,6 +163,9 @@ server.listen(Number(process.env.PORT||3140),'127.0.0.1',()=>console.log(JSON.st
 const tick=setInterval(()=>void worker.tick().catch(error=>{runtime.workerError=/^[A-Za-z0-9_]+$/.test(error.code||'')?error.code:'worker_tick_failed';}),1000);
 const maintenance=setInterval(()=>void maintain().catch(()=>{runtime.maintenanceError='maintenance_failed';}),15*60_000);
 const videoMonitor=setInterval(()=>void checkVideo().catch(()=>{runtime.videoCheckError='video_monitor_unavailable';}),60_000);
+const titleSync=new TitleSynchronizer({apis,store,context:async()=>contextWithAutomod(await streamAdmin('status'))});
+const titleMonitor=setInterval(()=>void titleSync.tick().catch(()=>{runtime.titleSyncError='title_monitor_unavailable';}),15_000);
+void titleSync.tick().catch(()=>{});
 void maintain().catch(()=>{});
 void checkVideo().catch(()=>{});
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);clearInterval(videoMonitor);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);clearInterval(videoMonitor);clearInterval(titleMonitor);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});
