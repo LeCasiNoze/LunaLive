@@ -6,7 +6,7 @@ import {createConnection} from 'node:net';
 import {Store} from './store.mjs';
 import {Vault,PlatformApi,TwitchReceiver} from './platforms.mjs';
 import {RelayWorker} from './worker.mjs';
-import {syncTitles} from './title-sync.mjs';
+import {syncTitles,titlesForMode} from './mode-title-sync.mjs';
 import {dashboardSessionValid,verifyKickWebhook,normalizeKickEvent} from './security.mjs';
 
 process.umask(0o077);
@@ -85,7 +85,16 @@ async function checkVideo(){
     if(expected&&output.publicationOwner==='automod'){
       try{
         const r=await fetch('http://127.0.0.1:4317/api/status',{signal:AbortSignal.timeout(5000)});
-        if(r.ok)runtime.titleSync=await syncTitles({status:await r.json(),owner:output.publicationOwner,apis,store});
+        if(r.ok){
+          const status=await r.json(),planned=titlesForMode(status,output.publicationOwner);
+          const stillAllowed=async()=>{
+            const latest=await streamAdmin('status');
+            if(latest.publicationOwner!=='automod'||!planned)return false;
+            const response=await fetch('http://127.0.0.1:4317/api/status',{signal:AbortSignal.timeout(5000)});
+            return response.ok&&titlesForMode(await response.json(),latest.publicationOwner)?.mode===planned.mode;
+          };
+          runtime.titleSync=await syncTitles({status,owner:output.publicationOwner,apis,store,stillAllowed});
+        }
       }catch{runtime.titleSync={state:'status_unavailable'};}
     }else runtime.titleSync=await syncTitles({status:null,owner:output.publicationOwner,apis,store});
   }finally{videoCheckBusy=false;}

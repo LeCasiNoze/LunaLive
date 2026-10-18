@@ -11,7 +11,7 @@ export function titlesForMode(status,owner){
     kick:'Auto Mode — You pick the slots! !call | Bonuses played live',
     twitch:'Auto Mode — You pick the slots! !call | Bonuses played live'};
 }
-export async function syncTitles({status,owner,apis,store,now=Date.now()}){
+export async function syncTitles({status,owner,apis,store,now=Date.now(),stillAllowed=async()=>true}){
   const desired=titlesForMode(status,owner);
   if(!desired){
     for(const p of ['kick','twitch'])store.set('titleSync:'+p,{});
@@ -23,7 +23,7 @@ export async function syncTitles({status,owner,apis,store,now=Date.now()}){
     if(old.title===desired[p]){result[p]='synced';continue;}
     if(old.retryAt>now){result[p]=old.error;continue;}
     try{
-      await apis[p].title(desired[p]);
+      await apis[p].title(desired[p],{stillAllowed});
       store.set(key,{title:desired[p],at:now});result[p]='synced';
     }catch(error){
       const code=error.message==='title_authorization_required'?'title_authorization_required':'title_update_failed';

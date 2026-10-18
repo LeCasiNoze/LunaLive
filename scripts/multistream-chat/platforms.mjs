@@ -123,11 +123,12 @@ export class PlatformApi {
       if(String(data.user_id)!==credential.userId||data.client_id!==credential.clientId||SCOPES.twitch.some(scope=>!data.scopes?.includes(scope)))throw new ApiError('twitch_identity_or_scope_changed',403);
     } else await this.request('/users');
   }
-  async title(title){
+  async title(title,{stillAllowed=async()=>true}={}){
     const c=await this.credential();
     if(!c.scopes?.includes(TITLE_SCOPES[this.platform]))throw new ApiError('title_authorization_required',403);
     if(c.userId!==c.channelId||c.login!=='lecasinoze')throw new ApiError('title_broadcaster_required',403);
     if(typeof title!=='string'||!title.trim()||title.length>140)throw new ApiError('invalid_title');
+    if(!await stillAllowed())throw new ApiError('title_mode_changed');
     await this.request(this.platform==='twitch'?'/channels?broadcaster_id='+encodeURIComponent(c.channelId):'/channels',{
       method:'PATCH',body:JSON.stringify(this.platform==='twitch'?{title}:{stream_title:title}),
     });
