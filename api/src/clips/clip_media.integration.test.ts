@@ -8,6 +8,7 @@ import ts from 'typescript';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { verifyClipDuration } from './verify_clip.js';
+import { getHlsInputOptions } from './hls_options.js';
 
 const run = promisify(execFile);
 test('real local HLS segments through production capture and duration verification', {
@@ -58,7 +59,7 @@ test('real local HLS segments through production capture and duration verificati
         return { ok: true };
       } catch (e) { return { ok: false, err: String(e) }; }
     },
-    verifyClipDuration,
+    verifyClipDuration, getHlsInputOptions, getFfmpegPath: () => 'ffmpeg',
     putFileToR2: async (p: { filePath: string }) => { uploads++; fs.copyFileSync(p.filePath, artifact); },
     setClipMp4Success: async () => { success++; },
   });
@@ -102,4 +103,12 @@ test('real local HLS segments through production capture and duration verificati
     contentChecks:checks,
     scope: 'Real loopback HTTP HLS/FFmpeg; R2 and database replaced by local fixtures',
   }, null, 2));
+  // The repair importer uses a normal MP4. Render rejects HLS demuxer options
+  // on that input, even when its HLS build supports those options.
+  context.getHlsInputOptions = async () => { throw new Error('MP4 must not probe HLS'); };
+  await context.renderAndUploadClip({ id: 177, platform: 'rumble',
+    vod_url: process.env.TEST_HLS_SOURCE!, at_sec: 83, pre_sec: 50, post_sec: 15 });
+  assert.equal(uploads, 2); assert.equal(success, 2);
+  await verifyClipDuration(artifact, 65);
+  fs.copyFileSync(artifact, path.join(directory, 'captured-mp4-input.mp4'));
 });

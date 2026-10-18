@@ -34,7 +34,11 @@ test('FFmpeg success with short output never uploads or marks clip ready', async
   const context = vm.createContext({
     path, os: { tmpdir: () => '/test' }, nowMs: () => 1, safeName: () => 'test', Error, CRF: 22, AAC_K: 128,
     fs: { unlinkSync() { removed++; }, existsSync: () => true, statSync: () => ({ size: 100 }) },
-    runFfmpeg: async () => ({ ok: true }),
+    runFfmpeg: async (args: string[]) => {
+      assert.ok(!args.includes('-extension_picky'), 'MP4 must not receive HLS options');
+      assert.ok(!args.includes('-allowed_segment_extensions'));
+      return { ok: true };
+    },
     verifyClipDuration: async (_: string, duration: number) => {
       probes++; assert.equal(duration, 120); throw new Error('clip_video_too_short');
     },

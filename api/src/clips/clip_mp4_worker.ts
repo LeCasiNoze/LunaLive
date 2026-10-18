@@ -18,6 +18,7 @@ import {
 import { r2Enabled, putFileToR2, deleteFromR2 } from "./r2.js";
 import { fetchRecentRumbleVodsForUsername, resolveRumbleVodViaReaderFromEmbed } from "../rumble.js";
 import { verifyClipDuration } from "./verify_clip.js";
+import { getHlsInputOptions } from "./hls_options.js";
 
 /* ─────────────────────────────────────────────
    Config
@@ -534,6 +535,11 @@ async function renderAndUploadClip(clip: BotClipRow) {
     const httpInputArgs = isHttpInput
       ? ["-headers", HLS_HEADERS, "-user_agent", "Mozilla/5.0"]
       : [];
+    // HLS-only options fail on MP4 input; extension_picky is also unavailable
+    // in older Render FFmpeg builds. Probe the capture binary, not the VPS.
+    const hlsInputArgs = localM3u8ToCleanup
+      ? await getHlsInputOptions(getFfmpegPath())
+      : [];
 
     // A packet-copy seek can choose different audio/video keyframe origins.
     // Decode the finite HLS window, then cut both tracks on the same clock.
@@ -545,10 +551,7 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "-nostdin",
       "-protocol_whitelist",
       "file,http,https,tcp,tls,crypto,data",
-      "-allowed_segment_extensions",
-      "ALL",
-      "-extension_picky",
-      "0",
+      ...hlsInputArgs,
       ...httpInputArgs,
       ...(localM3u8ToCleanup ? [] : ["-ss", String(startSec)]),
       "-i",
@@ -660,7 +663,8 @@ export function startClipsMp4Renderer() {
         `UPDATE bot_clips
          SET mp4_error = NULL, mp4_rendering = false
          WHERE (mp4_error = 'rumble_live_hls_prepare_failed'
-                OR mp4_error LIKE '%allowed_segment_extensions%')
+                OR mp4_error LIKE '%allowed_segment_extensions%'
+                OR mp4_error LIKE '%Option extension_picky not found%')
            AND deleted_ts IS NULL
            AND created_ts >= $1`,
         [minCreatedTs]
