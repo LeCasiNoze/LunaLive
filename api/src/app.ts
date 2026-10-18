@@ -289,6 +289,8 @@ export function createApp() {
   app.use(moderationRouter);
   app.use(clipsPublicRouter);
 
+  // Public snapshots must precede the account/wallet routers' auth middleware.
+  app.use(chatEventsRouter);
   app.use(publicContentRouter);
   app.use(publicRouter);
   app.use("/public", publicRouter);
@@ -330,7 +332,6 @@ export function createApp() {
   app.use(webrtcTurnRouter);
   app.use("/me/bot",            requireAuth, meBotRouter);
   app.use("/me/bot/bot_wheel",  requireAuth, botWheelRouter);
-  app.use(chatEventsRouter);
   app.use("/me/bot/bot_rain",   requireAuth, botRainRouter);
   app.use("/me/bot/clips",      botClipsRouter);
 
