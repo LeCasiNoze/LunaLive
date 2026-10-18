@@ -49,3 +49,20 @@ test('bot duplicates share a durable short cooldown, preserving human messages a
     assert.equal(store.enqueueBot('d','kick','Discord: link',Date.now()+21_000),true);
   }finally{store.close();}
 });
+test('trusted autoposts reach both chats, but foreign viewers and display echoes never enter Twitch',async()=>{
+ const store=new Store(':memory:');
+ const rows=[
+  {id:'1',user_id:7,username:'LunaBot',body:'Community reminder: !call game',data:{botAutopost:true},created_at:new Date()},
+  {id:'2',user_id:0,username:'RumbleViewer',body:'hello',external_source:'rumble',created_at:new Date()},
+  {id:'3',user_id:0,username:'LunaLive_Bot',body:'🤖 !call guide',external_source:'rumble-bot',created_at:new Date()},
+ ];
+ const worker=new RelayWorker({store,pool:{query:async()=>({rows})},apis:{}});
+ worker.streamerId=1;worker.botUserId=7;worker.credentials={kick:{channelId:'k'},twitch:{channelId:'t'}};store.set('chatCursor','0');
+ try{
+  await worker.tail();const queued=store.db.prepare('SELECT platform,text FROM outbox ORDER BY id').all();
+  assert.equal(queued.filter(r=>r.platform==='twitch').length,1);
+  assert.equal(queued.some(r=>r.text.includes('🤖 !call')),false);
+  assert.equal(queued.some(r=>r.platform==='kick'&&r.text==='Community reminder: !call game'),true);
+  assert.equal(store.get('chatCursor'),'3');
+ }finally{store.close();}
+});

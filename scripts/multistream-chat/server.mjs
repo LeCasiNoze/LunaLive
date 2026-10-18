@@ -6,6 +6,7 @@ import {createConnection} from 'node:net';
 import {Store} from './store.mjs';
 import {Vault,PlatformApi,TwitchReceiver} from './platforms.mjs';
 import {RelayWorker} from './worker.mjs';
+import {syncTitles} from './title-sync.mjs';
 import {dashboardSessionValid,verifyKickWebhook,normalizeKickEvent} from './security.mjs';
 
 process.umask(0o077);
@@ -81,6 +82,12 @@ async function checkVideo(){
     }
     if(JSON.stringify(runtime.videoHealth?.platforms)!==JSON.stringify(health.platforms))console.log(JSON.stringify({event:'multistream_health',mode:health.mode,platforms:health.platforms}));
     runtime.videoHealth=health;store.set('videoHealth',health);
+    if(expected&&output.publicationOwner==='automod'){
+      try{
+        const r=await fetch('http://127.0.0.1:4317/api/status',{signal:AbortSignal.timeout(5000)});
+        if(r.ok)runtime.titleSync=await syncTitles({status:await r.json(),owner:output.publicationOwner,apis,store});
+      }catch{runtime.titleSync={state:'status_unavailable'};}
+    }else runtime.titleSync=await syncTitles({status:null,owner:output.publicationOwner,apis,store});
   }finally{videoCheckBusy=false;}
 }
 const auth=req=>dashboardSessionValid(req.headers.cookie,secret);
@@ -129,7 +136,7 @@ const server=createServer(async(req,res)=>{try{
     await vault.save(p,{...old,clientId:body.clientId,clientSecret:body.clientSecret});return reply(res,200,{ok:true});
   }
   if(req.method==='GET'&&/^\/multichat\/oauth\/(kick|twitch)\/start$/.test(path)){
-    const pending=store.oauth(platform),location=await apis[platform].authorization(pending.state,pending.verifier);
+    const pending=store.oauth(platform),location=await apis[platform].authorization(pending.state,pending.verifier,{manageTitles:url.searchParams.get('titles')==='1'});
     res.writeHead(303,{Location:location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});return res.end();
   }
   if(req.method==='POST'&&path==='/multichat/api/control'){

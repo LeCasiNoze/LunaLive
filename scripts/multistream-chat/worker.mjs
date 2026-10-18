@@ -78,9 +78,10 @@ export class RelayWorker {
       const r=await this.pool.query('SELECT COALESCE(MAX(id),0)::text AS id FROM chat_messages WHERE streamer_id=$1',[this.streamerId]);
       cursor=String(r.rows[0].id);this.store.set('chatCursor',cursor);return;
     }
-    const rows=await this.pool.query('SELECT id::text,user_id,username,body,external_source,external_msg_id,created_at FROM chat_messages WHERE streamer_id=$1 AND id>$2 AND deleted_at IS NULL ORDER BY id LIMIT 100',[this.streamerId,cursor]);
+    const rows=await this.pool.query('SELECT id::text,user_id,username,body,data,external_source,external_msg_id,created_at FROM chat_messages WHERE streamer_id=$1 AND id>$2 AND deleted_at IS NULL ORDER BY id LIMIT 100',[this.streamerId,cursor]);
     const kick=this.credentials.kick;
     for(const row of rows.rows){
+      if(row.external_source==='rumble-bot'){this.store.set('chatCursor',row.id);continue;}
       // Do not replay old chat after long downtime or echo Kick into itself.
       const rumbleEcho=row.external_source==='rumble'&&this.rumbleBotName&&String(row.username).toLowerCase()===this.rumbleBotName;
       if(kick?.channelId&&row.external_source!=='kick'&&!rumbleEcho&&Date.now()-new Date(row.created_at).getTime()<10*60_000){
@@ -92,7 +93,8 @@ export class RelayWorker {
       // A neutral shared Discord invitation is a bot response, not merged
       // external viewer activity. Keep ordinary foreign messages out of Twitch.
       const discordReply=this.botUserId>0&&Number(row.user_id)===this.botUserId&&/https?:\/\/(?:www\.)?(?:discord\.gg\/|discord\.com\/invite\/)/i.test(row.body);
-      const compact=discordReply?compactBotReply(row.body):null;
+      const autopost=this.botUserId>0&&Number(row.user_id)===this.botUserId&&row.data?.botAutopost===true;
+      const compact=discordReply||autopost?compactBotReply(row.body):null;
       if(compact&&this.credentials.twitch?.channelId&&twitchReplyAllowed(compact)&&Date.now()-new Date(row.created_at).getTime()<10*60_000)this.store.enqueueBot('db:'+row.id+':twitch','twitch',compact);
       this.store.set('chatCursor',row.id);
     }

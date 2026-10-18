@@ -129,7 +129,7 @@ export class StreamerRunner {
         } catch {}
       }
 
-      await this.transport.send(out);
+      await this.transport.send(out,{reason});
 
       try {
         await logEvent(this.pool, this.streamer.id, "info", reason, { t: preview(out) });
