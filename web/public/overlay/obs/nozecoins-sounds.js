@@ -1,12 +1,15 @@
-/* Owner-only OBS consumer. Never exposes an internal bot key or stores the owner token. */
+/* Owner-only OBS consumer. Never exposes an internal bot key or writes browser storage. */
 (() => {
  const fragment=new URLSearchParams(location.hash.slice(1));
  const token=fragment.get('token')||'';
- history.replaceState(null,'',location.pathname+location.search);
  const panel=document.getElementById('panel'),status=document.getElementById('status'),controls=document.getElementById('controls');
  const toast=document.getElementById('toast'),label=document.getElementById('sound-name');
  const showControls=new URLSearchParams(location.search).get('control')==='1';
  const autoStart=new URLSearchParams(location.search).get('autostart')==='1';
+ // OBS refreshes its current document URL, not necessarily the source settings.
+ // Keep the configured fragment in the embedded player so a reload can recover it.
+ // Fragments never enter HTTP requests; ordinary browsers and controls still scrub it.
+ if(showControls||typeof globalThis.obsstudio?.getStatus!=='function')history.replaceState(null,'',location.pathname+location.search);
  let armedSession=null;
  let disposed=false,ready=false,heartbeatBusy=false,pollBusy=false,pendingAck=null,cancelPlayback=()=>{};
  const consumerId=crypto.randomUUID();
