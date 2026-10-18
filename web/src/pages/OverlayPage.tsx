@@ -770,7 +770,8 @@ export function NativeOverlayChat({
     if (!slug) return;
     const fetchApp = async () => {
       try {
-        const r = await fetch(`${socketBase}/api/public/streamers/${encodeURIComponent(slug)}`);
+        const r = await fetch(`${socketBase}/public/streamers/${encodeURIComponent(slug)}`);
+        if (!r.ok) return;
         const j = await r.json().catch(() => null);
         const app = j?.streamer?.appearance || j?.appearance;
         if (app) setAppearance(normalizeAppearance(app));

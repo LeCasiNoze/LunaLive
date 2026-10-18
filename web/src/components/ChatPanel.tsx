@@ -18,6 +18,7 @@ import { startChatRecovery, reconcileChatHistory } from "../lib/chatRecovery";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
+import { messagePresentation } from './chat/messagePresentation';
 import type { ChatCosmetics } from "../lib/cosmetics";
 import { BotMenu } from "../components/BotMenu";
 import SpecialEventCard, { type SpecialEventType } from "./chat/SpecialEventCard";
@@ -66,6 +67,7 @@ type ChatMsg = {
   cosmetics?: ChatCosmetics | null;
   rumble?: boolean;
   rumbleLinked?: boolean;
+  externalSource?: string | null;
   // Messages spéciaux (raid/follow/sub/don/coffre/rain/roue/prédiction/boss/level).
   // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
   // "recap" = ligne centrée · "sys" = message système · "act" = carte
@@ -2731,7 +2733,7 @@ function openChatPopup() {
             // Les messages externes Rumble sont persistés avec userId=0 pour
             // ne jamais leur accorder de droits LunaLive. Ils restent pourtant
             // des messages de viewers et doivent passer par ChatMessageBubble.
-            const isSystem = m.userId === 0 && !m.rumble;
+            const isSystem = m.userId === 0 && !m.rumble && !messagePresentation(m).platform;
             const isDeleted = !!m.deleted || m.body === "";
             if (m.userId !== 0 && isDeleted) return null;
 

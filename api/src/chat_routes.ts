@@ -100,6 +100,7 @@ export function registerChatRoutes(app: Express) {
         const r = await pool.query(
           `SELECT cm.id::bigint AS id, cm.user_id AS "userId", cm.username, cm.body,
                   cm.created_at AS "createdAt", cm.type, cm.data,
+                  cm.external_source AS "externalSource",
                   CASE WHEN cm.external_source='rumble' THEN 'rumble' ELSE 'luna' END AS source,
                   matched_user.id AS "matchedUserId"
            FROM chat_messages cm
@@ -158,6 +159,7 @@ export function registerChatRoutes(app: Express) {
             cosmetics: cosmeticUid > 0 ? getCosmeticsFromMapLike(cosmeticsByUserId, cosmeticUid) : null,
             role: uid > 0 ? rolesByUserId?.get(uid) ?? "viewer" : null,
             rumble: m.source === "rumble",
+            externalSource: m.externalSource ?? null,
             rumbleLinked: m.source === "rumble" && cosmeticUid > 0,
             // Cartes de célébration persistées (follow/sub/boss/raid/level/…) :
             // réaffichées telles quelles à l'ouverture du chat sur un autre device.
