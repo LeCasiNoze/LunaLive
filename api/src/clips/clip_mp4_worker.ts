@@ -17,6 +17,7 @@ import {
 
 import { r2Enabled, putFileToR2, deleteFromR2 } from "./r2.js";
 import { fetchRecentRumbleVodsForUsername, resolveRumbleVodViaReaderFromEmbed } from "../rumble.js";
+import { verifyClipDuration } from "./verify_clip.js";
 
 /* ─────────────────────────────────────────────
    Config
@@ -534,8 +535,10 @@ async function renderAndUploadClip(clip: BotClipRow) {
       ? ["-headers", HLS_HEADERS, "-user_agent", "Mozilla/5.0"]
       : [];
 
-    // 1) stream copy (rapide)
-    const argsCopy = [
+    // A packet-copy seek can choose different audio/video keyframe origins.
+    // Decode the finite HLS window, then cut both tracks on the same clock.
+    // Non-HLS VODs retain accurate input seeking to avoid decoding hours.
+    const argsEncode = [
       "-hide_banner",
       "-loglevel",
       "error",
@@ -547,20 +550,21 @@ async function renderAndUploadClip(clip: BotClipRow) {
       "-extension_picky",
       "0",
       ...httpInputArgs,
-      "-ss",
-      String(startSec),
+      ...(localM3u8ToCleanup ? [] : ["-ss", String(startSec)]),
       "-i",
       inputUrl,
+      ...(localM3u8ToCleanup ? ["-ss", String(startSec)] : []),
       "-t",
       String(durSec),
       "-map",
       "0:v:0",
       "-map",
       "0:a:0?",
-      "-c",
-      "copy",
-      "-bsf:a",
-      "aac_adtstoasc",
+      "-vf", "fps=30:start_time=0",
+      "-af", "aresample=async=1:first_pts=0",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", String(CRF),
+      "-threads", "2",
+      "-c:a", "aac", "-b:a", `${AAC_K}k`,
       "-movflags",
       "+faststart",
       "-avoid_negative_ts",
@@ -569,52 +573,10 @@ async function renderAndUploadClip(clip: BotClipRow) {
       outPath,
     ];
 
-    let r = await runFfmpeg(argsCopy, timeoutMs);
-
-    // 2) fallback re-encode (plus robuste)
-    if (!r.ok) {
-      const argsRe = [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-nostdin",
-        "-protocol_whitelist",
-        "file,http,https,tcp,tls,crypto,data",
-        "-allowed_segment_extensions",
-        "ALL",
-        "-extension_picky",
-        "0",
-        ...httpInputArgs,
-        "-ss",
-        String(startSec),
-        "-i",
-        inputUrl,
-        "-t",
-        String(durSec),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a:0?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        String(CRF),
-        "-c:a",
-        "aac",
-        "-b:a",
-        `${AAC_K}k`,
-        "-movflags",
-        "+faststart",
-        "-avoid_negative_ts",
-        "make_zero",
-        "-y",
-        outPath,
-      ];
-      r = await runFfmpeg(argsRe, Math.max(timeoutMs, durSec * 4000));
-      if (!r.ok) throw new Error(r.err || "ffmpeg_failed");
-    }
+    const r = await runFfmpeg(argsEncode, Math.max(timeoutMs, durSec * 4000));
+    if (!r.ok) throw new Error(r.err || "ffmpeg_failed");
+    // A zero FFmpeg exit status is insufficient when HLS packets are missing.
+    await verifyClipDuration(outPath, durSec);
 
     const stat = fs.statSync(outPath);
     const size = stat.size;
