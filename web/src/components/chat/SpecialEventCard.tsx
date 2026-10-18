@@ -173,14 +173,14 @@ export default function SpecialEventCard(props: {
           ) : null}
         </>
       );
-      title = combo ? `${subCombo ? "Combo sub" : "Combo follow"} ${mult}x` : "Nouveau follow";
+      title = combo ? `${subCombo ? "Combo sub" : "Combo follow"} ${mult}x` : `Nouveau follow${data?.platform==='kick'?' · Kick':data?.platform==='twitch'?' · Twitch':''}`;
       sub = <><b>{who}</b> {combo ? (subCombo ? "enchaîne les abos !" : "enchaîne le combo !") : "vient de suivre la chaîne"}</>;
       {
         const gated = subCombo ? props.viewerSubbed : props.viewerFollows;
         actions = (
           <>
             <button className="lle-btn lle-ghost" disabled={ggClicked} onClick={handleGg}>GG !</button>
-            {!gated ? (
+            {!gated && !['kick','twitch'].includes(data?.platform) ? (
               <button className="lle-btn" disabled={allDisabled} onClick={() => handleCombo(mult, comboKind)}>
                 Combo {combo ? `${mult + 1}x` : ""} <span className="lle-k">{subCombo ? "tu t'abonnes aussi" : "tu follow aussi"}</span>
               </button>

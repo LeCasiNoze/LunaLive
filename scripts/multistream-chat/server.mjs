@@ -3,11 +3,12 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {createRequire} from 'node:module';
 import {createConnection} from 'node:net';
+import {AudienceMonitor} from './audience.mjs';
 import {Store} from './store.mjs';
 import {Vault,PlatformApi,TwitchReceiver} from './platforms.mjs';
 import {RelayWorker} from './worker.mjs';
 import {TitleSynchronizer,contextWithAutomod} from './mode-title-sync.mjs';
-import {dashboardSessionValid,verifyKickWebhook,normalizeKickEvent} from './security.mjs';
+import {dashboardSessionValid,verifyKickWebhook,normalizeKickEvent,normalizeKickFollow} from './security.mjs';
 
 process.umask(0o077);
 const origin=process.env.MULTICHAT_ORIGIN||'https://vps-92b153fc.vps.ovh.net';
@@ -25,10 +26,10 @@ pool?.on('error',()=>{runtime.database='connection_interrupted';});
 const worker=new RelayWorker({store,apis,pool,apiBase:process.env.BOT_API_BASE||'https://lunalive-api.onrender.com',botKey:process.env.BOT_INTERNAL_KEY||process.env.INTERNAL_BOT_KEY||'',onStatus:value=>Object.assign(runtime,value)});
 const receive=async event=>{
   const result=await worker.receive(event);
-  if(result.accepted&&!result.duplicate){recentEvents.unshift({platform:event.platform,username:event.username,text:event.text.slice(0,500)});if(recentEvents.length>50)recentEvents.pop();}
+  if(result.accepted&&!result.duplicate){recentEvents.unshift({platform:event.platform,username:event.username,kind:event.kind||'chat',text:(event.text||'').slice(0,500)});if(recentEvents.length>50)recentEvents.pop();}
   return result;
 };
-const twitch=new TwitchReceiver(apis.twitch,{onEvent:receive,onStatus:value=>{runtime.twitch=value;}});
+const twitch=new TwitchReceiver(apis.twitch,{onEvent:receive,onStatus:value=>{runtime.twitch=value;},onFollowStatus:value=>{runtime.twitchFollows=value;}});
 let kickKey='',kickKeyFetched=0,lastKeyRetry=0,maintenanceBusy=false;
 async function publicKey(force=false){
   if(!force&&kickKey&&Date.now()-kickKeyFetched<3600_000)return kickKey;
@@ -93,7 +94,7 @@ const server=createServer(async(req,res)=>{try{
     let valid=verifyKickWebhook(req.headers,raw,key);
     if(!valid&&Date.now()-lastKeyRetry>60_000){lastKeyRetry=Date.now();valid=verifyKickWebhook(req.headers,raw,await publicKey(true));}
     if(!valid)return reply(res,403,{ok:false,error:'invalid_signature'});
-    const event=normalizeKickEvent(JSON.parse(raw));const result=await receive(event);
+    const body=JSON.parse(raw);const event=req.headers['kick-event-type']==='channel.followed'?normalizeKickFollow(body,req.headers):normalizeKickEvent(body);const result=await receive(event);
     return reply(res,200,{ok:true,...result});
   }
   if(req.method==='GET'&&/^\/multichat\/oauth\/(kick|twitch)\/callback$/.test(path)){
@@ -101,7 +102,9 @@ const server=createServer(async(req,res)=>{try{
     if(url.searchParams.get('error'))return reply(res,400,{ok:false,error:'authorization_declined'});
     const code=url.searchParams.get('code');if(!code)return reply(res,400,{ok:false,error:'authorization_code_missing'});
     const titles=store.get('titleOauth:'+url.searchParams.get('state'))===true;
-    await apis[platform].exchange(code,pending.verifier,{titles});
+    const follows=store.get('followOauth:'+url.searchParams.get('state'))===true;
+    await apis[platform].exchange(code,pending.verifier,{titles,follows});
+    if(platform==='twitch'){twitch.stop();if(store.get('enabled',false))twitch.start();}
     if(titles){titleSync.retryAt[platform]=0;void titleSync.tick().catch(()=>{});}
     void maintain();
     // The existing dashboard cookie is SameSite=Strict. Finish on this origin
@@ -124,6 +127,7 @@ const server=createServer(async(req,res)=>{try{
   if(req.method==='GET'&&path==='/multichat/api/status'){
     const platforms={};for(const p of ['kick','twitch']){const c=await vault.get(p);platforms[p]={applicationConfigured:Boolean(c.clientId&&c.clientSecret),connected:Boolean(c.accessToken),login:c.login||null,channelId:c.channelId||null,expiresAt:c.expiresAt?new Date(c.expiresAt).toISOString():null,scopes:c.scopes||[],lastError:c.lastError||null};}
     runtime.titleSync=store.get('titleSync');
+    runtime.audience=Object.fromEntries(['kick','twitch'].map(p=>[p,{...store.get('audience:'+p,{}),delivery:store.get('audienceDelivery:'+p)}]));
     return reply(res,200,{ok:true,enabled:store.get('enabled',false),platforms,runtime,queues:store.counts(),bridge:{mode:'shared_lunalive_api',endpoint:'/internal/bot/multichat/event',twitchExternalChat:false},recentEvents});
   }
   if(req.method==='POST'&&/^\/multichat\/api\/application\/(kick|twitch)$/.test(path)){
@@ -134,9 +138,10 @@ const server=createServer(async(req,res)=>{try{
     await vault.save(p,{...old,clientId:body.clientId,clientSecret:body.clientSecret});return reply(res,200,{ok:true});
   }
   if(req.method==='GET'&&/^\/multichat\/oauth\/(kick|twitch)\/start$/.test(path)){
-    const titles=url.searchParams.get('titles')==='1',pending=store.oauth(platform);
+    const follows=url.searchParams.get('follows')==='1',titles=url.searchParams.get('titles')==='1',pending=store.oauth(platform);
     if(titles)store.set('titleOauth:'+pending.state,true);
-    const location=await apis[platform].authorization(pending.state,pending.verifier,{titles});
+    if(follows)store.set('followOauth:'+pending.state,true);
+    const location=await apis[platform].authorization(pending.state,pending.verifier,{titles,follows});
     res.writeHead(303,{Location:location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});return res.end();
   }
   if(req.method==='POST'&&path==='/multichat/api/control'){
@@ -162,10 +167,13 @@ server.requestTimeout=20_000;server.headersTimeout=10_000;
 server.listen(Number(process.env.PORT||3140),'127.0.0.1',()=>console.log(JSON.stringify({event:'multichat_ready',port:Number(process.env.PORT||3140)})));
 const tick=setInterval(()=>void worker.tick().catch(error=>{runtime.workerError=/^[A-Za-z0-9_]+$/.test(error.code||'')?error.code:'worker_tick_failed';}),1000);
 const maintenance=setInterval(()=>void maintain().catch(()=>{runtime.maintenanceError='maintenance_failed';}),15*60_000);
+const audience=new AudienceMonitor({apis,store,apiBase:worker.apiBase,botKey:worker.botKey});
+const audienceTimer=setInterval(()=>void audience.tick().catch(()=>{}),30000);
+void audience.tick().catch(()=>{});
 const videoMonitor=setInterval(()=>void checkVideo().catch(()=>{runtime.videoCheckError='video_monitor_unavailable';}),60_000);
 const titleSync=new TitleSynchronizer({apis,store,context:async()=>contextWithAutomod(await streamAdmin('status'))});
 const titleMonitor=setInterval(()=>void titleSync.tick().catch(()=>{runtime.titleSyncError='title_monitor_unavailable';}),15_000);
 void titleSync.tick().catch(()=>{});
 void maintain().catch(()=>{});
 void checkVideo().catch(()=>{});
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);clearInterval(videoMonitor);clearInterval(titleMonitor);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);clearInterval(videoMonitor);clearInterval(audienceTimer);clearInterval(titleMonitor);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});

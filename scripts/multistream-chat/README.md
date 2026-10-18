@@ -86,3 +86,34 @@ Rumble is **not connected for title writes**. Its documented public Live API exp
 The root stream-control helper and its `RestrictAddressFamilies=AF_UNIX` sandbox remain unchanged: local mode information is read by the existing network-capable Node service and reduced to mode/phase. It never returns the Automod control nonce or financial/session data. Video publishers, ownership controls, rendering services and credentials are not restarted or replaced by the title synchronizer.
 
 Sources: [Twitch Modify Channel Information](https://dev.twitch.tv/docs/api/reference/#modify-channel-information), [Kick Channels](https://docs.kick.com/apis/channels), [Rumble Live Stream API](https://rumble.support/help/how-to-use-rumble-s-live-stream-api).
+
+
+## Audience and follow alerts — 18 October 2026
+
+The VPS polls the official Kick channel and Twitch streams endpoints every 30 seconds,
+independently of publisher ownership. Only the fixed LeCasiNoze IDs are accepted. The
+existing authenticated bridge updates migration 152's two-row latest-audience table;
+public `/streamers/lecasinoze/external-audience` exposes only counts/status/timestamps.
+Measurements older than 90 seconds and API errors remain unknown, never zero. Confirmed
+offline channels have zero viewers. Popup totals are simultaneous platform counts,
+not deduplicated people; a `+` marks an incomplete total. No historical analytics is claimed.
+
+Kick adds `channel.followed` v1 to its already-authorized event subscriptions. Webhook
+signatures, timestamps and exact channel IDs remain mandatory. Twitch optionally adds
+`moderator:read:followers` using `/multichat/oauth/twitch/start?follows=1`; previous chat
+and title scopes are preserved and checked before replacing credentials. `channel.follow`
+v2 uses the EventSub socket, with a separate retry path that does not disable chat.
+
+Follows use a durable inbox and API transaction: a provider event receipt and one
+persisted `follow` chat card commit together. The existing `emitFollowOverlayAlert`
+emits the configured image, sound and text to the same OBS rooms as Rumble. Neither
+wallet rewards nor external chat posts are created. Replayed provider/HTTP events do
+not retrigger OBS. An interrupted OBS emission is reported as uncertain and is never
+blindly replayed. Socket delivery still requires OBS to be connected; a server emission
+is not proof that audio played. No historical follow replay is performed at startup.
+
+Deploy API migration/routes first, then the web popup, then back up and replace only
+changed VPS chat files and restart `lunalive-multichat` (no publisher/game restart).
+Complete Twitch's approved follow consent. Check actual provider subscriptions,
+private credential ownership 0600, fresh public measurements and a real new follow.
+Offline fixtures cover alert payloads/replays; do not invent a real follow for proof.

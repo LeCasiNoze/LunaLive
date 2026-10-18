@@ -44,9 +44,9 @@ for(const p of ['kick','twitch']){
   const f=fixture(p);await assert.rejects(f.api.setTitle('Title',{stillAllowed:async()=>false}),/title_context_changed/);
   assert.equal(f.calls.filter(c=>c.method==='PATCH').length,0);
  });
- test(p+' only asks for wider OAuth access on the dedicated titles flow',async()=>{
+ test(p+' preserves already granted title access during later authorizations',async()=>{
   const f=fixture(p);let u=new URL(await f.api.authorization('state','verifier'));
-  assert.equal(u.searchParams.get('scope').includes(TITLE_SCOPES[p]),false);
+  assert.equal(u.searchParams.get('scope').includes(TITLE_SCOPES[p]),true);
   u=new URL(await f.api.authorization('state','verifier',{titles:true}));
   assert.equal(u.searchParams.get('scope').includes(TITLE_SCOPES[p]),true);
  });
