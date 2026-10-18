@@ -1,5 +1,6 @@
 import {twitchReplyAllowed} from './security.mjs';
 import {planChatEvent} from './relay-policy.mjs';
+import {compactBotReply} from './chat-display.mjs';
 
 export class RelayWorker {
   constructor({store,apis,pool,apiBase,botKey,fetchImpl=fetch,onStatus=()=>{}}) {
@@ -17,7 +18,11 @@ export class RelayWorker {
     return config;
   }
   async receive(event) {
-    if(event.platform==='kick'&&/^botrix$/i.test(event.username||''))return {accepted:false,reason:'auxiliary_bot_echo'};
+    if(event.platform==='kick'&&/^botrix$/i.test(event.username||'')){
+      // These existing public invites were checked against Discord: same guild.
+      if(/https:\/\/discord\.gg\/(?:fUjnwHkZUw|36TMsTNxJD|6kq3PFu8B5)(?:\b|$)/.test(event.text||''))this.store.set('kickExternalDiscordAt',Date.now());
+      return {accepted:false,reason:'auxiliary_bot_echo'};
+    }
     const config=await this.configuration();
     if(String(event.userId)===String(this.credentials[event.platform]?.userId)&&this.store.own(event.platform,event.messageId,event.text))event={...event,origin:'relay'};
     const plan=planChatEvent(event,config);
@@ -55,7 +60,8 @@ export class RelayWorker {
     // Twitch receives only replies to commands actually entered on Twitch.
     // Kick receives shared chat from the common DB tail, not a second path.
     if(item.event.platform==='twitch')for(const reply of result.replies||[]){
-      if(reply.id&&reply.body&&twitchReplyAllowed(reply.body))this.store.enqueue('db:'+reply.id+':twitch','twitch',String(reply.body).slice(0,500));
+      const text=compactBotReply(reply.body);
+      if(reply.id&&text&&twitchReplyAllowed(text))this.store.enqueueBot('db:'+reply.id+':twitch','twitch',text);
     }
     this.store.finishInbox(item.id);this.onStatus({bridgeError:null,lastSyncedAt:new Date().toISOString()});
   }
@@ -79,19 +85,25 @@ export class RelayWorker {
       const rumbleEcho=row.external_source==='rumble'&&this.rumbleBotName&&String(row.username).toLowerCase()===this.rumbleBotName;
       if(kick?.channelId&&row.external_source!=='kick'&&!rumbleEcho&&Date.now()-new Date(row.created_at).getTime()<10*60_000){
         const source=row.external_source==='twitch'?'Twitch':row.external_source==='rumble'?'Rumble':'LunaLive';
-        const text=row.user_id>0?`[${source}] ${row.username} : ${row.body}`:row.body;
-        this.store.enqueue('db:'+row.id+':kick','kick',Array.from(text).slice(0,500).join(''));
+        const isBot=this.botUserId>0&&Number(row.user_id)===this.botUserId;
+        const text=isBot?compactBotReply(row.body):row.user_id>0?`[${source}] ${row.username} : ${row.body}`:row.body;
+        if(text){const enqueue=isBot?this.store.enqueueBot.bind(this.store):this.store.enqueue.bind(this.store);enqueue('db:'+row.id+':kick','kick',Array.from(text).slice(0,500).join(''));}
       }
       // A neutral shared Discord invitation is a bot response, not merged
       // external viewer activity. Keep ordinary foreign messages out of Twitch.
       const discordReply=this.botUserId>0&&Number(row.user_id)===this.botUserId&&/https?:\/\/(?:www\.)?(?:discord\.gg\/|discord\.com\/invite\/)/i.test(row.body);
-      if(discordReply&&this.credentials.twitch?.channelId&&twitchReplyAllowed(row.body)&&Date.now()-new Date(row.created_at).getTime()<10*60_000)this.store.enqueue('db:'+row.id+':twitch','twitch',Array.from(row.body).slice(0,500).join(''));
+      const compact=discordReply?compactBotReply(row.body):null;
+      if(compact&&this.credentials.twitch?.channelId&&twitchReplyAllowed(compact)&&Date.now()-new Date(row.created_at).getTime()<10*60_000)this.store.enqueueBot('db:'+row.id+':twitch','twitch',compact);
       this.store.set('chatCursor',row.id);
     }
   }
   async send() {
     if(Date.now()-this.lastSent<3100)return;
     const row=this.store.nextOutbox();if(!row)return;
+    const externalDiscordAt=this.store.get('kickExternalDiscordAt',0);
+    if(row.platform==='kick'&&/^Discord: https:\/\/discord\.gg\//.test(row.text)&&externalDiscordAt>=row.created-10_000&&Date.now()-externalDiscordAt<20_000){
+      this.store.ignoreOutbox(row.id,'discord_already_answered_by_existing_kick_bot');return;
+    }
     const api=this.apis[row.platform];
     if(!api){this.store.failed(row,'unsupported_platform');return;}
     this.store.rememberOwn(row.platform,'pending:'+row.id,row.text);
