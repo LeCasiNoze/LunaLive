@@ -55,7 +55,7 @@ multichatBridgeRouter.post('/internal/bot/multichat/event',async(req,res)=>{
     if(cmd?.name==='call'||cmd?.name==='listec'){
       const feedback:string[]=[];
       await handleCallsCommand({pool,io:capturingIo,slug:'lecasinoze',streamerId:Number(streamer.id),streamerOwnerUserId:Number(streamer.user_id)||null,
-        actorUserId:0,actorUsername:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:cmd.name,arg:cmd.arg,
+        actorUserId:0,actorUsername:event.username,externalActorKey:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:cmd.name,arg:cmd.arg,
         onFeedback:toast=>feedback.push([toast.title,toast.message].filter(Boolean).join(' : '))});
       // Some existing failures are private UI toasts. Reply once on external
       // chats too, unless the handler has already produced a public response.
