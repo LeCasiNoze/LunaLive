@@ -53,8 +53,13 @@ multichatBridgeRouter.post('/internal/bot/multichat/event',async(req,res)=>{
     const capturingIo={to(room:string){const target=liveIo.to(room);return {emit(name:string,payload:any){if(name==='chat:message'&&payload?.isBot&&Number(payload.id)>0)replies.set(Number(payload.id),{id:Number(payload.id),body:String(payload.body)});return target.emit(name as any,payload);}};}} as unknown as Server;
     const cmd=command(event);
     if(cmd?.name==='call'||cmd?.name==='listec'){
+      const feedback:string[]=[];
       await handleCallsCommand({pool,io:capturingIo,slug:'lecasinoze',streamerId:Number(streamer.id),streamerOwnerUserId:Number(streamer.user_id)||null,
-        actorUserId:0,actorUsername:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:cmd.name,arg:cmd.arg});
+        actorUserId:0,actorUsername:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:cmd.name,arg:cmd.arg,
+        onFeedback:toast=>feedback.push([toast.title,toast.message].filter(Boolean).join(' : '))});
+      // Some existing failures are private UI toasts. Reply once on external
+      // chats too, unless the handler has already produced a public response.
+      if(!replies.size&&feedback.length)await sendBotChat(pool,capturingIo,{streamerId:Number(streamer.id),slug:'lecasinoze'},`@${event.username} — ${feedback[0]}`.slice(0,450));
     }else if(cmd){
       let text=cmd.name==='ping'?`pong @${event.username} ✅`:'';
       if(cmd.name!=='ping'){
