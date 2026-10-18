@@ -76,6 +76,12 @@ publique stable ; aucun lien CDN signé n'entre dans le message. Une couverture
 absente donne un embed sans image. Texte limité et nettoyé, bouton lien réel,
 `allowedMentions: {parse: []}` ; aucun ping ou faux compteur.
 
+Les métadonnées d'un média archivé ou supprimé bénéficient d'une temporisation
+persistante privée (`data/discord-metadata-retries.json`). Cinq anciens médias
+indisponibles ne peuvent pas bloquer les annonces suivantes. Une réconciliation
+Discord inaccessible garde l'état `uncertain` avec une temporisation croissante ;
+le délai 429 imbriqué dans la réponse officielle est également respecté.
+
 Inspection SQL :
 
 ```sql
@@ -98,7 +104,10 @@ est dans `migration-down-empty-only.sql` et refuse un historique non vide.
 
 - 18 tests simulés Node : compte, 180/181, Shorts, privé/programmé, canonique,
   miniature/fallback, mentions, nonce, doublon, panne et réponse perdue/reprise.
-- 4 tests de description ; 22 tests Python du publisher/inspection/outbox.
+- 5 tests de description ; 22 tests Python du publisher/inspection/outbox.
+- 5 tests R2 simulés (dont le type MIME des images), 2 tests d'intégration Node
+  avec transports simulés : panne Discord après succès Instagram, et métadonnées
+  indisponibles ne bloquant pas les événements suivants. Total : 52 tests.
 - Migration réelle testée dans un schéma PostgreSQL isolé puis ROLLBACK :
   unicité, idempotence, exclusion de l'historique, aucun envoi public.
 - Métadonnées d'un Reel existant vérifiées en lecture seule via l'API officielle.
@@ -106,3 +115,38 @@ est dans `migration-down-empty-only.sql` et refuse un historique non vide.
 
 Une vérification de bout en bout ne pourra être déclarée qu'après le premier
 nouvel événement admissible et la conservation de son message Discord réel.
+
+## Sources du raccordement VPS
+
+Les nouveaux modules sont dans `scripts/lunaclip-discord-notifications/vps/` ;
+les tests ciblés sont dans `tests/`. Copier les deux modules serveur dans
+`/opt/lunaclip/server`, et les CLI `.mts` à la racine `/opt/lunaclip`.
+`publication-outbox.ts` est partagé avec le bot : copier la version de
+`bot/src/nozebot/` sans créer de second schéma ou consommateur.
+
+`vps-integration.patch` contient uniquement les points d'intégration dans les
+cinq fichiers existants. Vérifier la compatibilité avec `git apply --check`
+depuis `/opt/lunaclip` avant de l'appliquer ; après installation, le contrôle
+inverse `git apply --reverse --check` doit réussir. Si la base a évolué, adapter
+les petits hunks après lecture ; ne pas remplacer le projet complet.
+
+Les tests Node `.test.ts` sont exécutés dans le répertoire serveur du VPS ; le
+test de migration `.mts` à sa racine ; le test Python dans la copie de staging
+des rediffusions. Ils utilisent des transports simulés et ne créent aucune
+annonce publique. Le Dockerfile du bot continue de compiler son propre code.
+
+## Agenda et conversion ARS
+
+Les 17 publications futures existantes (14 LunaLive, 3 LeCasiNoze) ont conservé
+leurs dates du 19 au 27 octobre. Douze variantes ont été générées, deux variantes
+déjà validées réutilisées. Le bandeau inférieur est flouté sans recadrage ; les
+compteurs centraux, caméras, bannières, sous-titres et chronologies sont conservés.
+Contrôle des 12 nouveaux fichiers : paquets audio identiques, mêmes débuts et
+durées des pistes vidéo/audio, décodage complet réussi, contrôle visuel réalisé.
+
+Les descriptions personnelles précisent ARS et un repère indicatif daté BCRA.
+Le cache officiel est actualisé quotidiennement ; un taux absent ou vieux de
+plus de 14 jours n'est jamais inventé. Le repère est recalculé avant préparation
+de publication. La prévention reste présente, sans « Contenu casino », et les
+hashtags restent en fin de description sans doublon. Ces changements ne sont
+pas une preuve de causalité sur les restrictions Instagram.

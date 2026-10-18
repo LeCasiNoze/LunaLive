@@ -8,9 +8,9 @@ export interface AnnouncementTransport {
 }
 export interface OutboxRow {id:string;state:string;payload:PublicationEvent;send_started_at:Date|null;attempts:number}
 export function failurePolicy(error:unknown,attempts:number){
- const e=error as {status?:number;code?:number;retry_after?:number};
+ const e=error as {status?:number;code?:number;retry_after?:number;rawError?:{retry_after?:number}};
  const delay=Math.min(3600,Math.max(30,2**Math.min(attempts,10)*15));
- if(e.status===429)return {state:'queued',delay:Math.max(delay,Number(e.retry_after)||60),code:'discord_429'};
+ if(e.status===429)return {state:'queued',delay:Math.max(delay,Number(e.retry_after??e.rawError?.retry_after)||60),code:'discord_429'};
  if(e.status&&e.status>=400&&e.status<500)return {state:'blocked',delay,code:`discord_${e.status}`};
  return {state:'uncertain',delay,code:'discord_outcome_uncertain'};
 }
@@ -23,8 +23,13 @@ export async function deliverAnnouncement(pool:Pool,transport:AnnouncementTransp
   const row=(await c.query<OutboxRow>(`SELECT * FROM lunaclip_discord_outbox WHERE channel_id='${PUBLICATION_CHANNEL}' AND state IN ('queued','sending','uncertain') AND next_attempt_at<=now() ORDER BY id LIMIT 1`)).rows[0];if(!row)return;
   if(!eligiblePublication(row.payload)){await c.query("UPDATE lunaclip_discord_outbox SET state='blocked',error_code='invalid_publication_event' WHERE id=$1",[row.id]);return;}
   if(row.state!=='queued'){
-   const found=await transport.reconcile(row.payload,row.send_started_at!);
-   if(found){await c.query("UPDATE lunaclip_discord_outbox SET state='sent',message_id=$2,sent_at=now(),error_code=NULL WHERE id=$1",[row.id,found]);return;}
+   try{
+    const found=await transport.reconcile(row.payload,row.send_started_at!);
+    if(found){await c.query("UPDATE lunaclip_discord_outbox SET state='sent',message_id=$2,sent_at=now(),error_code=NULL WHERE id=$1",[row.id,found]);return;}
+   }catch{
+    await c.query("UPDATE lunaclip_discord_outbox SET state='uncertain',attempts=attempts+1,next_attempt_at=now()+$2*INTERVAL '1 second',error_code='discord_reconciliation_unavailable' WHERE id=$1",[row.id,Math.min(3600,300*2**Math.min(row.attempts,4))]);
+    return;
+   }
   }
   await c.query("UPDATE lunaclip_discord_outbox SET state='sending',send_started_at=COALESCE(send_started_at,now()),attempts=attempts+1,next_attempt_at=now()+INTERVAL '5 minutes' WHERE id=$1",[row.id]);
   try{
