@@ -382,17 +382,21 @@ export const getStreamer = (slug: string, token?: string | null) =>
 export const getStreamers = () => j<ApiStreamer[]>("/streamers");
 
 export async function followStreamer(slug: string, token: string) {
-  return j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
+  const result = await j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
     `/streamers/${encodeURIComponent(slug)}/follow`,
     { method: "POST", headers: { Authorization: `Bearer ${token}` } }
   );
+  window.dispatchEvent(new CustomEvent("ui:follow_changed",{detail:{slug,following:result.following}}));
+  return result;
 }
 
 export async function unfollowStreamer(slug: string, token: string) {
-  return j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
+  const result = await j<{ ok: true; following: boolean; followsCount: number; notifyEnabled?: boolean }>(
     `/streamers/${encodeURIComponent(slug)}/follow`,
     { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }
   );
+  window.dispatchEvent(new CustomEvent("ui:follow_changed",{detail:{slug,following:result.following}}));
+  return result;
 }
 
 export async function setFollowNotify(slug: string, notifyEnabled: boolean, token: string) {

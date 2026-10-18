@@ -1,6 +1,6 @@
 // api/src/predictions/predictions.store.ts
 import type { Pool } from "pg";
-import { earnRubisTx } from "../wallet_engine.js";
+import { spendRubisTx, earnRubisTx } from "../wallet_engine.js";
 import type { PredictionRow } from "./predictions.types.js";
 
 const TAX_RATE = 0.10;
@@ -165,20 +165,22 @@ export async function createPrediction(
 }
 
 export async function addBet(pool: Pool, pred: PredictionRow, userId: number, choice: 1 | 2, stake: number) {
-  await pool.query(
-    `
-    INSERT INTO prediction_bets (prediction_id, user_id, choice, amount)
-    VALUES ($1,$2,$3,$4)
-    `,
-    [pred.id, userId, choice, stake]
-  );
-
-  await pool.query(
-    choice === 1
-      ? `UPDATE predictions SET total_pool_1 = total_pool_1 + $1 WHERE id=$2`
-      : `UPDATE predictions SET total_pool_2 = total_pool_2 + $1 WHERE id=$2`,
-    [stake, pred.id]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query(`SELECT status, bets_close_at FROM predictions WHERE id=$1 FOR UPDATE`, [pred.id]);
+    const current = locked.rows[0];
+    if (!current || current.status !== "open" || new Date(current.bets_close_at).getTime() <= Date.now()) throw new Error("bets_closed");
+    const previous = await client.query(`SELECT choice FROM prediction_bets WHERE prediction_id=$1 AND user_id=$2`, [pred.id, userId]);
+    if (previous.rows[0]) throw new Error("already_bet");
+    await spendRubisTx(client, { userId, amount: stake, spendKind: "sink", spendType: "prediction_bet", streamerId: pred.streamer_id,
+      meta: { predictionId: pred.id, choice, stake } });
+    await client.query(`INSERT INTO prediction_bets (prediction_id, user_id, choice, amount) VALUES ($1,$2,$3,$4)`, [pred.id,userId,choice,stake]);
+    await client.query(choice === 1 ? `UPDATE predictions SET total_pool_1=total_pool_1+$1 WHERE id=$2` : `UPDATE predictions SET total_pool_2=total_pool_2+$1 WHERE id=$2`, [stake,pred.id]);
+    await client.query(`UPDATE users SET last_prediction_stake=$2 WHERE id=$1`, [userId,stake]);
+    await client.query("COMMIT");
+  } catch (error) { await client.query("ROLLBACK"); throw error; }
+  finally { client.release(); }
 }
 
 export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning: 1 | 2) {
@@ -189,6 +191,8 @@ export async function resolvePrediction(pool: Pool, pred: PredictionRow, winning
   try {
     await client.query("BEGIN");
 
+    const state = await client.query(`SELECT status FROM predictions WHERE id=$1 FOR UPDATE`, [pred.id]);
+    if (!state.rows[0] || state.rows[0].status === "resolved") throw new Error("already_resolved");
     const r = await client.query(`SELECT user_id, amount, choice FROM prediction_bets WHERE prediction_id=$1`, [
       pred.id,
     ]);

@@ -9,7 +9,7 @@
 // résolution (roue partagée, choix du vainqueur de prédiction).
 //
 // Ces vues sont CONTRÔLÉES (props + callbacks) : le banc les pilote en
-// simulation locale, ChatPanel les pilotera via socket backend ensuite.
+// simulation locale ; ChatPanel utilise les snapshots et sockets du serveur.
 // ─────────────────────────────────────────────────────────────────────────
 import * as React from "react";
 import "./specialEvents.css";
@@ -20,6 +20,11 @@ export type ActKind = "rain" | "wheel" | "predict" | "chest";
 export type ActEvent = {
   id: string;
   kind: ActKind;
+  identity?: string | null;
+  observedAtMs?: number;
+  stake?: number | null;
+  totalStake?: number;
+  resolving?: boolean;
   joined: boolean;              // le viewer courant a participé
   participants: string[];       // noms (roue/rain/coffre)
   remaining: number;            // secondes restantes
@@ -62,11 +67,12 @@ type EngineOpts = {
   // banc = true (faux participants qui arrivent). Vrai chat = false : seuls
   // les vrais participants (backend) rejoignent.
   simulate?: boolean;
+  stake?: number | null;
   // Vrai chat : participation RÉELLE. Le parent route vers le vrai endpoint.
   onRealJoin?: (e: ActEvent) => void | Promise<boolean | void>;                       // rain/roue/coffre : participer
   onRealVote?: (e: ActEvent, opt: "yes" | "no") => void | Promise<boolean | void>;    // prédiction : miser
-  onRealResolveWheel?: (e: ActEvent) => void;               // streamer : tirer la roue (backend)
-  onRealResolvePredict?: (e: ActEvent, winner: "yes" | "no") => void; // streamer : résoudre
+  onRealResolveWheel?: (e: ActEvent) => void | Promise<boolean | void>;               // streamer : tirer la roue (backend)
+  onRealResolvePredict?: (e: ActEvent, winner: "yes" | "no") => void | Promise<boolean | void>; // streamer : résoudre
 };
 
 export type ActionableEngine = ReturnType<typeof useActionableEngine>;
@@ -90,7 +96,7 @@ export function useActionableEngine(opts: EngineOpts) {
     const iv = setInterval(() => {
       setEvents((prev) => prev.map((e) => {
         if (e.resolved) return e;
-        let remaining = e.endsAtMs ? secondsRemaining(e.endsAtMs) : e.remaining - 1;
+        let remaining = e.real && !e.endsAtMs ? e.remaining : e.endsAtMs ? secondsRemaining(e.endsAtMs) : e.remaining - 1;
         let locked = e.locked;
         if (remaining <= 0) { remaining = 0; locked = true; }
         let pctYes = e.pctYes;
@@ -103,22 +109,40 @@ export function useActionableEngine(opts: EngineOpts) {
     return () => clearInterval(iv);
   }, []);
 
+  React.useEffect(() => { setEvents(prev => prev.map(e => e.real ? {...e,stake:opts.stake} : e)); }, [opts.stake]);
   const open = React.useCallback((kind: ActKind, data?: any) => {
+    const real = optsRef.current.simulate !== true;
     const key = eventIdentity(kind, data);
-    if (key && seenRef.current.has(key)) return;
+    if (key && seenRef.current.has(key)) {
+      setEvents(prev => prev.map(e => e.identity !== key || e.resolved ? e : {
+        ...e, serverCount: data?.count != null ? Number(data.count) : e.serverCount,
+        question: data?.question ?? e.question, opt1: data?.option1 ?? e.opt1, opt2: data?.option2 ?? e.opt2,
+        endsAtMs: Number(data?.endsAtMs)>0 ? Number(data.endsAtMs) : e.endsAtMs,
+        remaining: Number(data?.endsAtMs)>0 ? secondsRemaining(Number(data.endsAtMs)) : e.remaining,
+        participants: Array.isArray(data?.participants) ? data.participants.map(String) : e.participants,
+        joined: joiningRef.current.has(e.id) ? e.joined : data?.joined ?? e.joined,
+        myVote: joiningRef.current.has(e.id) ? e.myVote : data && "myVote" in data ? data.myVote : e.myVote,
+        totalStake: data?.totalStake ?? e.totalStake,
+        percentagesKnown: data?.pctYes != null && Number.isFinite(Number(data.pctYes)),
+        pctYes: data?.pctYes != null ? Number(data.pctYes) : e.pctYes,
+        locked: !!data?.locked || e.locked,
+      }));
+      return;
+    }
     if (key) seenRef.current.add(key);
     const id = `act_${++seqRef.current}`;
     const dur = Number(data?.durationSec) > 0 ? Math.round(Number(data.durationSec)) : DUR[kind];
-    const endsAtMs = eventDeadline(data, dur);
-    if (secondsRemaining(endsAtMs) <= 0) return;
+    const endsAtMs = real && (kind === "wheel" || data?.endsAtMs === null || (!data?.endsAtMs && !data?.durationSec)) ? undefined : eventDeadline(data, dur);
+    const remaining = endsAtMs ? secondsRemaining(endsAtMs) : dur;
+    if (remaining <= 0 && !data?.locked) return;
     const ev: ActEvent = {
-      id, kind, joined: false, participants: [], remaining: secondsRemaining(endsAtMs), duration: dur, endsAtMs,
-      locked: false, resolved: false,
+      id, kind, identity: key, observedAtMs: Date.now(), joined: !!data?.joined, participants: Array.isArray(data?.participants) ? data.participants.map(String) : [], remaining, duration: dur, endsAtMs, stake: optsRef.current.stake, totalStake: data?.totalStake,
+      locked: !!data?.locked, resolved: false,
       question: data?.question, opt1: data?.option1 ?? "OUI", opt2: data?.option2 ?? "NON",
       pctYes: data?.pctYes!=null&&Number.isFinite(Number(data.pctYes))?Math.min(100,Math.max(0,Number(data.pctYes))):50,
-      percentagesKnown:!data?.real||data?.pctYes!=null,myVote: null, pot: data?.pot, loot: data?.loot,
-      real: !!data?.real, round: data?.round ?? undefined,
-      serverCount: data?.real ? 0 : undefined,
+      percentagesKnown:!real||data?.pctYes!=null,myVote: data?.myVote ?? null, pot: data?.pot, loot: data?.loot,
+      real, round: data?.round ?? undefined,
+      serverCount: real && data?.count != null ? Number(data.count) : undefined,
     };
     setEvents((prev) => [...prev, ev]);
     optsRef.current.addChatCard(id);
@@ -154,7 +178,7 @@ export function useActionableEngine(opts: EngineOpts) {
   // Participant simulé (autre compte) : ajoute + émet un message système.
   const simJoin = React.useCallback((id: string, name: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
-    if (!e || e.locked || e.resolved || e.participants.includes(name)) return;
+    if (!optsRef.current.simulate || !e || e.real || e.locked || e.resolved || e.participants.includes(name)) return;
     setEvents((prev) => prev.map((x) => x.id === id && !x.participants.includes(name)
       ? { ...x, participants: [...x.participants, name] } : x));
     optsRef.current.emitSystem(participationMsg(e.kind, name));
@@ -178,11 +202,13 @@ export function useActionableEngine(opts: EngineOpts) {
   }, []);
 
   const addParticipant = React.useCallback((id: string, name: string) => {
+    if (eventsRef.current.find(e=>e.id===id)?.real) return;
     const n = name.trim();
     if (!n) return;
     setEvents((prev) => prev.map((e) => e.id === id && !e.participants.includes(n) ? { ...e, participants: [...e.participants, n] } : e));
   }, []);
   const removeParticipant = React.useCallback((id: string, name: string) => {
+    if (eventsRef.current.find(e=>e.id===id)?.real) return;
     setEvents((prev) => prev.map((e) => e.id === id ? { ...e, participants: e.participants.filter((p) => p !== name) } : e));
   }, []);
 
@@ -207,7 +233,14 @@ export function useActionableEngine(opts: EngineOpts) {
   const resolveWheel = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
-    if (e.real) { optsRef.current.onRealResolveWheel?.(e); return; }
+    if (e.real) {
+      if(joiningRef.current.has(id)) return;
+      joiningRef.current.add(id);
+      setEvents(prev=>prev.map(x=>x.id===id?{...x,resolving:true}:x));
+      Promise.resolve().then(()=>optsRef.current.onRealResolveWheel?.(e)).catch(()=>{}).finally(()=>{
+        joiningRef.current.delete(id);setEvents(prev=>prev.map(x=>x.id===id?{...x,resolving:false}:x));
+      }); return;
+    }
     const names = e.participants.length ? e.participants : [optsRef.current.me];
     const winner = names[Math.floor(Math.random() * names.length)];
     optsRef.current.emitRecap(`🎡 <b>${winner}</b> remporte le tirage 🎉`);
@@ -218,7 +251,14 @@ export function useActionableEngine(opts: EngineOpts) {
   const resolvePredict = React.useCallback((id: string, winner: "yes" | "no") => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
-    if (e.real) { optsRef.current.onRealResolvePredict?.(e, winner); return; }
+    if (e.real) {
+      if(joiningRef.current.has(id)) return;
+      joiningRef.current.add(id);
+      setEvents(prev=>prev.map(x=>x.id===id?{...x,resolving:true}:x));
+      Promise.resolve().then(()=>optsRef.current.onRealResolvePredict?.(e,winner)).catch(()=>{}).finally(()=>{
+        joiningRef.current.delete(id);setEvents(prev=>prev.map(x=>x.id===id?{...x,resolving:false}:x));
+      }); return;
+    }
     const label = winner === "yes" ? e.opt1 : e.opt2;
     optsRef.current.emitRecap(`🔮 Résultat : <b>${label}</b> l'emporte`);
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true, locked: true } : x));
@@ -227,6 +267,7 @@ export function useActionableEngine(opts: EngineOpts) {
   const resolveChest = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
+    if (e.real) return;
     optsRef.current.emitRecap(`📦 Coffre distribué à <b>${pCount(e) || 1}</b> participant(s) 🎁`);
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true, locked: true } : x));
   }, []);
@@ -234,6 +275,7 @@ export function useActionableEngine(opts: EngineOpts) {
   const rainPayout = React.useCallback((id: string) => {
     const e = eventsRef.current.find((x) => x.id === id);
     if (!e) return;
+    if (e.real) return;
     optsRef.current.emitRecap(`🌧️ Rain terminée — <b>${e.participants.length || 1}</b> ont partagé ${e.pot ?? 0} rubis`);
     setEvents((prev) => prev.map((x) => x.id === id ? { ...x, resolved: true, locked: true } : x));
   }, []);
@@ -243,11 +285,12 @@ export function useActionableEngine(opts: EngineOpts) {
   // Mise à jour depuis le SOCKET backend (event real) : compteur partagé, %
   // live, résolution. Matche par (kind, round) — round comparé en string
   // (ids rain=number, coffre/prédiction=string).
-  const patchByRound = React.useCallback((kind: ActKind, round: number | string, patch: { serverCount?: number; resolved?: boolean; pctYes?: number; joined?: boolean }) => {
+  const patchByRound = React.useCallback((kind: ActKind, round: number | string, patch: { serverCount?: number; resolved?: boolean; pctYes?: number; totalStake?: number; joined?: boolean }) => {
     setEvents((prev) => prev.map((e) => {
       if (!e.real || e.kind !== kind || String(e.round) !== String(round) || e.resolved) return e;
       return {
         ...e,
+        totalStake: patch.totalStake ?? e.totalStake,
         joined: patch.joined ?? e.joined,
         serverCount: patch.serverCount != null ? patch.serverCount : e.serverCount,
         pctYes: patch.pctYes != null ? patch.pctYes : e.pctYes,
@@ -299,6 +342,11 @@ export function useActionableEngine(opts: EngineOpts) {
   }, [events, rainPayout, resolveChest]);
 
   return {
+    sync: (snapshot: {kind: ActKind;data:any}[], complete: string[], requestedAt = Date.now()) => {
+      const ids=new Set(snapshot.map(({kind,data})=>eventIdentity(kind,data)));
+      setEvents(prev=>prev.map(e=>e.real&&(e.observedAtMs??0)<=requestedAt&&complete.includes(e.kind)&&!ids.has(e.identity??null)?{...e,locked:true,resolved:true}:e));
+      snapshot.forEach(({kind,data})=>open(kind,data));
+    },
     events, overlay, listFor, setListFor, reset,
     open, join, vote, addParticipant, removeParticipant,
     resolveWheel, resolvePredict, resolveChest, rainPayout, dismiss, patchByRound, applyWheelResult,
@@ -306,8 +354,8 @@ export function useActionableEngine(opts: EngineOpts) {
 }
 
 /** Compteur de participants affiché : priorité au compteur serveur (event réel). */
-function pCount(e: ActEvent): number {
-  return e.serverCount != null ? e.serverCount : e.participants.length;
+export function pCount(e: ActEvent): number {
+  return e.serverCount != null ? e.serverCount : e.real ? 0 : e.participants.length;
 }
 
 /* ═══════════════ Vues ═══════════════ */
@@ -318,6 +366,7 @@ const META: Record<ActKind, { ic: string; t: string; cls: string }> = {
   predict: { ic: "🔮", t: "Prédiction", cls: "lle-chip--predict" },
   chest: { ic: "📦", t: "Coffre commu.", cls: "lle-chip--chest" },
 };
+const countText = (e: ActEvent) => e.real && e.serverCount == null ? "Statistiques en cours…" : `${pCount(e)} participant(s)`;
 const fmt = (s: number) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, "0")}:${String(Math.max(0, s) % 60).padStart(2, "0")}`;
 
 function joinLabel(e: ActEvent): string {
@@ -334,8 +383,8 @@ function StreamerControls({ e, engine }: { e: ActEvent; engine: ActionableEngine
   if (e.kind === "wheel") {
     return (
       <div className="lla-strm">
-        <button className="lla-strm-btn" onClick={() => engine.setListFor(e.id)}>Liste ({e.participants.length})</button>
-        <button className="lla-strm-btn lla-strm-go" onClick={() => engine.resolveWheel(e.id)}>Ouvrir 🎡</button>
+        <button className="lla-strm-btn" onClick={() => engine.setListFor(e.id)}>Liste ({pCount(e)})</button>
+        <button className="lla-strm-btn lla-strm-go" disabled={e.resolving} onClick={() => engine.resolveWheel(e.id)}>Ouvrir 🎡</button>
       </div>
     );
   }
@@ -343,11 +392,11 @@ function StreamerControls({ e, engine }: { e: ActEvent; engine: ActionableEngine
     return (
       <div className="lla-strm">
         {!choosing ? (
-          <button className="lla-strm-btn lla-strm-go" onClick={() => setChoosing(true)}>Ouvrir 🔮</button>
+          <button className="lla-strm-btn lla-strm-go" disabled={e.resolving} onClick={() => setChoosing(true)}>Ouvrir 🔮</button>
         ) : (
           <>
-            <button className="lla-strm-btn lla-win" onClick={() => engine.resolvePredict(e.id, "yes")}>{e.opt1} gagne</button>
-            <button className="lla-strm-btn lla-win" onClick={() => engine.resolvePredict(e.id, "no")}>{e.opt2} gagne</button>
+            <button className="lla-strm-btn lla-win" disabled={e.resolving} onClick={() => engine.resolvePredict(e.id, "yes")}>{e.opt1} gagne</button>
+            <button className="lla-strm-btn lla-win" disabled={e.resolving} onClick={() => engine.resolvePredict(e.id, "no")}>{e.opt2} gagne</button>
           </>
         )}
       </div>
@@ -359,25 +408,26 @@ function StreamerControls({ e, engine }: { e: ActEvent; engine: ActionableEngine
 /* Barres de prédiction (partagées carte + chip), % live. */
 function PredictBars({ e, engine, big, readOnly=false }: { e: ActEvent; engine: ActionableEngine; big?: boolean; readOnly?: boolean }) {
   const noPct = 100 - e.pctYes;
-  const disabled = readOnly || e.locked || !!e.myVote || e.resolved;
+  const disabled = readOnly || e.locked || !!e.myVote || e.resolved || (e.real && e.stake == null);
   const Tag = readOnly ? 'div' : 'button';
   return (
     <div className={`lla-pred${big ? " lla-pred--big" : ""}`}>
       <Tag className="lle-pbar lle-yes" disabled={readOnly?undefined:disabled} style={{ opacity: e.myVote && e.myVote !== "yes" ? .5 : 1 }} onClick={readOnly?undefined:() => engine.vote(e.id, "yes")}>
-        <span className="lle-fill" style={{ ["--w" as any]: `${Math.round(e.pctYes)}%` }} />
+        <span className="lle-fill" style={{ ["--w" as any]: `${e.real&&!e.percentagesKnown?0:Math.round(e.pctYes)}%` }} />
         <span className="lle-lbl">{e.opt1}</span><span className="lle-pct">{e.real&&!e.percentagesKnown?'—':`${Math.round(e.pctYes)}%`}</span>
       </Tag>
       <Tag className="lle-pbar lle-no" disabled={readOnly?undefined:disabled} style={{ opacity: e.myVote && e.myVote !== "no" ? .5 : 1 }} onClick={readOnly?undefined:() => engine.vote(e.id, "no")}>
-        <span className="lle-fill" style={{ ["--w" as any]: `${Math.round(noPct)}%` }} />
+        <span className="lle-fill" style={{ ["--w" as any]: `${e.real&&!e.percentagesKnown?0:Math.round(noPct)}%` }} />
         <span className="lle-lbl">{e.opt2}</span><span className="lle-pct">{e.real&&!e.percentagesKnown?'—':`${Math.round(noPct)}%`}</span>
       </Tag>
+      {e.real && <div className="lle-chip__meta">{countText(e)} · {e.totalStake ?? "—"} rubis misés{e.stake != null ? ` · Ta mise : ${e.stake} rubis` : ""}</div>}
     </div>
   );
 }
 
 /** Barre épinglée (compacte) — un chip par event actionnable. */
 export function ActionablePinnedBar({ engine, isStreamer }: { engine: ActionableEngine; isStreamer: boolean }) {
-  const evs = engine.events.filter((e) => !e.resolved && !e.locked && e.remaining > 0);
+  const evs = engine.events.filter((e) => !e.resolved && !e.locked && (e.remaining > 0 || !e.endsAtMs));
   if (!evs.length) return null;
   return (
     <div className="lle-pinbar">
@@ -389,7 +439,7 @@ export function ActionablePinnedBar({ engine, isStreamer }: { engine: Actionable
               <span className="lle-chip__ic">{m.ic}</span>
               <div className="lle-chip__mid">
                 <div className="lle-chip__t">{m.t}</div>
-                <div className="lle-chip__meta">{fmt(e.remaining)} · {e.kind === "predict" ? e.real&&!e.percentagesKnown?'En attente des votes':`${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : `${pCount(e)} pers.`}</div>
+                <div className="lle-chip__meta">{e.real&&!e.endsAtMs?"Inscriptions ouvertes":fmt(e.remaining)} · {e.kind === "predict" ? e.real&&!e.percentagesKnown?'En attente des votes':e.percentagesKnown ? `${Math.round(e.pctYes)}% / ${Math.round(100 - e.pctYes)}%` : e.totalStake===0 ? "Aucun pari" : "Statistiques en cours…" : countText(e)}</div>
               </div>
               {e.kind !== "predict" && (
                 <button className="lle-chip__cta" disabled={e.joined || e.locked} onClick={() => engine.join(e.id)}>{joinLabel(e)}</button>
@@ -410,7 +460,7 @@ export function ActionableChatCard({ event, engine, isStreamer, readOnly=false }
   if (!event) return <div className="lla-card lla-card--done">Événement terminé</div>;
   const e = event;
   const m = META[e.kind];
-  const value = e.kind === "rain"&&e.pot!=null ? `${e.pot} rubis` : e.kind === "chest"&&e.loot!=null ? `${e.loot} rubis` : e.kind === "wheel" ? `${pCount(e)} inscrits` : null;
+  const value = e.kind === "rain"&&e.pot!=null ? `${e.pot} rubis` : e.kind === "chest"&&e.loot!=null ? `${e.loot} rubis` : e.kind === "wheel" ? e.serverCount==null&&e.real?"— inscrits":`${pCount(e)} inscrits` : null;
   return (
     <div className={`lle-ev lle-ev--${e.kind} lla-card`} data-tier="epic">
       <div className="lle-ev__body">
@@ -418,7 +468,7 @@ export function ActionableChatCard({ event, engine, isStreamer, readOnly=false }
         <div className="lle-ev__text">
           <div className="lle-ev__title">{e.kind === "predict" ? "Prédiction" : m.t}</div>
           <div className="lle-ev__sub">
-            {e.resolved ? "Terminé" : e.locked ? "Fermé — en attente du résultat" : e.kind === "predict" ? e.question : `${fmt(e.remaining)} restantes · ${pCount(e)} participant(s)`}
+            {e.resolved ? "Terminé" : e.locked ? "Fermé — en attente du résultat" : e.kind === "predict" ? e.question : `${e.real&&!e.endsAtMs?"Inscriptions ouvertes":`${fmt(e.remaining)} restantes`} · ${countText(e)}`}
           </div>
         </div>
         {value ? <div className="lle-ev__value">{value}</div> : null}
@@ -497,17 +547,17 @@ export function ParticipantListModal({ engine }: { engine: ActionableEngine }) {
           <b>Participants — {META[e.kind].t}</b>
           <button className="lla-modal-x" onClick={() => engine.setListFor(null)}>✕</button>
         </div>
-        <div className="lla-modal-add">
+        {!e.real && <div className="lla-modal-add">
           <input value={name} placeholder="Ajouter un pseudo…" onChange={(ev) => setName(ev.target.value)}
             onKeyDown={(ev) => { if (ev.key === "Enter") { engine.addParticipant(e.id, name); setName(""); } }} />
           <button onClick={() => { engine.addParticipant(e.id, name); setName(""); }}>Ajouter</button>
-        </div>
+        </div>}
         <div className="lla-modal-list">
           {e.participants.length === 0 ? <div className="lla-modal-empty">Aucun participant</div> : null}
           {e.participants.map((p) => (
             <div key={p} className="lla-modal-row">
               <span>{p}</span>
-              <button className="lla-modal-rm" onClick={() => engine.removeParticipant(e.id, p)}>✕</button>
+              {!e.real && <button className="lla-modal-rm" onClick={() => engine.removeParticipant(e.id, p)}>✕</button>}
             </div>
           ))}
         </div>

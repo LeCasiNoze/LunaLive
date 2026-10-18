@@ -82,29 +82,27 @@ export async function tryHandleWheelCommand(args: {
     return true;
   }
 
-  // on tente insert (user_id si colonne + index unique)
-  // si ta migration n'est pas appliquée, ça va throw -> fallback sur username_lc
   let joined = false;
+  const client = await args.pool.connect();
   try {
-    const ins = await args.pool.query(
-      `INSERT INTO bot_wheel_entries (streamer_id, user_id, username, username_lc)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (streamer_id, user_id) DO NOTHING
-       RETURNING id`,
-      [args.streamer.id, userId, username, usernameLc]
-    );
-    joined = !!ins.rows?.[0];
+    await client.query("BEGIN");
+    const state=await client.query(`SELECT enroll_open FROM bot_wheel_cfg WHERE streamer_id=$1 FOR UPDATE`,[args.streamer.id]);
+    if(!state.rows[0]?.enroll_open){
+      await client.query("ROLLBACK");
+      await args.send("🎡 Inscriptions fermées.");
+      return true;
+    }
+    const ins=await client.query(`INSERT INTO bot_wheel_entries(streamer_id,user_id,username,username_lc)
+      VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING RETURNING id`,[args.streamer.id,userId,username,usernameLc]);
+    joined=!!ins.rows[0];
+    await client.query(`UPDATE bot_wheel_entries SET user_id=$2 WHERE streamer_id=$1 AND username_lc=$3 AND user_id IS NULL
+      AND NOT EXISTS(SELECT 1 FROM bot_wheel_entries WHERE streamer_id=$1 AND user_id=$2)`,[args.streamer.id,userId,usernameLc]);
+    await client.query("COMMIT");
   } catch {
-    // fallback MVP (sans user_id)
-    const ins = await args.pool.query(
-      `INSERT INTO bot_wheel_entries (streamer_id, username, username_lc)
-       VALUES ($1,$2,$3)
-       ON CONFLICT (streamer_id, username_lc) DO NOTHING
-       RETURNING id`,
-      [args.streamer.id, username, usernameLc]
-    );
-    joined = !!ins.rows?.[0];
-  }
+    await client.query("ROLLBACK");
+    await args.send("🎡 Inscription indisponible, réessaie dans un instant.");
+    return true;
+  } finally {client.release();}
 
   if (joined) {
     await args.send(`🎡 ${username} est inscrit à la roue !`);

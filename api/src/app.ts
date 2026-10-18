@@ -77,6 +77,7 @@ import {communityShopRouter} from './routes/community_shop.js';
 // Bot module (clean)
 import meBotRouter from "./modules/bot/router.js";
 import { botWheelRouter } from "./routes/bot_wheel.js";
+import { chatEventsRouter } from "./routes/chat_events.js";
 import { botRainRouter } from "./routes/bot_rain.js";
 import { botClipsRouter } from "./bot_clips/router.js";
 
@@ -329,6 +330,7 @@ export function createApp() {
   app.use(webrtcTurnRouter);
   app.use("/me/bot",            requireAuth, meBotRouter);
   app.use("/me/bot/bot_wheel",  requireAuth, botWheelRouter);
+  app.use(chatEventsRouter);
   app.use("/me/bot/bot_rain",   requireAuth, botRainRouter);
   app.use("/me/bot/clips",      botClipsRouter);
 
