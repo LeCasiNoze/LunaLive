@@ -35,7 +35,7 @@ test('another streamer cannot be targeted with this endpoint',()=>fixture(async 
 test('a replayed external call invokes the existing handler exactly once',()=>fixture(async f=>{
   const first=await f.post(sample);assert.equal(first.status,200);const result=await first.json();
   const replay=await f.post(sample);assert.equal(replay.status,200);assert.deepEqual(await replay.json(),result);assert.equal(f.calls.length,1);
-  assert.equal(f.calls[0].actorUserId,0);assert.equal(f.calls[0].actorRole,'viewer');assert.equal(f.calls[0].canMod,false);assert.equal(f.calls[0].actorUsername,'kick:123');
+  assert.equal(f.calls[0].actorUserId,0);assert.equal(f.calls[0].actorRole,'viewer');assert.equal(f.calls[0].canMod,false);assert.equal(f.calls[0].actorUsername,'Alice');assert.equal(f.calls[0].externalActorKey,'kick:123');
   assert.match(f.texts[0],/^\[Kick\] Alice : !call/);
 }));
 test('unfinished claims are not silently executed again',()=>fixture(async f=>{assert.equal((await f.post(sample)).status,409);assert.equal(f.calls.length,0);},{processing:true}));

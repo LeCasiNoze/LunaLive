@@ -108,6 +108,8 @@ async function ensureCallsSchema(pool: Pool) {
     END $$;
   `);
 
+  await pool.query('ALTER TABLE calls_queue ADD COLUMN IF NOT EXISTS external_actor_key TEXT NULL');
+
   // ✅ NEW: calls_actions pour quêtes welcome (idempotent)
   // - on garde ce schéma très simple et compatible
   await pool.query(`
@@ -260,6 +262,14 @@ export async function countUserCalls(pool: Pool, streamerId: number, userId: num
   return Number(r.rows?.[0]?.n ?? 0);
 }
 
+export async function countUserCallsByExternalKey(pool: Pool, streamerId: number, actorKey: string): Promise<number> {
+  const result = await pool.query(`SELECT COUNT(*) AS n FROM calls_queue
+    WHERE streamer_id=$1 AND user_id=0
+      AND (external_actor_key=$2 OR (external_actor_key IS NULL AND username=$2))
+      AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)`, [streamerId, actorKey]);
+  return Number(result.rows[0]?.n || 0);
+}
+
 export async function countUserCallsByUsername(pool: Pool, streamerId: number, username: string): Promise<number> {
   await ensureCallsSchema(pool);
 
@@ -317,10 +327,12 @@ export async function addCall(
   username: string,
   slotNameRaw: string,
   provider: string | null,
-  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string; rumbleUserId?: string | null }
+  opts?: { bypassLimit?: boolean; perUserLimit?: number; insertAfterCurrent?: boolean; automodRequestId?: string; rumbleUserId?: string | null; externalActorKey?: string }
 ): Promise<{ ok: true; item: CallItem; position: number } | { ok: false; error: string }> {
   await ensureCallsSchema(pool);
   await challengeSchema(pool);
+
+  if (opts?.externalActorKey && (userId !== 0 || !/^(kick|twitch):[0-9]{1,20}$/.test(opts.externalActorKey))) return {ok:false,error:'invalid_external_call_identity'};
 
   if (opts?.automodRequestId) {
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(opts.automodRequestId) || userId !== 0 || username !== "Automod") return { ok: false, error: "invalid_automod_request" };
@@ -346,7 +358,7 @@ export async function addCall(
   if (!providerAdmission.allowed) return { ok: false, error: "automod_provider_not_allowed" };
 
   // bans / policy / limits
-  if (await isUserBannedFromCalls(pool, streamerId, userId, username)) return { ok: false, error: "user_banned" };
+  if (await isUserBannedFromCalls(pool, streamerId, userId, username) || (opts?.externalActorKey && await isUserBannedFromCalls(pool, streamerId, 0, opts.externalActorKey))) return { ok: false, error: "user_banned" };
   if (await isSlotBanned(pool, streamerId, slotKey)) return { ok: false, error: "slot_banned" };
   if (providerLower && (await isProviderBanned(pool, streamerId, providerLower))) return { ok: false, error: "provider_banned" };
   // Session admission is exclusive: the personal policy must not veto an
@@ -460,11 +472,11 @@ export async function addCall(
 
     const ins = await client.query(
       `
-      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus, rumble_user_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE,$8)
+      INSERT INTO calls_queue (streamer_id, slot_name, slot_key, provider, user_id, username, pos, bet, pay, bounty, is_bonus, rumble_user_id, external_actor_key)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NULL,NULL,NULL,FALSE,$8,$9)
       RETURNING id, created_at AS "createdAt"
       `,
-      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos, opts?.rumbleUserId || null]
+      [streamerId, slotName, slotKey, providerLower, userId, username, nextPos, opts?.rumbleUserId || null, opts?.externalActorKey || null]
     );
 
     // ✅ NEW: log pour les quêtes welcome (compte un call ajouté, peu importe la source)
