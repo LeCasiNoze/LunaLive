@@ -13,6 +13,7 @@ export class Store {
       CREATE TABLE IF NOT EXISTS oauth_states (state TEXT PRIMARY KEY, platform TEXT NOT NULL, verifier TEXT NOT NULL, expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS inbox (id TEXT PRIMARY KEY, event TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created INTEGER NOT NULL, error TEXT);
       CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, platform TEXT NOT NULL, text TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', created INTEGER NOT NULL, due INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, message_id TEXT, error TEXT);
+      CREATE INDEX IF NOT EXISTS outbox_platform_created_idx ON outbox(platform,created);
       CREATE TABLE IF NOT EXISTS own_messages (platform TEXT NOT NULL, id TEXT NOT NULL, text TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(platform,id));`);
     // A crash during a non-idempotent remote send has an unknown outcome. Never blindly duplicate it.
     this.db.prepare("UPDATE outbox SET status='uncertain',error='process_interrupted_during_send' WHERE status='sending'").run();
@@ -35,6 +36,17 @@ export class Store {
   nextInbox() { const row=this.db.prepare("SELECT * FROM inbox WHERE status='pending' ORDER BY created LIMIT 1").get(); if(!row)return null; this.db.prepare("UPDATE inbox SET status='processing' WHERE id=?").run(row.id); return {...row,event:JSON.parse(row.event)}; }
   finishInbox(id,status='done',error=null) { this.db.prepare('UPDATE inbox SET status=?,error=? WHERE id=?').run(status,error,id); }
   enqueue(id,platform,text) { return this.db.prepare('INSERT OR IGNORE INTO outbox(id,platform,text,created,due) VALUES (?,?,?,?,?)').run(id,platform,text,Date.now(),Date.now()).changes>0; }
+  enqueueBot(id,platform,text,now=Date.now()) {
+    // Different DB rows may represent one mirrored bot response. Keep human
+    // messages on their event-ID path; only identical bot text gets a cooldown.
+    const duplicate=this.db.prepare("SELECT 1 FROM outbox WHERE platform=? AND text=? AND created>? AND status IN ('pending','sending','done','uncertain') LIMIT 1").get(platform,text,now-20_000);
+    if(duplicate)return false;
+    const inserted=this.enqueue(id,platform,text);
+    // Give the already-installed Kick bot a brief chance to answer Discord.
+    if(inserted&&platform==='kick'&&/^Discord: https:\/\/discord\.gg\//.test(text))this.db.prepare('UPDATE outbox SET due=? WHERE id=?').run(now+5_000,id);
+    return inserted;
+  }
+  ignoreOutbox(id,reason) {this.db.prepare("UPDATE outbox SET status='ignored',error=? WHERE id=?").run(reason,id);}
   nextOutbox(now=Date.now()) {
     this.db.prepare("UPDATE outbox SET status='expired',error='message_older_than_10_minutes' WHERE status='pending' AND created<?").run(now-10*60_000);
     const row=this.db.prepare("SELECT * FROM outbox WHERE status='pending' AND due<=? ORDER BY created LIMIT 1").get(now);
@@ -57,7 +69,7 @@ export class Store {
   prune() {
     const cutoff=Date.now()-7*86400_000;
     this.db.prepare("DELETE FROM inbox WHERE created<? AND status IN ('done','ignored')").run(cutoff);
-    this.db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('done','expired')").run(cutoff);
+    this.db.prepare("DELETE FROM outbox WHERE created<? AND status IN ('done','expired','ignored')").run(cutoff);
     this.db.prepare('DELETE FROM own_messages WHERE created<?').run(Date.now()-86400_000);
   }
   close() { this.db.close(); }
