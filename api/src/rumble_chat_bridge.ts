@@ -1,3 +1,4 @@
+import {isDedicatedRelayEcho} from "./multichat/rumble-echo.js";
 import {handleExternalCommunityChat,observeExternalAccount} from "./community/external-chat.js";
 import { readPublicChat } from "./observatory/sse.js";
 import {rewardFollow} from './automod-shop/follows.js';
@@ -394,7 +395,15 @@ export function ensureRumbleBridge(opts: {
     }
   }
 
+  let relayName='LunaLive_Bot',relayNameUntil=0;
   async function broadcast(m: { msgId: string; userId: string; username: string; text: string; createdAt: Date }) {
+    if(Date.now()>relayNameUntil){
+      relayNameUntil=Date.now()+60_000;
+      try{const row=(await opts.pool.query('SELECT username FROM rumble_bot_session WHERE id=1')).rows[0];if(row?.username)relayName=String(row.username);}catch{}
+    }
+    // Independent API/worker processes do not share request-ID echo caches.
+    // Discard our dedicated bot before persistence, polling and command parsing.
+    if(isDedicatedRelayEcho(m.username,relayName,opts.slug))return;
     if (m.msgId && seenIds.has(m.msgId)) return;
     if (m.msgId) addSeen(m.msgId);
 
