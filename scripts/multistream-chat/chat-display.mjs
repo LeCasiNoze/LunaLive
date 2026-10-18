@@ -6,7 +6,7 @@ export function compactBotReply(value) {
   if(/\[RAIN_OPEN\]/.test(text)||/^Rain (?:en cours|terminée)/.test(text.replace(/^[^\p{L}\p{N}]*/u,'')))return null;
   const discord=text.match(/https?:\/\/(?:www\.)?(?:discord\.gg\/|discord\.com\/invite\/)[A-Za-z0-9-]+/i);
   if(discord)return 'Discord: '+discord[0];
-  if(/!call/.test(text)&&/!discord/.test(text)&&(/Guide\s*:|Commandes\s*:/.test(text)))return 'Commands: !call <game> · !listec · !discord · !site';
+  if(/!call/.test(text)&&/!discord/.test(text)&&(/Guide\s*:|Commandes\s*:/.test(text)))return 'Commands: !call game · !listec · !discord · !site';
   text=text
     .replace(/^🎰 Call ajouté\s*:\s*/u,'Added: ')
     .replace(/ — dans /g,' · ETA ')
@@ -16,7 +16,7 @@ export function compactBotReply(value) {
     .replace(/Calls désactivés\s*:\s*Le streamer a désactivé les calls pour le moment\./g,'Calls are closed.')
     .replace(/Déjà en file\s*:\s*Cette machine est déjà call\./g,'Already queued.')
     .replace(/Limite atteinte\s*:\s*Tu as atteint ta limite de calls\./g,'Call limit reached.')
-    .replace(/Call refusé\s*:\s*Ex: !call Fruit Party/g,'Use: !call <game>')
+    .replace(/Call refusé\s*:\s*Ex: !call Fruit Party/g,'Use: !call game')
     .replace(/tu as déjà (\d+\/\d+) calls en file\./g,'$1 calls pending.')
     .replace(/Call refusé : le provider de « (.+?) » \((.+?)\) n’est pas autorisé pendant cette session Automod\./g,'$1 ($2): provider unavailable in this session.')
     .replace(/Commande désactivée/g,'Command disabled.');
