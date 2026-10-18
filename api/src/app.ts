@@ -65,6 +65,7 @@ import { meOverlayRouter } from "./routes/me_overlay.js";
 import { overlayApiRouter } from "./routes/overlay_api.js";
 import { internalBotRouter } from "./routes/internal_bot.js";
 import { multichatBridgeRouter } from "./routes/multichat_bridge.js";
+import {rumbleRaidsRouter} from './routes/rumble_raids.js';
 import { internalBotStreamerRequestsRouter } from "./routes/internal_bot_streamer_requests.js";
 import { automodControlRouter } from "./routes/automod_control.js";
 import { automodFeedbackRouter } from './routes/automod_feedback.js';
@@ -278,6 +279,7 @@ export function createApp() {
   app.use("/me/casinos", requireAuth, casinosMeRouter);
 
   app.use(multichatBridgeRouter);
+  app.use(rumbleRaidsRouter);
   app.use(internalBotRouter);
   app.use(internalBotStreamerRequestsRouter);
   app.use(internalNozeBotRouter);

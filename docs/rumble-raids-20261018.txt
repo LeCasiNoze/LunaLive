@@ -1,0 +1,63 @@
+Raids Rumble et admission des calls personnels — 18 octobre 2026
+
+Utilisation
+- Streamer, modérateur ou admin : saisir /raid dans le chat LunaLive.
+- Chaînes en direct et spectateurs, par ordre décroissant. Filtre Gambling &
+  Slots initial, puis Tous les directs Rumble avec pagination à la demande.
+- Continuer avec /raid + nom pour filtrer ; une URL de direct Rumble peut aussi
+  être collée et sélectionnée. Cliquer une destination lance le raid natif.
+- La commande n'est pas publiée comme message LunaLive ni rejouée par le miroir.
+
+Protocole et fiabilité
+- Protocole observé dans le client officiel Rumble : POST /chat/command avec
+  video_id et message, puis POST /service.php?name=raid.confirm avec video_id.
+- Vérifier la destination renvoyée avant confirmation et le live source courant.
+- Droits owner/mod/admin vérifiés côté API. Session bot existante réutilisée ;
+  Rumble doit déjà donner à ce compte les droits de modération de la chaîne.
+- Verrou PostgreSQL par streamer et identifiant UUID par clic. Résultat
+  confirmé rejouable sans second envoi ; résultat incertain jamais réexécuté
+  automatiquement. Délai de 10 minutes respecté côté LunaLive.
+- Aucun cookie, jeton ou clé dans les réponses, journaux ajoutés ou le dépôt.
+- Annuaire chargé seulement à l'ouverture/pagination, cache partagé 60 s ;
+  pas de boucle par viewer, pas de téléchargement de toutes les pages.
+
+Mode personnel
+- Cause observée : desired_enabled=true malgré propriétaire VPS manual,
+  moteur idle et publisher AutoMod arrêté. Cela refusait BGaming et Play'n GO.
+- Le refus immédiat a été levé en réconciliant ce drapeau périmé.
+- publication_owner et publication_revision persistent indépendamment des
+  heartbeats. Le propriétaire manual neutralise la politique AutoMod, même
+  si une ancienne intention d'activation subsiste. Les bans personnels restent.
+- Les requêtes explicitement issues du moteur AutoMod conservent leur politique.
+- Le service VPS réutilise automod:runtime:write, sans nouvelle permission ni
+  nouveau compte. Il synchronise les transitions et ne relance aucun moteur.
+
+Déploiement
+1. Déployer API + web, migration 153 incluse (compatible avec les anciennes
+   instances). Les anciens paramètres, scènes, clés et destinations ne changent pas.
+2. Copier le dossier ops/rumble-publication dans un dossier privé du VPS.
+3. Exécuter sudo python3 install_publication_sync.py depuis ce dossier.
+   L'installateur sauvegarde publication_control.py et les unités existantes.
+   Il déclenche une synchronisation sans bloquer le démarrage OBS et active
+   un timer de secours ; aucun service vidéo ou moteur de jeu n'est redémarré.
+4. Vérifier publication-mode-sync.service Result=success, timer enabled,
+   publication_owner=manual et revision identique au VPS. Vérifier que le
+   refus Play'n GO/BGaming ne vient plus d'AutoMod pendant un live personnel.
+
+Validation exécutée
+- 32 tests API/web : droits, double clic concurrent, idempotence persistante,
+  délais, confirmation incertaine, changement du live source, URL non Rumble,
+  parsing et tri des spectateurs, migration rejouable, révisions de publication,
+  Play'n GO/BGaming en personnel et restrictions des pauses AutoMod.
+- 3 tests Linux de la synchronisation VPS : changement unique, pas de polling
+  API à propriétaire inchangé, réseau indisponible et mauvais accusé de réception.
+- Lecture d'une vraie page /browse/live : 25 directs extraits avec les bons
+  compteurs et pagination, pas le nombre total de vues de la chaîne.
+- Interface testée dans le navigateur intégré avec chaînes fictives : tri,
+  filtre de nom, catégorie et clic ; une demande fictive, zéro raid réel.
+- GET natif /chat/command avec session existante : JSON 405 attendu pour une
+  méthode non mutante. Cela confirme l'accès, pas les droits effectifs de raid.
+
+Reste à valider après déploiement : un raid réel choisi par le streamer.
+Aucun raid public de test n'a été envoyé vers une chaîne tierce.
+Référence officielle : https://rumble.support/help/how-to-use-the-rumble-raid-feature

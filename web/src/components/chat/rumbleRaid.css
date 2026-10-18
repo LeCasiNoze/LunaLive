@@ -1,0 +1,11 @@
+.rumble-raid-picker{position:absolute;bottom:calc(100% + 8px);left:0;right:0;z-index:60;background:#171426;color:#f4f0ff;border:1px solid #686077;border-radius:16px;box-shadow:0 12px 40px #0009;overflow:hidden;text-align:left}
+.rumble-raid-picker header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#211c35}
+.rumble-raid-picker header button{font-size:24px;line-height:24px;background:transparent;color:inherit;border:0;cursor:pointer}
+.rumble-raid-toolbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;font-size:11px;color:#c6bbda}
+.rumble-raid-toolbar select{min-width:0;max-width:65%;background:#211c35;color:#f4f0ff;border:1px solid #686077;border-radius:8px;padding:6px}
+.rumble-raid-list{max-height:min(340px,48vh);overflow:auto;padding:4px 8px}
+.rumble-raid-target{display:flex;width:100%;align-items:center;gap:12px;justify-content:space-between;background:transparent;color:inherit;border:0;border-radius:9px;padding:10px 8px;text-align:left;cursor:pointer}
+.rumble-raid-target:hover,.rumble-raid-target:focus-visible{background:#352849;outline:2px solid #aa88e6;outline-offset:-2px}
+.rumble-raid-target>span:first-child{min-width:0}.rumble-raid-target b{font-size:13px}.rumble-raid-target small{display:block;font-size:11px;color:#c6bbda;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.rumble-raid-count{font-size:12px;white-space:nowrap;color:#c2f0af}.rumble-raid-picker p{font-size:12px;margin:10px 14px;line-height:1.4}.rumble-raid-picker [role=alert]{color:#ffc2bf}
+.rumble-raid-more{width:100%;padding:10px;background:#211c35;color:inherit;border:0;cursor:pointer}.rumble-raid-picker button:disabled{opacity:.5;cursor:wait}
