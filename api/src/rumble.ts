@@ -33,6 +33,7 @@ export type RumbleCategoryLive = {
   videoUrl: string;
   profileUrl: string;
   followers: number;
+  followersKnown?: boolean;
   createdAt: string | null;
 };
 
@@ -111,6 +112,7 @@ async function fetchRumbleCategoryPage(page: number): Promise<RumbleCategoryPage
         videoUrl: typeof raw?.videoUrl === "string" ? raw.videoUrl : `https://rumble.com/${videoId}.html`,
         profileUrl: typeof raw?.profileUrl === "string" ? raw.profileUrl : `https://rumble.com/user/${username}`,
         followers: Math.max(0, Math.round(Number(raw?.followers) || 0)),
+        followersKnown: raw?.followersKnown === true && Number.isSafeInteger(raw.followers) && raw.followers >= 0,
         createdAt: typeof raw?.createdAt === "string" ? raw.createdAt : null,
       });
     }

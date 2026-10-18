@@ -84,6 +84,8 @@ test("public diagnostics summarize only covered aggregates, without histories or
     latest: [t, 50, active, null, 2, 1, coverage, 1, active],
     history: [t - 3 * h, t - 2 * h].map(at => [at, 50, active, null, 2, 1, coverage, 1, active]),
     daily: [], sessions: [],
+    recent: [[t,50,active,null,2,1,coverage,1,active]],
+    metrics: Object.fromEntries(["day","week","month"].map(period=>[period,{since:t-4*h,until:t,retentionLimited:false,uniqueChatters:2,messages:3,conversation:2,followersFirst:null,followersLast:null}])),
   });
   const payload = {...snapshot, channels: [channel("flagged",1,1), channel("partial",0.5,0), channel("ordinary",1,8)]};
   const app = express();
@@ -102,9 +104,13 @@ test("public diagnostics summarize only covered aggregates, without histories or
     assert.deepEqual(summary.channels[2].diagnostics.signals,[]);
     assert.equal(summary.channels[0].history,undefined);
     assert.equal(summary.channels[0].sessions,undefined);
+    assert.equal(summary.channels[0].recent,undefined);
+    assert.equal(summary.channels[0].metrics,undefined);
     const detailResponse = await http((server.address() as any).port,"/channels/flagged","GET",undefined,{"accept-encoding":"gzip"});
     const detail = JSON.parse(gunzipSync(detailResponse.body).toString());
     assert.equal(detail.channel.history.length,2);
+    assert.equal(detail.channel.metrics.day.uniqueChatters,2);
+    assert.equal(detail.channel.recent.length,1);
     assert.deepEqual(detail.channel.diagnostics,summary.channels[0].diagnostics);
   } finally { server.close(); }
 });

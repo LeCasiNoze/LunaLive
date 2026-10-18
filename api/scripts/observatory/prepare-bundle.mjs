@@ -45,6 +45,7 @@ for (const file of ["category.js", "core.js", "schema.js", "sse.js"]) {
 }
 for (const file of [
   "collector.mjs",
+  "dashboard-metrics.mjs",
   "probe.mjs",
   "annotate-mode.mjs",
   "smoke-live.mjs",
