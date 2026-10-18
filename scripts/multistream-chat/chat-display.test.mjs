@@ -31,7 +31,7 @@ test('Discord still sends when the existing Kick bot does not answer',async()=>{
 });
 test('Discord is concise and help advertises only supported cross-chat commands',()=>{
   assert.equal(compactBotReply('Rejoins notre Discord : https://discord.gg/fixture'),'Discord: https://discord.gg/fixture');
-  assert.equal(compactBotReply('!call !mcall !music !discord — Guide : https://example.com'),'Commands: !call <game> · !listec · !discord · !site');
+  assert.equal(compactBotReply('!call !mcall !music !discord — Guide : https://example.com'),'Commands: !call game · !listec · !discord · !site');
 });
 test('internal UI prompts are excluded and unknown text is not invented',()=>{
   assert.equal(compactBotReply('🌧️ Rain en cours ! [RAIN_OPEN] clique sur le toast'),null);

@@ -64,3 +64,11 @@ Video tests: `python3 test_multistream.py` on Linux checks official ingest allow
 - Kick's dashboard warns about the active 24 FPS input, recommending 30/60. Both public casino players showed age/region restrictions in the operator browser; receiving a stream does not imply visibility in every region. Classification has not been falsified to bypass that restriction.
 - BotRix already answers `!discord` on Kick with a different invitation. Avoid keeping two competing command responders when calibrating that channel.
 - Ordinary external viewer messages are not forwarded into Twitch by default. Neutral shared Discord invitations and replies to commands entered on Twitch are supported. No merged-chat overlay is introduced.
+
+## Compact replies and duplicate control
+
+Verified bot replies use compact English on Kick/Twitch, preserving native display names. Human messages are never translated or content-deduplicated. Plain `!call game` examples avoid Kick interpreting angle brackets as markup. LunaLive-only rain UI prompts are omitted there.
+
+Identical bot replies have a persistent 20-second cooldown per destination, in addition to provider-event and database-message IDs. Kick Discord replies wait five seconds and yield if the existing BotRix answered with a verified invitation to the same LeCasiNoze server; otherwise the relay answers. Other BotRix features remain intact.
+
+Migration 151 separates external call identity from displayed username and backfills verified names without moving calls. The API filters the configured dedicated Rumble bot before persisting or dispatching its echoed messages, so a help response cannot turn into a phantom call. Shared broadcaster identities retain human commands.
