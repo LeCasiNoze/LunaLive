@@ -17,6 +17,8 @@ export function normalizeOverlayMessage(input: any, slug: string): OverlayMessag
     avatarUrl:p.avatarUrl??p.avatar_url??p.user?.avatarUrl??null,
     cosmetics:p.cosmetics??p.user?.cosmetics??null,role:p.role??p.user?.role??null,
     isBot:!!p.isBot,rumble:!!p.rumble,rumbleLinked:!!p.rumbleLinked,
+    externalSource:p.externalSource??p.external_source??null,
+    msgColor:p.msgColor??p.messageColor??p.style?.msgColor??null,
     type:typeof p.type==='string'?p.type:undefined,
     data:p.data&&typeof p.data==='object'&&!Array.isArray(p.data)?p.data:undefined};
 }
