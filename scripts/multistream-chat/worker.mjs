@@ -24,6 +24,11 @@ export class RelayWorker {
       return {accepted:false,reason:'auxiliary_bot_echo'};
     }
     const config=await this.configuration();
+    if(event.kind==='follow'){
+      if(config.channels[event.platform]!==event.channelId)return {accepted:false,reason:'wrong_channel'};
+      const inserted=this.store.receive('follow:'+event.platform+':'+event.eventId,event);
+      return {accepted:true,duplicate:!inserted};
+    }
     if(String(event.userId)===String(this.credentials[event.platform]?.userId)&&this.store.own(event.platform,event.messageId,event.text))event={...event,origin:'relay'};
     const plan=planChatEvent(event,config);
     if(plan.ignored)return {accepted:false,reason:plan.reason};
@@ -48,7 +53,7 @@ export class RelayWorker {
     // This endpoint reuses the API's calls handler and shared chat. A stable ID
     // makes HTTP retries harmless; no personal JWT is ever used here.
     let r;
-    try{r=await this.fetch(this.apiBase+'/internal/bot/multichat/event',{method:'POST',headers:{'Content-Type':'application/json','x-bot-key':this.botKey},body:JSON.stringify({...item.event,streamerSlug:'lecasinoze'}),signal:AbortSignal.timeout(15_000)});}
+    try{r=await this.fetch(this.apiBase+'/internal/bot/multichat/'+(item.event.kind==='follow'?'follow':'event'),{method:'POST',headers:{'Content-Type':'application/json','x-bot-key':this.botKey},body:JSON.stringify({...item.event,streamerSlug:'lecasinoze'}),signal:AbortSignal.timeout(15_000)});}
     catch{this.store.finishInbox(item.id,'pending','lunalive_network_error');return;}
     if(!r.ok){
       const status=[404,401,403].includes(r.status)?'blocked':r.status===409?'uncertain':'pending';
@@ -57,9 +62,10 @@ export class RelayWorker {
     }
     let result;try{result=await r.json();}catch{this.store.finishInbox(item.id,'pending','invalid_bridge_response');return;}
     if(result.ok!==true){this.store.finishInbox(item.id,'blocked','bridge_not_confirmed');return;}
+    if(item.event.kind==='follow'&&result.obsAlert!=='sent'){this.store.finishInbox(item.id,'uncertain','follow_alert_delivery_uncertain');return;}
     // Twitch receives only replies to commands actually entered on Twitch.
     // Kick receives shared chat from the common DB tail, not a second path.
-    if(item.event.platform==='twitch')for(const reply of result.replies||[]){
+    if(item.event.kind!=='follow'&&item.event.platform==='twitch')for(const reply of result.replies||[]){
       const text=compactBotReply(reply.body);
       if(reply.id&&text&&twitchReplyAllowed(text))this.store.enqueueBot('db:'+reply.id+':twitch','twitch',text);
     }

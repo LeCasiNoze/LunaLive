@@ -1,12 +1,14 @@
 import express from 'express';
+import {followEvent,audienceEvent,publicAudience} from '../multichat/activity.js';
+import {emitFollowOverlayAlert} from '../follow_alert.js';
 import type {Server} from 'socket.io';
 import {pool as defaultPool} from '../db.js';
 import {handleCallsCommand as defaultHandleCallsCommand,sendBotChat as defaultSendBotChat} from '../calls/commands.js';
 import {sendRumbleMessageReliable as defaultSendRumbleMessageReliable} from '../rumble_chat_bridge.js';
 import {authenticatedBotKey,externalChatEvent,eventKey,command} from '../multichat/policy.js';
 
-type Dependencies={pool:typeof defaultPool;handleCallsCommand:typeof defaultHandleCallsCommand;sendBotChat:typeof defaultSendBotChat;sendRumbleMessageReliable:typeof defaultSendRumbleMessageReliable;keys:()=>unknown[]};
-export function createMultichatBridgeRouter({pool,handleCallsCommand,sendBotChat,sendRumbleMessageReliable,keys}:Dependencies){
+type Dependencies={pool:typeof defaultPool;handleCallsCommand:typeof defaultHandleCallsCommand;sendBotChat:typeof defaultSendBotChat;sendRumbleMessageReliable:typeof defaultSendRumbleMessageReliable;keys:()=>unknown[];followAlert?:typeof emitFollowOverlayAlert};
+export function createMultichatBridgeRouter({pool,handleCallsCommand,sendBotChat,sendRumbleMessageReliable,keys,followAlert=emitFollowOverlayAlert}:Dependencies){
 const multichatBridgeRouter=express.Router();
 multichatBridgeRouter.use('/internal/bot/multichat',(req,res,next)=>{
   if(!authenticatedBotKey(req.headers['x-bot-key'],keys()))return res.status(401).json({ok:false,error:'invalid_bot_key'});
@@ -15,6 +17,42 @@ multichatBridgeRouter.use('/internal/bot/multichat',(req,res,next)=>{
 multichatBridgeRouter.get('/internal/bot/multichat/status',async(_req,res)=>{
   try{await pool.query('SELECT event_key FROM multichat_bridge_events LIMIT 0');res.json({ok:true,streamerSlug:'lecasinoze',platforms:['kick','twitch'],commands:['call','listec','discord','help','aide','site','ping'],botUserId:Number(process.env.BOT_USER_ID||0)});}
   catch{res.status(503).json({ok:false,error:'multichat_schema_unavailable'});}
+});
+
+multichatBridgeRouter.get('/streamers/lecasinoze/external-audience',async(_req,res)=>{
+ res.set('Cache-Control','no-store');
+ try{const rows=(await pool.query('SELECT * FROM multichat_live_audience')).rows;return res.json({ok:true,platforms:publicAudience(rows)});}
+ catch{return res.status(503).json({ok:false,error:'audience_unavailable'});}
+});
+multichatBridgeRouter.post('/internal/bot/multichat/audience',async(req,res)=>{
+ let event;try{event=audienceEvent(req.body);}catch{return res.status(400).json({ok:false,error:'invalid_audience'});}
+ try{await pool.query(`INSERT INTO multichat_live_audience(platform,channel_id,is_live,viewers,observed_at,error)
+ VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(platform) DO UPDATE SET channel_id=EXCLUDED.channel_id,is_live=EXCLUDED.is_live,viewers=EXCLUDED.viewers,observed_at=EXCLUDED.observed_at,received_at=NOW(),error=EXCLUDED.error
+ WHERE multichat_live_audience.observed_at<EXCLUDED.observed_at`,[event.platform,event.channelId,event.live,event.viewers,event.observedAt,event.error]);return res.json({ok:true});}
+ catch{return res.status(503).json({ok:false,error:'audience_write_failed'});}
+});
+multichatBridgeRouter.post('/internal/bot/multichat/follow',async(req,res)=>{
+ let event;try{event=followEvent(req.body);}catch{return res.status(400).json({ok:false,error:'invalid_follow'});}
+ const io=req.app.locals.io;if(!io)return res.status(503).json({ok:false,error:'chat_not_ready'});
+ let client;try{client=await pool.connect();}catch{return res.status(503).json({ok:false,error:'follow_database_unavailable'});}let committed=false;
+ try{
+  await client.query('BEGIN');
+  const streamer=(await client.query("SELECT id,user_id FROM streamers WHERE slug='lecasinoze'")).rows[0];
+  if(!streamer){await client.query('ROLLBACK');return res.status(404).json({ok:false,error:'streamer_not_found'});}
+  const claimed=await client.query(`INSERT INTO multichat_bridge_events(event_key,streamer_id,platform,channel_id,message_id,user_id)
+   VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING event_key`,[event.key,streamer.id,event.platform,event.channelId,'follow_'+event.eventId,event.userId]);
+  if(!claimed.rowCount){const previous=(await client.query('SELECT result FROM multichat_bridge_events WHERE event_key=$1',[event.key])).rows[0];await client.query('ROLLBACK');return res.json({ok:true,duplicate:true,obsAlert:previous?.result?.obsAlert||'unconfirmed'});}
+  const data={who:event.username,platform:event.platform};
+  const row=(await client.query(`INSERT INTO chat_messages(streamer_id,user_id,username,body,type,data) VALUES($1,0,$2,'','follow',$3::jsonb) RETURNING id,created_at`,[streamer.id,event.username,JSON.stringify(data)])).rows[0];
+  await client.query("UPDATE multichat_bridge_events SET state='done',result=$2::jsonb,completed_at=NOW() WHERE event_key=$1",[event.key,JSON.stringify({ok:true,obsAlert:'unconfirmed'})]);
+  await client.query('COMMIT');committed=true;
+  io.to('chat:lecasinoze:public').to('chat:lecasinoze:popup').emit('chat:message',{id:Number(row.id),userId:0,username:event.username,body:'',type:'follow',data,createdAt:new Date(row.created_at).toISOString()});
+  // Same configured OBS image/sound/template as Rumble. No wallet or follow reward is granted.
+  await followAlert(pool,io,{slug:'lecasinoze',ownerUserId:streamer.user_id},event.username);
+  await client.query('UPDATE multichat_bridge_events SET result=$2::jsonb WHERE event_key=$1',[event.key,JSON.stringify({ok:true,obsAlert:'sent'})]);
+  return res.json({ok:true,obsAlert:'sent'});
+ }catch{if(!committed)await client.query('ROLLBACK').catch(()=>{});return res.status(503).json({ok:false,error:committed?'follow_alert_delivery_uncertain':'follow_write_failed'});}
+ finally{client.release();}
 });
 
 multichatBridgeRouter.post('/internal/bot/multichat/event',async(req,res)=>{

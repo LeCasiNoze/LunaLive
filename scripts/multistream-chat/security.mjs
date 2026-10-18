@@ -18,7 +18,7 @@ export function verifyKickWebhook(headers, raw, publicKey, now = Date.now()) {
   if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(id) || typeof stamp !== 'string') return false;
   const time = Date.parse(stamp);
   if (!Number.isFinite(time) || Math.abs(time - now) > 5 * 60_000) return false;
-  if (headers['kick-event-type'] !== 'chat.message.sent' || headers['kick-event-version'] !== '1') return false;
+  if (!['chat.message.sent','channel.followed'].includes(headers['kick-event-type']) || headers['kick-event-version'] !== '1') return false;
   const signature = headers['kick-event-signature'];
   if (typeof signature !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(signature)) return false;
   try {
@@ -47,4 +47,13 @@ export function twitchReconnectUrl(value) {
 export function twitchReplyAllowed(text) {
   // Do not funnel the Twitch audience into a simultaneous stream or a casino.
   return !/(?:https?:\/\/)?(?:www\.)?(?:rumble\.com|kick\.com|lunalive\.[\w.-]+|celsiuscasino\.com|shuffle\.com|stake\.com|rollbit\.com|duelbits\.com|roobet\.com|blaze\.com|gamdom\.com)\b/i.test(text);
+}
+
+export function normalizeKickFollow(body,headers){
+ if(!body?.broadcaster?.user_id||!body.follower?.user_id||!body.follower?.username)throw Error('invalid_kick_follow');
+ return {kind:'follow',platform:'kick',channelId:String(body.broadcaster.user_id),eventId:headers['kick-event-message-id'],userId:String(body.follower.user_id),username:String(body.follower.username),occurredAt:headers['kick-event-message-timestamp']};
+}
+export function normalizeTwitchFollow(body,eventId){
+ if(!body?.broadcaster_user_id||!body.user_id||!body.user_name||!body.followed_at||!eventId)throw Error('invalid_twitch_follow');
+ return {kind:'follow',platform:'twitch',channelId:String(body.broadcaster_user_id),eventId,userId:String(body.user_id),username:String(body.user_name),occurredAt:body.followed_at};
 }

@@ -19,7 +19,7 @@ test('Kick accepts an authentic signed raw body',()=>assert.equal(verifyKickWebh
 test('Kick rejects altered body, signature, type and stale timestamps',()=>{
   assert.equal(verifyKickWebhook(headers,Buffer.from('{}'),keys.publicKey,now),false);
   assert.equal(verifyKickWebhook({...headers,'kick-event-signature':'AAAA'},raw,keys.publicKey,now),false);
-  assert.equal(verifyKickWebhook({...headers,'kick-event-type':'channel.followed'},raw,keys.publicKey,now),false);
+  assert.equal(verifyKickWebhook({...headers,'kick-event-type':'unsupported.event'},raw,keys.publicKey,now),false);
   assert.equal(verifyKickWebhook(headers,raw,keys.publicKey,now+301_000),false);
 });
 test('private panel accepts existing LunaClip sessions but refuses expired or forged ones',()=>{
@@ -81,7 +81,7 @@ test('Kick subscription creation is confirmed through the list endpoint',async()
   let listed=0,created=0;
   const api=new PlatformApi('kick',{async get(){return c;}},{fetchImpl:async(_url,options)=>{
     if(options.method==='POST'){created++;return new Response(JSON.stringify({data:[{name:'chat.message.sent',subscription_id:'fixture'}]}));}
-    return new Response(JSON.stringify({data:++listed===1?[]:[{event:'chat.message.sent',version:1,broadcaster_user_id:42}]}));
+    return new Response(JSON.stringify({data:++listed===1?[]:['chat.message.sent','channel.followed'].map(event=>({event,version:1,broadcaster_user_id:42}))}));
   }});
   await api.subscribeKick();assert.equal(created,1);assert.equal(listed,2);
 });

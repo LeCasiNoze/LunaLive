@@ -1,7 +1,7 @@
 import {readFile, writeFile, rename, mkdir, chmod, stat, chown} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {join} from 'node:path';
-import {normalizeTwitchEvent, twitchReconnectUrl, twitchReplyAllowed} from './security.mjs';
+import {normalizeTwitchEvent, normalizeTwitchFollow, twitchReconnectUrl, twitchReplyAllowed} from './security.mjs';
 
 export const SCOPES = {
   kick:['user:read','channel:read','chat:write','events:subscribe'],
@@ -40,12 +40,12 @@ export class PlatformApi {
     this.platform=platform; this.vault=vault; this.origin=origin; this.fetch=fetchImpl; this.refreshing=null;
   }
   redirect() {return this.origin+'/multichat/oauth/'+this.platform+'/callback';}
-  async authorization(state,verifier,{titles=false,manageTitles=false}={}) {
+  async authorization(state,verifier,{titles=false,manageTitles=false,follows=false}={}) {
     titles ||= manageTitles;
     const credential=await this.vault.get(this.platform);
     if(!credential.clientId||!credential.clientSecret)throw Error('application_not_configured');
     const url=new URL(SPECS[this.platform].authorize);
-    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:[...SCOPES[this.platform],...(titles?[TITLE_SCOPES[this.platform]]:[])].join(' '),state};
+    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:[...new Set([...SCOPES[this.platform],...(credential.scopes||[]),...(titles?[TITLE_SCOPES[this.platform]]:[]),...(follows&&this.platform==='twitch'?['moderator:read:followers']:[])])].join(' '),state};
     if(this.platform==='kick')Object.assign(params,{code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
     else params.force_verify='true';
     for(const [key,value]of Object.entries(params))url.searchParams.set(key,value);
@@ -62,7 +62,7 @@ export class PlatformApi {
     if(SCOPES[this.platform].some(scope=>!scopes.includes(scope)))throw new ApiError('missing_required_scopes');
     return {...credential,accessToken:body.access_token,refreshToken:body.refresh_token||credential.refreshToken,expiresAt:Date.now()+Number(body.expires_in)*1000,scopes,refreshedAt:new Date().toISOString(),lastError:null};
   }
-  async exchange(code,verifier,{titles=false}={}) {
+  async exchange(code,verifier,{titles=false,follows=false}={}) {
     const old=await this.vault.get(this.platform);
     const credential=await this.tokenRequest(old,{grant_type:'authorization_code',code,redirect_uri:this.redirect(),...(this.platform==='kick'?{code_verifier:verifier}:{})});
     const headers=this.headers(credential);
@@ -76,6 +76,8 @@ export class PlatformApi {
     const channelId=String(this.platform==='twitch'?channel?.id:channel?.broadcaster_user_id||'');
     if(!channelId||String(this.platform==='twitch'?channel?.login:channel?.slug).toLowerCase()!=='lecasinoze')throw new ApiError('wrong_broadcaster');
     if(titles&&(!credential.scopes.includes(TITLE_SCOPES[this.platform])||userId!==channelId||login!=='lecasinoze'))throw new ApiError('title_broadcaster_permission_required',403);
+    if(follows&&this.platform==='twitch'&&(!credential.scopes.includes('moderator:read:followers')||userId!==channelId))throw new ApiError('follow_broadcaster_permission_required',403);
+    if((old.scopes||[]).some(scope=>!credential.scopes.includes(scope)))throw new ApiError('existing_permissions_missing',403);
     Object.assign(credential,{login,userId,channelId,connectedAt:new Date().toISOString()});
     await this.vault.save(this.platform,credential);return credential;
   }
@@ -124,14 +126,15 @@ export class PlatformApi {
       if(String(data.user_id)!==credential.userId||data.client_id!==credential.clientId||SCOPES.twitch.some(scope=>!data.scopes?.includes(scope)))throw new ApiError('twitch_identity_or_scope_changed',403);
     } else await this.request('/users');
   }
-  async subscribeKick() {
-    const credential=await this.credential(), existing=await this.request('/events/subscriptions');
-    if(existing.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event==='chat.message.sent'&&Number(item.version)===1))return;
-    await this.request('/events/subscriptions',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(credential.channelId),events:[{name:'chat.message.sent',version:1}],method:'webhook'})});
-    // Kick's create response differs from its list representation. Confirm the
-    // durable subscription through GET instead of reporting a false failure.
+  async subscribeKick(){
+    const credential=await this.credential();
+    const wanted=['chat.message.sent','channel.followed'];
+    const has=(body,name)=>body.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event===name&&Number(item.version)===1);
+    const existing=await this.request('/events/subscriptions'),missing=wanted.filter(name=>!has(existing,name));
+    if(!missing.length)return;
+    await this.request('/events/subscriptions',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(credential.channelId),events:missing.map(name=>({name,version:1})),method:'webhook'})});
     const confirmed=await this.request('/events/subscriptions');
-    if(!confirmed.data?.some(item=>String(item.broadcaster_user_id)===credential.channelId&&item.event==='chat.message.sent'&&Number(item.version)===1))throw new ApiError('kick_subscription_not_confirmed');
+    if(wanted.some(name=>!has(confirmed,name)))throw new ApiError('kick_subscription_not_confirmed');
   }
   async send(text) {
     const credential=await this.credential();
@@ -166,9 +169,9 @@ export class PlatformApi {
 }
 
 export class TwitchReceiver {
-  constructor(api,{onEvent,onStatus,WebSocketImpl=WebSocket}) {this.api=api;this.onEvent=onEvent;this.onStatus=onStatus;this.WS=WebSocketImpl;this.stopped=true;this.generation=0;this.retries=0;}
+  constructor(api,{onEvent,onStatus,onFollowStatus=()=>{},WebSocketImpl=WebSocket}) {this.api=api;this.onEvent=onEvent;this.onStatus=onStatus;this.onFollowStatus=onFollowStatus;this.WS=WebSocketImpl;this.stopped=true;this.generation=0;this.retries=0;}
   start() {if(!this.stopped)return;this.stopped=false;this.connect('wss://eventsub.wss.twitch.tv/ws',false);}
-  stop() {this.stopped=true;this.generation++;clearTimeout(this.timer);clearTimeout(this.watchdog);this.socket?.close();}
+  stop() {this.stopped=true;this.generation++;clearTimeout(this.timer);clearTimeout(this.watchdog);clearTimeout(this.followRetry);this.socket?.close();}
   connect(url,reconnecting) {
     if(this.stopped)return;
     const generation=++this.generation,oldSocket=this.socket;
@@ -186,10 +189,12 @@ export class TwitchReceiver {
           case 'session_welcome':{
             welcome=true;keepalive=(Number(data.payload.session.keepalive_timeout_seconds||10)+5)*1000;heartbeat();
             if(!reconnecting){const credential=await this.api.credential();await this.api.request('/eventsub/subscriptions',{method:'POST',body:JSON.stringify({type:'channel.chat.message',version:'1',condition:{broadcaster_user_id:credential.channelId,user_id:credential.userId},transport:{method:'websocket',session_id:data.payload.session.id}})});}
+            if(!reconnecting)void this.subscribeFollows(data.payload.session.id,generation);
             oldSocket?.close();this.retries=0;this.onStatus('connected');break;
           }
           case 'notification':
             if(data.payload?.subscription?.type==='channel.chat.message')await this.onEvent(normalizeTwitchEvent(data.payload.event));
+            if(data.payload?.subscription?.type==='channel.follow')await this.onEvent(normalizeTwitchFollow(data.payload.event,data.metadata.message_id));
             break;
           case 'session_reconnect':this.connect(data.payload.session.reconnect_url,true);break;
           case 'revocation':this.onStatus('authorization_revoked');this.stop();break;
@@ -198,6 +203,23 @@ export class TwitchReceiver {
     });
     socket.addEventListener('close',()=>{if(current())this.schedule();});
     socket.addEventListener('error',()=>{if(current()){this.onStatus(welcome?'connection_lost':'connect_failed');socket.close();this.schedule();}});
+  }
+  async subscribeFollows(sessionId,generation){
+    clearTimeout(this.followRetry);
+    if(this.stopped||generation!==this.generation)return;
+    try{
+      const c=await this.api.credential();
+      if(!c.scopes?.includes('moderator:read:followers')){this.onFollowStatus('authorization_required');return;}
+      const existing=await this.api.request('/eventsub/subscriptions');
+      const present=existing.data?.some(s=>s.type==='channel.follow'&&s.version==='2'&&s.status==='enabled'&&s.condition?.broadcaster_user_id===c.channelId&&s.transport?.session_id===sessionId);
+      if(this.stopped||generation!==this.generation)return;
+      if(!present)await this.api.request('/eventsub/subscriptions',{method:'POST',body:JSON.stringify({type:'channel.follow',version:'2',condition:{broadcaster_user_id:c.channelId,moderator_user_id:c.userId},transport:{method:'websocket',session_id:sessionId}})});
+      if(!this.stopped&&generation===this.generation)this.onFollowStatus('connected');
+    }catch{
+      if(this.stopped||generation!==this.generation)return;
+      this.onFollowStatus('subscription_failed_retrying');
+      this.followRetry=setTimeout(()=>void this.subscribeFollows(sessionId,generation),30000);
+    }
   }
   schedule() {
     if(this.stopped||this.timer)return;
