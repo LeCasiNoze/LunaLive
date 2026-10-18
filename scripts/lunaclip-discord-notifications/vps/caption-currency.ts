@@ -2,6 +2,14 @@ import fs from 'node:fs';
 const REFERENCE='data/ars-eur-reference.json';
 export function applyCaptionPolicy(caption:string,account:string){
  let text=caption.replace(/contenu casino\s*(?:[·|—:-]\s*)?/giu,'').trim();
+ // Neutral attribution for both accounts, applied again just before publishing.
+ // Retain the original clip title, currency disclosure and prevention message.
+ text=text.replace(/#lunalive(?:_tv)?\b/giu,'');
+ text=text.split('\n').filter(line=>!/(?:https?:\/\/)?(?:www\.)?lunalive\.[a-z]+\S*/iu.test(line)).map(line=>
+  /\blunalive(?:_tv)?\b/iu.test(line)&&/extrait|live|stream|plateforme/iu.test(line)
+   ?'Plateforme de stream en bio':line.replace(/@?\blunalive(?:_tv)?\b/giu,'').trim()).join('\n');
+ text=text.split('\n').filter(line=>line.trim()!=='Plateforme de stream en bio').join('\n').trim();
+ text+='\n\nPlateforme de stream en bio';
  text=text.replace(/^18\+\s*·\s*Jouer comporte des risques\.?$/gmi,'').trim();
  const tagLines=text.split('\n').filter(line=>/^\s*(?:#[\p{L}\p{N}_]+\s*)+$/u.test(line));
  const hashtags=[...new Set(tagLines.flatMap(line=>line.trim().split(/\s+/)))];
