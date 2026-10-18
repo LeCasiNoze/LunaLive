@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {titlesForMode,syncTitles} from './title-sync.mjs';
+import {titlesForMode,syncTitles} from './mode-title-sync.mjs';
 import {Store} from './store.mjs';
 import {PlatformApi} from './platforms.mjs';
 const status={phase:'running',publisherActive:true,config:{sessionMode:'classic',bonusHunt:{enabled:false}}};
@@ -30,6 +30,7 @@ test('title permissions are optional for existing chat connections and 204 is va
    return Response.json({data:[{title:'Auto Mode',stream_title:'Auto Mode'}]});
   }});
   await api.title('Auto Mode');assert.equal(patches,1);
+  await assert.rejects(()=>api.title('Auto Mode',{stillAllowed:async()=>false}),/title_mode_changed/);assert.equal(patches,1);
   const base=new URL(await api.authorization('state','verifier'));assert.equal(base.searchParams.get('scope').includes(scope),false);
   const extra=new URL(await api.authorization('state','verifier',{manageTitles:true}));assert.equal(extra.searchParams.get('scope').includes(scope),true);
  }
