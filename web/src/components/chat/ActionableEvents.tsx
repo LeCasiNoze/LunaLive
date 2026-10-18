@@ -146,6 +146,8 @@ export function useActionableEngine(opts: EngineOpts) {
     };
     setEvents((prev) => [...prev, ev]);
     optsRef.current.addChatCard(id);
+    // Recovery restores cards without announcing an old event as newly opened.
+    if (real && (data?.restored || ev.locked)) return;
     const sys = kind === "rain" ? "🌧️ Une <b>rain de rubis</b> a démarré — récupère ta part !"
       : kind === "wheel" ? "🎡 Une <b>roue</b> a été lancée — participe pour tenter d'être tiré au sort !"
       : kind === "predict" ? `🔮 <b>Prédiction ouverte</b> : ${data?.question ?? ""}`
@@ -345,7 +347,7 @@ export function useActionableEngine(opts: EngineOpts) {
     sync: (snapshot: {kind: ActKind;data:any}[], complete: string[], requestedAt = Date.now()) => {
       const ids=new Set(snapshot.map(({kind,data})=>eventIdentity(kind,data)));
       setEvents(prev=>prev.map(e=>e.real&&(e.observedAtMs??0)<=requestedAt&&complete.includes(e.kind)&&!ids.has(e.identity??null)?{...e,locked:true,resolved:true}:e));
-      snapshot.forEach(({kind,data})=>open(kind,data));
+      snapshot.forEach(({kind,data})=>open(kind,{...data,restored:true}));
     },
     events, overlay, listFor, setListFor, reset,
     open, join, vote, addParticipant, removeParticipant,
