@@ -13,7 +13,7 @@ multichatBridgeRouter.use('/internal/bot/multichat',(req,res,next)=>{
   res.set('Cache-Control','no-store');next();
 });
 multichatBridgeRouter.get('/internal/bot/multichat/status',async(_req,res)=>{
-  try{await pool.query('SELECT event_key FROM multichat_bridge_events LIMIT 0');res.json({ok:true,streamerSlug:'lecasinoze',platforms:['kick','twitch'],commands:['call','discord','ping'],botUserId:Number(process.env.BOT_USER_ID||0)});}
+  try{await pool.query('SELECT event_key FROM multichat_bridge_events LIMIT 0');res.json({ok:true,streamerSlug:'lecasinoze',platforms:['kick','twitch'],commands:['call','listec','discord','help','aide','site','ping'],botUserId:Number(process.env.BOT_USER_ID||0)});}
   catch{res.status(503).json({ok:false,error:'multichat_schema_unavailable'});}
 });
 
@@ -52,15 +52,17 @@ multichatBridgeRouter.post('/internal/bot/multichat/event',async(req,res)=>{
     // socket emission unchanged. No external nickname receives local privileges.
     const capturingIo={to(room:string){const target=liveIo.to(room);return {emit(name:string,payload:any){if(name==='chat:message'&&payload?.isBot&&Number(payload.id)>0)replies.set(Number(payload.id),{id:Number(payload.id),body:String(payload.body)});return target.emit(name as any,payload);}};}} as unknown as Server;
     const cmd=command(event);
-    if(cmd?.name==='call'){
+    if(cmd?.name==='call'||cmd?.name==='listec'){
       await handleCallsCommand({pool,io:capturingIo,slug:'lecasinoze',streamerId:Number(streamer.id),streamerOwnerUserId:Number(streamer.user_id)||null,
-        actorUserId:0,actorUsername:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:'call',arg:cmd.arg});
-    }else if(cmd?.name==='discord'||cmd?.name==='ping'){
+        actorUserId:0,actorUsername:event.platform+':'+event.userId,actorRole:'viewer',canMod:false,cmd:cmd.name,arg:cmd.arg});
+    }else if(cmd){
       let text=cmd.name==='ping'?`pong @${event.username} ✅`:'';
-      if(cmd.name==='discord'){
-        const configured=(await pool.query("SELECT response FROM bot_commands WHERE streamer_id=$1 AND lower(regexp_replace(trigger,'^[!/]+',''))='discord' AND enabled=true LIMIT 1",[streamer.id])).rows[0]?.response;
+      if(cmd.name!=='ping'){
+        const trigger=cmd.name==='aide'?'help':cmd.name;
+        const configured=(await pool.query("SELECT response FROM bot_commands WHERE streamer_id=$1 AND lower(regexp_replace(trigger,'^[!/]+',''))=$2 AND enabled=true LIMIT 1",[streamer.id,trigger])).rows[0]?.response;
         text=String(configured||'');
-        const values:Record<string,string>={user:event.username,streamer:'LeCasiNoze',slug:'lecasinoze',trigger:'discord',args:cmd.arg};
+        if(!text&&trigger==='help')text='Commandes : !call nom complet · !listec pour voir la file · !discord pour la communauté.';
+        const values:Record<string,string>={user:event.username,streamer:'LeCasiNoze',slug:'lecasinoze',trigger,args:cmd.arg};
         for(const [name,value]of Object.entries(values))text=text.replaceAll('{'+name+'}',value);
       }
       if(text)await sendBotChat(pool,capturingIo,{streamerId:Number(streamer.id),slug:'lecasinoze'},text);
