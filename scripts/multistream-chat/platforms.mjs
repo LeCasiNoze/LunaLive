@@ -7,6 +7,7 @@ export const SCOPES = {
   kick:['user:read','channel:read','chat:write','events:subscribe'],
   twitch:['user:read:chat','user:write:chat']
 };
+export const TITLE_SCOPES={kick:'channel:write',twitch:'channel:manage:broadcast'};
 const SPECS = {
   kick:{authorize:'https://id.kick.com/oauth/authorize',token:'https://id.kick.com/oauth/token',api:'https://api.kick.com/public/v1'},
   twitch:{authorize:'https://id.twitch.tv/oauth2/authorize',token:'https://id.twitch.tv/oauth2/token',api:'https://api.twitch.tv/helix'}
@@ -39,11 +40,12 @@ export class PlatformApi {
     this.platform=platform; this.vault=vault; this.origin=origin; this.fetch=fetchImpl; this.refreshing=null;
   }
   redirect() {return this.origin+'/multichat/oauth/'+this.platform+'/callback';}
-  async authorization(state,verifier) {
+  async authorization(state,verifier,{manageTitles=false}={}) {
     const credential=await this.vault.get(this.platform);
     if(!credential.clientId||!credential.clientSecret)throw Error('application_not_configured');
     const url=new URL(SPECS[this.platform].authorize);
-    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:SCOPES[this.platform].join(' '),state};
+    const scopes=[...SCOPES[this.platform],...(manageTitles?[TITLE_SCOPES[this.platform]]:[])];
+    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:scopes.join(' '),state};
     if(this.platform==='kick')Object.assign(params,{code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
     else params.force_verify='true';
     for(const [key,value]of Object.entries(params))url.searchParams.set(key,value);
@@ -99,6 +101,7 @@ export class PlatformApi {
     try{r=await this.fetch(SPECS[this.platform].api+path,{...options,headers:{'Content-Type':'application/json',...headers},signal:AbortSignal.timeout(15_000)});}
     catch{throw new ApiError('api_network_outcome_unknown');}
     if(!r.ok)throw new ApiError(this.platform+'_http_'+r.status,r.status,Math.min(300_000,Math.max(3000,Number(r.headers.get('retry-after')||30)*1000)));
+    if(r.status===204)return {};
     try{return await r.json();}catch{throw new ApiError('api_response_outcome_unknown');}
   }
   async request(path,options={}) {
@@ -119,6 +122,18 @@ export class PlatformApi {
       const data=await r.json();
       if(String(data.user_id)!==credential.userId||data.client_id!==credential.clientId||SCOPES.twitch.some(scope=>!data.scopes?.includes(scope)))throw new ApiError('twitch_identity_or_scope_changed',403);
     } else await this.request('/users');
+  }
+  async title(title){
+    const c=await this.credential();
+    if(!c.scopes?.includes(TITLE_SCOPES[this.platform]))throw new ApiError('title_authorization_required',403);
+    if(c.userId!==c.channelId||c.login!=='lecasinoze')throw new ApiError('title_broadcaster_required',403);
+    if(typeof title!=='string'||!title.trim()||title.length>140)throw new ApiError('invalid_title');
+    await this.request(this.platform==='twitch'?'/channels?broadcaster_id='+encodeURIComponent(c.channelId):'/channels',{
+      method:'PATCH',body:JSON.stringify(this.platform==='twitch'?{title}:{stream_title:title}),
+    });
+    const proof=await this.request(this.platform==='twitch'?'/channels?broadcaster_id='+encodeURIComponent(c.channelId):'/channels?broadcaster_user_id='+encodeURIComponent(c.channelId));
+    const actual=proof.data?.[0];
+    if((this.platform==='twitch'?actual?.title:actual?.stream_title)!==title)throw new ApiError('title_not_confirmed');
   }
   async subscribeKick() {
     const credential=await this.credential(), existing=await this.request('/events/subscriptions');

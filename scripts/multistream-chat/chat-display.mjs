@@ -6,6 +6,8 @@ export function compactBotReply(value) {
   if(/\[RAIN_OPEN\]/.test(text)||/^Rain (?:en cours|terminée)/.test(text.replace(/^[^\p{L}\p{N}]*/u,'')))return null;
   const discord=text.match(/https?:\/\/(?:www\.)?(?:discord\.gg\/|discord\.com\/invite\/)[A-Za-z0-9-]+/i);
   if(discord)return 'Discord: '+discord[0];
+  if(/^🎯 Auto Hunt : on collecte les bonus, puis on les ouvre ensemble !/.test(text))return 'Auto Hunt: collecting bonuses, then opening them together! !call game · !help';
+  if(/^🎰 À toi de jouer : !call/.test(text))return 'You pick the next slot! !call game · !listec to see the queue.';
   if(/!call/.test(text)&&/!discord/.test(text)&&(/Guide\s*:|Commandes\s*:/.test(text)))return 'Commands: !call game · !listec · !discord · !site';
   text=text
     .replace(/^🎰 Call ajouté\s*:\s*/u,'Added: ')

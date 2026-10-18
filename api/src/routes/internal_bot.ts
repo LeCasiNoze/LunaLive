@@ -283,10 +283,10 @@ internalBotRouter.post(
 
     // Insérer le message dans la table chat_messages
     const ins = await pool.query(
-      `INSERT INTO chat_messages(streamer_id, user_id, username, body, created_at)
-       VALUES($1, $2, $3, $4, NOW())
+      `INSERT INTO chat_messages(streamer_id, user_id, username, body, created_at, data)
+       VALUES($1, $2, $3, $4, NOW(), $5::jsonb)
        RETURNING id, created_at AS "createdAt"`,
-      [streamerId, botUserId, botUsername, messageText]
+      [streamerId, botUserId, botUsername, messageText,JSON.stringify(body.reason==='autopost'?{botAutopost:true}:{})]
     );
 
     const row = ins.rows?.[0];
