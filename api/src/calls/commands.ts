@@ -2,7 +2,7 @@ import {accountBenefits} from '../automod-shop/account-benefits.js';
 // api/src/calls/commands.ts
 import type { Pool } from "pg";
 import type { Server } from "socket.io";
-import { emitUserToast } from "./toast.js";
+import { emitUserToast as defaultEmitUserToast, type UiToast } from "./toast.js";
 import { resolveSlot } from "./catalog.js";
 import {
   addCall,
@@ -266,6 +266,7 @@ export async function handleCallsCommand(opts: {
   arg: string;
   rumbleVideoIdNumeric?: string | null;
   rumbleUserId?: string | null;
+  onFeedback?: (toast: UiToast) => void;
 }): Promise<{ handled: true; showOriginalInChat: boolean } | { handled: false }> {
   const {
     pool,
@@ -282,6 +283,13 @@ export async function handleCallsCommand(opts: {
     rumbleVideoIdNumeric,
     rumbleUserId,
   } = opts;
+
+  // External viewers have no local user socket. Let their adapter relay the
+  // same feedback without inventing a local identity or granting privileges.
+  function emitUserToast(targetIo: Server, userId: number, toast: UiToast) {
+    defaultEmitUserToast(targetIo, userId, toast);
+    opts.onFeedback?.(toast);
+  }
 
   // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
   // On les intercepte aussi pour éviter qu'elles apparaissent comme de simples

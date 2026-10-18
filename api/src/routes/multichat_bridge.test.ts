@@ -6,7 +6,7 @@ import {createMultichatBridgeRouter} from './multichat_bridge.js';
 import {eventKey,externalChatEvent} from '../multichat/policy.js';
 
 const sample={platform:'kick',channelId:'24912362',messageId:'fixture-message',userId:'123',username:'Alice',text:'!call Fixture Slot',streamerSlug:'lecasinoze'};
-async function fixture(run:(f:any)=>Promise<void>,{failCall=false,processing=false}={}){
+async function fixture(run:(f:any)=>Promise<void>,{failCall=false,processing=false,feedback=false,publicReply=false}={}){
   const claims=new Map<string,any>(),calls:any[]=[],broadcasts:any[]=[],texts:string[]=[];let nextId=10,queries=0;
   if(processing)claims.set(eventKey(externalChatEvent(sample)),{state:'processing'});
   const pool={async query(sql:string,p:any[]=[]){queries++;
@@ -23,7 +23,7 @@ async function fixture(run:(f:any)=>Promise<void>,{failCall=false,processing=fal
   }} as unknown as Pool;
   const io:any={to(){return this;},emit(name:string,payload:any){broadcasts.push({name,payload});}};
   const app=express();app.use(express.json());app.locals.io=io;
-  app.use(createMultichatBridgeRouter({pool,keys:()=>['fixture-key'],handleCallsCommand:async opts=>{calls.push(opts);if(failCall)throw Error('simulated_failure');return {handled:true,showOriginalInChat:false};},sendBotChat:async(_pool,replyIo,_opts,body)=>{replyIo.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body});},sendRumbleMessageReliable:async()=>{throw Error('Must not send a real Rumble message in tests');}}));
+  app.use(createMultichatBridgeRouter({pool,keys:()=>['fixture-key'],handleCallsCommand:async opts=>{calls.push(opts);if(failCall)throw Error('simulated_failure');if(feedback)opts.onFeedback?.({kind:'error',title:'Machine introuvable',message:'Essaie un nom plus précis.'});if(publicReply)opts.io.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body:'Réponse existante'});return {handled:true,showOriginalInChat:false};},sendBotChat:async(_pool,replyIo,_opts,body)=>{replyIo.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body});},sendRumbleMessageReliable:async()=>{throw Error('Must not send a real Rumble message in tests');}}));
   const server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
   const addr=server.address();if(!addr||typeof addr==='string')throw Error('test_bind_failed');
   const post=(body:any,key='fixture-key')=>fetch(`http://127.0.0.1:${addr.port}/internal/bot/multichat/event`,{method:'POST',headers:{'Content-Type':'application/json','x-bot-key':key},body:JSON.stringify(body)});
@@ -45,3 +45,13 @@ test('an ambiguous handler failure is preserved and does not duplicate a call on
 
 test('queue listing reuses the existing viewer handler without adding a call',()=>fixture(async f=>{const r=await f.post({...sample,text:'!listec'});assert.equal(r.status,200);assert.equal(f.calls.length,1);assert.equal(f.calls[0].cmd,'listec');assert.equal(f.calls[0].canMod,false);}));
 test('help without a custom response advertises only supported viewer commands',()=>fixture(async f=>{const r=await f.post({...sample,text:'!help'});const body=await r.json();assert.equal(body.replies.length,1);assert.match(body.replies[0].body,/!call.*!listec.*!discord/);assert.equal(f.calls.length,0);}));
+
+test('private call feedback reaches external viewers once and is durable on replay',()=>fixture(async f=>{
+  const result=await (await f.post(sample)).json();assert.equal(result.replies.length,1);
+  assert.equal(result.replies[0].body,'@Alice — Machine introuvable : Essaie un nom plus précis.');
+  assert.deepEqual(await (await f.post(sample)).json(),result);assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].actorUserId,0);assert.equal(f.calls[0].canMod,false);
+},{feedback:true}));
+test('private feedback does not duplicate an existing public call response',()=>fixture(async f=>{
+  const result=await (await f.post(sample)).json();assert.equal(result.replies.length,1);assert.equal(result.replies[0].body,'Réponse existante');
+},{feedback:true,publicReply:true}));
