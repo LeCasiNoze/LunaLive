@@ -16,6 +16,7 @@ if(!secret)throw Error('dashboard_secret_required');
 const store=new Store(join(root,'relay.sqlite')),vault=new Vault(join(root,'credentials'));
 const apis={kick:new PlatformApi('kick',vault,{origin}),twitch:new PlatformApi('twitch',vault,{origin})};
 const runtime={startedAt:new Date().toISOString(),twitch:'not_connected',kick:'not_connected'},recentEvents=[];
+runtime.videoHealth=store.get('videoHealth');
 const require=createRequire(import.meta.url),{Pool}=require('pg');
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,max:2,ssl:{rejectUnauthorized:true},connectionTimeoutMillis:15_000,idleTimeoutMillis:30_000,application_name:'lunalive-multichat'}):null;
 pool?.on('error',()=>{runtime.database='connection_interrupted';});
@@ -63,6 +64,24 @@ async function streamAdmin(action,body){
     socket.on('end',()=>{clearTimeout(timeout);if(finished)return;finished=true;try{const value=JSON.parse(output);if(value.ok!==true){reject(Error(value.error==='publication_busy'?'publication_busy':'stream_helper_failed'));return;}resolve(value);}catch{reject(Error('stream_helper_failed'));}});
     socket.on('connect',()=>socket.end(JSON.stringify({...body,action})+'\n'));
   });
+}
+let videoCheckBusy=false;
+async function checkVideo(){
+  if(videoCheckBusy)return;videoCheckBusy=true;
+  try{
+    const output=await streamAdmin('status');
+    const expected=output.runtime?.lastPacketAt>Date.now()/1000-20;
+    const health={checkedAt:new Date().toISOString(),mode:output.publicationOwner,sourceActive:expected,platforms:{}};
+    for(const p of ['kick','twitch']){
+      if(!expected||!output.targets[p]?.enabled){health.platforms[p]={expected:false};continue;}
+      try{
+        const result=await apis[p].request(p==='kick'?'/channels?broadcaster_user_id=24912362':'/streams?user_id=535777475');
+        const item=result.data?.[0];health.platforms[p]={expected:true,live:p==='kick'?Boolean(item?.stream?.is_live):item?.type==='live'};
+      }catch(error){health.platforms[p]={expected:true,error:/^[a-z0-9_]+$/.test(error.message)?error.message:'video_status_unavailable'};}
+    }
+    if(JSON.stringify(runtime.videoHealth?.platforms)!==JSON.stringify(health.platforms))console.log(JSON.stringify({event:'multistream_health',mode:health.mode,platforms:health.platforms}));
+    runtime.videoHealth=health;store.set('videoHealth',health);
+  }finally{videoCheckBusy=false;}
 }
 const auth=req=>dashboardSessionValid(req.headers.cookie,secret);
 const server=createServer(async(req,res)=>{try{
@@ -136,5 +155,7 @@ server.requestTimeout=20_000;server.headersTimeout=10_000;
 server.listen(Number(process.env.PORT||3140),'127.0.0.1',()=>console.log(JSON.stringify({event:'multichat_ready',port:Number(process.env.PORT||3140)})));
 const tick=setInterval(()=>void worker.tick().catch(error=>{runtime.workerError=/^[A-Za-z0-9_]+$/.test(error.code||'')?error.code:'worker_tick_failed';}),1000);
 const maintenance=setInterval(()=>void maintain().catch(()=>{runtime.maintenanceError='maintenance_failed';}),15*60_000);
+const videoMonitor=setInterval(()=>void checkVideo().catch(()=>{runtime.videoCheckError='video_monitor_unavailable';}),60_000);
 void maintain().catch(()=>{});
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});
+void checkVideo().catch(()=>{});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{clearInterval(tick);clearInterval(maintenance);clearInterval(videoMonitor);twitch.stop();server.close();void pool?.end();setTimeout(()=>process.exit(),1000).unref();});

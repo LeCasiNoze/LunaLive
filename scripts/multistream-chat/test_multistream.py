@@ -9,6 +9,8 @@ import tempfile
 import time
 import unittest
 import fcntl
+import socket
+from unittest.mock import patch
 
 HERE = Path(__file__).parent
 
@@ -21,9 +23,16 @@ def module(name):
 
 
 admin, fanout = module('multistream_admin'), module('multistream_fanout')
+activation=module('activate-automod')
 
 
 class Destinations(unittest.TestCase):
+    def test_panel_cannot_bypass_canonical_obs_mode_preparation(self):
+        with patch.object(admin.Path,'read_text',return_value='{"owner":"automod"}'),patch.object(admin.subprocess,'run') as commands:
+            with self.assertRaises(BlockingIOError):
+                admin.execute('start')
+            commands.assert_not_called()
+
     def test_only_official_ingest_hosts_and_no_embedded_credentials(self):
         key = 'fixture-only-stream-key'
         self.assertFalse(admin.validate_target('twitch', 'rtmp://live.twitch.tv/app', key)['enabled'])
@@ -73,6 +82,59 @@ class Destinations(unittest.TestCase):
 
 
 class Fanout(unittest.TestCase):
+    @unittest.skipUnless(Path('/usr/bin/ffmpeg').exists(), 'Linux FFmpeg runtime needed')
+    def test_obs_rtmp_ingest_fans_out_to_three_local_outputs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder=Path(folder)
+            fixture=folder/'obs-source.ts'
+            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=25',
+                            '-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-c:v','libx264',
+                            '-preset','ultrafast','-g','25','-c:a','aac','-f','mpegts',str(fixture)],check=True,capture_output=True)
+            with socket.socket() as reservation:
+                reservation.bind(('127.0.0.1',0))
+                port=reservation.getsockname()[1]
+            ingest=f'rtmp://127.0.0.1:{port}/manual/live'
+            outputs={str(i):str(folder/(str(i)+'.flv')) for i in range(3)}
+            code=f"import sys;sys.path.insert(0,{str(HERE)!r});import multistream_fanout as f;from pathlib import Path;f.configured_targets=lambda:{outputs!r};f.OBS_INGEST={ingest!r};f.STATUS=Path({str(folder/'status.json')!r});raise SystemExit(f.run())"
+            receiver=subprocess.Popen([sys.executable,'-c',code],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            try:
+                time.sleep(.6)
+                subprocess.run(['ffmpeg','-nostdin','-v','error','-re','-i',str(fixture),'-c','copy',
+                                '-bsf:a','aac_adtstoasc','-f','flv',ingest],check=True,timeout=12,capture_output=True)
+                _,errors=receiver.communicate(timeout=12)
+                self.assertEqual(receiver.returncode,0,errors.decode())
+                for output in outputs.values():
+                    data=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-show_streams','-of','json',output]))
+                    self.assertEqual(int(next(s for s in data['streams'] if s['codec_type']=='video')['nb_read_frames']),100)
+                    self.assertEqual({s['codec_name'] for s in data['streams']},{'h264','aac'})
+            finally:
+                if receiver.poll() is None:
+                    receiver.kill()
+                    receiver.wait()
+
+    def test_startup_waiting_for_first_packet_is_not_a_transport_failure(self):
+        self.assertFalse(activation.transport_ready({'mode':'automod','lastPacketAt':None,'outputs':{}},100))
+        outputs={name:{'bytesCopied':200000} for name in ('rumble','kick','twitch')}
+        self.assertFalse(activation.transport_ready({'mode':'automod','lastPacketAt':99,'outputs':outputs},100))
+        self.assertTrue(activation.transport_ready({'mode':'automod','lastPacketAt':101,'outputs':outputs},100))
+
+    @unittest.skipUnless(Path('/usr/bin/ffmpeg').exists(), 'Linux FFmpeg runtime needed')
+    def test_automod_stdin_pipeline_delivers_all_frames_and_drains_audio(self):
+        with tempfile.TemporaryDirectory() as folder:
+            folder=Path(folder)
+            fixture=folder/'source.ts'
+            subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=25',
+                            '-f','lavfi','-i','sine=frequency=440:sample_rate=48000','-t','4','-c:v','libx264',
+                            '-preset','ultrafast','-g','25','-c:a','aac','-f','mpegts',str(fixture)],check=True,capture_output=True)
+            outputs={str(i):str(folder/(str(i)+'.flv')) for i in range(3)}
+            code=f"import sys;sys.path.insert(0,{str(HERE)!r});import multistream_fanout as f;from pathlib import Path;f.configured_targets=lambda:{outputs!r};f.STATUS=Path({str(folder/'status.json')!r});raise SystemExit(f.run('stdin'))"
+            subprocess.run([sys.executable,'-c',code],input=fixture.read_bytes(),check=True,timeout=20,capture_output=True)
+            for output in outputs.values():
+                data=json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-show_streams','-of','json',output]))
+                video=next(s for s in data['streams'] if s['codec_type']=='video')
+                self.assertEqual(int(video['nb_read_frames']),100)
+                self.assertEqual({s['codec_name'] for s in data['streams']},{'h264','aac'})
+
     def test_failed_or_slow_destination_never_blocks_other_sink(self):
         bad = fanout.Sink('bad', 'fixture', [sys.executable, '-c', 'import time; time.sleep(30)'])
         with tempfile.TemporaryDirectory() as folder:
@@ -117,9 +179,8 @@ class Fanout(unittest.TestCase):
                     time.sleep(.02)
                 for sink in sinks:
                     self.assertEqual(sink.bytes_written, len(payload))
-                    sink.stopped.set()
-                    sink.child.stdin.close()
-                    self.assertEqual(sink.child.wait(timeout=10), 0)
+                    sink.finish()
+                    self.assertEqual(sink.child.returncode, 0)
                 for index in range(3):
                     data = json.loads(subprocess.check_output(['ffprobe','-v','error','-count_frames','-show_streams',
                                                               '-show_format','-of','json',str(folder/(str(index)+'.flv'))]))

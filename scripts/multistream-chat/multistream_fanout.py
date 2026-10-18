@@ -7,9 +7,11 @@ import signal
 import subprocess
 import threading
 import time
+import sys
 
 CONFIG = Path('/etc/lunalive-multistream/destinations.json')
 STATUS = Path('/opt/automod/.runtime/publication/multistream-status.json')
+OBS_INGEST = 'rtmp://127.0.0.1:1936/manual/live'
 
 
 class Sink:
@@ -21,6 +23,8 @@ class Sink:
         self.packets = queue.Queue(maxsize=32)
         self.stopped = threading.Event()
         self.child = None
+        self.in_flight = False
+        self.draining = False
         self.state = 'waiting_for_source'
         self.reconnects = self.bytes_written = self.last_exit = 0
         self.thread = threading.Thread(target=self.run, daemon=True)
@@ -44,6 +48,7 @@ class Sink:
             except queue.Empty:
                 continue
             try:
+                self.in_flight = True
                 if self.child is None or self.child.poll() is not None:
                     if self.child is not None:
                         self.last_exit = self.child.returncode
@@ -68,8 +73,12 @@ class Sink:
                 self.state = 'destination_unavailable'
                 if self.child and self.child.poll() is None:
                     self.child.kill()
+            finally:
+                self.in_flight = False
         if self.child:
-            if self.child.poll() is None:
+            if self.draining and self.child.stdin and not self.child.stdin.closed:
+                self.child.stdin.close()
+            elif self.child.poll() is None:
                 self.child.terminate()
             try:
                 self.child.wait(timeout=3)
@@ -79,6 +88,16 @@ class Sink:
             if self.child.stdin and not self.child.stdin.closed:
                 self.child.stdin.close()
         self.state = 'stopped'
+
+    def finish(self):
+        deadline=time.monotonic()+3
+        while (not self.packets.empty() or self.in_flight) and time.monotonic()<deadline:
+            time.sleep(.01)
+        self.draining=True
+        self.stopped.set()
+        self.thread.join(timeout=4)
+        if self.thread.is_alive():
+            self.stop()
 
     def stop(self):
         self.stopped.set()
@@ -97,7 +116,8 @@ def configured_targets():
     except FileNotFoundError:
         document = {}
     result = {}
-    rumble_url, rumble_key = os.environ.get('RUMBLE_MANUAL_RTMP_URL', ''), os.environ.get('RUMBLE_MANUAL_STREAM_KEY', '')
+    rumble_url = os.environ.get('RUMBLE_MANUAL_RTMP_URL') or os.environ.get('RUMBLE_RTMP_URL', '')
+    rumble_key = os.environ.get('RUMBLE_MANUAL_STREAM_KEY') or os.environ.get('RUMBLE_STREAM_KEY', '')
     if rumble_url and rumble_key and document.get('rumble', {}).get('enabled', True):
         result['rumble'] = rumble_url.rstrip('/') + '/' + rumble_key
     for name in ('kick', 'twitch'):
@@ -107,20 +127,23 @@ def configured_targets():
     return result
 
 
-def run():
+def run(input_mode='obs'):
     stopped = threading.Event()
+    ready = threading.Event()
     sinks, lock = {}, threading.Lock()
-    source = subprocess.Popen(['/usr/bin/ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'quiet',
-                               '-listen', '1', '-i', 'rtmp://127.0.0.1:1936/manual/live',
+    source = None if input_mode=='stdin' else subprocess.Popen(['/usr/bin/ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'quiet',
+                               '-listen', '1', '-i', OBS_INGEST,
                                '-map', '0:v:0', '-map', '0:a:0?', '-c', 'copy',
                                '-mpegts_flags', '+resend_headers', '-f', 'mpegts', 'pipe:1'],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    source_stream = sys.stdin.buffer if source is None else source.stdout
     started = time.time()
     last_packet = [None]
+    natural_eof=False
 
     def shutdown(_sig, _frame):
         stopped.set()
-        if source.poll() is None:
+        if source and source.poll() is None:
             source.terminate()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, shutdown)
@@ -137,8 +160,10 @@ def run():
                         if name not in sinks:
                             sinks[name] = Sink(name, destination)
                     status = {'startedAt': started, 'lastPacketAt': last_packet[0],
-                              'source': 'receiving_obs' if last_packet[0] and time.time()-last_packet[0] < 10 else 'waiting_for_obs',
+                              'source': ('receiving_' if last_packet[0] and time.time()-last_packet[0] < 10 else 'waiting_for_')+('automod' if input_mode=='stdin' else 'obs'),
+                              'mode':'automod' if input_mode=='stdin' else 'manual',
                               'encoding': False, 'outputs': {name: sink.status() for name, sink in sinks.items()}}
+                ready.set()
                 STATUS.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 temporary = STATUS.with_suffix('.tmp')
                 temporary.write_text(json.dumps(status))
@@ -150,10 +175,12 @@ def run():
 
     supervisor = threading.Thread(target=supervise, daemon=True)
     supervisor.start()
+    ready.wait(3)
     try:
         while not stopped.is_set():
-            packet = source.stdout.read(188*188)
+            packet = source_stream.read(188*188)
             if not packet:
+                natural_eof=True
                 break
             last_packet[0] = time.time()
             with lock:
@@ -161,20 +188,20 @@ def run():
                     sink.put(packet)
     finally:
         stopped.set()
-        if source.poll() is None:
+        if source and source.poll() is None:
             source.terminate()
         try:
-            source.wait(timeout=5)
+            if source: source.wait(timeout=5)
         except subprocess.TimeoutExpired:
             source.kill()
             source.wait()
         supervisor.join(timeout=6)
         with lock:
             for sink in sinks.values():
-                sink.stop()
+                sink.finish() if natural_eof else sink.stop()
         STATUS.unlink(missing_ok=True)
-    return source.returncode or 0
+    return (source.returncode if source else 0) or 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(run())
+    raise SystemExit(run('stdin' if '--stdin' in sys.argv[1:] else 'obs'))

@@ -105,3 +105,9 @@ test('shared Discord reply reaches Kick and Twitch, ordinary viewer chat reaches
   await worker.tail();const out=store.db.prepare('SELECT id,platform,text FROM outbox ORDER BY id').all();
   assert.deepEqual(out.map(row=>row.id),['db:1:kick','db:2:kick','db:2:twitch']);assert.equal(store.get('chatCursor'),'3');store.close();
 });
+
+test('auxiliary Kick bot replies are not copied into the other chats',async()=>{
+  const store=new Store(':memory:');const worker=new RelayWorker({store,apis:{}});
+  assert.equal((await worker.receive({platform:'kick',username:'BotRix',text:'automatic reply'})).reason,'auxiliary_bot_echo');
+  assert.equal(store.nextInbox(),null);store.close();
+});

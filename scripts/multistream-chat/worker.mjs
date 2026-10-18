@@ -17,6 +17,7 @@ export class RelayWorker {
     return config;
   }
   async receive(event) {
+    if(event.platform==='kick'&&/^botrix$/i.test(event.username||''))return {accepted:false,reason:'auxiliary_bot_echo'};
     const config=await this.configuration();
     if(String(event.userId)===String(this.credentials[event.platform]?.userId)&&this.store.own(event.platform,event.messageId,event.text))event={...event,origin:'relay'};
     const plan=planChatEvent(event,config);

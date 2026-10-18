@@ -96,8 +96,11 @@ def execute(action, body=None):
         save(value)
     elif action in ('start', 'stop'):
         if action == 'start':
-            # Never interrupt a running publisher to acquire manual ownership.
-            select_manual()
+            # The existing OBS gate/publication_control owns mode changes and
+            # Rumble's ended-live checks. This panel must not bypass them.
+            owner=json.loads(Path('/opt/automod/.runtime/publication/owner.json').read_text()).get('owner')
+            if owner!='manual':
+                raise BlockingIOError(11,'canonical_manual_preparation_required')
         subprocess.run(['systemctl', action, 'manual-rumble-relay.service'], check=True, timeout=20, capture_output=True)
     value = load()
     targets = {name: {'configured': bool(item.get('key')), 'enabled': bool(item.get('enabled')), 'url': item.get('url')}
@@ -112,7 +115,8 @@ def execute(action, body=None):
         owner = json.loads(Path('/opt/automod/.runtime/publication/owner.json').read_text()).get('owner')
     except (OSError, ValueError):
         owner = None
-    return {'ok': True, 'targets': targets, 'service': active, 'publicationOwner': owner, 'runtime': runtime}
+    automatic = subprocess.run(['systemctl','is-active','automod-rumble-publish.service'],capture_output=True,text=True).stdout.strip()
+    return {'ok': True, 'targets': targets, 'service': active, 'automodService':automatic,'publicationOwner': owner, 'runtime': runtime}
 
 
 def serve():
