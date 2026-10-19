@@ -1,7 +1,7 @@
 // api/src/emotes/emotes.router.ts
 import express from "express";
 import { pool } from "../db.js";
-import { requireAuth } from "../auth.js";
+import { requireAuth, tryGetAuthUser } from "../auth.js";
 import {
   getStreamerIdBySlug,
   listActiveEmotesForChat,
@@ -12,6 +12,8 @@ import {
 } from "./emotes.store.js";
 
 export const emotesRouter = express.Router();
+export const publicChatEmotesRouter = express.Router();
+emotesRouter.use(publicChatEmotesRouter);
 
 function toItem(e: EmoteRow) {
   return {
@@ -26,8 +28,11 @@ function toItem(e: EmoteRow) {
 }
 
 // Catalogue emotes pour un chat (viewer)
-emotesRouter.get("/chat/:slug/emotes", requireAuth, async (req, res) => {
+publicChatEmotesRouter.get("/chat/:slug/emotes", async (req, res) => {
   try {
+    // OBS and guest readers need the public catalogue, never another user's favorites.
+    res.set("Cache-Control", "private, no-store");
+    const user = tryGetAuthUser(req);
     const slug = String(req.params.slug || "").trim();
     if (!slug) return res.status(400).json({ ok: false, error: "bad_slug" });
 
@@ -38,7 +43,7 @@ emotesRouter.get("/chat/:slug/emotes", requireAuth, async (req, res) => {
 
     const [rows, favRows] = await Promise.all([
       listActiveEmotesForChat(pool, streamerId),
-      listFavorites(pool, (req as any).user.id),
+      user?.id ? listFavorites(pool, user.id) : Promise.resolve([]),
     ]);
 
     const channel = rows.filter((x) => x.scope === "channel").map(toItem);

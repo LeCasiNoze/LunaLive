@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { startChatRecovery, reconcileChatHistory } from "../lib/chatRecovery";
+import { createEmoteResolver, emotesFromPayload, NATIVE_GIFS } from "../lib/chatEmotes";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
@@ -227,34 +228,6 @@ function stripRainToken(text: string) {
 /* =========================================================
    Emotes: natives + SVG “GIFs”
    ========================================================= */
-function svgGif(label: string, glyph: string) {
-  const svg = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
-    <defs>
-      <radialGradient id="g" cx="30%" cy="30%">
-        <stop offset="0%" stop-color="rgba(255,255,255,0.85)"/>
-        <stop offset="60%" stop-color="rgba(124,77,255,0.25)"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-      </radialGradient>
-    </defs>
-    <rect x="0" y="0" width="96" height="96" rx="22" fill="rgba(255,255,255,0.06)"/>
-    <circle cx="48" cy="48" r="34" fill="url(#g)">
-      <animate attributeName="r" values="28;36;28" dur="1.1s" repeatCount="indefinite"/>
-    </circle>
-    <text x="48" y="58" text-anchor="middle" font-size="40">${glyph}</text>
-    <text x="48" y="86" text-anchor="middle" font-size="12" opacity="0.75">${label}</text>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-// (les emojis unicode natifs ont été retirés du picker — retour Lucas :
-// « classiques que tout le monde a déjà » — seules les emotes custom restent)
-const NATIVE_GIFS: EmoteItem[] = [
-  { kind: "gif", scope: "native", name: "party", label: "party", url: svgGif("party", "🎉") },
-  { kind: "gif", scope: "native", name: "gg", label: "gg", url: svgGif("gg", "🏆") },
-  { kind: "gif", scope: "native", name: "rage", label: "rage", url: svgGif("rage", "😤") },
-];
-
 function favKeyOf(e: EmoteItem) {
   return e.id != null ? String(e.id) : ""; // ✅ DB id uniquement
 }
@@ -1791,26 +1764,17 @@ export function ChatPanel({
   const [emotesChannel, setEmotesChannel] = React.useState<EmoteItem[]>([]);
   const [emotesGlobal, setEmotesGlobal] = React.useState<EmoteItem[]>([]);
   const [favs, setFavs] = React.useState<{ emoji: string[]; gif: string[] }>({ emoji: [], gif: [] });
-
-  const emoteMapRef = React.useRef<Map<string, { url: string; title?: string }>>(new Map());
-
   async function fetchEmotes() {
-    if (!token) return;
     try {
       const r = await fetch(`${apiBase()}/chat/${encodeURIComponent(String(slug))}/emotes`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: AbortSignal.timeout(8000),
       }).then((x) => x.json());
 
       const j = r as EmotesPayload;
       if (!j?.ok) throw new Error("bad_payload");
 
-      const all = Array.isArray(j.emotes)
-        ? j.emotes
-        : [
-            ...(Array.isArray(j.channel) ? j.channel : []),
-            ...(Array.isArray(j.global) ? j.global : []),
-            ...(Array.isArray(j.native) ? j.native : []),
-          ];
+      const all = emotesFromPayload(j);
 
       const favorites = Array.isArray(j.favorites) ? j.favorites : [];
       const act = all.filter((e) => ((e as any).status ? (e as any).status === "active" : true));
@@ -1829,32 +1793,15 @@ export function ChatPanel({
     }
   }
 
-  React.useEffect(() => {
-    const map = new Map<string, { url: string; title?: string }>();
-
-    const all = [
-      ...NATIVE_GIFS,
-      ...emotesGlobal.filter((x) => x.kind === "gif"),
-      ...emotesChannel.filter((x) => x.kind === "gif"),
-      ...emotesGlobal.filter((x) => x.kind === "emoji"),
-      ...emotesChannel.filter((x) => x.kind === "emoji"),
-    ];
-
-    for (const e of all) {
-      const u = absolutizeUrl(e.url ?? null);
-      if (u) {
-        const key = `${e.kind}:${safeTokenName(e.name)}`;
-        map.set(key, { url: u, title: e.label || e.name });
-      }
-    }
-
-    emoteMapRef.current = map;
-  }, [emotesChannel, emotesGlobal]);
-
-  const resolveEmote = React.useCallback((p: { kind: "emoji" | "gif"; name: string }) => {
-    const k = `${p.kind}:${safeTokenName(p.name)}`;
-    return emoteMapRef.current.get(k) || null;
-  }, []);
+  // Resolver identity changes with the catalogue, so memoized history bubbles
+  // update when images arrive after their messages.
+  const resolveEmote = React.useMemo(
+    () => createEmoteResolver([...emotesGlobal, ...emotesChannel], apiBase()),
+    [emotesGlobal, emotesChannel]
+  );
+  React.useLayoutEffect(() => {
+    if (atBottomRef.current) forceScrollBottomMultiPass();
+  }, [resolveEmote]);
 
   function insertAtCaret(text: string) {
     const el = inputRef.current;

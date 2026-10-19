@@ -7,6 +7,7 @@ import { OverlayBgAnimation } from "./fsb/OverlayBgAnimations";
 import { SponsorBanner, defaultSponsor } from "./fsb/SponsorBanner";
 import { useScreenViewer } from "./fsb/StreamControlPage";
 import { ChatMessageBubble, type ChatMsgLike } from "../components/chat/ChatMessageBubble";
+import { createEmoteResolver, emotesFromPayload, type ChatEmote } from "../lib/chatEmotes";
 import { DEFAULT_APPEARANCE, normalizeAppearance, type StreamerAppearance } from "../lib/appearance";
 import SpecialEventCard, {type SpecialEventType} from '../components/chat/SpecialEventCard';
 import {useActionableEngine,ActionableChatCard,WheelOverlay,type ActKind} from '../components/chat/ActionableEvents';
@@ -757,6 +758,28 @@ export function NativeOverlayChat({
     role: "streamer",
   }] : []);
   const [appearance, setAppearance] = React.useState<StreamerAppearance>(DEFAULT_APPEARANCE);
+  const [emotes, setEmotes] = React.useState<ChatEmote[]>([]);
+  const resolveEmote = React.useMemo(() => createEmoteResolver(emotes, socketBase), [emotes, socketBase]);
+  React.useEffect(() => {
+    let disposed = false;
+    let request: AbortController | null = null;
+    setEmotes([]);
+    const refresh = async () => {
+      if (!slug || request || disposed) return;
+      const controller = new AbortController(); request = controller;
+      const timeout = window.setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(`${socketBase}/chat/${encodeURIComponent(slug)}/emotes`, {signal:controller.signal,cache:"no-store"});
+        const payload = await response.json();
+        if (!disposed && response.ok && payload.ok) setEmotes(emotesFromPayload(payload));
+      } catch { /* Retry without discarding already loaded images. */ }
+      finally { window.clearTimeout(timeout); if (request === controller) request = null; }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 60000);
+    window.addEventListener("online", refresh);
+    return () => {disposed = true;request?.abort();window.clearInterval(interval);window.removeEventListener("online", refresh);};
+  }, [slug, socketBase]);
   const cosmeticsCache = React.useRef<Record<string, any>>({});
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const eventEngine=useActionableEngine({me:'',poolNames:[],simulate:false,emitSystem:()=>{},emitRecap:()=>{},
@@ -917,7 +940,7 @@ export function NativeOverlayChat({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, resolveEmote]);
 
   const nameColor = appearance.chat.usernameColor || "#ffd54a";
   const msgColor = appearance.chat.messageColor || "#4ade80";
@@ -966,6 +989,7 @@ export function NativeOverlayChat({
             :<ChatMessageBubble
               msg={m}
               streamerAppearance={appearance}
+              resolveEmote={resolveEmote}
             />}
           </div>
         ))}

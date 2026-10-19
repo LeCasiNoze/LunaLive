@@ -484,48 +484,31 @@
   object-fit: contain;
 }
 
-/* Emotes dans un message avec du texte - 1.5x */
-.chatBodyText .ll-emote--emoji{
-  width: 3.6em;
-  height: 3.6em;
-  margin: 0 0.15em;
+/* Shared sizes for the regular chat, detached chat and OBS renderer. */
+.chatBodyText .ll-emote{
+  width: 5em;
+  height: 5em;
+  max-width: 100%;
+  margin: 0 .16em;
 }
-
 .chatBodyText .ll-emote--gif{
-  width: 3.3em;
-  height: 3.3em;
-  margin: 0 0.15em;
-  border-radius: 0.28em;
+  border-radius: .28em;
 }
-
-/* Emotes dans un message sans texte (juste emotes) - 2x */
-.chatBodyText:has(.ll-emote):not(:has-text) .ll-emote--emoji,
-.chatBodyText[data-emotes-only="true"] .ll-emote--emoji{
-  width: 4.8em;
-  height: 4.8em;
-  margin: 0 0.20em;
+.chatBodyText.emotes-only .ll-emote{
+  width: 7em;
+  height: 7em;
+  margin: .1em .2em;
 }
-
-.chatBodyText:has(.ll-emote):not(:has-text) .ll-emote--gif,
-.chatBodyText[data-emotes-only="true"] .ll-emote--gif{
-  width: 4.4em;
-  height: 4.4em;
-  margin: 0 0.20em;
-  border-radius: 0.28em;
+.chatBodyText .ll-unicode-emoji{
+  display: inline-block;
+  vertical-align: middle;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 2em;
+  line-height: 1.15;
+  margin: 0 .04em;
 }
-
-/* Fallback pour les navigateurs qui ne supportent pas :has() */
-.chatBodyText.emotes-only .ll-emote--emoji{
-  width: 4.8em;
-  height: 4.8em;
-  margin: 0 0.20em;
-}
-
-.chatBodyText.emotes-only .ll-emote--gif{
-  width: 4.4em;
-  height: 4.4em;
-  margin: 0 0.20em;
-  border-radius: 0.28em;
+.chatBodyText.emotes-only .ll-unicode-emoji{
+  font-size: 3.5em;
 }
 
 .emote-error{

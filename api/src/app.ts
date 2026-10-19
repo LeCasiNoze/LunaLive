@@ -94,7 +94,7 @@ import { publicSlotsRouter } from "./routes/public-slots.js";
 // Billing / uploads / emotes / reports / admin content
 import { billingRouter } from "./routes/billing.js";
 import { uploadsRouter } from "./routes/uploads.js";
-import { emotesRouter } from "./emotes/emotes.router.js";
+import { emotesRouter, publicChatEmotesRouter } from "./emotes/emotes.router.js";
 import { streamerEmotesRouter } from "./emotes/streamer_emotes.router.js";
 import { accountActionsRouter } from "./routes/account_actions.js";
 import { adminImpersonateRouter } from "./routes/admin_impersonate.js";
@@ -291,6 +291,7 @@ export function createApp() {
 
   // Public snapshots must precede the account/wallet routers' auth middleware.
   app.use(chatEventsRouter);
+  app.use(publicChatEmotesRouter);
   app.use(publicContentRouter);
   app.use(publicRouter);
   app.use("/public", publicRouter);

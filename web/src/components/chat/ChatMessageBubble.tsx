@@ -4,6 +4,7 @@
 //  Refonte visuelle : bulle structurée, badges clairs, mentions
 // ══════════════════════════════════════════════════════════════
 import * as React from "react";
+import { emojiTextParts, isEmotesOnly } from "../../lib/chatEmotes";
 import type { ChatCosmetics } from "../../lib/cosmetics";
 import {
   avatarBorderClass,
@@ -111,20 +112,6 @@ function extractMentions(body: string): string[] {
   return out;
 }
 
-function isEmotesOnly(body: string): boolean {
-  if (!body || !body.trim()) return false;
-  
-  // Enlever tous les tokens d'emotes, mentions et URLs
-  const cleaned = body
-    .replace(/:(e|g):[a-z0-9_]{1,32}:/gi, '') // emotes
-    .replace(/@[^\s@]{1,32}/g, '') // mentions
-    .replace(/https?:\/\/[^\s<]+|www\.[^\s<]+|[a-z0-9.-]+\.[a-z]{2,63}(\/[^\s<]*)?/gi, '') // URLs
-    .trim();
-  
-  // Si après nettoyage il ne reste que des espaces, c'est que c'est seulement des emotes/mentions/URLs
-  return cleaned.length === 0;
-}
-
 /* ─── Emotes ─────────────────────────────────────────────── */
 type EmoteKind = "emoji" | "gif";
 type ResolveEmote = (p: { kind: EmoteKind; name: string }) => { url: string; title?: string } | null;
@@ -138,6 +125,7 @@ const MAX_RICH_PARTS = 220;
 
 function EmoteImg({ src, title, alt, kind }: { src: string; title?: string; alt: string; kind: EmoteKind }) {
   const [err, setErr] = React.useState(false);
+  React.useEffect(() => { setErr(false); }, [src]);
   if (err) return <span className="emote-error" title={title || alt}>{alt}</span>;
   return (
     <img
@@ -147,6 +135,12 @@ function EmoteImg({ src, title, alt, kind }: { src: string; title?: string; alt:
       onError={() => setErr(true)}
     />
   );
+}
+
+function renderEmojiText(text: string, key: string) {
+  return emojiTextParts(text).map((part, i) => part.emoji
+    ? <span key={`${key}-${i}`} className="ll-unicode-emoji">{part.text}</span>
+    : part.text);
 }
 
 function renderBodyRich(
@@ -178,7 +172,7 @@ function renderBodyRich(
   while ((m = re.exec(body))) {
     if (parts.length > MAX_RICH_PARTS) break;
     const start = m.index, end = re.lastIndex;
-    if (start > last) parts.push(body.slice(last, start));
+    if (start > last) parts.push(...renderEmojiText(body.slice(last, start), `t-${last}`));
     if (m[1]) {
       const raw = String(m[1] ?? "");
       const { url, tail } = splitUrl(raw);
@@ -225,8 +219,8 @@ function renderBodyRich(
     } else { parts.push(`:${kindToken}:${name}:`); }
     last = end;
   }
-  if (last < body.length) parts.push(body.slice(last));
-  return parts.length ? parts : body;
+  if (last < body.length) parts.push(...renderEmojiText(body.slice(last), `t-${last}`));
+  return parts.length ? parts : renderEmojiText(body, "text");
 }
 
 /* ─── Main component ─────────────────────────────────────── */
