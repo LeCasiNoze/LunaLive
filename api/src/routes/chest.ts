@@ -344,6 +344,14 @@ async function closeOpeningAndPayout(openingId: number, closedBy: "streamer" | "
         score: scoreByUser.get(a.userId) ?? 1,
       });
 
+      // Quests, achievements and profile totals read this ledger. Keep it in
+      // the same transaction as the wallet credit and the opening closure.
+      await client.query(
+        `INSERT INTO streamer_chest_payouts (opening_id, user_id, amount, breakdown)
+         VALUES ($1,$2,$3,$4::jsonb)`,
+        [openingId, a.userId, gain, JSON.stringify({ chest_streamer: gain })]
+      );
+
       payouts.push({ userId: a.userId, amount: gain });
     }
 
