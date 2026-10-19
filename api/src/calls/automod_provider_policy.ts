@@ -7,11 +7,12 @@ export function automodProviderAllowed(provider: string | null, allowed: unknown
   return family !== null && Array.isArray(allowed) && allowed.includes(family);
 }
 
-/** Desired mode owns admission even during a CAPTCHA pause. Classic calls are unchanged. */
+/** Explicit manual ownership wins over a stale start request. Automod CAPTCHA
+ * pauses retain provider restrictions while ownership remains Automod. */
 export async function callProviderAdmission(pool: Pool, streamerId: number, provider: string | null, automodRequest = false): Promise<{automod:boolean;allowed:boolean}> {
-  const { rows } = await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status FROM automod_control WHERE streamer_id=$1`, [streamerId]);
+  const { rows } = await pool.query(`SELECT desired_enabled,dashboard_settings,runtime_status,publication_owner FROM automod_control WHERE streamer_id=$1`, [streamerId]);
   const control = rows[0];
-  const automod = automodRequest || control?.desired_enabled === true;
+  const automod = automodRequest || (control?.desired_enabled === true && control?.publication_owner !== 'manual');
   if (!automod) return {automod:false,allowed:true};
   const allowed = control?.dashboard_settings?.allowedProviders ?? control?.runtime_status?.config?.allowedProviders ?? ["hacksaw", "pragmatic"];
   return {automod:true,allowed:automodProviderAllowed(provider, allowed)};

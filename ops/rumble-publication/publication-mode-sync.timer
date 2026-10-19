@@ -1,0 +1,8 @@
+[Unit]
+Description=Retry publication mode synchronization without touching video output
+[Timer]
+OnBootSec=15
+OnUnitInactiveSec=15
+AccuracySec=1
+[Install]
+WantedBy=timers.target

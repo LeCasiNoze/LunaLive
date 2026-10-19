@@ -234,6 +234,13 @@ export async function adminReleaseProviderAccount(adminKey: string, id: number) 
 const BASE = (import.meta.env.VITE_API_BASE ?? "https://lunalive-api.onrender.com").replace(/\/$/, "");
 export const DLIVE_RTMP_URL = "rtmp://stream.dlive.tv/live";
 
+export function getRumbleRaidTargets(token:string,slug:string,scope:'gambling'|'all',page:number){
+ return j<{ok:true;targets:import('./rumbleRaid').RaidTarget[];hasMore:boolean}>(`/streamers/${encodeURIComponent(slug)}/rumble/raids?scope=${scope}&page=${page}`,{headers:{Authorization:`Bearer ${token}`}});
+}
+export function startRumbleRaid(token:string,slug:string,url:string,requestId:string){
+ return j<{ok:true;confirmed:true}>(`/streamers/${encodeURIComponent(slug)}/rumble/raids`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({url,requestId})});
+}
+
 async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
   const usedAuth =
     typeof init.headers === "object" && init.headers

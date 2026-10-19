@@ -1,4 +1,5 @@
 import {pollBonusChoice} from '../automod-shop/bonus-choice.js';
+import {recordPublicationMode} from '../automod-shop/publication-mode.js';
 import {tickFollows} from '../automod-shop/follows.js';
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -309,6 +310,12 @@ automodServiceRouter.get(`${API}/v1/control`, runtimeRoute(async (req: any, res)
   const row = await pool.query(`SELECT desired_enabled,dashboard_settings,settings_revision,applied_settings_revision FROM automod_control WHERE streamer_id=$1`, [req.automodService.streamerId]);
   return res.json({ ok: true, enabled: row.rows[0]?.desired_enabled === true, settings: row.rows[0]?.dashboard_settings ?? null,
     settingsRevision: Number(row.rows[0]?.settings_revision ?? 0), appliedSettingsRevision: Number(row.rows[0]?.applied_settings_revision ?? 0) });
+}));
+
+automodServiceRouter.post(`${API}/v1/control/publication`, runtimeRoute(async(req:any,res)=>{
+ if(!hasScope(req,'automod:runtime:write'))return res.status(403).json({ok:false,error:'scope_required'});
+ try{return res.json(await recordPublicationMode(pool,req.automodService.streamerId,req.body?.owner,req.body?.revision));}
+ catch(e){return res.status(String(e).includes('conflict')?409:400).json({ok:false,error:String(e).includes('conflict')?'publication_revision_conflict':'invalid_publication'});}
 }));
 
 // Credential scope is restricted to its own streamer; no personal JWT is needed.

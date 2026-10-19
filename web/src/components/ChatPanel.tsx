@@ -1,4 +1,6 @@
 import ChatEventLine from "./chat/ChatEventLine";
+import {RumbleRaidPicker} from './chat/RumbleRaidPicker';
+import {raidCommand} from '../lib/rumbleRaid';
 // web/src/components/ChatPanel.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -1238,6 +1240,7 @@ export function ChatPanel({
   const [viewerSubbed, setViewerSubbed] = React.useState<boolean | null>(null);
   const [predictionStake,setPredictionStake] = React.useState<number | null>(null);
   const [input, setInput] = React.useState("");
+  const [raidNotice,setRaidNotice]=React.useState('');
   const [sending, setSending] = React.useState(false);
   const [socketConnected, setSocketConnected] = React.useState(true);
 
@@ -2208,6 +2211,11 @@ export function ChatPanel({
 
     if (!text) return;
 
+    if(raidCommand(text)){
+      if(!canManageSettings)return setError('Réservé au streamer et aux modérateurs.');
+      setInput(text);return;
+    }
+
     setSending(true);
     try {
       await new Promise<void>((resolve) => {
@@ -2860,7 +2868,10 @@ function openChatPopup() {
         />
 
         {/* row 2: composer */}
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, position:'relative' }}>
+          {canManageSettings&&token&&raidCommand(input)&&<RumbleRaidPicker slug={slug} token={token} query={raidCommand(input)!.query}
+            onClose={()=>setInput('')} onSuccess={name=>{setInput('');setRaidNotice(`Raid lancé vers ${name}.`);}}/>}
+          {raidNotice&&<div role="status" style={{position:'absolute',bottom:'100%',left:0,fontSize:12,padding:8,background:'#211c35',borderRadius:8}} onClick={()=>setRaidNotice('')}>{raidNotice}</div>}
           <textarea
             ref={inputRef}
             disabled={!canSend || sending}
@@ -2911,6 +2922,7 @@ function openChatPopup() {
             enterKeyHint="send"
             inputMode="text"
             onKeyDown={(e) => {
+              if(e.key==='Escape'&&raidCommand(input)){e.preventDefault();setInput('');return;}
               // mention navigation
               if (mention && mentionList.length) {
                 if (e.key === "ArrowDown") {

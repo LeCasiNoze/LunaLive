@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep LunaLive personal and AutoMod modes aligned with VPS publication ownership
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/automod/scripts/publication_mode_sync.py
+TimeoutStartSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/automod/.runtime/publication
