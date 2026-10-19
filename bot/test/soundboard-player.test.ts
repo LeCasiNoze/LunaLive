@@ -6,9 +6,10 @@ const code=readFileSync(new URL('../../web/public/overlay/obs/nozecoins-sounds.j
 function runtime(options:{token?:string;control?:boolean;autoStart?:boolean;session?:string;ready?:boolean;playFailure?:boolean;obsStreaming?:boolean;missingObs?:boolean}={}){
  const nodes=new Map<string,any>();const listeners=new Map<string,()=>unknown>();const timers:Array<()=>unknown>=[];
  const requests:Array<{action:string;body:any;authorization:string}>=[];const audio:any[]=[];let replaced='';
+ const location={hash:options.token===undefined?'#token=test.token.signature':options.token,search:options.control?'?control=1':options.autoStart?'?autostart=1':'',pathname:'/overlay/obs/nozecoins-sounds.html'};
  const document={hidden:false,getElementById:(id:string)=>{if(!nodes.has(id))nodes.set(id,{hidden:true,textContent:'',addEventListener:(event:string,fn:()=>unknown)=>listeners.set(`${id}:${event}`,fn)});return nodes.get(id);},addEventListener:()=>{}};
- const context={document,location:{hash:options.token===undefined?'#token=test.token.signature':options.token,search:options.control?'?control=1':options.autoStart?'?autostart=1':'',pathname:'/overlay/obs/nozecoins-sounds.html'},
-  history:{replaceState:(_state:any,_title:string,url:string)=>{replaced=url;}},URLSearchParams,crypto:{randomUUID:()=> '10000000-0000-4000-8000-000000000001'},
+ const context={document,location,
+  history:{replaceState:(_state:any,_title:string,url:string)=>{replaced=url;location.hash=new URL(url,'https://lunalive.onrender.com').hash;}},URLSearchParams,crypto:{randomUUID:()=> '10000000-0000-4000-8000-000000000001'},
   AbortSignal:{timeout:()=>undefined},
   obsstudio:options.missingObs?undefined:{getStatus:(callback:any)=>callback({streaming:options.obsStreaming??true})},
   setInterval:(fn:()=>unknown)=>{timers.push(fn);return timers.length;},clearInterval:()=>{},setTimeout:()=>1,clearTimeout:()=>{},addEventListener:()=>{},
@@ -17,11 +18,25 @@ function runtime(options:{token?:string;control?:boolean;autoStart?:boolean;sess
   Audio:class {volume=0;src='';onplaying:any;onended:any;onerror:any;constructor(){audio.push(this);}play(){if(options.playFailure)return Promise.reject(Error('autoplay'));this.onplaying?.();return Promise.resolve();}pause(){}removeAttribute(){}load(){}},
  };
  vm.runInNewContext(code,context);
- return {nodes,listeners,timers,requests,audio,replaced:()=>replaced};
+ return {nodes,listeners,timers,requests,audio,location,replaced:()=>replaced};
 }
 async function flush(){for(let i=0;i<8;i++)await new Promise<void>(resolve=>setImmediate(resolve));}
 test('missing owner token never contacts a backend or starts a player',async()=>{
  const r=runtime({token:''});await flush();assert.equal(r.requests.length,0);assert.equal(r.audio.length,0);assert.match(r.nodes.get('status').textContent,/Configuration requise/);
+});
+
+test('OBS document reload preserves its configured fragment and authenticates without browser storage',async()=>{
+ const first=runtime({autoStart:true});await flush();
+ assert.equal(first.replaced(),'');assert.equal(first.location.hash,'#token=test.token.signature');
+ const reloaded=runtime({token:first.location.hash,autoStart:true});await flush();
+ assert.equal(reloaded.nodes.get('panel').hidden,true);
+ assert.ok(reloaded.requests.some(request=>request.action==='heartbeat'));
+ assert.ok(reloaded.requests.every(request=>request.authorization==='Bearer test.token.signature'));
+});
+
+test('an ordinary browser still removes the fragment and never starts the player',async()=>{
+ const r=runtime({missingObs:true});await flush();
+ assert.equal(r.location.hash,'');assert.equal(r.requests.length,0);assert.equal(r.audio.length,0);
 });
 test('controller page never claims or plays sounds, even when enabled',async()=>{
  const r=runtime({control:true});await flush();assert.equal(r.requests.length,0);assert.equal(r.timers.length,0);
