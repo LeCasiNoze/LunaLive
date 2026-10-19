@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { startChatRecovery, reconcileChatHistory } from "../lib/chatRecovery";
-import { createEmoteResolver, emotesFromPayload, NATIVE_GIFS } from "../lib/chatEmotes";
+import { createEmoteResolver, emotesFromPayload } from "../lib/chatEmotes";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { ChatMessageBubble } from "./chat/ChatMessageBubble";
@@ -161,14 +161,6 @@ function fmtRemaining(untilIso?: string | null) {
   const d = Math.ceil(h / 24);
   return `${d}j`;
 }
-function absolutizeUrl(u: string | null) {
-  if (!u) return null;
-  const s = String(u);
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return `${apiBase().replace(/\/$/, "")}${s}`;
-  return s;
-}
-
 function errMessage(e: unknown) {
   if (e instanceof Error) return e.message;
   if (e && typeof e === "object" && "message" in e) {
@@ -208,14 +200,6 @@ function computeMentionCtx(value: string, caret: number) {
   if (/\s/.test(q)) return null;
 
   return { start: at, end: caret, q };
-}
-
-function safeTokenName(s: string) {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, "_")
-    .slice(0, 32);
 }
 
 function isRainOpenMessage(msg: ChatMsg) {
