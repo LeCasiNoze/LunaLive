@@ -1,11 +1,11 @@
 import test from 'node:test';import assert from 'node:assert/strict';import type {Pool} from 'pg';
 import {eligiblePublication,sanitizedEvent,publicationMessage,enqueuePublication,YOUTUBE_CHANNEL,resolvePublicationNotificationRoles,type PublicationEvent} from './publication-outbox.js';
 import {deliverAnnouncement,failurePolicy,type OutboxRow} from './publication-announcements.js';
-const ig:PublicationEvent={platform:'instagram',mediaId:'123456789',account:'lecasinoze',visibility:'public',title:'Un vrai titre',description:'Extrait du direct',url:'https://www.instagram.com/reel/ABC_123/',publishedAt:'2026-10-18T15:00:00Z'};
+const ig:PublicationEvent={platform:'instagram',mediaId:'123456789',account:'lecasinoze_off',visibility:'public',title:'Un vrai titre',description:'Extrait du direct',url:'https://www.instagram.com/reel/ABC_123/',publishedAt:'2026-10-18T15:00:00Z'};
 const yt:PublicationEvent={...ig,platform:'youtube',mediaId:'12345678_Ab',account:YOUTUBE_CHANNEL,url:'https://www.youtube.com/watch?v=12345678_Ab',durationSeconds:181,isShort:false,kind:'vod'};
 // YouTube IDs have exactly eleven characters.
 yt.mediaId='123456789Ab';yt.url=`https://www.youtube.com/watch?v=${yt.mediaId}`;
-test('only the official personal Instagram account',()=>{assert(eligiblePublication(ig));for(const account of ['lunalive','lunalive_tv','another'])assert(!eligiblePublication({...ig,account}));});
+test('only the official personal Instagram account',()=>{assert(eligiblePublication(ig));for(const account of ['lecasinoze','lunalive','lunalive_tv','another'])assert(!eligiblePublication({...ig,account}));});
 test('YouTube 180 excluded, 181 included',()=>{assert(!eligiblePublication({...yt,durationSeconds:180}));assert(eligiblePublication(yt));});
 test('Shorts and unknown formats excluded even above 180',()=>{assert(!eligiblePublication({...yt,isShort:true}));assert(!eligiblePublication({...yt,isShort:undefined}));assert(!eligiblePublication({...yt,kind:'short'}));});
 test('private, unlisted, scheduled and wrong channels excluded',()=>{for(const visibility of ['private','unlisted','scheduled']){assert(!eligiblePublication({...yt,visibility}));assert(!eligiblePublication({...ig,visibility}));}assert(!eligiblePublication({...yt,account:'another'}));});
@@ -51,3 +51,5 @@ test('crash in sending state reconciles before retry',async()=>{const h=harness(
 test('confirmed missing send retries after complete reconciliation',async()=>{const h=harness('uncertain');let checked=false;await deliverAnnouncement(h.pool,{reconcile:async()=>{checked=true;return null;},send:async()=>{assert(checked);return 'new-message';}});assert.equal(h.row.state,'sent');});
 test('incomplete reconciliation never resends',async()=>{const h=harness('uncertain');await deliverAnnouncement(h.pool,{reconcile:async()=>{throw Error('history_unavailable');},send:async()=>{throw Error('should_never_send');}});assert.equal(h.row.state,'uncertain');});
 test('network failure before acceptance recovers after restart',async()=>{const h=harness();await deliverAnnouncement(h.pool,{reconcile:async()=>null,send:async()=>{throw Error('network');}});assert.equal(h.row.state,'uncertain');await deliverAnnouncement(h.pool,{reconcile:async()=>null,send:async()=> 'recovered'});assert.equal(h.messageId,'recovered');});
+
+test('new-channel Shorts are eligible only with explicit short identity and valid duration',()=>{const s={...yt,kind:'short',isShort:true,durationSeconds:58.433};assert(eligiblePublication(s));assert.equal(sanitizedEvent(s).isShort,true);assert.equal(sanitizedEvent(s).kind,'short');for(const durationSeconds of [0,181,NaN])assert(!eligiblePublication({...s,durationSeconds}));assert(!eligiblePublication({...s,account:'UCbBVUwBBf4Mu3yZxe-Xrmyw'}));});
