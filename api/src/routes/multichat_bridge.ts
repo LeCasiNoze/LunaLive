@@ -15,7 +15,7 @@ multichatBridgeRouter.use('/internal/bot/multichat',(req,res,next)=>{
   res.set('Cache-Control','no-store');next();
 });
 multichatBridgeRouter.get('/internal/bot/multichat/status',async(_req,res)=>{
-  try{await pool.query('SELECT event_key FROM multichat_bridge_events LIMIT 0');res.json({ok:true,streamerSlug:'lecasinoze',platforms:['kick','twitch'],commands:['call','listec','discord','help','aide','site','ping'],botUserId:Number(process.env.BOT_USER_ID||0)});}
+  try{await pool.query('SELECT event_key FROM multichat_bridge_events LIMIT 0');res.json({ok:true,streamerSlug:'lecasinoze',platforms:['kick','twitch'],commands:['call','listec','discord','help','aide','site','ping','insta','youtube'],botUserId:Number(process.env.BOT_USER_ID||0)});}
   catch{res.status(503).json({ok:false,error:'multichat_schema_unavailable'});}
 });
 

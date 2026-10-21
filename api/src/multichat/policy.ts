@@ -20,7 +20,7 @@ export function externalChatEvent(value:unknown):ExternalChatEvent {
   return {platform:v.platform as ChatPlatform,channelId:v.channelId as string,messageId:v.messageId as string,userId:v.userId as string,streamerSlug:'lecasinoze',username:v.username.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,50),text:v.text.replace(/[\u0000-\u001f\u007f]/g,' ').trim()};
 }
 export function eventKey(event:ExternalChatEvent):string {return createHash('sha256').update(JSON.stringify([event.platform,event.channelId,event.messageId])).digest('hex');}
-export function command(event:ExternalChatEvent):{name:'call'|'listec'|'discord'|'ping'|'help'|'aide'|'site';arg:string}|null {
-  const match=event.text.match(/^!(call|listec|discord|ping|help|aide|site)(?:\s+(.*))?$/i);
-  return match?{name:match[1].toLowerCase() as 'call'|'listec'|'discord'|'ping'|'help'|'aide'|'site',arg:match[2]?.trim()||''}:null;
+export function command(event:ExternalChatEvent):{name:'call'|'listec'|'discord'|'ping'|'help'|'aide'|'site'|'insta'|'youtube';arg:string}|null {
+  const match=event.text.match(/^!(call|listec|discord|ping|help|aide|site|insta|youtube)(?:\s+(.*))?$/i);
+  return match?{name:match[1].toLowerCase() as 'call'|'listec'|'discord'|'ping'|'help'|'aide'|'site'|'insta'|'youtube',arg:match[2]?.trim()||''}:null;
 }

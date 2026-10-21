@@ -8,6 +8,7 @@ import {
   Events,
   GatewayIntentBits,
   ModalBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   Routes,
   REST,
@@ -512,12 +513,21 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   });
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
-    if(message.author.bot||message.guildId!==config.guildId||!/^!(?:(profil|solde|points|shop|help)\s*|ameliorer (claim|cooldown|rain|slot) [1-3])$/i.test(message.content))return;
-    const now=Date.now();if(now-(profileCooldown.get(message.author.id)??0)<15000)return;
+    if(message.author.bot||message.guildId!==config.guildId||!/^!(?:(profil|solde|points|shop|help|insta|youtube)\s*|ameliorer (claim|cooldown|rain|slot) [1-3])$/i.test(message.content))return;
+    const cooldownKey=/^!(insta|youtube)\s*$/i.test(message.content)?`${message.author.id}:${message.content.trim().toLowerCase()}`:message.author.id;
+    const now=Date.now();if(now-(profileCooldown.get(cooldownKey)??0)<15000)return;
     for(const [uid,at] of profileCooldown)if(now-at>60000)profileCooldown.delete(uid);
-    profileCooldown.set(message.author.id,now);
+    profileCooldown.set(cooldownKey,now);
     void (async()=>{
       const command=message.content.trim().toLowerCase();
+      if(command==='!insta'||command==='!youtube'){
+       if(!pool)throw new Error('Social command database unavailable');
+       const row=(await pool.query(`SELECT bc.response FROM bot_commands bc JOIN streamers s ON s.id=bc.streamer_id
+        WHERE s.slug='lecasinoze' AND lower(regexp_replace(bc.trigger,'^[!/]+',''))=$1 AND bc.enabled=true ORDER BY bc.id LIMIT 1`,[command.slice(1)])).rows[0];
+       const response=String(row?.response||'').trim();
+       await message.reply({content:response||'Lien temporairement indisponible.',allowedMentions:{parse:[],repliedUser:false},flags:MessageFlags.SuppressEmbeds});
+       return;
+      }
       if(process.env.NOZECOINS_ENABLED==='true'){
        const purchase=/^!ameliorer (claim|cooldown|rain|slot) ([1-3])$/i.exec(command);
        if(purchase){
