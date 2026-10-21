@@ -34,6 +34,8 @@ import {
 const DEFAULTS = {
   guildId: "1188913226990235800",
   memberRoleId: "1544429206400802896",
+  rulesAcceptedRoleId: "1562348964378841118",
+  notificationChannelId: "1217876409406586900",
   moderatorRoleId: "1188939890344329379",
   adminRoleId: "1188940226358415443",
   startHereChannelId: "1188914815561891990",
@@ -59,6 +61,7 @@ const DEFAULTS = {
 
 const BUTTON_ACCEPT_RULES = "nozebot:rules:accept";
 const SELECT_NOTIFICATIONS = "nozebot:notifications";
+const BUTTON_NO_NOTIFICATIONS = "nozebot:notifications:none";
 const SELECT_NEW_TICKET = "nozebot:tickets:new";
 const MODAL_OTHER_TICKET = "nozebot:tickets:other";
 const INPUT_OTHER_SUBJECT = "nozebot:tickets:other:subject";
@@ -97,6 +100,8 @@ type NozeBotConfig = {
   token: string;
   guildId: string;
   memberRoleId: string;
+  rulesAcceptedRoleId: string;
+  notificationChannelId: string;
   moderatorRoleId: string;
   adminRoleId: string;
   startHereChannelId: string;
@@ -124,6 +129,8 @@ function loadConfig(): NozeBotConfig | null {
     token,
     guildId: process.env.NOZEBOT_GUILD_ID?.trim() || DEFAULTS.guildId,
     memberRoleId: process.env.NOZEBOT_MEMBER_ROLE_ID?.trim() || DEFAULTS.memberRoleId,
+    rulesAcceptedRoleId: process.env.NOZEBOT_RULES_ACCEPTED_ROLE_ID?.trim() || DEFAULTS.rulesAcceptedRoleId,
+    notificationChannelId: process.env.NOZEBOT_NOTIFICATION_CHANNEL_ID?.trim() || DEFAULTS.notificationChannelId,
     moderatorRoleId: process.env.NOZEBOT_MODERATOR_ROLE_ID?.trim() || DEFAULTS.moderatorRoleId,
     adminRoleId: process.env.NOZEBOT_ADMIN_ROLE_ID?.trim() || DEFAULTS.adminRoleId,
     startHereChannelId: process.env.NOZEBOT_START_HERE_CHANNEL_ID?.trim() || DEFAULTS.startHereChannelId,
@@ -198,23 +205,34 @@ async function handleRulesAcceptance(interaction: Interaction, config: NozeBotCo
 
   await interaction.deferReply({ ephemeral: true });
   const member = await interaction.guild.members.fetch(interaction.user.id);
-  if (!member.roles.cache.has(config.memberRoleId)) {
-    await member.roles.add(config.memberRoleId, "Règlement LeCasiNoze accepté");
+  if (!member.roles.cache.has(config.memberRoleId) && !member.roles.cache.has(config.rulesAcceptedRoleId)) {
+    await member.roles.add(config.rulesAcceptedRoleId, "Règlement LeCasiNoze accepté, préférences à choisir");
   }
-  await interaction.editReply(
-    `✅ Règlement accepté. Le serveur est ouvert : passe maintenant dans <#${config.startHereChannelId}>.`
-  );
+  await interaction.editReply({
+    content: member.roles.cache.has(config.memberRoleId)
+      ? `✅ Tu as déjà accès au serveur. Tes notifications restent modifiables dans <#${config.notificationChannelId}>.`
+      : `✅ Règlement accepté ! Dernière étape : choisis tes notifications dans <#${config.notificationChannelId}> ou continue sans notification. Le serveur s’ouvrira ensuite.`,
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel("Choisir mes notifications").setURL(`https://discord.com/channels/${config.guildId}/${config.notificationChannelId}`)
+    )],
+    allowedMentions: { parse: [] },
+  });
   return true;
 }
 
 async function handleNotificationSelection(interaction: Interaction, config: NozeBotConfig): Promise<boolean> {
-  if (!interaction.isStringSelectMenu() || interaction.customId !== SELECT_NOTIFICATIONS) return false;
+  if (!(interaction.isStringSelectMenu() && interaction.customId === SELECT_NOTIFICATIONS) &&
+      !(interaction.isButton() && interaction.customId === BUTTON_NO_NOTIFICATIONS)) return false;
   if (!interaction.guild || interaction.guildId !== config.guildId) return true;
 
   await interaction.deferReply({ ephemeral: true });
   const member = await interaction.guild.members.fetch(interaction.user.id);
+  if (!member.roles.cache.has(config.memberRoleId) && !member.roles.cache.has(config.rulesAcceptedRoleId)) {
+    await interaction.editReply("Accepte d’abord le règlement dans <#1188914844909441204> pour continuer.");
+    return true;
+  }
   const allowed = new Set<string>(config.notificationRoleIds);
-  const selected = interaction.values.filter((roleId) => allowed.has(roleId));
+  const selected = interaction.isStringSelectMenu() ? interaction.values.filter((roleId) => allowed.has(roleId)) : [];
   const toRemove = config.notificationRoleIds.filter(
     (roleId) => member.roles.cache.has(roleId) && !selected.includes(roleId)
   );
@@ -222,11 +240,17 @@ async function handleNotificationSelection(interaction: Interaction, config: Noz
 
   if (toRemove.length) await member.roles.remove(toRemove, "Préférences de notifications NozeBot");
   if (toAdd.length) await member.roles.add(toAdd, "Préférences de notifications NozeBot");
+  if (!member.roles.cache.has(config.memberRoleId)) {
+    await member.roles.add(config.memberRoleId, "Parcours terminé : règlement accepté et notifications choisies");
+  }
 
   const summary = selected.length
     ? selected.map((roleId) => `<@&${roleId}>`).join(", ")
     : "aucune notification";
-  await interaction.editReply(`✅ Tes préférences sont enregistrées : ${summary}.`);
+  await interaction.editReply({
+    content: `✅ Tes préférences sont enregistrées : ${summary}. Le serveur est ouvert ! Retrouve-nous dans <#${config.generalChannelId}>.`,
+    allowedMentions: { parse: [] },
+  });
   return true;
 }
 
