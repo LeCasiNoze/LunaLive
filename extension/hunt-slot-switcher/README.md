@@ -9,11 +9,14 @@ Extension Manifest V3 pour Chrome/Brave/Edge sur ordinateur. Aucun service VPS, 
 5. Cliquer le même interrupteur pour arrêter immédiatement. L’option revient sur OFF au rechargement, à la fermeture du panneau, au changement de chaîne ou à l’ouverture du hunt.
 
 L’onglet est verrouillé lors de l’activation : changer de casino nécessite OFF puis ON. Un casino non pris en charge, une recherche introuvable ou ambiguë coupe l’option et affiche un message. Aucun résultat approximatif n’est choisi.
-La sélection ouvre seulement la fiche/slot. Cette extension ne lance aucun spin, achat ou autoplay, ne règle pas la mise et n’interagit pas avec les iframes de jeu.
-Les contrôles ne sont disponibles qu’aux opérateurs autorisés par LunaLive, et seulement pendant le farm. Aucun déplacement à la réception d’un call ou au chargement initial.
+Sur Shuffle, après la sélection de la slot, l’extension choisit ARS, confirme « Jeu réel » puis agrandit le jeu avec le contrôle Shuffle. Elle reprend cette préparation après un chargement complet de page. Une devise différente, un contrôle ambigu ou une préparation non confirmée coupe l’option. Le navigateur reste en mode normal (aucun F11).
+Cette extension ne lance aucun spin, achat ou autoplay, ne règle pas la mise et n’interagit pas avec les iframes de jeu.
+Les contrôles ne sont disponibles qu’au compte propriétaire LeCasiNoze sur sa chaîne, dans les paramètres du Hunt, et seulement pendant le farm. Aucun déplacement à la réception d’un call ou au chargement initial.
 La détection correspond aux domaines Shuffle et Celsius, y compris celsiuscasino.co. LunaLive et le casino doivent être ouverts dans le même profil de navigateur.
 
 ## Validation et limites
 Depuis les sources : npm ci dans extension/hunt-slot-switcher, démarrer le frontend de test sur 127.0.0.1:4397, puis npm test dans ce dossier. Installer Chrome et renseigner CHROME_PATH si son chemin diffère du chemin Windows standard. Le ZIP navigateur ne contient pas les dépendances de test.
 Les tests utilisent des fixtures locales, sans casino connecté ni mise. Une validation sur les DOM réels avec l’extension installée est nécessaire avant de revendiquer la compatibilité de chaque version des deux casinos. Ne pas installer pendant une action de jeu importante.
 Les autorisations couvrent uniquement les sites nommés dans manifest.json. Aucune collecte, publicité, télémétrie, réseau supplémentaire ni polling Render.
+
+Après mise à jour : recharger l’extension dans la page Extensions, puis recharger LunaLive et l’onglet casino.
