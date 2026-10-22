@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "LunaLive — Slots suivantes",
+  "version": "0.1.0",
+  "description": "Ouvre la slot suivante du hunt personnel sur Shuffle ou Celsius, sans jouer.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://shuffle.com/*",
+    "https://*.shuffle.com/*",
+    "https://celsiuscasino.com/*",
+    "https://*.celsiuscasino.com/*",
+    "https://celsiuscasino.co/*",
+    "https://*.celsiuscasino.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LunaLive — Choisir cet onglet casino"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://lunalive.win/*",
+        "https://www.lunalive.win/*",
+        "https://lunalive.onrender.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "lunalive.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://shuffle.com/*",
+        "https://*.shuffle.com/*",
+        "https://celsiuscasino.com/*",
+        "https://*.celsiuscasino.com/*",
+        "https://celsiuscasino.co/*",
+        "https://*.celsiuscasino.co/*"
+      ],
+      "js": [
+        "core.js",
+        "casino.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
