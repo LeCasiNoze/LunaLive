@@ -16,6 +16,12 @@ L'API conserve ses plafonds de réponse (24 Kio gzip global, 16 Kio détail), ET
 
 ## Livraison
 
+### Attribution personnel / AutoMod
+
+Sur LeCasiNoze, un titre contenant `automod` sans distinction de casse (y compris `AutoMode`) classe les nouveaux relevés en AutoMod ; un autre titre non vide les classe en personnel. Sans titre, le mode reste inconnu. Les annotations horaires explicites restent prioritaires.
+
+Les modes sont conservés par minute pendant huit jours, sans texte de chat. Les cohortes exigent toujours deux heures consécutives avec couverture du chat ≥90 % et au moins 54 minutes attribuées par heure. Une modification de titre en cours de diffusion affecte les prochains relevés, pas les anciens messages. Les anciennes fiches de sessions inconnues utilisent leur dernier titre enregistré pour leur libellé ; cela ne réattribue pas rétroactivement les messages ou les cohortes.
+
 1. Déployer l'API compatible avec les champs optionnels.
 2. Déployer le site, qui reste compatible avec les anciens agrégats et marque les nouveautés indisponibles.
 3. Après accord, construire le bundle minimal avec `prepare-bundle.mjs`, sauvegarder la base SQLite puis remplacer uniquement les fichiers du collecteur dédié et le redémarrer. Conserver la base, `startedAt`, les secrets, les pseudonymes et les annotations.

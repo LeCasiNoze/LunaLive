@@ -8,6 +8,7 @@ import {
   paris,
   pseudonym,
   firstObservedReport,
+  modeFromTitle,
 } from "../src/observatory/core.js";
 import {
   parseRumbleCategoryLives,
@@ -20,6 +21,24 @@ import {
 } from "../src/observatory/sse.js";
 import { snapshotSchema } from "../src/observatory/schema.js";
 const t = Date.parse("2026-10-15T08:00:00Z");
+test("LeCasiNoze modes follow observed titles, preserve verified annotations and react to title changes", () => {
+  for (const title of ["AutoMod — !call", "AUTOMOD", "AutoMode | votre session"])
+    assert.equal(modeFromTitle(title), "automod");
+  assert.equal(modeFromTitle("Hunt personnel"), "personal");
+  for (const title of [null, undefined, "", "   "]) assert.equal(modeFromTitle(title), "unknown");
+  const a = new Activity("secret".repeat(8));
+  const channel = {username:"LeCasiNoze",videoId:"v123abc",videoIdNumeric:"123456",viewersCount:2,createdAt:null};
+  a.discover([{...channel,title:"Hunt personnel"}],true,t);
+  assert.equal(a.channels.get("lecasinoze")?.mode,"personal");
+  a.discover([{...channel,title:"AUTOMOD — !call"}],true,t+MINUTE);
+  assert.equal(a.channels.get("lecasinoze")?.mode,"automod");
+  a.discover([{...channel,title:null},{...channel,username:"Other",videoId:"v456abc",title:"Personnel"}],true,t+2*MINUTE);
+  assert.equal(a.channels.get("lecasinoze")?.mode,"unknown");
+  assert.equal(a.channels.get("other")?.mode,"unknown");
+  const annotated = new Activity("secret".repeat(8), {modes:[{start:t,end:t+HOUR,mode:"automod"}]});
+  annotated.discover([{...channel,title:"Hunt personnel"}],true,t);
+  assert.equal(annotated.channels.get("lecasinoze")?.mode,"automod");
+});
 const live = (
   username = "Alpha",
   video = "v123abc",

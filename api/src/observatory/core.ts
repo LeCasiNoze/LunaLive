@@ -16,6 +16,10 @@ export type Point = [
 ];
 export type Lang = "fr" | "other" | "unknown";
 export type Mode = "personal" | "automod" | "unknown";
+export function modeFromTitle(title: unknown): Mode {
+  if (typeof title !== "string" || !title.trim()) return "unknown";
+  return /automod/i.test(title) ? "automod" : "personal";
+}
 export type Event = {
   video: string;
   id: string;
@@ -115,7 +119,7 @@ export class Activity {
         mode:
           slug === "lecasinoze"
             ? (this.config.modes?.find((i) => now >= i.start && now < i.end)
-                ?.mode ?? "unknown")
+                ?.mode ?? modeFromTitle(l.title))
             : "unknown",
         connected: same ? old!.connected : null,
         lastFrame: same ? old!.lastFrame : 0,
