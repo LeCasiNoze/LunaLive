@@ -12,6 +12,7 @@ import {
   HOUR,
   paris,
   firstObservedReport,
+  modeFromTitle,
 } from "../../dist/observatory/core.js";
 import { snapshotSchema } from "../../dist/observatory/schema.js";
 import { dashboardMetrics } from './dashboard-metrics.mjs';
@@ -87,6 +88,7 @@ export async function runCollector(env = process.env) {
     .map((c) => c.name);
   if (!sessionColumns.includes('title')) db.exec('ALTER TABLE sessions ADD COLUMN title TEXT');
   db.exec('CREATE TABLE IF NOT EXISTS followers(channel TEXT NOT NULL,t INTEGER NOT NULL,total INTEGER NOT NULL,PRIMARY KEY(channel,t))');
+  db.exec("CREATE TABLE IF NOT EXISTS observed_modes(t INTEGER PRIMARY KEY,mode TEXT NOT NULL)");
   if (!sessionColumns.includes("minuteSamples"))
     db.exec(
       "ALTER TABLE sessions ADD COLUMN minuteSamples INTEGER NOT NULL DEFAULT 0",
@@ -430,7 +432,7 @@ export async function runCollector(env = process.env) {
         db.exec("BEGIN");
         try {
           db.prepare(
-            "UPDATE events SET mode='unknown' WHERE channel='lecasinoze'",
+            "UPDATE events SET mode=COALESCE((SELECT mode FROM observed_modes WHERE t=CAST(events.at/60000 AS INTEGER)*60000),'unknown') WHERE channel='lecasinoze'",
           ).run();
           const annotate = db.prepare(
             "UPDATE events SET mode=? WHERE channel='lecasinoze' AND at>=? AND at<?",
@@ -450,7 +452,7 @@ export async function runCollector(env = process.env) {
             if (e.channel === "lecasinoze")
               e.mode =
                 modes.find((m) => e.at >= m.start && e.at < m.end)?.mode ??
-                "unknown";
+                db.prepare("SELECT mode FROM observed_modes WHERE t=?").get(Math.floor(e.at/MINUTE)*MINUTE)?.mode ?? "unknown";
           db.exec("COMMIT");
         } catch (e) {
           db.exec("ROLLBACK");
@@ -461,6 +463,7 @@ export async function runCollector(env = process.env) {
       db.exec(
         "DELETE FROM events WHERE at<" +
           (t - 8 * 24 * HOUR) +
+          "; DELETE FROM observed_modes WHERE t<" + (t - 8 * 24 * HOUR) +
           "; DELETE FROM points WHERE t<" +
           (t - 73 * HOUR) +
           "; DELETE FROM hourly WHERE t<" +
@@ -492,6 +495,7 @@ export async function runCollector(env = process.env) {
         if (!activity.visible.has(c.slug) || now - c.seen > 150000) continue;
         const p = activity.point(t, c.slug);
         writePoint("points", c.slug, p);
+        if (c.slug === "lecasinoze") db.prepare("INSERT INTO observed_modes VALUES(?,?) ON CONFLICT(t) DO UPDATE SET mode=excluded.mode").run(t,c.mode);
         const metadata = {
           slug: c.slug,
           name: c.name,
@@ -563,6 +567,7 @@ export async function runCollector(env = process.env) {
   function cohorts(now) {
     const result = {};
     const ownHours = series("hourly", "lecasinoze", now - 8 * 24 * HOUR);
+    const attributedHours = new Set(db.prepare("SELECT CAST(t/3600000 AS INTEGER)*3600000 AS hour,mode FROM observed_modes WHERE t>=? AND mode!='unknown' GROUP BY hour,mode HAVING COUNT(*)>=54").all(now-8*24*HOUR).map(r=>r.hour+":"+r.mode));
     const covered = (date, start, end, mode) => {
       if (mode === "unknown") return false;
       const hours = ownHours.filter((p) => {
@@ -572,9 +577,9 @@ export async function runCollector(env = process.env) {
           q.hour >= start &&
           q.hour < end &&
           p[6] >= 0.9 &&
-          cfg.modes?.some(
+          (attributedHours.has(p[0]+":"+mode) || cfg.modes?.some(
             (i) => i.mode === mode && p[0] >= i.start && p[0] + HOUR <= i.end,
-          )
+          ))
         );
       });
       // Require at least two consecutive covered hours in an explicitly attributed target session.
@@ -655,6 +660,7 @@ export async function runCollector(env = process.env) {
         // A channel's last known value is visibly stale; it is not declared offline.
         channels.push({
           ...metadata,
+          mode: row.slug === "lecasinoze" && metadata.mode === "unknown" ? modeFromTitle(metadata.title) : metadata.mode,
           ...dashboardMetrics(db,row.slug,now,started),
           recent: series('points',row.slug,now-3*HOUR).filter(p=>p[0]%(5*MINUTE)===0).slice(-36),
           history: series("hourly", row.slug, now - 72 * HOUR),
@@ -677,6 +683,7 @@ export async function runCollector(env = process.env) {
                 !counts.unresolved;
               return {
                 ...s,
+                mode: row.slug === "lecasinoze" && s.mode === "unknown" ? modeFromTitle(s.title) : s.mode,
                 netDistinct8d: known ? counts.net : null,
                 messages8d: known ? counts.messages : null,
                 conversation8d: known ? counts.conversations : null,

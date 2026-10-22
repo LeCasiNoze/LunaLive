@@ -12,7 +12,7 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
     config = join(dir, "config.json");
   await writeFile(
     config,
-    JSON.stringify({ bots: ["nozbot"], languages: { alpha: "fr" }, modes: [] }),
+    JSON.stringify({ bots: ["nozbot"], languages: { lecasinoze: "fr" }, modes: [] }),
   );
   const realFetch = globalThis.fetch,
     requests = [],
@@ -28,7 +28,7 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
           fetchedAt: Date.now(),
           lives: [
             {
-              username: "Alpha",
+              username: "LeCasiNoze",
               videoId: "v123abc",
               videoIdNumeric: "123456",
               viewersCount: 50,
@@ -107,6 +107,8 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
     );
     assert.equal(snapshot.channels.length, 1);
     assert.equal(snapshot.channels[0].title, "Observed stream title");
+    assert.equal(snapshot.channels[0].mode, "personal");
+    assert.equal(snapshot.channels[0].sessions[0].mode, "personal");
     assert.equal(snapshot.channels[0].sessions[0].title, "Observed stream title");
     assert.equal(snapshot.channels[0].metrics.day.followersLast.total, 12);
     assert.equal(snapshot.channels[0].growth, null);
@@ -121,6 +123,7 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
     collector = null;
     const db = new DatabaseSync(join(dir, "observatory.sqlite"));
     assert.equal(db.prepare("SELECT COUNT(*) n FROM events").get().n, 0);
+    assert.equal(db.prepare("SELECT mode FROM observed_modes LIMIT 1").get().mode,"personal");
     db.close();
     assert.equal(
       (await readFile(join(dir, "observatory.sqlite"))).includes(
