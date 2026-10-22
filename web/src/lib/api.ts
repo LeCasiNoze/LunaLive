@@ -1829,11 +1829,11 @@ export async function callsHuntSetBet(streamerSlug: string, token: string, betEu
   });
 }
 
-export async function callsHuntPay(streamerSlug: string, token: string, payEur: number) {
+export async function callsHuntPay(streamerSlug: string, token: string, payEur: number, id?: string, expected?: number | null) {
   return j<ApiCallsHuntState>(`/calls/${encodeURIComponent(streamerSlug)}/hunt/pay`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ payEur }),
+    body: JSON.stringify({ payEur, ...(id ? { id, expected: expected ?? null } : {}) }),
   });
 }
 

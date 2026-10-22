@@ -163,10 +163,12 @@ export function HuntTabs({
   token,
   streamerSlug,
   canModerate,
+  canNavigateSlots = false,
 }: {
   token: string;
   streamerSlug: string;
   canModerate: boolean;
+  canNavigateSlots?: boolean;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -174,7 +176,7 @@ export function HuntTabs({
   const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
   const [showOpts, setShowOpts] = React.useState(false);
-  const slotNavigation = useSlotNavigation(streamerSlug, canModerate && !getOpening(state));
+  const slotNavigation = useSlotNavigation(streamerSlug, canNavigateSlots && canModerate && !getOpening(state));
   const farmActionBusy = React.useRef(false);
   const [generateCount,setGenerateCount]=React.useState(10);
   const [generateMessage,setGenerateMessage]=React.useState<string|null>(null);
@@ -372,11 +374,6 @@ export function HuntTabs({
   const bonusCount = Number((state as any)?.bonusCount) || bonusDrops.length;
 
   // ===== stats (comme HuntPage) =====
-  const totalBetAll = React.useMemo(
-    () => bonusDrops.reduce((s: number, b: any) => s + (Number(b?.betEur ?? 0) || 0), 0),
-    [bonusDrops]
-  );
-
   const totalPayAll = React.useMemo(
     () => bonusDrops.reduce((s: number, b: any) => s + (Number(b?.payEur) || 0), 0),
     [bonusDrops]
@@ -395,26 +392,10 @@ export function HuntTabs({
 
   const profitOpened = React.useMemo(() => totalPayOpened - startEur, [totalPayOpened, startEur]);
 
-  const openedBetAll = React.useMemo(
-    () => openedBonuses.reduce((s: number, b: any) => s + (Number(b?.betEur ?? 0) || 0), 0),
-    [openedBonuses]
-  );
-
-  const openedPayAll = React.useMemo(
-    () => openedBonuses.reduce((s: number, b: any) => s + (Number(b?.payEur) || 0), 0),
-    [openedBonuses]
-  );
-
   const avgBonusMulti = React.useMemo(
-    () => (openedBetAll > 0 ? openedPayAll / openedBetAll : 0),
-    [openedBetAll, openedPayAll]
+    () => openedBonuses.length ? openedBonuses.reduce((sum: number, b: any) => sum + Number(b.payEur) / Number(b.betEur), 0) / openedBonuses.length : 0,
+    [openedBonuses]
   );
-
-  // BE global (base) = start / totalBet
-  const beGlobal = React.useMemo(() => {
-    if (!(startEur > 0) || !(totalBetAll > 0)) return 0;
-    return startEur / totalBetAll;
-  }, [startEur, totalBetAll]);
 
   // BE actuel (reste) = (start - totalPay) / remainingBet
   const remainingBet = React.useMemo(
@@ -549,7 +530,7 @@ async function doPass() {
   }
 
   async function doPay() {
-    if (!canModerate) return;
+    if (!canModerate || !currentOpen?.id) return;
     const v = Number(String(payInp).replace(",", "."));
     if (!Number.isFinite(v) || v < 0) {
       setErr("Pay invalide");
@@ -558,7 +539,7 @@ async function doPass() {
     setErr(null);
     setBusy(true);
     try {
-      await callsHuntPay(streamerSlug, token, v);
+      await callsHuntPay(streamerSlug, token, v, String(currentOpen.id), currentOpen.payEur ?? null);
       setPayInp("");
       emitQueueChanged(currentOpen?.id ?? null, "pay");
       await load();
@@ -1042,7 +1023,7 @@ async function doPass() {
         }
         .huntStats{
           display:grid;
-          grid-template-columns:repeat(3,minmax(0,1fr));
+          grid-template-columns:repeat(2,minmax(0,1fr));
           gap:8px;
         }
         .huntStat{
@@ -1139,7 +1120,8 @@ async function doPass() {
               }}
               className="btnGhostInline"
               style={{ padding: "8px 10px", borderRadius: 12, display: "inline-flex", gap: 8, alignItems: "center" }}
-              title="Options Hunt"
+              aria-label="Paramètres du Hunt"
+              title="Paramètres du Hunt"
             >
               <Settings size={16} />
             </button>
@@ -1152,30 +1134,29 @@ async function doPass() {
             <div className="huntStatValue">{fmtEur(startEur)}</div>
           </div>
 
+          {!opening && (
           <div className="huntStat">
-            <div className="muted" style={{ fontSize: 12 }}>Calls en cours</div>
+            <div className="muted" style={{ fontSize: 12 }}>En attente</div>
             <div className="huntStatValue">{callsCount}</div>
           </div>
+          )}
 
           <div className="huntStat">
-            <div className="muted" style={{ fontSize: 12 }}>Bonus drops</div>
-            <div className="huntStatValue">{bonusCount}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{opening ? "Ouverture" : "Bonus collectés"}</div>
+            <div className="huntStatValue">{opening ? `${openedBonuses.length} / ${bonusCount}` : bonusCount}</div>
           </div>
 
           <div className="huntStat">
             <div className="muted" style={{ fontSize: 12 }}>BE actuel</div>
-            <div className="huntStatValue">{`x${beCurrent.toFixed(2)}`}</div>
+            <div className="huntStatValue">{opening && remainingToRecoup > 0 && remainingBet === 0 ? "Non atteint" : bonusCount ? `×${beCurrent.toFixed(1)}` : "—"}</div>
           </div>
 
+          {opening && (
           <div className="huntStat">
-            <div className="muted" style={{ fontSize: 12 }}>BE global</div>
-            <div className="huntStatValue">{`x${beGlobal.toFixed(2)}`}</div>
+            <div className="muted" style={{ fontSize: 12 }}>Multi moyen</div>
+            <div className="huntStatValue">{openedBonuses.length ? `×${avgBonusMulti.toFixed(1)}` : "—"}</div>
           </div>
-
-          <div className="huntStat">
-            <div className="muted" style={{ fontSize: 12 }}>Multi moyen bonus</div>
-            <div className="huntStatValue">{`x${avgBonusMulti.toFixed(2)}`}</div>
-          </div>
+          )}
         </div>
 
         {canModerate && !hasStart ? (
@@ -1193,7 +1174,7 @@ async function doPass() {
             }}
           >
             <div style={{ flex: "1 1 220px" }}>
-              <div style={{ fontWeight: 950, fontSize: 12 }}>Set up a start</div>
+              <div style={{ fontWeight: 950, fontSize: 12 }}>Solde de départ</div>
               <input
                 value={startInp}
                 onFocus={() => (editingStartRef.current = true)}
@@ -1265,6 +1246,17 @@ async function doPass() {
 
             {optsSection === "options" ? (
               <>
+        {canNavigateSlots && canModerate && !opening ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <button type="button" role="switch" aria-checked={slotNavigation.enabled}
+              onClick={() => void slotNavigation.toggle()}
+              style={{ padding: "8px 12px", borderRadius: 10, cursor: "pointer", color: "inherit", border: "1px solid #9170ff", background: slotNavigation.enabled ? "#6040b0" : "transparent" }}>
+              Slot suivante auto : {slotNavigation.enabled ? "ON — arrêter" : slotNavigation.pending ? "Annuler" : "OFF"}
+            </button>
+            <span role="status" style={{ fontSize: 12 }}>{slotNavigation.message}</span>
+            <a href="/downloads/lunalive-slot-switcher.zip" style={{ fontSize: 12, color: "#c8baff", textDecoration: "underline" }}>Extension navigateur</a>
+          </div>
+        ) : null}
                 <div style={{ flex: "1 1 280px", minWidth: 240 }}>
                   <div style={{ fontWeight: 950, fontSize: 12 }}>Start</div>
 
@@ -1708,17 +1700,6 @@ async function doPass() {
 
       {/* Machine en cours / Bonus en cours */}
       <Panel title={opening ? "Bonus en cours" : "Machine en cours"}>
-        {canModerate && !opening ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-            <button type="button" role="switch" aria-checked={slotNavigation.enabled}
-              onClick={() => void slotNavigation.toggle()}
-              style={{ padding: "8px 12px", borderRadius: 10, cursor: "pointer", color: "inherit", border: "1px solid #9170ff", background: slotNavigation.enabled ? "#6040b0" : "transparent" }}>
-              Slot suivante auto : {slotNavigation.enabled ? "ON — arrêter" : slotNavigation.pending ? "Annuler" : "OFF"}
-            </button>
-            <span role="status" style={{ fontSize: 12 }}>{slotNavigation.message}</span>
-            <a href="/downloads/lunalive-slot-switcher.zip" style={{ fontSize: 12, color: "#c8baff", textDecoration: "underline" }}>Extension navigateur</a>
-          </div>
-        ) : null}
         {!opening ? (
           currentFarm ? (
             <div className="huntCurrentCard">
@@ -1728,7 +1709,7 @@ async function doPass() {
                   <div className="huntCurrentTitle">{currentFarm.slotName || "—"}</div>
                   <div className="huntCurrentMeta muted" style={{ fontSize: 12 }}>
                     {currentFarm.username ? <span>@{currentFarm.username}</span> : null}
-                    {currentFarm.provider ? <span>{currentFarm.provider}</span> : null}
+
                   </div>
                 </div>
               </div>
@@ -1825,7 +1806,7 @@ async function doPass() {
                 <div className="huntCurrentTitle">{currentOpen.slotName ?? currentOpen.name ?? "—"}</div>
                 <div className="huntCurrentMeta muted" style={{ fontSize: 12 }}>
                   {currentOpen.username ? <span>@{currentOpen.username}</span> : null}
-                  {currentOpen.provider ? <span>{currentOpen.provider}</span> : null}
+
                   <span>Mise <b>{fmtEur((currentOpen.betEur ?? currentOpen.bet) ?? 0)}</b></span>
                 </div>
               </div>
@@ -1862,12 +1843,10 @@ async function doPass() {
 
       {/* ✅ Bonus drops masqués quand engrenage ouvert (gain de place) */}
       {showBonusDropsPanel ? (
-        <Panel title={`Bonus drops (${bonusDrops.length})`}>
+        <Panel title={`Bonus (${bonusDrops.length})`}>
           {bonusDrops.length === 0 ? (
             <div className="muted">
-              Aucun bonus drop pour l’instant.
-              <br />
-              (Quand une machine a une bet, elle doit apparaître ici.)
+              Aucun bonus collecté.
             </div>
           ) : (
             <>
@@ -1904,22 +1883,22 @@ async function doPass() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 950, fontSize: 13, lineHeight: 1.2 }}>
                           #{idx + 1} — {b.slotName || "—"}
-                          {b.username ? <span className="muted"> — @{b.username}</span> : null}
+
                         </div>
 
-                        {b.provider ? (
+                        {b.username ? (
                           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                            ({b.provider})
+                            @{b.username}
                           </div>
                         ) : null}
 
                         {!isEditing ? (
                           <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                            bet: <b>{fmtEur(b.betEur ?? 0)}</b>
-                            {Number(b.payEur) >= 0 ? (
+                            Mise <b>{fmtEur(b.betEur ?? 0)}</b>
+                            {b.payEur != null && Number(b.payEur) >= 0 ? (
                               <span className="muted">
                                 {" "}
-                                — pay: <b>{fmtEur(b.payEur)}</b>
+                                · Gain <b>{fmtEur(b.payEur)}</b>
                               </span>
                             ) : null}
                           </div>
@@ -1972,9 +1951,7 @@ async function doPass() {
                 })}
               </div>
 
-              <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
-                Astuce: la liste est scrollable (max ~5 éléments visibles).
-              </div>
+
             </>
           )}
         </Panel>

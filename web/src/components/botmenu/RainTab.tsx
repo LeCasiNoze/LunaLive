@@ -99,7 +99,7 @@ export function RainTab({
         const err = String(j?.error || "join_failed");
         if (err === "already_joined") toast("info", "Rain", "Tu es déjà inscrit ✅");
         else if (err === "not_open") toast("error", "Rain", "Inscription fermée.");
-        else if (err === "offline") toast("error", "Rain", "Stream offline.");
+        else if (err === "offline") toast("error", "Rain", "Hors ligne.");
         else if (err === "disabled") toast("error", "Rain", "Rain désactivée.");
         else toast("error", "Rain", err);
         return;
@@ -151,9 +151,9 @@ export function RainTab({
           {state.phase === "disabled"
             ? "Désactivée"
             : !state.isLive || state.phase === "offline"
-            ? "Stream offline"
+            ? "Hors ligne"
             : state.phase === "open"
-            ? "Rain en cours — inscription ouverte"
+            ? "Inscriptions ouvertes"
             : "Prochaine rain"}
         </div>
 
@@ -187,8 +187,8 @@ export function RainTab({
           ) : null}
 
           <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>
-            Gain: {state.rubiesPerUser} rubis • Fréquence: {state.intervalMin} min • Participants:{" "}
-            {state.participants}
+            {state.rubiesPerUser} rubis · {" "}
+            {state.participants} participant{state.participants > 1 ? "s" : ""}
           </div>
         </div>
       </div>

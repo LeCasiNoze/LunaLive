@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import {manualHuntRecap} from '../src/hunt2/recap.ts';
+import {manualHuntRecap,manualHuntFarmRecap,manualHuntFinalRecap} from '../src/hunt2/recap.ts';
 import {expectedAmount,onceSchema} from '../src/hunt2/amount.ts';
 import {shopReplyChunks} from '../src/automod-shop/rules.ts';
 
@@ -50,7 +50,7 @@ function fixture(phase='open',sync=false){
  const router={use(){},get(){},post(path,...handlers){routes.set(path,handlers.at(-1));}};
  load('../src/routes/hunt2.ts',{
   console:{error(){}},express:{Router:()=>router,json:()=>()=>{}},pool,
-  requireAuth(){},expectedAmount,onceSchema,manualHuntRecap,shopReplyChunks,sendBotChat,
+  requireAuth(){},expectedAmount,onceSchema,manualHuntRecap,manualHuntFarmRecap,manualHuntFinalRecap,shopReplyChunks,sendBotChat,
   getCallsSettings:async()=>({syncHunt:sync}),
  },['hunt2Router']);
  async function pay(value,expected=null,id='1'){
@@ -66,7 +66,7 @@ function fixture(phase='open',sync=false){
 test('saving manual gain emits matching recap into both Luna rooms and current Rumble live',async()=>{
  const f=fixture();assert.equal((await f.pay(20)).body.ok,true);
  assert.equal(f.messages.length,1);
- assert.match(f.messages[0],/Slot A : 20,00 €.*Ouverture 1\/2/);
+ assert.match(f.messages[0],/Ouverture 1\/2.*Slot A : 20,00 €/);
  assert.deepEqual(f.events.map(e=>e.room),['chat:lecasinoze:public','chat:lecasinoze:popup']);
  assert.equal(f.rumble.length,1);assert.equal(f.rumble[0].vid,'current-live');
  assert.equal(f.rumble[0].text,f.messages[0]);
@@ -90,9 +90,10 @@ test('last unguarded payout sends the final recap before automatic archive',asyn
  const result=await f.pay(0,'unguarded','2');
  assert.equal(result.body.autoArchived,true);
  assert.equal(result.body.state.phase,'closed');
- assert.equal(f.messages.length,2);
- assert.match(f.messages[1],/Ouverture 2\/2 · 0 bonus restants/);
- assert.equal(f.rumble.length,2);
+ assert.match(f.messages.slice(1).join(" "),/Ouverture 2\/2/);
+ assert.match(f.messages.slice(1).join(" "),/Dommage ! Perte 80,00 €/);
+ assert.match(f.messages.slice(1).join(" "),/Meilleur : Slot A/);
+ assert.equal(f.rumble.length,f.messages.length);
 });
 test('no recap during farm, and chat failure does not lose the entered gain',async()=>{
  const edit=fixture('edit');await edit.pay(20);assert.equal(edit.messages.length,0);

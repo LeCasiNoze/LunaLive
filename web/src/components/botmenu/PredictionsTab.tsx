@@ -361,7 +361,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
             marginBottom: 12,
             padding: 12,
             borderRadius: 14,
-            border: "1px dashed rgba(255,255,255,0.18)",
+            border: "1px solid rgba(196,181,253,0.18)",
             background: "rgba(255,255,255,0.03)",
             fontSize: 12,
           }}
@@ -439,7 +439,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
           <div style={{ fontWeight: 950, marginBottom: 10 }}>
             📊 {pred.question}
             <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.8, fontWeight: 900 }}>
-              • {pred.status === "open" ? `Paris: ${fmtMmSs(leftMs)}` : pred.status}
+              • {pred.status === "open" ? `Paris: ${fmtMmSs(leftMs)}` : (pred.status === "locked" ? "Paris fermés" : pred.status === "resolved" ? "Terminée" : pred.status === "cancelled" ? "Annulée" : "Paris fermés")}
             </span>
           </div>
 
@@ -476,7 +476,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
               background: "rgba(255,255,255,0.04)",
             }}
           >
-            <div style={{ fontWeight: 950, marginBottom: 8 }}>Montant du pari</div>
+            <div style={{ fontWeight: 950, marginBottom: 8 }}>Mise</div>
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <select
@@ -507,15 +507,11 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
                 <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, whiteSpace: "nowrap" }}>
                   Niveau {stakeLevel} • 10 uniquement
                 </div>
-              ) : (
-                <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, whiteSpace: "nowrap" }}>
-                  Débloqué: {allowedStakes.join(" / ")}
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
 
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
             {[1, 2].map((n) => {
               const label = n === 1 ? pred.option1_label : pred.option2_label;
               const pool = n === 1 ? pred.total_pool_1 : pred.total_pool_2;
@@ -528,12 +524,13 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
                     padding: 12,
                     borderRadius: 14,
                     border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(0,0,0,0.18)",
+                    background: `linear-gradient(90deg, rgba(139,92,246,.16) ${pct}%, rgba(0,0,0,.18) ${pct}%)`,
+                    minWidth: 0, overflowWrap: "anywhere",
                   }}
                 >
-                  <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
                     <div style={{ fontWeight: 950 }}>
-                      {n}️⃣ {label}
+                      {label}
                     </div>
                     <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>
                       {pool} rubis • {pct}%
@@ -554,7 +551,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
                         cursor: "pointer",
                       }}
                     >
-                      Parier ({stake})
+                      Miser {stake}
                     </button>
                   )}
                 </div>
@@ -568,7 +565,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
       <ModalShell open={createOpen} title="Créer une prédiction" onClose={() => (!creating ? setCreateOpen(false) : null)}>
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>
-            Les paris sont ouverts <span style={{ fontWeight: 950 }}>2 minutes</span> (120s).
+            Les paris sont ouverts <span style={{ fontWeight: 950 }}>2 minutes</span>
           </div>
 
           <label style={{ display: "grid", gap: 6 }}>

@@ -4,6 +4,7 @@
 // connexion socket légère (uniquement pour sendBang = commandes !call ;
 // les autres onglets du bot sont en HTTP pur).
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { io, type Socket } from "socket.io-client";
 import { Bot, Move } from "lucide-react";
 import { BotMenu } from "./BotMenu";
@@ -159,12 +160,12 @@ export function FloatingBot({
     setOpen(true);
   };
 
-  return (
+  return createPortal(
     <>
       <style>{`
         .llBotFab{
           position: fixed;
-          z-index: 141;
+          z-index: 2001;
           width: ${FAB_SIZE}px; height: ${FAB_SIZE}px;
           display: grid; place-items: center;
           padding: 0;
@@ -285,6 +286,6 @@ export function FloatingBot({
         sendBang={sendBang}
         variant="dock"
       />
-    </>
+    </>, document.body
   );
 }

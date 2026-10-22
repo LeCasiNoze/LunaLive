@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { pool } from "../db.js";
 import { requireAuth } from "../auth.js";
 import { expectedAmount, onceSchema } from "../hunt2/amount.js";
-import { manualHuntRecap } from "../hunt2/recap.js";
+import { manualHuntRecap, manualHuntFarmRecap, manualHuntFinalRecap } from "../hunt2/recap.js";
 import { sendBotChat } from "../calls/commands.js";
 import { shopReplyChunks } from "../automod-shop/rules.js";
 import { searchSlots as searchSlotsCatalog } from "../calls/catalog.js";
@@ -462,16 +462,19 @@ function emitCallsChanged(req: any, slug: string, action: string) {
   io.to(`chat:${slug}`).emit("hunt:changed", { action });
 }
 
-async function announceManualPay(req: any, userId: number, state: HuntState, itemId: string) {
-  const text = manualHuntRecap(state, itemId);
+async function announceManualPay(req: any, userId: number, state: HuntState, itemId: string, farm = false) {
+  const texts = farm ? [manualHuntFarmRecap(state)] : [manualHuntRecap(state, itemId), manualHuntFinalRecap(state)];
   const io = req.app?.locals?.io;
-  if (!text || !io) return;
+  if (!texts.some(Boolean) || !io) return;
   try {
     const target = await pool.query(`SELECT id,slug FROM streamers WHERE user_id=$1 LIMIT 1`, [userId]);
     const row = target.rows[0];
     if (!row) return;
-    for (const chunk of shopReplyChunks(text)) {
-      await sendBotChat(pool, io, {streamerId: Number(row.id), slug: String(row.slug)}, chunk);
+    for (const text of texts) {
+      if (!text) continue;
+      for (const chunk of shopReplyChunks(text)) {
+        await sendBotChat(pool, io, {streamerId: Number(row.id), slug: String(row.slug)}, chunk);
+      }
     }
   } catch (error) {
     // A chat failure must not invalidate an already recorded payout.
@@ -639,6 +642,7 @@ function registerCallsCompat(prefix: "/calls" | "/calls-hunt") {
 
       // workflow: bonus -> go next
       await rotateCallsQueue(meta.streamerId);
+      await announceManualPay(req, meta.ownerUserId, await getState(meta.ownerUserId), String(head.id), true);
 
       emitCallsChanged(req, slug, "bonus");
 

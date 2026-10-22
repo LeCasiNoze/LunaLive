@@ -19,4 +19,4 @@ window.addEventListener("message",event=>{
  if(m.type==="open")fixture.navigations.push(m.slot);
  window.postMessage({channel:m.channel,direction:"response",id:m.id,ok:true,message:m.type==="enable"?"Shuffle prêt.":m.type==="open"?"Ouverture demandée : "+m.slot.name:"Désactivé."},location.origin);
 });
-createRoot(document.getElementById("root")!).render(<React.StrictMode><div style={{maxWidth:920,margin:"30px auto"}}><h1>Hunt personnel — test local</h1><HuntTabs token="fixture-not-a-real-token" streamerSlug="fixture" canModerate={true}/></div></React.StrictMode>);
+createRoot(document.getElementById("root")!).render(<React.StrictMode><div style={{maxWidth:920,margin:"30px auto"}}><h1>Hunt personnel — test local</h1><HuntTabs token="fixture-not-a-real-token" streamerSlug="fixture" canModerate={true} canNavigateSlots={true}/></div></React.StrictMode>);
