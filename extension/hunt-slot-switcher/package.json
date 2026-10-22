@@ -1,0 +1,11 @@
+{
+  "name": "lunalive-hunt-slot-switcher",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.cjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.55.0"
+  }
+}

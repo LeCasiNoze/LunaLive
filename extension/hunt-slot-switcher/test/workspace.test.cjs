@@ -28,4 +28,3 @@ test("a stale state containing the removed call never opens that slot again",asy
  await p.waitForFunction(()=>window.queue.length===2);await p.waitForFunction(()=>[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Pass"&&!b.disabled));
  assert.equal(await p.evaluate(()=>window.navigations.length),0);await p.close();
 });
-

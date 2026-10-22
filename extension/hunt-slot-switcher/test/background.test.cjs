@@ -59,4 +59,3 @@ test("activation requires a content-script handshake on the actual casino tab",a
  f.chrome.tabs.sendMessage=async()=>{throw Error("Receiving end does not exist");};
  const response=await f.request({type:"enable"});assert.equal(response.ok,false);assert.match(response.error,/Recharge/);assert.equal(f.store["huntSource:3"],undefined);
 });
-

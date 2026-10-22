@@ -14,6 +14,6 @@ Les contrôles ne sont disponibles qu’aux opérateurs autorisés par LunaLive,
 La détection correspond aux domaines Shuffle et Celsius, y compris celsiuscasino.co. LunaLive et le casino doivent être ouverts dans le même profil de navigateur.
 
 ## Validation et limites
-Tests : node --test --test-concurrency=1 extension/hunt-slot-switcher/test/*.test.cjs
+Depuis les sources : npm ci dans extension/hunt-slot-switcher, démarrer le frontend de test sur 127.0.0.1:4397, puis npm test dans ce dossier. Installer Chrome et renseigner CHROME_PATH si son chemin diffère du chemin Windows standard. Le ZIP navigateur ne contient pas les dépendances de test.
 Les tests utilisent des fixtures locales, sans casino connecté ni mise. Une validation sur les DOM réels avec l’extension installée est nécessaire avant de revendiquer la compatibilité de chaque version des deux casinos. Ne pas installer pendant une action de jeu importante.
 Les autorisations couvrent uniquement les sites nommés dans manifest.json. Aucune collecte, publicité, télémétrie, réseau supplémentaire ni polling Render.
