@@ -150,7 +150,7 @@ export function WheelTab({
   const joinDisabled = loading || joined || !enrollOpen || !isLive;
 
   return (
-    <div style={{ paddingTop: 4 }}>
+    <div style={{ padding: 14 }}>
       {!isAuthed ? (
         <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,0.10)", opacity: 0.9 }}>
           <div style={{ fontWeight: 950 }}>Connecte-toi pour rejoindre la roue</div>
@@ -175,13 +175,13 @@ export function WheelTab({
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontWeight: 950 }}>
-              🎡 Roue —{" "}
-              <span style={{ opacity: 0.85 }}>
-                {enrollOpen ? "Inscriptions ouvertes" : "Inscriptions fermées"} • {count} inscrit(s)
-              </span>
+            <div style={{ fontWeight: 700, fontSize: 13 }}>
+              <div style={{ opacity: 0.85 }}>
+                {enrollOpen ? "Inscriptions ouvertes" : "Inscriptions fermées"}
+                <div style={{fontSize: 12, marginTop: 4, opacity: .7}}>{count} participant{count > 1 ? "s" : ""}</div>
+              </div>
               <span style={{ marginLeft: 10, fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                {isLive ? "LIVE" : "OFFLINE"}
+                {!isLive ? "HORS LIGNE" : ""}
               </span>
             </div>
 
@@ -228,23 +228,13 @@ export function WheelTab({
                     : ""
             }
           >
-            {joined ? "Déjà inscrit ✅" : !isLive ? "Stream hors-ligne" : !enrollOpen ? "Inscriptions fermées" : "Rejoindre la roue"}
+            {joined ? "Inscrit ✅" : !isLive ? "Stream hors-ligne" : !enrollOpen ? "Inscriptions fermées" : "Rejoindre la roue"}
           </button>
-
-          {!isLive ? (
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-              Stream hors-ligne — inscription via le BotMenu désactivée. (Tu pourras rejoindre quand le live sera lancé.)
-            </div>
-          ) : !enrollOpen ? (
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 800 }}>
-              Les inscriptions sont fermées — tu peux toujours tenter via !join quand elles seront ouvertes.
-            </div>
-          ) : null}
 
           {canMod ? (
             <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.10)" }}>
               <div style={{ fontWeight: 950, opacity: 0.9, marginBottom: 8 }}>
-                Modération <span style={{ opacity: 0.8 }}>({enrollOpen ? "ouverte" : "fermée"})</span>
+                Inscriptions
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -282,9 +272,7 @@ export function WheelTab({
                 </button>
               </div>
 
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
-                TODO: conditions d’inscription (follow-only / sub-only / etc.)
-              </div>
+
             </div>
           ) : null}
         </>

@@ -3,7 +3,7 @@ let browser;
 after(async()=>browser?.close());
 async function fixture(){
  if(!browser)browser=await chromium.launch({executablePath:process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe",headless:true,args:["--disable-background-networking","--disable-gpu"]});
- const page=await browser.newPage();await page.goto(process.env.HUNT_NAV_TEST_URL || "http://127.0.0.1:4397/test/hunt-slot-navigation.html",{waitUntil:"domcontentloaded",timeout:60000});await page.getByRole("button",{name:"Pass",exact:true}).waitFor();return page;
+ const page=await browser.newPage();await page.goto(process.env.HUNT_NAV_TEST_URL || "http://127.0.0.1:4397/test/hunt-slot-navigation.html",{waitUntil:"domcontentloaded",timeout:60000});await page.getByRole("button",{name:"Pass",exact:true}).waitFor();await page.getByRole("button",{name:"Paramètres du Hunt",exact:true}).click();return page;
 }
 test("OFF is the default and a successful Pass does not navigate",async()=>{
  const p=await fixture();assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"false");await p.getByRole("button",{name:"Pass",exact:true}).click();await p.getByText("Gems Bonanza",{exact:true}).waitFor();assert.equal(await p.evaluate(()=>window.navigations.length),0);await p.close();

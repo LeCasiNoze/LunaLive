@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {manualHuntRecap} from '../src/hunt2/recap.ts';
+import {manualHuntRecap,manualHuntFarmRecap,manualHuntFinalRecap} from '../src/hunt2/recap.ts';
 import {shopReplyChunks} from '../src/automod-shop/rules.ts';
 
 const state={phase:'open',start:100,items:[
@@ -12,12 +12,12 @@ const state={phase:'open',start:100,items:[
 test('recap counts only bonuses and computes arithmetic mean and remaining BE',()=>{
  const text=manualHuntRecap(state,'b');
  assert.match(text,/Slot B : 20,00 € \(×10,0\)/);
- assert.match(text,/Ouverture 2\/3 · 1 bonus restants · Moy\. ×20,0/);
+ assert.match(text,/Ouverture 2\/3.*Moy\. ×20,0/);
  assert.match(text,/BE restant 50,00 € \(×25,0\)/);
 });
 test('zero payout is opened, last bonus still gets recap and unattained BE is explicit',()=>{
  const text=manualHuntRecap({...state,items:[{id:'a',name:'Zero',bet:1,pay:0}]},'a');
- assert.match(text,/Ouverture 1\/1 · 0 bonus restants/);
+ assert.match(text,/Ouverture 1\/1/);
  assert.match(text,/Moy\. ×0,0 · BE restant 100,00 € \(non atteint\)/);
 });
 test('BE is zero after recovering start; no recap during farm or for missing item',()=>{
@@ -32,4 +32,20 @@ test('long recap preserves all fields within Rumble message limits',()=>{
  assert.ok(chunks.length>1);
  assert.ok(chunks.every(x=>x.length<=190));
  assert.equal(chunks.join(' '),text.replace(/\s+/g,' ').trim());
+});
+
+test('farm reports collected bonuses and BE without counting ordinary calls',()=>{
+ assert.equal(manualHuntFarmRecap({...state,phase:'farm'}),'Bonus 3 · BE actuel ×20,0');
+ assert.equal(manualHuntFarmRecap(state),null);
+ assert.equal(manualHuntFarmRecap({phase:'farm',items:[]}),null);
+});
+test('final ranks calls by multiplier, includes callers and ignores unplayed farm calls',()=>{
+ const finished={phase:'open',start:100,items:[{id:'a',name:'Big pay',caller:'alice',bet:10,pay:200},{id:'b',name:'Big multi',caller:'bob',bet:1,pay:50},{id:'farm',name:'Not a bonus',bet:null,pay:null}]};
+ const text=manualHuntFinalRecap(finished);
+ assert.match(text,/GG ! Gain 150,00 €/);assert.match(text,/Moy. ×35,0/);
+ assert.match(text,/Meilleur : Big multi par @bob \(×50,0\)/);
+ assert.match(text,/Pire : Big pay par @alice \(×20,0\)/);
+ assert.doesNotMatch(text,/BE/);assert.equal(manualHuntFinalRecap(state),null);
+ assert.match(manualHuntFinalRecap({...finished,start:300}),/Dommage ! Perte 50,00 €/);
+ assert.match(manualHuntFinalRecap({...finished,start:250}),/À l’équilibre/);
 });

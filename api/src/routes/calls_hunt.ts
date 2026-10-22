@@ -1,3 +1,6 @@
+import { manualHuntRecap, manualHuntFarmRecap, manualHuntFinalRecap } from "../hunt2/recap.js";
+import { sendBotChat } from "../calls/commands.js";
+import { shopReplyChunks } from "../automod-shop/rules.js";
 import {generateHuntCalls,validateGeneration} from '../calls/random-hunt.js';
 // api/src/routes/calls_hunt.ts
 import express from "express";
@@ -171,6 +174,23 @@ async function loadQueue(streamerId: number) {
     imageUrl: x.imageUrl ?? null,
     isBonus: !!x.isBonus,
   }));
+}
+
+async function announceHunt(req: any, streamerId: number, slug: string, itemId: string, farm = false) {
+  const io = req.app?.locals?.io;
+  if (!io) return;
+  try {
+    const session = await getSession(streamerId);
+    const items = await loadQueue(streamerId);
+    const state = {phase: session.mode, start: session.start, items: items.map(it => ({id: it.id, name: it.slotName, caller: it.username, bet: it.betEur, pay: it.payEur}))};
+    const texts = farm ? [manualHuntFarmRecap(state)] : [manualHuntRecap(state, itemId), manualHuntFinalRecap(state)];
+    for (const text of texts) {
+      if (!text) continue;
+      for (const chunk of shopReplyChunks(text)) await sendBotChat(pool, io, {streamerId, slug}, chunk);
+    }
+  } catch (error) {
+    console.error("[calls-hunt] recap failed", error);
+  }
 }
 
 // ✅ helpers anti-bug Number(null)=0
@@ -641,13 +661,15 @@ callsHuntRouter.post("/:slug/hunt/bonus", async (req: AuthedReq, res) => {
 
     await ensureCallsQueueIsBonusCol();
 
-    await pool.query(
+    const recorded = await pool.query(
       `UPDATE calls_queue
        SET bet=$3, is_bonus=TRUE
-       WHERE streamer_id=$1 AND id=$2`,
+       WHERE streamer_id=$1 AND id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet <= 0) RETURNING id`,
       [streamer.id, curCall.id, bet]
     );
 
+    if (!recorded.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+    await announceHunt(req, streamer.id, slug, curCall.id, true);
     return res.json({ ok: true, bonusId: curCall.id });
   } catch (e) {
     console.error(e);
@@ -758,6 +780,7 @@ callsHuntRouter.post("/:slug/hunt/pay", async (req: AuthedReq, res) => {
         AND (is_bonus=TRUE OR bet>0) AND (NOT $4::boolean OR pay IS NOT DISTINCT FROM $5::numeric) RETURNING id`,
         [streamer.id, String(req.body.id), payEur, expected.guarded, expected.value]);
       if (!result.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+      if (!expected.guarded || expected.value !== payEur) await announceHunt(req, streamer.id, slug, String(req.body.id));
       return res.json({ ok: true, paid: true, paidId: String(req.body.id), payEur });
     }
 
@@ -781,11 +804,13 @@ callsHuntRouter.post("/:slug/hunt/pay", async (req: AuthedReq, res) => {
       });
     }
 
-    await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2`, [
+    const recorded = await pool.query(`UPDATE calls_queue SET pay=$3 WHERE streamer_id=$1 AND id=$2 AND pay IS NULL RETURNING id`, [
       streamer.id,
       curOpen.id,
       payEur,
     ]);
+    if (!recorded.rowCount) return res.status(409).json({ ok: false, error: "conflict" });
+    await announceHunt(req, streamer.id, slug, curOpen.id);
 
     return res.json({
       ok: true,

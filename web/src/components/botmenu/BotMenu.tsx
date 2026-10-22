@@ -1,5 +1,7 @@
 // web/src/components/botmenu/BotMenu.tsx
 import * as React from "react";
+import { createPortal } from "react-dom";
+import { useAuth } from "../../auth/AuthProvider";
 import { CloudRain, Crosshair, Dices, GripHorizontal, RotateCw, Sparkles, X } from "lucide-react";
 import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
@@ -40,6 +42,8 @@ export function BotMenu({
 
 
   // 👇 marque explicitement role comme “lu”
+  const { user } = useAuth();
+  const canNavigateSlots = Number(user?.id) === 4 && canMod && slug.toLowerCase() === "lecasinoze";
   void role;
 
   const [tab, setTab] = React.useState<
@@ -57,6 +61,17 @@ export function BotMenu({
   }, [open, slug, tab, token]);
 
   const [dockPos, setDockPos] = React.useState({ x: 16, y: 16 });
+  const panelW = Math.max(380, Math.min(560, Number(dockWidth ?? 480)));
+
+  React.useEffect(() => {
+    if (!open || variant !== "dock") return;
+    const resize = () => setDockPos(pos => ({
+      x: Math.max(8, Math.min(pos.x, window.innerWidth - Math.min(panelW, window.innerWidth - 16) - 8)),
+      y: Math.max(8, Math.min(pos.y, window.innerHeight - 160)),
+    }));
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [open, variant, panelW]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -65,14 +80,12 @@ export function BotMenu({
     // position par défaut: en haut à droite, avec marge
     const x = Math.max(8, window.innerWidth - panelW - 16);
 
-    const y = Math.max(8, 16);
+    const y = Math.min(88, Math.max(8, window.innerHeight - 180));
     setDockPos({ x, y });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, variant]);
 
   if (!open) return null;
-
-  const panelW = Math.max(380, Math.min(560, Number(dockWidth ?? 480)));
 
   const PanelInner = (
     <div
@@ -87,7 +100,7 @@ export function BotMenu({
         overflow: "hidden",
         // le contenu long SCROLLE dans le panel (header/tabs restent
         // visibles → le ✕ est toujours accessible) — fix retour Lucas
-        maxHeight: "min(90dvh, 760px)",
+        maxHeight: variant === "dock" ? `min(760px, calc(100dvh - ${dockPos.y + 8}px))` : "min(90dvh, 760px)",
         display: "flex",
         flexDirection: "column",
       }}
@@ -160,6 +173,7 @@ export function BotMenu({
         <button
           type="button"
           onClick={onClose}
+          aria-label="Fermer LunaBot"
           style={{
             width: 34,
             height: 34,
@@ -175,7 +189,7 @@ export function BotMenu({
             lineHeight: 1,
           }}
         >
-          <X size={15} />
+          <X size={15} aria-hidden="true" />
         </button>
       </div>
 
@@ -199,7 +213,8 @@ export function BotMenu({
             type="button"
             onClick={() => setTab(k)}
             style={{
-              flex: "1 0 72px",
+              flex: "1 1 0",
+              minWidth: 0,
               minHeight: 50,
               padding: "7px 6px",
               borderRadius: 12,
@@ -212,7 +227,7 @@ export function BotMenu({
             }}
           >
             <Icon size={16} style={{ display: "block", margin: "0 auto" }} />
-            <div style={{ fontSize: 8, marginTop: 4, opacity: 0.95 }}>{label}</div>
+            <div style={{ fontSize: 10, marginTop: 4, opacity: 0.95 }}>{label}</div>
           </button>
           );
         })}
@@ -231,7 +246,7 @@ export function BotMenu({
           />
         )}
 
-        {tab === "hunt" && <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} />}
+        {tab === "hunt" && <HuntTabs token={token ?? ""} streamerSlug={slug} canModerate={canMod} canNavigateSlots={canNavigateSlots} />}
 
         {tab === "wheel" && (
           <WheelTab token={token} slug={slug} canMod={canMod} onClose={onClose} onRequireLogin={onRequireLogin} />
@@ -247,7 +262,7 @@ export function BotMenu({
   );
 
   if (variant === "dock") {
-    return (
+    return createPortal(
       <div
         style={{
           position: "fixed",
@@ -255,22 +270,22 @@ export function BotMenu({
           top: dockPos.y,
           width: panelW,
           maxWidth: "calc(100vw - 16px)",
-          zIndex: 140,
+          zIndex: 2000,
         }}
       >
         {PanelInner}
-      </div>
+      </div>, document.body
     );
   }
 
   // modal (comportement actuel)
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 120,
+        zIndex: 2000,
         background: "rgba(0,0,0,0.55)",
         display: "flex",
         alignItems: "flex-end",
@@ -279,7 +294,7 @@ export function BotMenu({
       }}
     >
       {PanelInner}
-    </div>
+    </div>, document.body
   );
 
 }
