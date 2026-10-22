@@ -1,21 +1,27 @@
 const {test}=require("node:test");const assert=require("node:assert/strict");const vm=require("node:vm");const fs=require("node:fs");const path=require("node:path");
 function fixture(){
- const store={},sent=[];let handler,release;
+ const store={},sent=[];let handler,release,rejectOpen,pendingSlot,setupRelease;const prepared=[];let holdSetup=false;
  const tabs=[{id:8,url:"https://shuffle.com/games/old"},{id:9,url:"https://celsiuscasino.co/"}];
  const chrome={storage:{session:{get:async k=>({[k]:store[k]}),set:async data=>Object.assign(store,data),remove:async k=>{delete store[k];}}},
  tabs:{query:async filter=>filter?.active?[tabs[0]]:tabs,get:async id=>{const t=tabs.find(x=>x.id===id);if(!t)throw Error("closed");return t;},onRemoved:{addListener(){}},
- sendMessage:async(id,m)=>{if(m.type==="probe")return {ok:true};sent.push({id,...m});if(m.type==="cancel"){release?.({ok:false,error:"cancelled"});return {ok:true};}return await new Promise(r=>{release=r;});}},
+ sendMessage:async(id,m)=>{if(m.type==="probe")return {ok:true};if(m.type==="prepare-shuffle"){prepared.push(m);return holdSetup?await new Promise(r=>{setupRelease=r;}):{ok:true};}pendingSlot=m.slot||pendingSlot;sent.push({id,...m});if(m.type==="cancel"){release?.({ok:false,error:"cancelled"});setupRelease?.({ok:false,error:"cancelled"});return {ok:true};}return await new Promise((r,j)=>{release=r;rejectOpen=j;});}},
  runtime:{onMessage:{addListener:f=>{handler=f;}}}};
  let ctx;
  function boot(){
-  ctx=vm.createContext({URL,chrome,console});
+  ctx=vm.createContext({URL,chrome,console,setTimeout});
   ctx.importScripts=()=>vm.runInContext(fs.readFileSync(path.join(__dirname,"../core.js"),"utf8"),ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname,"../background.js"),"utf8"),ctx);
  }
  boot();
  const sender={tab:{id:3},url:"https://lunalive.win/dashboard",frameId:0};
  const request=(m,s=sender)=>new Promise(r=>handler(m,s,r));
- return {store,sent,tabs,request,chrome,release:r=>release(r),restart:boot};
+ return {store,sent,tabs,request,chrome,release:async r=>{
+   if((r.ok||r.disconnect)&&tabs[0].url.includes('shuffle.com')){
+    const ack=await request({type:'game-selected',callId:pendingSlot.callId,url:'https://shuffle.com/games/gems-bonanza'},{tab:{id:8},url:tabs[0].url,frameId:0});
+    assert.equal(ack.ok,true);tabs[0].url='https://shuffle.com/games/gems-bonanza';
+   }
+   if(r.disconnect)rejectOpen(Error('message port closed'));else release(r);
+  },prepared,holdSetup:()=>{holdSetup=true;},restart:boot};
 }
 async function enabled(f){await f.request({type:"bind"},{});assert.equal((await f.request({type:"enable"})).ok,true);}
 const slot={callId:"44",name:"Gems Bonanza"};
@@ -58,4 +64,19 @@ test("activation requires a content-script handshake on the actual casino tab",a
  const f=fixture();await f.request({type:"bind"},{});
  f.chrome.tabs.sendMessage=async()=>{throw Error("Receiving end does not exist");};
  const response=await f.request({type:"enable"});assert.equal(response.ok,false);assert.match(response.error,/Recharge/);assert.equal(f.store["huntSource:3"],undefined);
+});
+
+test('Shuffle preparation resumes after the old page message port closes',async()=>{
+ const f=fixture();await enabled(f);const pending=f.request({type:'open',slot});await new Promise(r=>setImmediate(r));await f.release({disconnect:true});const result=await pending;assert.equal(result.ok,true,result.error);assert.equal(f.prepared.length,1);assert.equal(f.prepared[0].playMode,'real');assert.match(result.message,/ARS confirmé/);
+});
+test('OFF cancels the post-navigation preparation and never records the call as completed',async()=>{
+ const f=fixture();await enabled(f);f.holdSetup();const pending=f.request({type:'open',slot});await new Promise(r=>setImmediate(r));await f.release({ok:true});await new Promise(r=>setImmediate(r));assert.equal(f.prepared.length,1);await f.request({type:'disable'});assert.equal((await pending).ok,false);assert.equal(f.store['huntSource:3'],undefined);
+});
+test('a casino cannot announce an unrequested game or impersonate the selected tab',async()=>{
+ const f=fixture();await enabled(f);const pending=f.request({type:'open',slot});await new Promise(r=>setImmediate(r));
+ const selected={type:'game-selected',callId:slot.callId,url:'https://shuffle.com/games/gems-bonanza'};
+ assert.equal((await f.request(selected,{tab:{id:88},url:'https://shuffle.com/',frameId:0})).ok,false);
+ assert.equal((await f.request({...selected,url:'https://evil.test/games/game'},{tab:{id:8},url:'https://shuffle.com/',frameId:0})).ok,false);
+ assert.equal((await f.request({...selected,callId:'unrequested'},{tab:{id:8},url:'https://shuffle.com/',frameId:0})).ok,false);
+ f.release({ok:false,error:'cancelled'});assert.equal((await pending).ok,false);assert.equal(f.prepared.length,0);
 });

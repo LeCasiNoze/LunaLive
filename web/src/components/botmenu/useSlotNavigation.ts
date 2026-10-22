@@ -5,7 +5,7 @@ type Slot={id?:unknown;slotName?:unknown;provider?:unknown};
 function request(type:string,slot?:{callId:string;name:string;provider:string|null}):Promise<Reply>{
   return new Promise(resolve=>{
     const id=crypto.randomUUID();
-    const timeout=window.setTimeout(()=>finish({ok:false,error:type==="open"?"Recherche non confirmée. Vérifie le casino avant de continuer.":"Extension absente. Installe LunaLive — Slots suivantes, puis recharge cette page."}),type==="open"?15000:1800);
+    const timeout=window.setTimeout(()=>finish({ok:false,error:type==="open"?"Recherche non confirmée. Vérifie le casino avant de continuer.":"Extension absente. Installe LunaLive — Slots suivantes, puis recharge cette page."}),type==="open"?45000:1800);
     function finish(result:Reply){clearTimeout(timeout);window.removeEventListener("message",receive);resolve(result);}
     function receive(event:MessageEvent){
       if(event.source===window && event.origin===location.origin && event.data?.channel===channel && event.data?.direction==="response" && event.data?.id===id)finish(event.data);

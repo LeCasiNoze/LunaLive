@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LunaLive — Slots suivantes",
-  "version": "0.1.0",
-  "description": "Ouvre la slot suivante du hunt personnel sur Shuffle ou Celsius, sans jouer.",
+  "version": "0.2.0",
+  "description": "Slot suivante du hunt sur Shuffle ou Celsius. Sur Shuffle : ARS et agrandissement du jeu, sans spin.",
   "permissions": [
     "storage"
   ],
