@@ -28,3 +28,40 @@ test("a stale state containing the removed call never opens that slot again",asy
  await p.waitForFunction(()=>window.queue.length===2);await p.waitForFunction(()=>[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Pass"&&!b.disabled));
  assert.equal(await p.evaluate(()=>window.navigations.length),0);await p.close();
 });
+
+async function remount(p){
+ await p.evaluate(()=>window.setMounted(false));
+ await p.getByRole("button",{name:"Paramètres du Hunt",exact:true}).waitFor({state:"detached"});
+ await p.evaluate(()=>window.setMounted(true));
+ await p.getByRole("button",{name:"Paramètres du Hunt",exact:true}).click();
+}
+test("ON survives closing settings and remounting the Hunt menu",async()=>{
+ const p=await fixture();await p.getByRole("switch").click();await p.getByText("Shuffle prêt.",{exact:true}).waitFor();
+ await p.getByRole("button",{name:"Paramètres du Hunt",exact:true}).click();await p.getByRole("button",{name:"Paramètres du Hunt",exact:true}).click();
+ assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"true");
+ await remount(p);await p.getByText("Shuffle prêt.",{exact:true}).waitFor();
+ assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"true");
+ assert.equal(await p.evaluate(()=>window.navigations.length),0);
+ await p.getByRole("button",{name:"Pass",exact:true}).click();await p.getByText("Ouverture demandée : Gems Bonanza",{exact:true}).waitFor();await p.close();
+});
+test("opening retains the switch and explicit OFF stays OFF after remount",async()=>{
+ const p=await fixture();await p.getByRole("switch").click();await p.getByText("Shuffle prêt.",{exact:true}).waitFor();
+ await p.evaluate(()=>window.opening=true);await remount(p);
+ assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"true");
+ assert.equal(await p.evaluate(()=>window.navigations.length),0);
+ await p.getByRole("switch").click();assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"false");
+ await remount(p);assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"false");await p.close();
+});
+test("a casino error preserves ON and the next Pass can retry",async()=>{
+ const p=await fixture();await p.getByRole("switch").click();await p.getByText("Shuffle prêt.",{exact:true}).waitFor();
+ await p.evaluate(()=>window.navigationFail=true);await p.getByRole("button",{name:"Pass",exact:true}).click();await p.getByText("Ouverture demandée : Gems Bonanza",{exact:true}).waitFor();
+ assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"true");
+ await p.evaluate(()=>window.navigationFail=false);await p.getByRole("button",{name:"Pass",exact:true}).click();await p.getByText("Ouverture demandée : Starlight Princess",{exact:true}).waitFor();
+ assert.equal(await p.evaluate(()=>window.navigations.length),2);await p.close();
+});
+test("ON survives a page reload without opening a slot on its own",async()=>{
+ const p=await fixture();await p.getByRole("switch").click();await p.getByText("Shuffle prêt.",{exact:true}).waitFor();
+ await p.reload({waitUntil:"domcontentloaded"});await p.getByRole("button",{name:"Paramètres du Hunt",exact:true}).click();
+ await p.getByText("Shuffle prêt.",{exact:true}).waitFor();assert.equal(await p.getByRole("switch").getAttribute("aria-checked"),"true");
+ assert.equal(await p.evaluate(()=>window.navigations.length),0);await p.close();
+});
