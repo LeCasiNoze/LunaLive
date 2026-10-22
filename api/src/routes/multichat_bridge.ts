@@ -48,7 +48,7 @@ multichatBridgeRouter.post('/internal/bot/multichat/follow',async(req,res)=>{
   await client.query('COMMIT');committed=true;
   io.to('chat:lecasinoze:public').to('chat:lecasinoze:popup').emit('chat:message',{id:Number(row.id),userId:0,username:event.username,body:'',type:'follow',data,createdAt:new Date(row.created_at).toISOString()});
   // Same configured OBS image/sound/template as Rumble. No wallet or follow reward is granted.
-  await followAlert(pool,io,{slug:'lecasinoze',ownerUserId:streamer.user_id},event.username);
+  await followAlert(pool,io,{slug:'lecasinoze',ownerUserId:streamer.user_id},event.username,event.platform);
   await client.query('UPDATE multichat_bridge_events SET result=$2::jsonb WHERE event_key=$1',[event.key,JSON.stringify({ok:true,obsAlert:'sent'})]);
   return res.json({ok:true,obsAlert:'sent'});
  }catch{if(!committed)await client.query('ROLLBACK').catch(()=>{});return res.status(503).json({ok:false,error:committed?'follow_alert_delivery_uncertain':'follow_write_failed'});}

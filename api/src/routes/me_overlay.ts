@@ -3,6 +3,7 @@ import { Router } from "express";
 import { a } from "../utils/async.js";
 import { pool } from "../db.js";
 import { FSB_ALLOWED_USER_IDS } from "./fsb_guard.js";
+import { renderFollowAlertText } from "../follow_alert.js";
 
 import fs from "fs";
 import path from "path";
@@ -83,16 +84,6 @@ function fileSignatureMatches(mime: string, buffer: Buffer) {
   if (mime === "audio/ogg") return head.subarray(0, 4).toString("ascii") === "OggS";
   if (mime === "audio/mpeg" || mime === "audio/mp3") return head.subarray(0, 3).toString("ascii") === "ID3" || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
   return false;
-}
-
-function applyTpl(tpl: string, vars: Record<string, any>) {
-  let s = String(tpl || "");
-  for (const [k, v] of Object.entries(vars || {})) {
-    const val = String(v ?? "");
-    s = s.replaceAll(`{${k}}`, val);
-    s = s.replaceAll(`@{${k}}`, `@${val}`);
-  }
-  return s;
 }
 
 async function getOwnedStreamerSlugByUserId(userId: number): Promise<string | null> {
@@ -202,7 +193,7 @@ meOverlayRouter.post(
 
     const cfg = await getWidgetConfig(uid);
     const aCfg = cfg.alerts || {};
-    const text = applyTpl(String(aCfg.follow_tpl ?? "Merci @{user} pour le follow 💜"), { user: name });
+    const text = renderFollowAlertText(aCfg.follow_tpl, name, 'lunalive');
     const imageUrl = aCfg.follow_img ?? null;
     const soundUrl = aCfg.follow_sound ?? null;
     const volume = Math.max(0, Math.min(1, Number(aCfg.sound_vol ?? 1)));
@@ -214,6 +205,7 @@ meOverlayRouter.post(
     io.to(`stream:${String(slug).toLowerCase()}`).emit("obs:alert", {
       event,
       name,
+      platform: 'lunalive',
       text,
       imageUrl,
       soundUrl,

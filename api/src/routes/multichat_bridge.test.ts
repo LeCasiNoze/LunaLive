@@ -27,7 +27,7 @@ async function fixture(run:(f:any)=>Promise<void>,{failCall=false,processing=fal
   (pool as any).connect=async()=>({query:pool.query.bind(pool),release(){}});
   const io:any={to(){return this;},emit(name:string,payload:any){broadcasts.push({name,payload});}};
   const app=express();app.use(express.json());app.locals.io=io;
-  app.use(createMultichatBridgeRouter({pool,keys:()=>['fixture-key'],followAlert:async(_pool,_io,streamer,username)=>{alerts.push({streamer,username});if(failFollowAlert)throw Error('fixture_alert_failure');},handleCallsCommand:async opts=>{calls.push(opts);if(failCall)throw Error('simulated_failure');if(feedback)opts.onFeedback?.({kind:'error',title:'Machine introuvable',message:'Essaie un nom plus précis.'});if(publicReply)opts.io.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body:'Réponse existante'});return {handled:true,showOriginalInChat:false};},sendBotChat:async(_pool,replyIo,_opts,body)=>{replyIo.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body});},sendRumbleMessageReliable:async()=>{throw Error('Must not send a real Rumble message in tests');}}));
+  app.use(createMultichatBridgeRouter({pool,keys:()=>['fixture-key'],followAlert:async(_pool,_io,streamer,username,platform)=>{alerts.push({streamer,username,platform});if(failFollowAlert)throw Error('fixture_alert_failure');},handleCallsCommand:async opts=>{calls.push(opts);if(failCall)throw Error('simulated_failure');if(feedback)opts.onFeedback?.({kind:'error',title:'Machine introuvable',message:'Essaie un nom plus précis.'});if(publicReply)opts.io.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body:'Réponse existante'});return {handled:true,showOriginalInChat:false};},sendBotChat:async(_pool,replyIo,_opts,body)=>{replyIo.to('chat:lecasinoze:public').emit('chat:message',{id:nextId++,isBot:true,body});},sendRumbleMessageReliable:async()=>{throw Error('Must not send a real Rumble message in tests');}}));
   const server=app.listen(0,'127.0.0.1');await new Promise<void>(resolve=>server.once('listening',resolve));
   const addr=server.address();if(!addr||typeof addr==='string')throw Error('test_bind_failed');
   const post=(body:any,key='fixture-key',kind='event')=>fetch(`http://127.0.0.1:${addr.port}/internal/bot/multichat/${kind}`,{method:'POST',headers:{'Content-Type':'application/json','x-bot-key':key},body:JSON.stringify(body)});
@@ -64,8 +64,12 @@ const follower={streamerSlug:'lecasinoze',platform:'kick',channelId:'24912362',e
 test('a provider follow persists one card and emits the configured OBS alert once, including on HTTP replay',()=>fixture(async f=>{
  const first=await f.post(follower,'fixture-key','follow');assert.equal(first.status,200);assert.equal((await first.json()).obsAlert,'sent');
  const replay=await (await f.post(follower,'fixture-key','follow')).json();assert.equal(replay.duplicate,true);assert.equal(replay.obsAlert,'sent');
- assert.equal(f.alerts.length,1);assert.equal(f.alerts[0].username,'Alice');assert.equal(f.alerts[0].streamer.ownerUserId,2);
+ assert.equal(f.alerts.length,1);assert.equal(f.alerts[0].username,'Alice');assert.equal(f.alerts[0].streamer.ownerUserId,2);assert.equal(f.alerts[0].platform,'kick');
  assert.equal(f.broadcasts.length,1);assert.equal(f.broadcasts[0].payload.type,'follow');assert.equal(f.broadcasts[0].payload.data.platform,'kick');assert.equal(f.calls.length,0);
+}));
+test('Twitch follows retain their source in the OBS alert',()=>fixture(async f=>{
+ const result=await f.post({...follower,platform:'twitch',channelId:'535777475'},'fixture-key','follow');
+ assert.equal(result.status,200);assert.equal(f.alerts.length,1);assert.equal(f.alerts[0].platform,'twitch');
 }));
 test('wrong broadcaster, stale follow, and unauthenticated follow cannot emit OBS alerts',()=>fixture(async f=>{
  assert.equal((await f.post(follower,'wrong','follow')).status,401);

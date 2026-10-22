@@ -912,7 +912,7 @@ publicRouter.post(
       emitSpecialCard(io, String(streamer.slug), mult > 1 ? "combo" : "follow", {
         who: followerName, kind: "follow", mult, real: true,
       });
-      await emitFollowOverlayAlert(pool, io, streamer, followerName).catch((error) => {
+      await emitFollowOverlayAlert(pool, io, streamer, followerName, 'lunalive').catch((error) => {
         console.error("[follow-overlay] emit failed", error);
       });
     }

@@ -78,7 +78,7 @@ export async function announceNewFollow(pool:Pool,sid:number,io?:any){
  });
  if(announced&&io){
   emitSpecialCard(io,announced.streamer.slug,'follow',{who:announced.username,platform:'rumble'});
-  await emitFollowOverlayAlert(pool,io,announced.streamer,announced.username).catch(e=>console.warn('[rumble-follow-overlay]',e?.message));
+  await emitFollowOverlayAlert(pool,io,announced.streamer,announced.username,'rumble').catch(e=>console.warn('[rumble-follow-overlay]',e?.message));
  }
  return Boolean(announced);
 }
