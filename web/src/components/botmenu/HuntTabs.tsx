@@ -1,6 +1,7 @@
 // web/src/pages/dashboard/sections/bot/modules/HuntTabs.tsx
 import * as React from "react";
 import { Settings } from "lucide-react";
+import { useSlotNavigation } from "./useSlotNavigation";
 import {
   getCallsHuntState,
   callsHuntBonusDrop,
@@ -173,6 +174,8 @@ export function HuntTabs({
   const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
   const [showOpts, setShowOpts] = React.useState(false);
+  const slotNavigation = useSlotNavigation(streamerSlug, canModerate && !getOpening(state));
+  const farmActionBusy = React.useRef(false);
   const [generateCount,setGenerateCount]=React.useState(10);
   const [generateMessage,setGenerateMessage]=React.useState<string|null>(null);
   const generationRequest=React.useRef<{slug:string,count:number,id:string}|null>(null);
@@ -298,6 +301,7 @@ export function HuntTabs({
       const startRaw = getStartRaw(s);
       setStartInp(startRaw !== null ? String(startRaw) : "");
     }
+    return s;
   }
 
   React.useEffect(() => {
@@ -462,7 +466,9 @@ export function HuntTabs({
 
   // ====== actions hunt ======
 async function doPass() {
-  if (!canModerate) return;
+  if (!canModerate || farmActionBusy.current) return;
+  farmActionBusy.current = true;
+  const navigationTicket = slotNavigation.ticket();
 
   setErr(null);
   setBusy(true);
@@ -477,10 +483,12 @@ async function doPass() {
 
     setAskBet(false);
     setBonusBetInp("");
-    await load();
+    const fresh = await load();
+    if (r?.removedId && !getOpening(fresh) && String((fresh as any)?.currentCall?.id) !== String(r.removedId)) await slotNavigation.next((fresh as any)?.currentCall, navigationTicket);
   } catch (e: any) {
     setErr(String(e?.message || "Erreur"));
   } finally {
+    farmActionBusy.current = false;
     setBusy(false);
   }
 }
@@ -494,7 +502,7 @@ async function doPass() {
   }
 
   async function doConfirmBonusWithBet() {
-    if (!canModerate) return;
+    if (!canModerate || farmActionBusy.current) return;
 
     const v = Number(String(bonusBetInp).replace(",", "."));
     if (!Number.isFinite(v) || v <= 0) {
@@ -502,6 +510,8 @@ async function doPass() {
       return;
     }
 
+    farmActionBusy.current = true;
+    const navigationTicket = slotNavigation.ticket();
     setErr(null);
     setBusy(true);
     try {
@@ -514,10 +524,12 @@ async function doPass() {
 
       // ✅ best-effort: sync queue-changed + auto scroll handled by useEffect after load
       emitQueueChanged(String(r?.bonusId ?? r?.id ?? null) || null, "bonus");
-      await load();
+      const fresh = await load();
+      if (r?.bonusId && !getOpening(fresh) && String((fresh as any)?.currentCall?.id) !== String(r.bonusId)) await slotNavigation.next((fresh as any)?.currentCall, navigationTicket);
     } catch (e: any) {
       setErr(String(e?.message || "Erreur"));
     } finally {
+      farmActionBusy.current = false;
       setBusy(false);
     }
   }
@@ -1696,6 +1708,17 @@ async function doPass() {
 
       {/* Machine en cours / Bonus en cours */}
       <Panel title={opening ? "Bonus en cours" : "Machine en cours"}>
+        {canModerate && !opening ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+            <button type="button" role="switch" aria-checked={slotNavigation.enabled}
+              onClick={() => void slotNavigation.toggle()}
+              style={{ padding: "8px 12px", borderRadius: 10, cursor: "pointer", color: "inherit", border: "1px solid #9170ff", background: slotNavigation.enabled ? "#6040b0" : "transparent" }}>
+              Slot suivante auto : {slotNavigation.enabled ? "ON — arrêter" : slotNavigation.pending ? "Annuler" : "OFF"}
+            </button>
+            <span role="status" style={{ fontSize: 12 }}>{slotNavigation.message}</span>
+            <a href="/downloads/lunalive-slot-switcher.zip" style={{ fontSize: 12, color: "#c8baff", textDecoration: "underline" }}>Extension navigateur</a>
+          </div>
+        ) : null}
         {!opening ? (
           currentFarm ? (
             <div className="huntCurrentCard">
