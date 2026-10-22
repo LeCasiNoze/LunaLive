@@ -176,7 +176,7 @@ export function HuntTabs({
   const [state, setState] = React.useState<ApiCallsHuntState | null>(null);
 
   const [showOpts, setShowOpts] = React.useState(false);
-  const slotNavigation = useSlotNavigation(streamerSlug, canNavigateSlots && canModerate && !getOpening(state));
+  const slotNavigation = useSlotNavigation(streamerSlug, canNavigateSlots && canModerate);
   const farmActionBusy = React.useRef(false);
   const [generateCount,setGenerateCount]=React.useState(10);
   const [generateMessage,setGenerateMessage]=React.useState<string|null>(null);
@@ -1246,7 +1246,7 @@ async function doPass() {
 
             {optsSection === "options" ? (
               <>
-        {canNavigateSlots && canModerate && !opening ? (
+        {canNavigateSlots && canModerate ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
             <button type="button" role="switch" aria-checked={slotNavigation.enabled}
               onClick={() => void slotNavigation.toggle()}

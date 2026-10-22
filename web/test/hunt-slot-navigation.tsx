@@ -11,12 +11,17 @@ window.fetch=async(input,init)=>{
  let result:any={ok:true};
  if(path.endsWith("/pass") && init?.method==="POST")result.removedId=fixture.queue.shift()?.id;
  if(path.endsWith("/bonus") && init?.method==="POST"){const bonus=fixture.queue.shift();if(bonus){fixture.bonuses.push({...bonus,betEur:0.2,payEur:null});result.bonusId=bonus.id;}}
- if(path.endsWith("/state"))result={ok:true,mode:"farm",currentCall:fixture.staleCall || fixture.queue[0]||null,queue:fixture.queue,bonusDrops:fixture.bonuses,startEur:500,callsCount:fixture.queue.length};
+ if(path.endsWith("/state"))result={ok:true,mode:fixture.opening?"open":"farm",currentCall:fixture.staleCall || fixture.queue[0]||null,queue:fixture.queue,bonusDrops:fixture.bonuses,startEur:500,callsCount:fixture.queue.length};
  return new Response(JSON.stringify(result),{status:200,headers:{"Content-Type":"application/json"}});
 };
 window.addEventListener("message",event=>{
  const m=event.data;if(m?.channel!=="lunalive-hunt-slots-v1" || m.direction!=="request")return;
  if(m.type==="open")fixture.navigations.push(m.slot);
- window.postMessage({channel:m.channel,direction:"response",id:m.id,ok:true,message:m.type==="enable"?"Shuffle prêt.":m.type==="open"?"Ouverture demandée : "+m.slot.name:"Désactivé."},location.origin);
+ window.postMessage({channel:m.channel,direction:"response",id:m.id,ok:!(fixture.navigationFail && m.type==="open"),message:m.type==="enable"?"Shuffle prêt.":m.type==="open"?"Ouverture demandée : "+m.slot.name:"Désactivé."},location.origin);
 });
-createRoot(document.getElementById("root")!).render(<React.StrictMode><div style={{maxWidth:920,margin:"30px auto"}}><h1>Hunt personnel — test local</h1><HuntTabs token="fixture-not-a-real-token" streamerSlug="fixture" canModerate={true} canNavigateSlots={true}/></div></React.StrictMode>);
+function Fixture(){
+ const [mounted,setMounted]=React.useState(true);
+ fixture.setMounted=setMounted;
+ return <div style={{maxWidth:920,margin:"30px auto"}}><h1>Hunt personnel — test local</h1>{mounted&&<HuntTabs token="fixture-not-a-real-token" streamerSlug="fixture" canModerate={true} canNavigateSlots={true}/>}</div>;
+}
+createRoot(document.getElementById("root")!).render(<React.StrictMode><Fixture/></React.StrictMode>);
