@@ -3,13 +3,14 @@ import * as React from "react";
 import type { ApiUser } from "../lib/api";
 import { loadToken, saveToken } from "../lib/storage";
 import { me, claimDailyBonus } from "../lib/api";
+import { isSessionRejected } from "../lib/api_error";
 
 import { DailyBonusAgendaModal, type DailyBonusState } from "../components/DailyBonusAgendaModal";
 
 type AuthCtx = {
   token: string | null;
   user: ApiUser | null;
-  setAuth: (token: string, user: ApiUser) => void;
+  setAuth: (token: string, user: ApiUser | null) => void;
   logout: () => void;
   refreshMe: () => Promise<void>;
   patchUser: (patch: Partial<ApiUser>) => void;
@@ -59,10 +60,12 @@ function lsSet(k: string, v: string) {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() => loadToken());
   const [user, setUser] = React.useState<ApiUser | null>(null);
+  const currentToken = React.useRef(token);
 
   React.useEffect(() => {
     const syncToken = () => {
       const next = loadToken();
+      currentToken.current = next;
       setToken((current) => current === next ? current : next);
       if (!next) setUser(null);
     };
@@ -74,14 +77,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [dailyBonusPopup, setDailyBonusPopup] = React.useState<DailyBonusState | null>(null);
 
   const logout = React.useCallback(() => {
+    currentToken.current = null;
     setToken(null);
     setUser(null);
     saveToken(null);
   }, []);
 
-  const setAuth = React.useCallback((t: string, u: ApiUser) => {
+  const setAuth = React.useCallback((t: string, u: ApiUser | null) => {
+    currentToken.current = t;
     setToken(t);
-    setUser(normalizeUser(u));
+    setUser(u ? normalizeUser(u) : null);
     saveToken(t);
   }, []);
 
@@ -97,9 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!token) return;
     try {
       const r = await me(token);
+      if (currentToken.current !== token) return;
       setUser(normalizeUser(r.user));
-    } catch {
-      logout();
+    } catch (error) {
+      // Network failures, 429 and server errors do not invalidate a session.
+      // An old request must also never log out a newly connected account.
+      if (currentToken.current === token && isSessionRejected(error)) logout();
     }
   }, [token, logout]);
 
@@ -170,10 +178,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onFocus);
 
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onFocus);
     };
   }, [token, refreshMe, tryClaimDailyBonus]);
 

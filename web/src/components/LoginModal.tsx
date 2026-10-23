@@ -375,6 +375,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     const ref = readRefFromUrlAndPersist() || refSlug || getPersistedRef();
     const utm = getStoredUtm();
     const params = new URLSearchParams();
+    params.set("returnOrigin", window.location.origin);
     if (ref) params.set("ref", ref);
     if (utm) params.set("utm", JSON.stringify(utm));
     const qs = params.toString();

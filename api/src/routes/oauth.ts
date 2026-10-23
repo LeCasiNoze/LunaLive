@@ -15,6 +15,7 @@ import { hashPassword, signToken } from "../auth.js";
 import { getClientIp } from "../utils/client_ip.js";
 import { defaultAvatarPath } from "./auth.js";
 import {issueCommunityCode,validChallenge} from '../nozecoins/community-session.js';
+import { discordNeedsConsent, oauthReturnOrigin } from '../utils/oauth_navigation.js';
 
 export const oauthRouter = Router();
 
@@ -42,6 +43,8 @@ type OAuthState = {
   utm: string | null; // JSON déjà nettoyé (mêmes clés que /auth/register), ou null
   n: string;
   communityChallenge?: string;
+  returnOrigin?: string;
+  discordConsent?: boolean;
 };
 
 function signState(state: OAuthState) {
@@ -56,8 +59,8 @@ function redirectUriFor(provider: OAuthProvider) {
   return `${OAUTH_CALLBACK_BASE}/auth/oauth/${provider}/callback`;
 }
 
-function doneUrl(hash: string) {
-  return `${PUBLIC_WEB_BASE}/oauth/done#${hash}`;
+function doneUrl(hash: string, returnOrigin?: string) {
+  return `${oauthReturnOrigin(returnOrigin, PUBLIC_WEB_BASE)}/oauth/done#${hash}`;
 }
 
 function providerCreds(provider: OAuthProvider) {
@@ -96,12 +99,13 @@ function buildGoogleAuthUrl(clientId: string, redirectUri: string, state: string
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-function buildDiscordAuthUrl(clientId: string, redirectUri: string, state: string, identifyOnly=false) {
+function buildDiscordAuthUrl(clientId: string, redirectUri: string, state: string, identifyOnly=false, consent=false) {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
     scope: identifyOnly ? "identify" : "identify email",
+    prompt: consent ? 'consent' : 'none',
     state,
   });
   return `https://discord.com/oauth2/authorize?${params.toString()}`;
@@ -127,7 +131,7 @@ oauthRouter.get(
     const community=req.query.community==='1';
     const challenge=req.query.challenge;
     if(community&&(providerParam!=='discord'||!validChallenge(challenge)))return res.status(400).json({ok:false,error:'invalid_challenge'});
-    const state = signState({ p: providerParam, ref, utm, n: randomBytes(8).toString("hex"),...(community?{communityChallenge:String(challenge)}:{}) });
+    const state = signState({ p: providerParam, ref, utm, n: randomBytes(8).toString("hex"),returnOrigin:oauthReturnOrigin(req.query.returnOrigin,PUBLIC_WEB_BASE),...(community?{communityChallenge:String(challenge)}:{}) });
     const redirectUri = redirectUriFor(providerParam);
     const authUrl =
       providerParam === "google"
@@ -346,9 +350,17 @@ oauthRouter.get(
       return res.redirect(302, doneUrl("error=oauth_failed"));
     }
 
-    if(!code)return res.redirect(302,state.communityChallenge?'https://lecasinoze.onrender.com/shop/#community_error=connexion_annulee':doneUrl('error=oauth_failed'));
     const { clientId, clientSecret } = providerCreds(providerParam);
-    if (!clientId || !clientSecret) return res.redirect(302, doneUrl("error=oauth_not_configured"));
+    if (!clientId || !clientSecret) return res.redirect(302, doneUrl("error=oauth_not_configured",state.returnOrigin));
+    if(!code){
+      if(providerParam==='discord' && discordNeedsConsent(req.query.error,!!state.discordConsent)){
+        const retryState=signState({p:state.p,ref:state.ref,utm:state.utm,
+          communityChallenge:state.communityChallenge,returnOrigin:state.returnOrigin,
+          n:randomBytes(8).toString('hex'),discordConsent:true});
+        return res.redirect(302,buildDiscordAuthUrl(clientId,redirectUriFor('discord'),retryState,!!state.communityChallenge,true));
+      }
+      return res.redirect(302,state.communityChallenge?'https://lecasinoze.onrender.com/shop/#community_error=connexion_annulee':doneUrl('error=oauth_failed',state.returnOrigin));
+    }
 
     if(state.communityChallenge){
       const destination='https://lecasinoze.onrender.com/shop/';
@@ -368,14 +380,14 @@ oauthRouter.get(
           ? await exchangeGoogle(code, clientId, clientSecret, redirectUri)
           : await exchangeDiscord(code, clientId, clientSecret, redirectUri);
 
-      if (!profile) return res.redirect(302, doneUrl("error=oauth_failed"));
+      if (!profile) return res.redirect(302, doneUrl("error=oauth_failed",state.returnOrigin));
 
       const token = await loginOrCreateUser(providerParam, profile, state, req);
-      return res.redirect(302, doneUrl(`token=${encodeURIComponent(token)}`));
+      return res.redirect(302, doneUrl(`token=${encodeURIComponent(token)}`,state.returnOrigin));
     } catch (e) {
-      if (e instanceof OAuthEmailConflictError) return res.redirect(302, doneUrl("error=email_conflict"));
+      if (e instanceof OAuthEmailConflictError) return res.redirect(302, doneUrl("error=email_conflict",state.returnOrigin));
       console.warn(`[oauth/${providerParam}] callback failed:`, (e as any)?.message || e);
-      return res.redirect(302, doneUrl("error=oauth_failed"));
+      return res.redirect(302, doneUrl("error=oauth_failed",state.returnOrigin));
     }
   })
 );

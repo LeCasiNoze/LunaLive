@@ -1,4 +1,5 @@
 import { loadToken } from "./storage";
+import { ApiError } from "./api_error";
 export type ApiUser = {
   id: number;
   username: string;
@@ -273,7 +274,7 @@ async function j<T>(path: string, init: RequestInit = {}): Promise<T> {
       data?.message ||
       (text && text.length < 200 ? text : null) ||
       `API ${r.status}`;
-    throw new Error(String(msg));
+    throw new ApiError(String(msg), r.status, typeof data?.error === 'string' ? data.error : undefined);
   }
 
   return data as T;

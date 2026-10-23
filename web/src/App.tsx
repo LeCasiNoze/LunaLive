@@ -93,6 +93,7 @@ import { captureUtmFromUrl } from "./lib/utm";
 import { installFxScrollPause } from "./lib/fxScrollPause";
 import { LevelUpToast } from "./components/LevelUpToast";
 import { me } from "./lib/api";
+import { loadToken } from "./lib/storage";
 
 function AppInner() {
   const location = useLocation();
@@ -158,12 +159,17 @@ function AppInner() {
 
     (async () => {
       if (oauthToken) {
+        // Keep the successful OAuth session even if /me is temporarily down.
+        // AuthProvider retries on focus, network recovery and its normal poll.
+        setAuth(oauthToken, null);
         try {
           const r = await me(oauthToken);
-          setAuth(oauthToken, r.user);
-          window.dispatchEvent(new CustomEvent("ui:login_success"));
+          if (loadToken() === oauthToken) {
+            setAuth(oauthToken, r.user);
+            window.dispatchEvent(new CustomEvent("ui:login_success"));
+          }
         } catch {
-          // token invalide/expiré côté API → on ignore, l'utilisateur reste déconnecté
+          // AuthProvider clears rejected sessions, but retains transient failures.
         }
       }
       navigate("/", { replace: true });
