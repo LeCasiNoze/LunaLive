@@ -6,6 +6,7 @@ import { parseRumbleCategoryLives as parseObservedCategory } from "./observatory
 import { pool } from "./db.js";
 import { createDiscoveryCache } from "./utils/discovery_cache.js";
 import { hasReadableHlsSegment } from "./utils/hls_probe.js";
+import { sameRumbleLive } from "./utils/rumble_live_identity.js";
 import {followSnapshot} from './automod-shop/follow-snapshot.js';
 
 export interface RumbleLiveInfo {
@@ -977,7 +978,10 @@ export async function fetchRumbleLiveInfoFromUsername(username: string, streamer
 
   // Rumble peut repondre 403 sur embedJS tout en servant normalement le live.
   // Une chunklist CDN sans ENDLIST est alors notre source de verite.
-  const matchingCachedHls = cachedLiveId?.toLowerCase() === vSlug.toLowerCase() ? cachedHlsUrl : null;
+  const matchingCachedHls = sameRumbleLive(
+    { videoId: cachedLiveId, videoIdNumeric: cachedVideoIdNumeric },
+    { videoId: vSlug, videoIdNumeric: categoryLive?.videoIdNumeric || null },
+  ) ? cachedHlsUrl : null;
   const fallbackHls = await resolveActiveHlsFromSlug(vSlug, matchingCachedHls);
   if (!fallbackHls) {
     console.log(`[rumble][pseudo-only] ${username}: ${vSlug} pas de chunklist live active`);
