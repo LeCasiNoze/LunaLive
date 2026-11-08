@@ -26,6 +26,7 @@ import {fetchAutomodProfile,coinRequest,fetchLinkedCoinNames,coinSupportRewards,
 import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.js";
 import {startPublicationAnnouncements} from './publication-announcements.js';
 import { cnzRoleChange } from './cnz-role.js';
+import { handleRainbetVerification } from './rainbet.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -477,7 +478,7 @@ async function logMemberDeparture(member: GuildMember | PartialGuildMember, conf
   await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
 }
 
-async function routeInteraction(interaction: Interaction, config: NozeBotConfig): Promise<void> {
+async function routeInteraction(interaction: Interaction, config: NozeBotConfig, pool?: Pool): Promise<void> {
   try {
     if (await handleNozeBotCommand(interaction, config.commands)) return;
     if (await handleRulesAcceptance(interaction, config)) return;
@@ -485,6 +486,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig)
     if (await handleTicketCreation(interaction, config)) return;
     if (await handleOtherTicketModal(interaction, config)) return;
     if (await handleTicketClosure(interaction, config)) return;
+    if (await handleRainbetVerification(interaction, config.guildId, pool)) return;
   } catch (error) {
     console.error("[nozebot] interaction failed", error);
     const message = "NozeBot a rencontré un problème. Réessaie dans quelques instants.";
@@ -620,7 +622,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
       channelId: interaction.channelId,
       userId: interaction.user.id,
     });
-    void routeInteraction(interaction, config);
+    void routeInteraction(interaction, config, pool);
   });
   client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
     console.error("[nozebot] member welcome failed", error);
