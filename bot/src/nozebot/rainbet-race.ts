@@ -11,14 +11,18 @@ const PARTNER_GUILD_IDS=()=>(process.env.NOZEBOT_RAINBET_RACE_PARTNER_GUILDS||''
 const RANKS=['🥇','🥈','🥉','4.','5.','6.','7.','8.','9.','10.'];
 
 export type RaceEntry={username:string;wagered:number};
-export type MonthRange={start:string;end:string;endsAt:Date;label:string};
+export type RaceRange={start:string;end:string;endsAt:Date;label:string};
+// The first race ran from Monday 9 November 2026; earlier weeks never had prizes.
+export const RACE_FIRST_START='2026-11-09';
 
-export function monthRange(now:Date,offset=0):MonthRange{
-  const first=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+offset,1));
-  const next=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,1));
-  const last=new Date(next.getTime()-86_400_000);
+// Weekly race, Monday to Sunday included. RainBet filters by calendar date (UTC), so the week closes at Monday 00:00 UTC.
+export function weekRange(now:Date,offset=0):RaceRange{
+  const today=Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),now.getUTCDate());
+  const monday=new Date(today-((now.getUTCDay()+6)%7)*86_400_000+offset*7*86_400_000);
+  const sunday=new Date(monday.getTime()+6*86_400_000),next=new Date(monday.getTime()+7*86_400_000);
   const iso=(d:Date)=>d.toISOString().slice(0,10);
-  return {start:iso(first),end:iso(last),endsAt:next,label:first.toLocaleDateString('fr-FR',{month:'long',year:'numeric',timeZone:'UTC'})};
+  const day=(d:Date,withMonth:boolean)=>d.toLocaleDateString('fr-FR',withMonth?{day:'numeric',month:'long',timeZone:'UTC'}:{day:'numeric',timeZone:'UTC'});
+  return {start:iso(monday),end:iso(sunday),endsAt:next,label:`semaine du ${day(monday,monday.getUTCMonth()!==sunday.getUTCMonth())} au ${day(sunday,true)}`};
 }
 
 export function maskName(name:string):string{
@@ -35,29 +39,28 @@ export function ranking(entries:readonly RaceEntry[]){
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/ | /g,' ')} $`;
 
 export async function racePanel(current:RaceEntry[],previous:RaceEntry[],now:Date){
-  const month=monthRange(now),prev=monthRange(now,-1);
+  const week=weekRange(now),prev=weekRange(now,-1);
   const top=ranking(current);
   const pot=RACE_PRIZES_EUR.reduce((a,b)=>a+b,0);
-  const lastDay=new Date(month.endsAt.getTime()-1).toLocaleDateString('fr-FR',{day:'numeric',month:'long',timeZone:'UTC'});
-  const image=await renderRace({month:month.label,endsLabel:`fin le ${lastDay}`,pot,prizes:RACE_PRIZES_EUR,minWagerUsd:RACE_MIN_WAGER_USD,
+  const image=await renderRace({month:week.label,endsLabel:'fin dimanche minuit',pot,prizes:RACE_PRIZES_EUR,minWagerUsd:RACE_MIN_WAGER_USD,
     rows:top.map(e=>({rank:e.rank,name:maskName(e.username),wagered:e.wagered,prize:e.prize})),
     updatedLabel:now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Paris'})});
   const embed=new EmbedBuilder().setColor(16747069).setTitle(RACE_TITLE).setURL(REFERRAL_URL)
     .setDescription([
-      `**${pot} € à gagner en ${month.label}** · ${RACE_PRIZES_EUR.map((p,i)=>`${RANKS[i]} ${p} €`).join(' · ')}`,
-      `Fin de la race <t:${Math.floor(month.endsAt.getTime()/1000)}:R>`,
-      `Inscris-toi avec notre lien RainBet, joue, et grimpe au classement. **${usd(RACE_MIN_WAGER_USD)} misés minimum** sur le mois pour être payé.`,
+      `**${pot} € à gagner chaque semaine** · ${RACE_PRIZES_EUR.map((p,i)=>`${RANKS[i]} ${p} €`).join(' · ')}`,
+      `Race de la ${week.label} · fin <t:${Math.floor(week.endsAt.getTime()/1000)}:R>`,
+      `Inscris-toi avec notre lien RainBet, joue, et grimpe au classement. **${usd(RACE_MIN_WAGER_USD)} misés minimum** sur la semaine pour être payé.`,
     ].join('\n'))
     .setImage('attachment://wager-race.png')
     .setFooter({text:'18+ · Joue de façon responsable · Classement mis à jour toutes les 5 min'})
     .setTimestamp(now);
-  const winners=ranking(previous).filter(e=>e.prize);
-  if(winners.length)embed.addFields({name:`🏆 Gagnants de ${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} €**`).join('\n')});
+  const winners=prev.start>=RACE_FIRST_START?ranking(previous).filter(e=>e.prize):[];
+  if(winners.length)embed.addFields({name:`🏆 Gagnants de la ${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} €**`).join('\n')});
   return {embeds:[embed],files:[new AttachmentBuilder(image,{name:'wager-race.png'})],attachments:[] as never[],
     components:[{type:1,components:[{type:2,style:5,label:'Rejoindre la race',emoji:{name:'🏁'},url:REFERRAL_URL}]}],allowedMentions:{parse:[] as never[]}};
 }
 
-async function fetchWagers(range:MonthRange):Promise<RaceEntry[]>{
+async function fetchWagers(range:RaceRange):Promise<RaceEntry[]>{
   const key=process.env.RAINBET_AFFILIATE_API_KEY?.trim();
   if(!key)throw Error('RAINBET_AFFILIATE_API_KEY absent');
   const url=`https://services.rainbet.com/v1/external/affiliates?key=${encodeURIComponent(key)}&start_at=${range.start}&end_at=${range.end}`;
@@ -99,7 +102,7 @@ export function startRainbetRace(client:Client):()=>void{
     running=true;
     try{
       const now=new Date();
-      const [current,previous]=await Promise.all([fetchWagers(monthRange(now)),fetchWagers(monthRange(now,-1))]);
+      const [current,previous]=await Promise.all([fetchWagers(weekRange(now)),fetchWagers(weekRange(now,-1))]);
       const payload=await racePanel(current,previous,now);
       for(const channel of await raceChannels(client))
         await upsert(channel,payload).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));

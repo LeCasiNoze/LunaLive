@@ -51,7 +51,7 @@ export function buildRaceSvg(input:RaceImageInput):string{
     <circle cx="600" cy="300" r="230" fill="#ff8a3d" opacity=".10" filter="url(#glow)"/>
     <circle cx="1080" cy="80" r="120" fill="#45e0a8" opacity=".08" filter="url(#glow)"/>
     <text x="60" y="78" fill="#ffffff" font-size="40" font-weight="900" letter-spacing="3">WAGER RACE</text>
-    <text x="60" y="114" fill="#a99dbb" font-size="22">RainBet × LeCasiNoze · ${esc(input.month)} · ${esc(input.endsLabel)}</text>
+    <text x="60" y="114" fill="#a99dbb" font-size="22">RainBet × LeCasiNoze × Belva · ${esc(input.month)} · ${esc(input.endsLabel)}</text>
     <rect x="930" y="44" width="210" height="72" rx="20" fill="#ff8a3d" fill-opacity=".12" stroke="#ff8a3d" stroke-width="2"/>
     <text x="1035" y="92" text-anchor="middle" fill="#ffb067" font-size="36" font-weight="900">${input.pot} €</text>
     ${podium(rows.find(r=>r.rank===2),2,60,215,input.prizes[1])}
