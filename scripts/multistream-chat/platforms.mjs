@@ -40,12 +40,12 @@ export class PlatformApi {
     this.platform=platform; this.vault=vault; this.origin=origin; this.fetch=fetchImpl; this.refreshing=null;
   }
   redirect() {return this.origin+'/multichat/oauth/'+this.platform+'/callback';}
-  async authorization(state,verifier,{titles=false,manageTitles=false,follows=false}={}) {
+  async authorization(state,verifier,{titles=false,manageTitles=false,follows=false,moderation=false}={}) {
     titles ||= manageTitles;
     const credential=await this.vault.get(this.platform);
     if(!credential.clientId||!credential.clientSecret)throw Error('application_not_configured');
     const url=new URL(SPECS[this.platform].authorize);
-    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:[...new Set([...SCOPES[this.platform],...(credential.scopes||[]),...(titles?[TITLE_SCOPES[this.platform]]:[]),...(follows&&this.platform==='twitch'?['moderator:read:followers']:[])])].join(' '),state};
+    const params={client_id:credential.clientId,redirect_uri:this.redirect(),response_type:'code',scope:[...new Set([...SCOPES[this.platform],...(credential.scopes||[]),...(titles?[TITLE_SCOPES[this.platform]]:[]),...(follows&&this.platform==='twitch'?['moderator:read:followers']:[]),...(moderation&&this.platform==='kick'?['moderation:ban','moderation:chat_message:manage']:[])])].join(' '),state};
     if(this.platform==='kick')Object.assign(params,{code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
     else params.force_verify='true';
     for(const [key,value]of Object.entries(params))url.searchParams.set(key,value);
@@ -62,7 +62,7 @@ export class PlatformApi {
     if(SCOPES[this.platform].some(scope=>!scopes.includes(scope)))throw new ApiError('missing_required_scopes');
     return {...credential,accessToken:body.access_token,refreshToken:body.refresh_token||credential.refreshToken,expiresAt:Date.now()+Number(body.expires_in)*1000,scopes,refreshedAt:new Date().toISOString(),lastError:null};
   }
-  async exchange(code,verifier,{titles=false,follows=false}={}) {
+  async exchange(code,verifier,{titles=false,follows=false,moderation=false}={}) {
     const old=await this.vault.get(this.platform);
     const credential=await this.tokenRequest(old,{grant_type:'authorization_code',code,redirect_uri:this.redirect(),...(this.platform==='kick'?{code_verifier:verifier}:{})});
     const headers=this.headers(credential);
@@ -77,6 +77,7 @@ export class PlatformApi {
     if(!channelId||String(this.platform==='twitch'?channel?.login:channel?.slug).toLowerCase()!=='lecasinoze')throw new ApiError('wrong_broadcaster');
     if(titles&&(!credential.scopes.includes(TITLE_SCOPES[this.platform])||userId!==channelId||login!=='lecasinoze'))throw new ApiError('title_broadcaster_permission_required',403);
     if(follows&&this.platform==='twitch'&&(!credential.scopes.includes('moderator:read:followers')||userId!==channelId))throw new ApiError('follow_broadcaster_permission_required',403);
+    if(moderation&&(this.platform!=='kick'||userId!==channelId||!['moderation:ban','moderation:chat_message:manage'].every(scope=>credential.scopes.includes(scope))))throw new ApiError('moderation_broadcaster_permission_required',403);
     if((old.scopes||[]).some(scope=>!credential.scopes.includes(scope)))throw new ApiError('existing_permissions_missing',403);
     Object.assign(credential,{login,userId,channelId,connectedAt:new Date().toISOString()});
     await this.vault.save(this.platform,credential);return credential;

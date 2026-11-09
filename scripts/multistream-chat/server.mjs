@@ -103,7 +103,8 @@ const server=createServer(async(req,res)=>{try{
     const code=url.searchParams.get('code');if(!code)return reply(res,400,{ok:false,error:'authorization_code_missing'});
     const titles=store.get('titleOauth:'+url.searchParams.get('state'))===true;
     const follows=store.get('followOauth:'+url.searchParams.get('state'))===true;
-    await apis[platform].exchange(code,pending.verifier,{titles,follows});
+    const moderation=store.get('moderationOauth:'+url.searchParams.get('state'))===true;
+    await apis[platform].exchange(code,pending.verifier,{titles,follows,moderation});
     if(platform==='twitch'){twitch.stop();if(store.get('enabled',false))twitch.start();}
     if(titles){titleSync.retryAt[platform]=0;void titleSync.tick().catch(()=>{});}
     void maintain();
@@ -138,10 +139,12 @@ const server=createServer(async(req,res)=>{try{
     await vault.save(p,{...old,clientId:body.clientId,clientSecret:body.clientSecret});return reply(res,200,{ok:true});
   }
   if(req.method==='GET'&&/^\/multichat\/oauth\/(kick|twitch)\/start$/.test(path)){
+    const moderation=platform==='kick'&&url.searchParams.get('moderation')==='1';
     const follows=url.searchParams.get('follows')==='1',titles=url.searchParams.get('titles')==='1',pending=store.oauth(platform);
+    if(moderation)store.set('moderationOauth:'+pending.state,true);
     if(titles)store.set('titleOauth:'+pending.state,true);
     if(follows)store.set('followOauth:'+pending.state,true);
-    const location=await apis[platform].authorization(pending.state,pending.verifier,{titles,follows});
+    const location=await apis[platform].authorization(pending.state,pending.verifier,{titles,follows,moderation});
     res.writeHead(303,{Location:location,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});return res.end();
   }
   if(req.method==='POST'&&path==='/multichat/api/control'){

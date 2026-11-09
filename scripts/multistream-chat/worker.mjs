@@ -1,11 +1,20 @@
 import {twitchReplyAllowed} from './security.mjs';
 import {planChatEvent} from './relay-policy.mjs';
 import {compactBotReply} from './chat-display.mjs';
+import {KickCommunity} from './kick-community.mjs';
+import {isMusicCommand,kickViewerText,requestExternalMusic} from './crosschat.mjs';
 
 export class RelayWorker {
   constructor({store,apis,pool,apiBase,botKey,fetchImpl=fetch,onStatus=()=>{}}) {
     Object.assign(this,{store,apis,pool,apiBase,botKey,fetch:fetchImpl,onStatus});
     this.busy=false;this.lastSent=0;this.credentials={};
+    this.kickCommunity=new KickCommunity({store,api:apis.kick,onStatus});
+  }
+  isSuppressed(event) {
+    if(event?.platform!=='kick')return false;
+    return this.store.get('suppressedKickUsers',[]).some(entry=>
+      (entry.userId && String(entry.userId)===String(event.userId)) ||
+      String(entry.username||'').toLowerCase()===String(event.username||'').toLowerCase());
   }
   async configuration() {
     const config={streamerSlug:'lecasinoze',channels:{},botUserIds:{},sharedSenderIds:{},mirrorTargets:{}};
@@ -18,6 +27,7 @@ export class RelayWorker {
     return config;
   }
   async receive(event) {
+    if(this.isSuppressed(event))return {accepted:false,reason:'owner_muted_spam'};
     if(event.platform==='kick'&&/^botrix$/i.test(event.username||'')){
       // These existing public invites were checked against Discord: same guild.
       if(/https:\/\/discord\.gg\/(?:fUjnwHkZUw|36TMsTNxJD|6kq3PFu8B5)(?:\b|$)/.test(event.text||''))this.store.set('kickExternalDiscordAt',Date.now());
@@ -30,10 +40,14 @@ export class RelayWorker {
       return {accepted:true,duplicate:!inserted};
     }
     if(String(event.userId)===String(this.credentials[event.platform]?.userId)&&this.store.own(event.platform,event.messageId,event.text))event={...event,origin:'relay'};
+    if(this.kickCommunity.isOwnWelcome(event))return {accepted:false,reason:'kick_welcome_echo'};
     const plan=planChatEvent(event,config);
     if(plan.ignored)return {accepted:false,reason:plan.reason};
+    const moderation=this.kickCommunity.inspect(event);
+    if(moderation.blocked)return {accepted:false,reason:'kick_ad_spam'};
     // Persist before acknowledging a Kick delivery / processing a WS event.
     const inserted=this.store.receive(plan.eventKey,event);
+    if(inserted&&moderation.hold)this.kickCommunity.hold(plan.eventKey);
     this.onStatus({lastReceivedAt:new Date().toISOString(),lastSource:event.platform});
     return {accepted:true,duplicate:!inserted};
   }
@@ -49,6 +63,8 @@ export class RelayWorker {
   }
   async processInbox() {
     const item=this.store.nextInbox();if(!item)return;
+    if(this.isSuppressed(item.event)){this.store.finishInbox(item.id,'ignored','owner_muted_spam');return;}
+    if(this.kickCommunity.beforeRelay(item))return;
     if(Date.now()-item.created>10*60_000){this.store.finishInbox(item.id,'expired','event_older_than_10_minutes');return;}
     // This endpoint reuses the API's calls handler and shared chat. A stable ID
     // makes HTTP retries harmless; no personal JWT is ever used here.
@@ -63,12 +79,24 @@ export class RelayWorker {
     let result;try{result=await r.json();}catch{this.store.finishInbox(item.id,'pending','invalid_bridge_response');return;}
     if(result.ok!==true){this.store.finishInbox(item.id,'blocked','bridge_not_confirmed');return;}
     if(item.event.kind==='follow'&&result.obsAlert!=='sent'){this.store.finishInbox(item.id,'uncertain','follow_alert_delivery_uncertain');return;}
+    if(item.event.kind!=='follow'&&isMusicCommand(item.event.text)){
+      try{
+        const replies=await requestExternalMusic(this.fetch,item.event);
+        replies.forEach((text,index)=>{
+          if(item.event.platform!=='twitch'||twitchReplyAllowed(text))this.store.enqueueBot(`music:${item.id}:${index}`,item.event.platform,text);
+        });
+      }catch(error){
+        this.store.finishInbox(item.id,error.message==='music_request_uncertain'?'uncertain':'pending','music_request_unavailable');
+        return;
+      }
+    }
     // Twitch receives only replies to commands actually entered on Twitch.
     // Kick receives shared chat from the common DB tail, not a second path.
     if(item.event.kind!=='follow'&&item.event.platform==='twitch')for(const reply of result.replies||[]){
       const text=compactBotReply(reply.body);
       if(reply.id&&text&&twitchReplyAllowed(text))this.store.enqueueBot('db:'+reply.id+':twitch','twitch',text);
     }
+    this.kickCommunity.greet(item.event,item.created);
     this.store.finishInbox(item.id);this.onStatus({bridgeError:null,lastSyncedAt:new Date().toISOString()});
   }
   async tail() {
@@ -93,7 +121,7 @@ export class RelayWorker {
       if(kick?.channelId&&row.external_source!=='kick'&&!rumbleEcho&&Date.now()-new Date(row.created_at).getTime()<10*60_000){
         const source=row.external_source==='twitch'?'Twitch':row.external_source==='rumble'?'Rumble':'LunaLive';
         const isBot=this.botUserId>0&&Number(row.user_id)===this.botUserId;
-        const text=isBot?compactBotReply(row.body):row.user_id>0?`[${source}] ${row.username} : ${row.body}`:row.body;
+        const text=isBot?compactBotReply(row.body):kickViewerText(row,source);
         if(text){const enqueue=isBot?this.store.enqueueBot.bind(this.store):this.store.enqueue.bind(this.store);enqueue('db:'+row.id+':kick','kick',Array.from(text).slice(0,500).join(''));}
       }
       // A neutral shared Discord invitation is a bot response, not merged
@@ -108,6 +136,7 @@ export class RelayWorker {
   async send() {
     if(Date.now()-this.lastSent<3100)return;
     const row=this.store.nextOutbox();if(!row)return;
+    if(!this.kickCommunity.shouldSend(row)){this.store.ignoreOutbox(row.id,'kick_welcome_no_longer_eligible');return;}
     const externalDiscordAt=this.store.get('kickExternalDiscordAt',0);
     if(row.platform==='kick'&&/^Discord: https:\/\/discord\.gg\//.test(row.text)&&externalDiscordAt>=row.created-10_000&&Date.now()-externalDiscordAt<20_000){
       this.store.ignoreOutbox(row.id,'discord_already_answered_by_existing_kick_bot');return;
@@ -127,6 +156,7 @@ export class RelayWorker {
     if(this.busy)return;this.busy=true;
     try{
       if(!this.store.get('enabled',false))return;
+      void this.kickCommunity.tick().catch(()=>this.onStatus({kickModerationError:'moderation_tick_failed'}));
       await this.configuration();await this.processInbox();await this.tail();await this.send();
     }finally{this.busy=false;}
   }
