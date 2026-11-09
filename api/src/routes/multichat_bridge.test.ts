@@ -22,6 +22,7 @@ async function fixture(run:(f:any)=>Promise<void>,{failCall=false,processing=fal
     if(sql.includes("SET state='done'")){claims.set(p[0],{state:'done',result:JSON.parse(p[1])});return {rows:[]};}
     if(sql.includes("SET state='uncertain'")){claims.set(p[0],{state:'uncertain'});return {rows:[]};}
     if(sql.startsWith('SELECT event_key'))return {rows:[]};
+    if(sql.includes('FROM external_chat_bans'))return {rows:p[2]==='banned-kick-user'?[{}]:[]};
     throw Error('Unexpected fixture query');
   }} as unknown as Pool;
   (pool as any).connect=async()=>({query:pool.query.bind(pool),release(){}});
@@ -80,3 +81,7 @@ test('an uncertain OBS result is explicit and never blindly replayed',()=>fixtur
  assert.equal((await f.post(follower,'fixture-key','follow')).status,503);
  const replay=await (await f.post(follower,'fixture-key','follow')).json();assert.equal(replay.duplicate,true);assert.equal(replay.obsAlert,'unconfirmed');assert.equal(f.alerts.length,1);
 },{failFollowAlert:true}));
+test('an author banned from the LunaLive chat is neither shown nor able to run commands',()=>fixture(async f=>{
+  const r=await f.post({...sample,userId:'banned-kick-user'});assert.equal(r.status,200);assert.deepEqual(await r.json(),{ok:true,banned:true,replies:[]});
+  assert.equal(f.texts.length,0);assert.equal(f.calls.length,0);assert.equal(f.claims.size,0);
+}));

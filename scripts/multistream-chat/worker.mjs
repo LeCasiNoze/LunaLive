@@ -8,7 +8,7 @@ export class RelayWorker {
   constructor({store,apis,pool,apiBase,botKey,fetchImpl=fetch,onStatus=()=>{}}) {
     Object.assign(this,{store,apis,pool,apiBase,botKey,fetch:fetchImpl,onStatus});
     this.busy=false;this.lastSent=0;this.credentials={};
-    this.kickCommunity=new KickCommunity({store,api:apis.kick,onStatus});
+    this.kickCommunity=new KickCommunity({store,api:apis.kick,pool,onStatus});
   }
   isSuppressed(event) {
     if(event?.platform!=='kick')return false;

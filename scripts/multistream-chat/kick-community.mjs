@@ -5,13 +5,17 @@ export function normalizedText(value) {
   return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '')
     .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, '').toLowerCase()
     .replace(/[аα]/g,'a').replace(/[іιı]/g,'i').replace(/[сϲ]/g,'c')
-    .replace(/[ѕ]/g,'s').replace(/[м]/g,'m').replace(/[’‘]/g,"'");
+    .replace(/[ѕ]/g,'s').replace(/[м]/g,'m').replace(/[ø]/g,'o').replace(/[’‘]/g,"'");
 }
 
 export function spamSignature(text) {
   const clean = normalizedText(text);
-  // Reports about the campaign are not advertisements for it.
-  if (/\b(?:scam|spam|arnaque|attention|report|avoid)\b|don't|ne cliquez/.test(clean)) return null;
+  // Reports about the campaign are not advertisements for it. Sellers also
+  // write "don't get ripped off", so only a warning verb exempts "don't".
+  if (/\b(?:scam|spam|arnaque|attention|report|avoid)\b|don't (?:click|buy|trust|pay)|ne cliquez/.test(clean)) return null;
+  if (/\b(?:views?|viewers?|follows?|followers?)\b.{0,40}\bchat\s*b[o0]ts?\b/.test(clean)
+    || /\bkick\s*\.\s*co\s+m\b/.test(clean)) return 'chat_bot_seller';
+  if (clean.replace(/[^a-z]/g,'').includes('botliva') || /\btype\W{0,4}!noads\b|your chat stays online 24\/7/.test(clean)) return 'ai_chat_service';
   const compact = clean.replace(/[14$]/g,c=>({'1':'i','4':'a','$':'s'}[c])).replace(/[^a-z0-9]/g,'');
   if (compact.includes('kivasmm') && /\b(?:make|create|bring|boost|grow|buy|visit|check|try|join|get|increase|promote)\b/.test(clean)) return 'kivasmm_promotion';
   if (/ai[- ]powered viewers.{0,120}(?:daily|24\/7|around the clock)/.test(clean)
@@ -45,8 +49,8 @@ export function welcomeText(username) {
 }
 
 export class KickCommunity {
-  constructor({store,api,onStatus=()=>{},now=Date.now}) {
-    Object.assign(this,{store,api,onStatus,now});
+  constructor({store,api,pool=null,onStatus=()=>{},now=Date.now}) {
+    Object.assign(this,{store,api,pool,onStatus,now});
     store.db.exec(`CREATE TABLE IF NOT EXISTS kick_spam_accounts(
       user_id TEXT PRIMARY KEY,username TEXT NOT NULL,reason TEXT NOT NULL,detected INTEGER NOT NULL,
       ban_status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,due INTEGER NOT NULL DEFAULT 0,error TEXT);
@@ -121,13 +125,21 @@ export class KickCommunity {
       if(String(credential.channelId)!==CHANNEL || String(credential.userId)!==CHANNEL)return;
       const scopes=credential.scopes || [];
       this.onStatus({kickModeration:MODERATION_SCOPES.every(scope=>scopes.includes(scope))?'ready':'authorization_required'});
+      // A missing API table must not stop the automatic spam bans below.
+      if(scopes.includes('moderation:ban'))await this.lunaliveBans().catch(()=>this.onStatus({kickModerationError:'lunalive_bans_unavailable'}));
       if(scopes.includes('moderation:ban')){
         const row=this.store.db.prepare("SELECT * FROM kick_spam_accounts WHERE ban_status='pending' AND due<=? ORDER BY detected LIMIT 1").get(this.now());
         if(row){
           try{
-            await this.api.request('/moderation/bans',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(CHANNEL),user_id:Number(row.user_id),reason:'Spam publicitaire automatise : faux viewers / KivaSMM'})});
+            const manual=row.reason==='lunalive_moderator_ban';
+            await this.api.request('/moderation/bans',{method:'POST',body:JSON.stringify({broadcaster_user_id:Number(CHANNEL),user_id:Number(row.user_id),reason:manual?'Banni depuis le chat LunaLive':'Spam publicitaire automatise : faux viewers / bots'})});
             this.store.db.prepare("UPDATE kick_spam_accounts SET ban_status='done',error=NULL WHERE user_id=?").run(row.user_id);
-          }catch(error){this.retry('kick_spam_accounts','user_id',row.user_id,'ban_status',row,error);}
+            if(manual)await this.report(row.user_id,'done',null);
+          }catch(error){
+            this.retry('kick_spam_accounts','user_id',row.user_id,'ban_status',row,error);
+            const failed=this.store.db.prepare("SELECT ban_status,error FROM kick_spam_accounts WHERE user_id=?").get(row.user_id);
+            if(row.reason==='lunalive_moderator_ban'&&failed?.ban_status==='failed')await this.report(row.user_id,'failed',failed.error);
+          }
         }
       }
       if(scopes.includes('moderation:chat_message:manage')){
@@ -143,6 +155,30 @@ export class KickCommunity {
         }
       }
     }finally{this.busy=false;}
+  }
+  // Bans decided by LunaLive moderators (API table external_chat_bans).
+  async lunaliveBans() {
+    if(!this.pool)return;
+    const rows=(await this.pool.query(`SELECT b.external_user_id,b.username FROM external_chat_bans b JOIN streamers s ON s.id=b.streamer_id
+      WHERE s.slug='lecasinoze' AND b.platform='kick' AND b.platform_status='pending' LIMIT 20`)).rows;
+    for(const row of rows){
+      const id=String(row.external_user_id);
+      if(!/^\d+$/.test(id)||id===CHANNEL){await this.report(id,'failed','not_bannable');continue;}
+      this.store.db.prepare(`INSERT INTO kick_spam_accounts(user_id,username,reason,detected) VALUES(?,?,'lunalive_moderator_ban',?)
+        ON CONFLICT(user_id) DO UPDATE SET reason='lunalive_moderator_ban',ban_status=CASE WHEN ban_status='done' THEN 'done' ELSE 'pending' END,attempts=0,due=0`).run(id,row.username||id,this.now());
+      this.flag({userId:id,username:row.username||id},'lunalive_moderator_ban');
+      // Messages already relayed (and expired from the local inbox) are deleted on Kick too.
+      const messages=(await this.pool.query("SELECT message_id FROM multichat_bridge_events WHERE platform='kick' AND user_id=$1 AND created_at>NOW()-INTERVAL '1 day'",[id])).rows;
+      const remember=this.store.db.prepare('INSERT OR IGNORE INTO kick_spam_messages(message_id,user_id) VALUES(?,?)');
+      for(const m of messages)remember.run(String(m.message_id),id);
+      const done=this.store.db.prepare("SELECT ban_status FROM kick_spam_accounts WHERE user_id=?").get(id)?.ban_status==='done';
+      await this.report(id,done?'done':'queued',null);
+    }
+  }
+  async report(userId,status,error) {
+    if(!this.pool)return;
+    await this.pool.query(`UPDATE external_chat_bans SET platform_status=$2,platform_error=$3,platform_done_at=CASE WHEN $2='done' THEN NOW() ELSE platform_done_at END
+      WHERE platform='kick' AND external_user_id=$1 AND streamer_id=(SELECT id FROM streamers WHERE slug='lecasinoze')`,[String(userId),status,error]).catch(()=>{});
   }
   retry(table,key,id,status,row,error) {
     const attempts=row.attempts+1;

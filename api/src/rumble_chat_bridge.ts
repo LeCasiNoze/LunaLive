@@ -428,6 +428,8 @@ export function ensureRumbleBridge(opts: {
     }
     if (m.msgId && seenIds.has(m.msgId)) return;
     if (m.msgId) addSeen(m.msgId);
+    // Rumble has no ban adapter: a LunaLive ban hides the author here only.
+    if (m.userId && (await opts.pool.query(`SELECT 1 FROM external_chat_bans WHERE streamer_id=$1 AND platform='rumble' AND external_user_id=$2`,[opts.streamerId,String(m.userId)]).catch(()=>({rows:[]}))).rows.length) return;
 
     // Persist DB (fire-and-forget — l'unique index empêche les doublons)
     persistMessage(m.msgId, m.userId, m.username, m.text, m.createdAt).catch(() => {});

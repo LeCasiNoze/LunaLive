@@ -2374,10 +2374,12 @@ export function ChatPanel({
     closeMenu();
     const ok = window.confirm(`Bannir ${msg.username} ?`);
     if (!ok) return;
-    const ack = await emitSocket("chat:ban", { slug, userId: msg.userId });
+    const ack = await emitSocket("chat:ban", { slug, userId: msg.userId, messageId: msg.id });
     if (!ack?.ok) {
       if (ack?.error === "cannot_self") setError("Impossible de te ban toi-même.");
       else setError(String(ack?.error || "ban_failed"));
+    } else if (ack.platformBan === "unsupported") {
+      setError(`Masqué sur LunaLive. Ban ${ack.platform} à faire sur la plateforme.`);
     }
   }
 

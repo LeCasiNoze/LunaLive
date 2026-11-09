@@ -61,6 +61,8 @@ multichatBridgeRouter.post('/internal/bot/multichat/event',async(req,res)=>{
   try{
     const streamer=(await pool.query("SELECT id,user_id FROM streamers WHERE slug='lecasinoze'")).rows[0];
     if(!streamer)return res.status(404).json({ok:false,error:'streamer_not_found'});
+    const banned=await pool.query('SELECT 1 FROM external_chat_bans WHERE streamer_id=$1 AND platform=$2 AND external_user_id=$3',[streamer.id,event.platform,String(event.userId)]);
+    if(banned.rows.length)return res.json({ok:true,banned:true,replies:[]});
     const claim=await pool.query(`INSERT INTO multichat_bridge_events(event_key,streamer_id,platform,channel_id,message_id,user_id)
       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING RETURNING event_key`,[key,streamer.id,event.platform,event.channelId,event.messageId,event.userId]);
     if(!claim.rowCount){

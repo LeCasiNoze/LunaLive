@@ -162,6 +162,46 @@ async function isBanned(streamerId: number, userId: number) {
   return !!r.rows?.[0];
 }
 
+async function banExternalAuthor(streamerId: number, messageId: number, byUserId: number) {
+  if (!messageId) return { ok: false as const, error: "bad_user" };
+  const m = (await pool.query(
+    `SELECT external_source, external_msg_id FROM chat_messages WHERE id=$1 AND streamer_id=$2`,
+    [messageId, streamerId]
+  )).rows[0];
+  const platform = String(m?.external_source || "");
+  if (!m?.external_msg_id || !["kick", "twitch", "rumble"].includes(platform)) return { ok: false as const, error: "bad_user" };
+
+  const author = platform === "rumble"
+    ? (await pool.query(`SELECT rumble_user_id AS id, username FROM rumble_chat_messages WHERE streamer_id=$1 AND rumble_msg_id=$2`, [streamerId, m.external_msg_id])).rows[0]
+    : (await pool.query(`SELECT e.user_id AS id, c.username FROM multichat_bridge_events e JOIN chat_messages c ON c.id=$4
+         WHERE e.streamer_id=$1 AND e.platform=$2 AND e.message_id=$3 LIMIT 1`, [streamerId, platform, m.external_msg_id, messageId])).rows[0];
+  const externalUserId = String(author?.id || "");
+  if (!externalUserId) return { ok: false as const, error: "external_user_unknown" };
+
+  // Only Kick has a worker with the official moderation API (multichat VPS).
+  const platformBan = platform === "kick" ? "pending" : "unsupported";
+  await pool.query(
+    `INSERT INTO external_chat_bans (streamer_id, platform, external_user_id, username, created_by, platform_status)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (streamer_id, platform, external_user_id) DO UPDATE SET created_by=EXCLUDED.created_by,
+       platform_status=CASE WHEN external_chat_bans.platform_status='done' THEN 'done' ELSE EXCLUDED.platform_status END`,
+    [streamerId, platform, externalUserId, String(author.username || ""), byUserId, platformBan]
+  );
+
+  const deleted = platform === "rumble"
+    ? await pool.query(
+        `UPDATE chat_messages c SET deleted_at=NOW(), deleted_by=$3 FROM rumble_chat_messages r
+         WHERE c.streamer_id=$1 AND c.external_source='rumble' AND c.deleted_at IS NULL AND c.created_at>NOW()-INTERVAL '1 day'
+           AND r.streamer_id=$1 AND r.created_at>NOW()-INTERVAL '1 day' AND r.rumble_msg_id=c.external_msg_id AND r.rumble_user_id=$2
+         RETURNING c.id`, [streamerId, externalUserId, byUserId])
+    : await pool.query(
+        `UPDATE chat_messages c SET deleted_at=NOW(), deleted_by=$4 FROM multichat_bridge_events e
+         WHERE c.streamer_id=$1 AND c.external_source=$2 AND c.deleted_at IS NULL
+           AND e.streamer_id=$1 AND e.platform=$2 AND e.message_id=c.external_msg_id AND e.user_id=$3
+         RETURNING c.id`, [streamerId, platform, externalUserId, byUserId]);
+  return { ok: true as const, platform, platformBan, deletedIds: deleted.rows.map((r: any) => Number(r.id)) };
+}
+
 async function getActiveTimeout(
   streamerId: number,
   userId: number
@@ -1201,6 +1241,53 @@ export function attachChat(io: Server) {
           cb?.({ ok: true });
         } catch (e: any) {
           cb?.({ ok: false, error: String(e?.message || "delete_failed") });
+        }
+      }
+    );
+
+    socket.on(
+      "chat:ban",
+      async ({ slug, userId, messageId, reason }: { slug: string; userId: number; messageId?: number; reason?: string }, cb?: (ack: any) => void) => {
+        try {
+          const u = data.user;
+          if (!u) return cb?.({ ok: false, error: "auth_required" });
+
+          const s = String(slug || data.slug || "").trim();
+          if (!s) return cb?.({ ok: false, error: "bad_slug" });
+
+          const meta = await getStreamerMetaBySlug(s);
+          if (!meta) return cb?.({ ok: false, error: "streamer_not_found" });
+
+          const rp = await computeRolePerms(meta.id, meta.ownerUserId, u);
+          if (!rp.perms.canBan) return cb?.({ ok: false, error: "forbidden" });
+
+          const targetId = Number(userId || 0);
+          if (!targetId) {
+            // Relayed viewers are stored with user_id=0: ban the platform author.
+            const ext = await banExternalAuthor(meta.id, Number(messageId || 0), u.id);
+            if (!ext.ok) return cb?.(ext);
+            for (const id of ext.deletedIds) emitChatAll(io, meta.slug, "chat:message_deleted", { ok: true, id });
+            return cb?.({ ok: true, platform: ext.platform, platformBan: ext.platformBan });
+          }
+          if (targetId === u.id) return cb?.({ ok: false, error: "cannot_self" });
+
+          const r = String(reason || "").trim();
+          await pool.query(
+            `INSERT INTO chat_bans (streamer_id, user_id, created_by, reason)
+             VALUES ($1,$2,$3,$4)
+             ON CONFLICT (streamer_id, user_id)
+             DO UPDATE SET created_at=NOW(), created_by=EXCLUDED.created_by, reason=EXCLUDED.reason`,
+            [meta.id, targetId, u.id, r || null]
+          );
+
+          const targetUsername = await getUsernameById(targetId);
+          await sendBotChat(io, meta, `🚫 ${targetUsername} banni${r ? ` — ${r}` : ""}`);
+          emitChatAll(io, meta.slug, "chat:moderation_changed", { type: "ban", userId: targetId });
+          await pushPermsUpdate(io, meta.slug, meta.id, meta.ownerUserId, targetId);
+
+          cb?.({ ok: true });
+        } catch (e: any) {
+          cb?.({ ok: false, error: String(e?.message || "ban_failed") });
         }
       }
     );
