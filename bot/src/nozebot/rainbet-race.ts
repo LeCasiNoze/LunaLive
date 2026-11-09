@@ -2,7 +2,7 @@ import {AttachmentBuilder,ChannelType,EmbedBuilder,type Client,type Message,type
 import {renderRace} from './race-renderer.js';
 
 export const RACE_TITLE='🏁 Wager Race RainBet';
-export const RACE_PRIZES_EUR=[75,50,25];
+export const RACE_PRIZES_EUR=[100,50,25];
 export const RACE_MIN_WAGER_USD=1000;
 const REFERRAL_URL='https://rainbet.com/?r=nivoranet';
 const MAIN_CHANNEL_ID=()=>process.env.NOZEBOT_RAINBET_RACE_CHANNEL_ID?.trim()||'1569141661403971686';
