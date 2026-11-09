@@ -27,6 +27,7 @@ import { startLeCasiNozeLiveAlerts, type LiveAlertConfig } from "./live-alerts.j
 import {startPublicationAnnouncements} from './publication-announcements.js';
 import { cnzRoleChange } from './cnz-role.js';
 import { handleRainbetVerification } from './rainbet.js';
+import { startRainbetRace } from './rainbet-race.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -689,6 +690,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     catch{console.warn('[nozebot][publications] startup unavailable; retry in 60s');}finally{publicationStarting=false;}};
   const publicationStartup=setInterval(()=>void ensurePublications(),60000);
   void ensurePublications();
+  const stopRainbetRace = startRainbetRace(client);
   const gatewayWatchdog = setInterval(() => {
     if (stopped || client.isReady()) {
       gatewayUnavailableSince = 0;
@@ -710,6 +712,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     clearInterval(supportSync);
     stopLiveAlerts();
     stopPublications();
+    stopRainbetRace();
     clearInterval(publicationStartup);
     client.destroy();
   };
