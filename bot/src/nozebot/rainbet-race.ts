@@ -104,8 +104,9 @@ export function startRainbetRace(client:Client):()=>void{
       const now=new Date();
       const [current,previous]=await Promise.all([fetchWagers(weekRange(now)),fetchWagers(weekRange(now,-1))]);
       const payload=await racePanel(current,previous,now);
+      // discord.js ajoute les fichiers dans payload.attachments à chaque envoi : un tableau neuf par salon.
       for(const channel of await raceChannels(client))
-        await upsert(channel,payload).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));
+        await upsert(channel,{...payload,attachments:[]}).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));
     }catch(error){console.error('[nozebot][race] rafraîchissement impossible',(error as Error)?.message??error);}
     finally{running=false;}
   }
