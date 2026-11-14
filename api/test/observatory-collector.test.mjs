@@ -147,6 +147,56 @@ test("collector fixture end to end: read-only SSE, no bootstrap persistence, com
   }
 });
 
+test("aggregate bounds detail by channel recency so 31 days of retention fit the ingest budget", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "rumble-observatory-bounds-")),
+    config = join(dir, "config.json"),
+    env = {
+      OBSERVATORY_DATA_DIR: dir,
+      OBSERVATORY_CONFIG: config,
+      OBSERVATORY_HMAC_KEY: "test-key".repeat(8),
+      OBSERVATORY_INGEST_TOKEN: "test-token".repeat(8),
+      OBSERVATORY_API_URL: "https://fixture.invalid/observatory/ingest",
+    };
+  await writeFile(config, JSON.stringify({ bots: [], languages: {}, modes: [] }));
+  const original = globalThis.fetch;
+  let snapshot;
+  globalThis.fetch = async (input, init = {}) => {
+    if (String(input).endsWith("/ingest")) {
+      snapshot = JSON.parse(gunzipSync(init.body));
+      return new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify({ complete: true, fetchedAt: Date.now(), lives: [] }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    await (await runCollector(env)).stop();
+    const now = Date.now(), H = 3600000, D = 24 * H;
+    const point = (at) => [at, 5, 1, 1, 0, 0, 1, 1, 1];
+    const db = new DatabaseSync(join(dir, "observatory.sqlite"));
+    for (const [slug, lastSeen] of [["lecasinoze", now - 20 * D], ["active", now - H], ["gone", now - 10 * D]]) {
+      db.prepare("INSERT INTO channels(slug,metadata) VALUES(?,?)").run(slug, JSON.stringify({ slug, name: slug, language: "unknown", languageConfidence: "unknown", mode: "unknown", firstSeen: lastSeen - H, lastSeen, sourceStart: null, latest: point(lastSeen), title: null }));
+      for (const [i, ago] of [[1, 20 * D], [2, 5 * D], [3, D]].filter(([, ago]) => now - ago <= lastSeen))
+        db.prepare("INSERT INTO sessions(channel,video,first,last,mode,minuteSamples,coveredSamples) VALUES(?,?,?,?,?,?,?)").run(slug, "v" + slug.slice(0, 4) + "abc" + i, now - ago - H, now - ago, "unknown", 60, 60);
+      for (const ago of [20 * D, 2 * D]) db.prepare("INSERT INTO daily(channel,t,p) VALUES(?,?,?)").run(slug, now - ago, JSON.stringify(point(now - ago)));
+    }
+    for (const ago of [20 * D, D]) db.prepare("INSERT INTO hourly(channel,t,p) VALUES(?,?,?)").run("@all", now - ago, JSON.stringify(point(now - ago)));
+    db.close();
+    snapshot = null;
+    await (await runCollector(env)).stop();
+    const by = Object.fromEntries(snapshot.channels.map((c) => [c.slug, c]));
+    assert.equal(by.lecasinoze.sessions.length, 1);
+    assert.equal(by.lecasinoze.daily.length, 2);
+    assert.deepEqual(by.active.sessions.map((s) => s.video), ["vactiabc3"]);
+    assert.equal(by.active.daily.length, 1);
+    assert.ok(by.active.metrics);
+    assert.deepEqual([by.gone.sessions, by.gone.daily, by.gone.history], [[], [], []]);
+    assert.equal(by.gone.metrics, undefined);
+    assert.equal(by.gone.lastSeen, now - 10 * D);
+    assert.deepEqual(snapshot.series.all.map((p) => p[0]), [now - D]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 test('VPS budget stops discovery before SSE and does not start the 48h clock',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'rumble-observatory-budget-')),config=join(dir,'config.json');await writeFile(config,JSON.stringify({bots:[],languages:{},modes:[]}));
  const original=globalThis.fetch,requests=[];globalThis.fetch=async(input,init={})=>{requests.push({url:String(input),method:init.method??'GET'});return new Response(JSON.stringify({complete:true,fetchedAt:Date.now(),lives:[{username:'Alpha',videoId:'v123abc',videoIdNumeric:'123456',viewersCount:50,createdAt:null}]}),{headers:{'content-type':'application/json'}});};
