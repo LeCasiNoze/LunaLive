@@ -60,7 +60,7 @@ export async function racePanel(current:RaceEntry[],previous:RaceEntry[],now:Dat
     components:[{type:1,components:[{type:2,style:5,label:'Rejoindre la race',emoji:{name:'🏁'},url:REFERRAL_URL}]}],allowedMentions:{parse:[] as never[]}};
 }
 
-async function fetchWagers(range:RaceRange):Promise<RaceEntry[]>{
+export async function fetchWagers(range:RaceRange):Promise<RaceEntry[]>{
   const key=process.env.RAINBET_AFFILIATE_API_KEY?.trim();
   if(!key)throw Error('RAINBET_AFFILIATE_API_KEY absent');
   const url=`https://services.rainbet.com/v1/external/affiliates?key=${encodeURIComponent(key)}&start_at=${range.start}&end_at=${range.end}`;

@@ -14,3 +14,15 @@ test('every modal passes Discord builder validation',()=>{
   for(const kind of ['help','partner','other'] as const)freeModal(kind).toJSON();
   walletModal(1).toJSON();
 });
+import {offerVerifyMessage} from './belva-tickets.js';
+import {belvaRainbetModal,belvaRainbetPanel} from './belva-rainbet.js';
+import {giveawayModal,parseDuration,staffPanel} from './belva-giveaways.js';
+test('offer, Rainbet and giveaway components pass Discord builder validation',()=>{
+  for(const id of ['hazcasino','velobet','boo','celsius'])offerVerifyMessage(casino(id)!).components[0].toJSON();
+  belvaRainbetPanel().components[0].toJSON();belvaRainbetModal().toJSON();
+  staffPanel().components[0].toJSON();giveawayModal().toJSON();
+});
+test('giveaway durations',()=>{
+  assert.equal(parseDuration('30m'),1_800_000);assert.equal(parseDuration('1j 12h'),129_600_000);assert.equal(parseDuration('2H'),7_200_000);
+  for(const bad of ['','abc','0m','31j','2h foo'])assert.equal(parseDuration(bad),null);
+});

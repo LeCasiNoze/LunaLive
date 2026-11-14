@@ -18,7 +18,7 @@ export function findReferred(users:readonly ReferredUser[],input:string):Referre
 
 // RainBet caches this list for up to 10 minutes; one shared copy avoids hammering their API.
 let cached:{at:number;users:ReferredUser[]}|null=null;
-async function referredUsers():Promise<ReferredUser[]>{
+export async function referredUsers():Promise<ReferredUser[]>{
   if(cached&&Date.now()-cached.at<60_000)return cached.users;
   const key=process.env.RAINBET_AFFILIATE_API_KEY?.trim();
   if(!key)throw Error('RAINBET_AFFILIATE_API_KEY absent');
