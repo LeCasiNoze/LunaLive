@@ -29,6 +29,7 @@ import { cnzRoleChange } from './cnz-role.js';
 import { handleRainbetVerification } from './rainbet.js';
 import { startRainbetRace } from './rainbet-race.js';
 import { ensureBelvaTicketPanel, handleBelvaTickets } from './belva-tickets.js';
+import { ensureBelvaNotifPanel, handleBelvaNotifs } from './belva-notifs.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -483,6 +484,7 @@ async function logMemberDeparture(member: GuildMember | PartialGuildMember, conf
 async function routeInteraction(interaction: Interaction, config: NozeBotConfig, pool?: Pool): Promise<void> {
   try {
     if (await handleBelvaTickets(interaction, pool)) return;
+    if (await handleBelvaNotifs(interaction)) return;
     if (await handleNozeBotCommand(interaction, config.commands)) return;
     if (await handleRulesAcceptance(interaction, config)) return;
     if (await handleNotificationSelection(interaction, config)) return;
@@ -613,6 +615,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     gatewayUnavailableSince = 0;
     console.log(`[nozebot] connecté: ${readyClient.user.tag} (${readyClient.user.id})`);
     void ensureBelvaTicketPanel(readyClient).catch((error) => console.error("[nozebot] panneau tickets Belva", error));
+    void ensureBelvaNotifPanel(readyClient).catch((error) => console.error("[nozebot] panneau notifs Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     console.log("[nozebot] interaction reçue", {

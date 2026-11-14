@@ -76,7 +76,9 @@ async function reupload(files:Iterable<Attachment>,prefix:string){
   for(const f of files){
     const r=await fetch(f.url,{signal:AbortSignal.timeout(20_000)}).catch(()=>null);
     if(!r?.ok)continue;
-    const ext=(f.name.match(/\.[a-z0-9]{2,5}$/i)?.[0]||'.png').toLowerCase();
+    // Discord n'affiche pas l'aperçu des .jfif/.jpe : on force une extension qu'il rend.
+    const raw=(f.contentType?.split('/')[1]||f.name.match(/\.([a-z0-9]{2,5})$/i)?.[1]||'png').toLowerCase();
+    const ext='.'+(/^(jpe?g|jfif|pjpeg|jpe)$/.test(raw)?'jpg':raw);
     out.push({attachment:Buffer.from(await r.arrayBuffer()),name:`${prefix}-${++i}${ext}`});
   }
   return out;
@@ -337,7 +339,7 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
     const msg=old?await old.edit({...entry,attachments:[]}):await list.send(entry);
     if(!old)await pool.query(`UPDATE belva_refunds SET list_message_id=$1 WHERE id=$2`,[msg.id,r.id]);
     const ticket=fresh.ticket_channel_id?await i.guild!.channels.fetch(fresh.ticket_channel_id).catch(()=>null):null;
-    if(ticket?.type===ChannelType.GuildText)await ticket.send({content:`💳 Wallet reçu (${code(network)}) : ${code(address)}\nBelva t’envoie tes **${fresh.amount_eur} €** dès que possible. Tu seras prévenu ici.`,allowedMentions:{parse:[]}});
+    if(ticket?.type===ChannelType.GuildText)await ticket.send({content:`💳 Wallet reçu (${code(network)}) : ${code(address)}\nBelva t’envoie tes **${fresh.amount_eur} €** dès que possible. Tu seras prévenu ici.`,files:proof?[proof]:[],allowedMentions:{parse:[]}});
     await i.editReply('✅ Wallet enregistré ! Tu seras prévenu dans ton ticket quand le remboursement sera envoyé.');
     return true;
   }

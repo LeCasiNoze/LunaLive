@@ -1,5 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {accountModal,belvaTicketPanel,casino,casinoMenu,freeModal,walletModal} from './belva-tickets.js';
+import {belvaNotifPanel} from './belva-notifs.js';
+test('notification panel passes Discord builder validation',()=>{
+  const p=belvaNotifPanel();p.embeds[0].toJSON();assert.equal(p.components[0].toJSON().components.length,3);
+});
 test('panel and casino menus pass Discord builder validation',()=>{
   belvaTicketPanel().components.forEach(row=>row.toJSON());
   assert.equal(casinoMenu('refund').toJSON().components[0].options.length,4);
