@@ -4,7 +4,7 @@ import {
   TextInputBuilder,TextInputStyle,type Client,type Guild,type Interaction,type TextChannel,
 } from 'discord.js';
 import type {Pool} from 'pg';
-import {BELVA_ROLES,CASINO_ROLES} from './belva-roles.js';
+import {BELVA_ROLES,brands,refreshBrands} from './belva-roles.js';
 
 // Belva's server: giveaways launched by Patron/Videur from a staff panel, drawn automatically at the end.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -16,16 +16,14 @@ const P='belva:g:';
 const ID={start:P+'start',modal:P+'modal',enter:P+'enter:',reroll:P+'reroll:'};
 
 // Who may enter; the giveaway pings this role (or the giveaway-notification role when open to everyone).
-export const ELIGIBILITY:Record<string,{label:string;emoji:string;role:string|null}>={
-  all:{label:'Tout le serveur',emoji:'🌍',role:null},
-  membre:{label:'Membres du Club (compte casino vérifié)',emoji:'🃏',role:BELVA_ROLES.membre},
-  carre:{label:'Carré Or (a déjà déposé)',emoji:'🍾',role:BELVA_ROLES.carreOr},
-  hazcasino:{label:'Vérifiés HazCasino',emoji:'💜',role:CASINO_ROLES.hazcasino},
-  velobet:{label:'Vérifiés VeloBet',emoji:'💚',role:CASINO_ROLES.velobet},
-  boo:{label:'Vérifiés Boo!',emoji:'🩵',role:CASINO_ROLES.boo},
-  celsius:{label:'Vérifiés Celsius',emoji:'🧡',role:CASINO_ROLES.celsius},
-  rainbet:{label:'Vérifiés Rainbet',emoji:'🌧️',role:CASINO_ROLES.rainbet},
-};
+export function ELIGIBILITY():Record<string,{label:string;emoji:string;role:string|null}>{
+  return {
+    all:{label:'Tout le serveur',emoji:'🌍',role:null},
+    membre:{label:'Membres du Club (compte casino vérifié)',emoji:'🃏',role:BELVA_ROLES.membre},
+    carre:{label:'Carré Or (a déjà déposé)',emoji:'🍾',role:BELVA_ROLES.carreOr},
+    ...Object.fromEntries(brands().slice(0,22).map(b=>[b.id,{label:`Vérifiés ${b.name}`,emoji:b.emoji,role:b.role}])),
+  };
+}
 
 export function parseDuration(text:string):number|null{
   const unit:Record<string,number>={j:86_400_000,d:86_400_000,h:3_600_000,m:60_000};
@@ -70,7 +68,7 @@ export function giveawayModal(){
       .setTextInputComponent(new TextInputBuilder().setCustomId('duration').setStyle(TextInputStyle.Short).setValue('24h').setMinLength(2).setMaxLength(12).setRequired(true)),
     new LabelBuilder().setLabel('Qui peut participer ?')
       .setStringSelectMenuComponent(new StringSelectMenuBuilder().setCustomId('eligibility').setMinValues(1).setMaxValues(1)
-        .addOptions(Object.entries(ELIGIBILITY).map(([value,e])=>({value,label:e.label,emoji:e.emoji,default:value==='all'})))),
+        .addOptions(Object.entries(ELIGIBILITY()).map(([value,e])=>({value,label:e.label,emoji:e.emoji,default:value==='all'})))),
     new LabelBuilder().setLabel('Règles / détails (facultatif)')
       .setTextInputComponent(new TextInputBuilder().setCustomId('details').setStyle(TextInputStyle.Paragraph).setMaxLength(800).setRequired(false)),
   );
@@ -79,7 +77,7 @@ export function giveawayModal(){
 const ts=(d:Date)=>Math.floor(new Date(d).getTime()/1000);
 
 function giveawayMessage(g:Giveaway,entries:number){
-  const e=ELIGIBILITY[g.eligibility]??ELIGIBILITY.all;const ended=g.status==='ended';
+  const e=ELIGIBILITY()[g.eligibility]??ELIGIBILITY().all;const ended=g.status==='ended';
   const embed=new EmbedBuilder().setColor(ended?0x94a3b8:0xff4f81).setTitle(`🎉 ${g.prize}`)
     .setDescription([
       ...(g.details?[g.details,'']:[]),
@@ -102,7 +100,7 @@ const count=async(pool:Pool,id:number)=>Number((await pool.query(`SELECT count(*
 const get=async(pool:Pool,id:number)=>(await pool.query(`SELECT * FROM belva_giveaways WHERE id=$1 AND guild_id=$2`,[id,GUILD_ID()])).rows[0] as Giveaway|undefined;
 
 async function draw(guild:Guild,pool:Pool,g:Giveaway,howMany:number,exclude:string[]){
-  const role=ELIGIBILITY[g.eligibility]?.role??null;
+  const role=ELIGIBILITY()[g.eligibility]?.role??null;
   const pool_=(await pool.query(`SELECT discord_id FROM belva_giveaway_entries WHERE giveaway_id=$1`,[g.id])).rows.map(r=>r.discord_id as string).filter(id=>!exclude.includes(id));
   const out:string[]=[];
   while(pool_.length&&out.length<howMany){
@@ -136,6 +134,7 @@ export async function handleBelvaGiveaways(i:Interaction,pool?:Pool):Promise<boo
   if(!cid.startsWith(P))return false;
   if(!i.guild||i.guildId!==GUILD_ID()||!i.isRepliable())return true;
   if(!pool){await i.reply({ephemeral:true,content:'Giveaways momentanément indisponibles.'});return true;}
+  await refreshBrands(i.guild).catch(e=>console.error('[nozebot] casinos Belva',e));
   await ensureTables(pool);
 
   if(i.isButton()&&cid===ID.start){
@@ -152,12 +151,12 @@ export async function handleBelvaGiveaways(i:Interaction,pool?:Pool):Promise<boo
     const details=i.fields.getTextInputValue('details')?.replace(/@(everyone|here)/g,'').trim()||null;
     if(!Number.isInteger(winners)||winners<1||winners>50){await i.editReply('Nombre de gagnants invalide (1 à 50).');return true;}
     if(!ms){await i.editReply('Durée invalide. Exemples : `30m`, `2h`, `1j`, `1j12h` (entre 1 minute et 30 jours).');return true;}
-    if(!ELIGIBILITY[eligibility]){await i.editReply('Choix de participants invalide.');return true;}
+    if(!ELIGIBILITY()[eligibility]){await i.editReply('Choix de participants invalide.');return true;}
     const channel=await i.guild.channels.fetch(GIVEAWAY_CHANNEL).catch(()=>null);
     if(channel?.type!==ChannelType.GuildText){await i.editReply('Salon giveaways introuvable.');return true;}
     const g=(await pool.query(`INSERT INTO belva_giveaways (guild_id,channel_id,prize,details,winners,eligibility,ends_at,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [GUILD_ID(),channel.id,prize,details,winners,eligibility,new Date(Date.now()+ms),i.user.id])).rows[0] as Giveaway;
-    const ping=ELIGIBILITY[eligibility].role??BELVA_ROLES.notifGiveaways;
+    const ping=ELIGIBILITY()[eligibility].role??BELVA_ROLES.notifGiveaways;
     const msg=await channel.send({content:`<@&${ping}> 🎉 **Nouveau giveaway !**`,...giveawayMessage(g,0),allowedMentions:{roles:[ping]}});
     await pool.query(`UPDATE belva_giveaways SET message_id=$1 WHERE id=$2`,[msg.id,g.id]);
     await i.editReply(`✅ Giveaway n°${g.id} lancé : ${msg.url}`);
@@ -166,7 +165,7 @@ export async function handleBelvaGiveaways(i:Interaction,pool?:Pool):Promise<boo
   if(i.isButton()&&cid.startsWith(ID.enter)){
     const g=await get(pool,Number(cid.slice(ID.enter.length)));
     if(!g||g.status!=='running'||new Date(g.ends_at).getTime()<=Date.now()){await i.reply({ephemeral:true,content:'Ce giveaway est terminé.'});return true;}
-    const role=ELIGIBILITY[g.eligibility]?.role;
+    const role=ELIGIBILITY()[g.eligibility]?.role;
     if(role){
       const m=await i.guild.members.fetch(i.user.id);
       if(!m.roles.cache.has(role)){await i.reply({ephemeral:true,content:`Ce giveaway est réservé au rôle <@&${role}>. Vérifie ton compte dans les salons d’offres pour l’obtenir.`});return true;}

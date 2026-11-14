@@ -4,7 +4,7 @@ import {
   type Attachment,type Client,type Guild,type GuildMember,type Interaction,type ModalSubmitInteraction,type TextChannel,
 } from 'discord.js';
 import type {Pool} from 'pg';
-import {BELVA_ROLES,CASINO_ROLES,grantCasinoRoles} from './belva-roles.js';
+import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand} from './belva-roles.js';
 
 // Belva's community server: ticket system for casino account checks and the "30 € offerts" deposit refunds.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -16,15 +16,8 @@ const CLOSED_CATEGORY='1483151400161775656';
 const STAFF_CATEGORY='1483112145154474005';
 const LIST_CHANNEL_NAME='📋︱liste-remboursements';
 
-type Casino={id:string;name:string;emoji:string;bonus?:number};
-const CASINOS:Casino[]=[
-  {id:'hazcasino',name:'HazCasino',emoji:'💜',bonus:30},
-  {id:'velobet',name:'VeloBet',emoji:'💚',bonus:30},
-  {id:'boo',name:'Boo!',emoji:'🩵',bonus:30},
-  {id:'celsius',name:'Celsius',emoji:'🧡',bonus:35},
-  {id:'rainbet',name:'Rainbet',emoji:'🌧️'},
-];
-export const casino=(id:string)=>CASINOS.find(c=>c.id===id);
+type Casino=Brand;
+export const casino=brand;
 
 const KINDS={
   refund:{emoji:'💸',label:'Remboursement de dépôt',short:'remb',description:'Récupérer tes 30 € offerts après ton dépôt via le lien de Belva.'},
@@ -39,9 +32,7 @@ const P='belva:t:';
 const ID={
   panel:P+'new',casinoSelect:P+'casino:',modal:P+'modal:',approve:P+'approve:',reject:P+'reject:',close:P+'close',
   wallet:P+'wallet:',walletModal:P+'walletmodal:',paid:P+'paid:',unpaid:P+'unpaid:',verified:P+'verified:',quick:P+'quick:',
-};
-const OFFER_CHANNELS:Record<string,string>={
-  celsius:'1570927516301004990',velobet:'1569361303192084521',hazcasino:'1518632995945189507',boo:'1570060951452123226',
+  verifySel:P+'vsel:',verifyDep:P+'vdep:',
 };
 const IN={user:'user',email:'email',proof:'proof',details:'details',network:'network',address:'address',walletProof:'walletproof'};
 
@@ -108,7 +99,7 @@ export function belvaTicketPanel(){
 }
 
 export function casinoMenu(kind:'refund'|'verify'){
-  const list=CASINOS.filter(c=>kind==='verify'||c.bonus);
+  const list=brands().filter(c=>kind==='verify'||c.bonus).slice(0,25);
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(ID.casinoSelect+kind)
     .setPlaceholder('Sur quel casino ?')
     .addOptions(list.map(c=>({value:c.id,label:c.name,emoji:c.emoji,description:kind==='refund'?`${c.bonus} € offerts`:'Vérifier mon compte'}))));
@@ -162,6 +153,16 @@ async function openChannel(i:ModalSubmitInteraction,kind:Kind,c?:Casino):Promise
   });
 }
 
+// Staff can tick several brands at once: members often send proofs for more than one casino in a single ticket.
+export function verifyRows(userId:string){
+  const select=(id:string,placeholder:string)=>new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder()
+    .setCustomId(id+userId).setPlaceholder(placeholder).setMinValues(1).setMaxValues(Math.min(25,brands().length))
+    .addOptions(brands().slice(0,25).map(b=>({value:b.id,label:b.name,emoji:b.emoji}))));
+  return [select(ID.verifySel,'✅ Staff : vérifié sur… (plusieurs choix possibles)'),
+    select(ID.verifyDep,'🍾 Staff : vérifié + dépôt sur…'),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton())];
+}
+
 const closeButton=()=>new ButtonBuilder().setCustomId(ID.close).setLabel('Fermer le ticket').setEmoji('🔒').setStyle(ButtonStyle.Secondary);
 const staffPing=`<@&${PATRON_ROLE}> <@&${VIDEUR_ROLE}>`;
 
@@ -203,13 +204,12 @@ async function submitTicket(i:ModalSubmitInteraction,pool:Pool|undefined,kind:Ki
         {name:'Mail',value:code(email),inline:true},
         ...(refundId?[{name:'Montant',value:`**${c.bonus} €**`,inline:true}]:[]),
       ).setFooter({text:'Belva • Support privé'}).setTimestamp();
-    const buttons=kind==='refund'
-      ?[new ButtonBuilder().setCustomId(ID.approve+refundId).setLabel('Valider').setEmoji('✅').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(ID.reject+refundId).setLabel('Refuser').setEmoji('❌').setStyle(ButtonStyle.Danger),closeButton()]
-      :[new ButtonBuilder().setCustomId(`${ID.verified}${c.id}:${i.user.id}`).setLabel('Compte vérifié').setEmoji('✅').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`${ID.verified}${c.id}:${i.user.id}:d`).setLabel('Vérifié + dépôt').setEmoji('🍾').setStyle(ButtonStyle.Success),closeButton()];
+    const components=kind==='refund'
+      ?[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(ID.approve+refundId).setLabel('Valider').setEmoji('✅').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(ID.reject+refundId).setLabel('Refuser').setEmoji('❌').setStyle(ButtonStyle.Danger),closeButton())]
+      :verifyRows(i.user.id);
     await channel.send({content:`<@${i.user.id}> ${staffPing}${warning?'\n'+warning:''}`,embeds:[embed],files,
-      components:[new ActionRowBuilder<ButtonBuilder>().addComponents(...buttons)],allowedMentions:{users:[i.user.id],roles:[PATRON_ROLE,VIDEUR_ROLE]}});
+      components,allowedMentions:{users:[i.user.id],roles:[PATRON_ROLE,VIDEUR_ROLE]}});
     await i.editReply(`✅ Ton ticket est ouvert : <#${channel.id}>.`);
     return;
   }
@@ -263,6 +263,7 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
   if(!cid.startsWith(P))return false;
   if(!interaction.guild||interaction.guildId!==GUILD_ID())return true;
   const i=interaction;
+  await refreshBrands(i.guild!).catch(e=>console.error('[nozebot] casinos Belva',e));
 
   if(i.isStringSelectMenu()&&cid===ID.panel){
     const kind=i.values[0] as Kind;
@@ -297,16 +298,24 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
     await i.editReply('Ticket fermé et archivé pour le staff.');
     return true;
   }
-  if(i.isButton()&&cid.startsWith(ID.verified)){
+  const verifyFrom=i.isButton()&&cid.startsWith(ID.verified)?'button':i.isStringSelectMenu()&&(cid.startsWith(ID.verifySel)||cid.startsWith(ID.verifyDep))?'select':null;
+  if(verifyFrom&&(i.isButton()||i.isStringSelectMenu())){
     if(!isStaff(await memberOf(i))){await i.reply({ephemeral:true,content:'Réservé au staff.'});return true;}
     if(!pool)throw Error('pool absent');
     await ensureTables(pool);
-    const [casinoId,userId,flag]=cid.slice(ID.verified.length).split(':');const deposited=flag==='d';
-    await pool.query(`UPDATE belva_casino_accounts SET verified_by=$1,verified_at=now(),updated_at=now() WHERE guild_id=$2 AND discord_id=$3 AND casino=$4`,[i.user.id,GUILD_ID(),userId,casinoId]);
+    let userId:string,ids:string[],deposited:boolean;
+    if(i.isButton()){const [casinoId,uid,flag]=cid.slice(ID.verified.length).split(':');userId=uid;ids=[casinoId];deposited=flag==='d';}
+    else{deposited=cid.startsWith(ID.verifyDep);userId=cid.slice((deposited?ID.verifyDep:ID.verifySel).length);ids=i.values;}
+    const list=ids.map(id=>casino(id)).filter((b):b is Casino=>!!b);
     const target=await i.guild!.members.fetch(userId).catch(()=>null);
-    if(target)await grantCasinoRoles(target,casinoId,deposited,`Compte ${casinoId} vérifié par ${i.user.username}`).catch(e=>console.error('[nozebot] rôles Belva',e));
-    await i.update({components:[new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton())]});
-    await i.followUp({content:`✅ <@${userId}>, ton compte ${casino(casinoId)?.name??casinoId} est vérifié par <@${i.user.id}>${target?` : tu as maintenant le rôle <@&${CASINO_ROLES[casinoId]}>${deposited?` et <@&${BELVA_ROLES.carreOr}>`:''} !`:'.'}`,allowedMentions:{users:[userId]}});
+    for(const b of list){
+      await pool.query(`INSERT INTO belva_casino_accounts (guild_id,discord_id,discord_tag,casino,casino_username,casino_email,verified_by,verified_at) VALUES ($1,$2,$3,$4,'','',$5,now())
+        ON CONFLICT (guild_id,discord_id,casino) DO UPDATE SET verified_by=EXCLUDED.verified_by,verified_at=now(),updated_at=now()`,[GUILD_ID(),userId,target?.user.username??userId,b.id,i.user.id]);
+      if(target)await grantCasinoRoles(target,b.id,deposited,`Compte ${b.id} vérifié par ${i.user.username}`).catch(e=>console.error('[nozebot] rôles Belva',e));
+    }
+    // Old single-brand buttons are swapped for the multi-brand selects so staff can add more brands later.
+    await i.update({components:verifyRows(userId)});
+    await i.followUp({content:`✅ <@${userId}>, compte${list.length>1?'s':''} vérifié${list.length>1?'s':''} par <@${i.user.id}> : ${list.map(b=>`${b.emoji} **${b.name}**`).join(', ')}${target?`\nTu as maintenant ${list.map(b=>`<@&${b.role}>`).join(' ')}${deposited?` et <@&${BELVA_ROLES.carreOr}>`:''} !`:''}`,allowedMentions:{users:[userId]}});
     return true;
   }
 
@@ -383,18 +392,24 @@ export function offerVerifyMessage(c:Casino){
       new ButtonBuilder().setCustomId(ID.quick+c.id).setLabel('Me vérifier').setEmoji('✅').setStyle(ButtonStyle.Success))]};
 }
 
+// Every offer channel (except API-verified brands, which have their own panel) gets a one-click verify button.
+const checkedOfferChannels=new Set<string>();
 async function ensureOfferButtons(client:Client){
-  for(const [casinoId,channelId] of Object.entries(OFFER_CHANNELS)){
-    const channel=await client.channels.fetch(channelId).catch(()=>null);const c=casino(casinoId);
-    if(channel?.type!==ChannelType.GuildText||!c)continue;
+  const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
+  for(const c of await refreshBrands(guild)){
+    if(c.api||!c.channelId||checkedOfferChannels.has(c.channelId))continue;
+    const channel=await client.channels.fetch(c.channelId).catch(()=>null);
+    if(channel?.type!==ChannelType.GuildText)continue;
     const recent=await channel.messages.fetch({limit:30});
     if(!recent.some(m=>m.author.id===client.user!.id&&JSON.stringify(m.components.map(r=>r.toJSON())).includes(ID.quick)))await channel.send(offerVerifyMessage(c));
+    checkedOfferChannels.add(c.channelId);
   }
 }
 
 export async function ensureBelvaTicketPanel(client:Client){
   if(process.env.BELVA_TICKETS_ENABLED==='false')return;
   await ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e));
+  setInterval(()=>void ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e)),10*60_000).unref();
   const channel=await client.channels.fetch(PANEL_CHANNEL).catch(()=>null);
   if(channel?.type!==ChannelType.GuildText)return;
   const recent=await channel.messages.fetch({limit:30});

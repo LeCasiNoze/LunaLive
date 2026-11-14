@@ -2,7 +2,7 @@ import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelType,EmbedBuilder,Labe
 import type {Pool} from 'pg';
 import {findReferred,referredUsers} from './rainbet.js';
 import {fetchWagers} from './rainbet-race.js';
-import {BELVA_ROLES,CASINO_ROLES,grantCasinoRoles} from './belva-roles.js';
+import {BELVA_ROLES,brand,grantCasinoRoles} from './belva-roles.js';
 import {ensureTables} from './belva-tickets.js';
 
 // Belva's Rainbet channel: welcome offer + automatic account check against the NIVORANET affiliate list.
@@ -64,7 +64,7 @@ export async function handleBelvaRainbet(i:Interaction,pool?:Pool):Promise<boole
     .then(list=>list.find(w=>w.username.toLowerCase()===referred.username.toLowerCase())?.wagered??0).catch(()=>0);
   const member=await i.guild.members.fetch(i.user.id);
   await grantCasinoRoles(member,'rainbet',wagered>0,'Compte Rainbet vérifié (API)');
-  await i.editReply(`✅ Compte Rainbet **${referred.username}** vérifié ! Tu as le rôle <@&${CASINO_ROLES.rainbet}>${wagered>0?` et <@&${BELVA_ROLES.carreOr}>`:''}.`);
+  await i.editReply(`✅ Compte Rainbet **${referred.username}** vérifié ! Tu as le rôle <@&${brand('rainbet')?.role}>${wagered>0?` et <@&${BELVA_ROLES.carreOr}>`:''}.`);
   return true;
 }
 
