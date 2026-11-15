@@ -11,7 +11,7 @@ const PARTNER_GUILD_IDS=()=>(process.env.NOZEBOT_RAINBET_RACE_PARTNER_GUILDS||''
 const RANKS=['🥇','🥈','🥉','4.','5.','6.','7.','8.','9.','10.'];
 
 export type RaceEntry={username:string;wagered:number};
-export type RaceRange={start:string;end:string;endsAt:Date;label:string};
+export type RaceRange={start:string;end:string;endsAt:Date;label:string;monthly?:boolean};
 // The first race ran from Monday 9 November 2026; earlier weeks never had prizes.
 export const RACE_FIRST_START='2026-11-09';
 
@@ -23,6 +23,21 @@ export function weekRange(now:Date,offset=0):RaceRange{
   const iso=(d:Date)=>d.toISOString().slice(0,10);
   const day=(d:Date,withMonth:boolean)=>d.toLocaleDateString('fr-FR',withMonth?{day:'numeric',month:'long',timeZone:'UTC'}:{day:'numeric',timeZone:'UTC'});
   return {start:iso(monday),end:iso(sunday),endsAt:next,label:`semaine du ${day(monday,monday.getUTCMonth()!==sunday.getUTCMonth())} au ${day(sunday,true)}`};
+}
+
+// Monthly since the Rainbet stream deal, from the 16th to the 15th: Rainbet refunds the leaderboard per deal month.
+export const MONTHLY_START='2026-11-16';
+const fr=(d:Date)=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'long',timeZone:'UTC'});
+export function monthRange(now:Date,offset=0):RaceRange{
+  const start=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+(now.getUTCDate()>=16?0:-1)+offset,16));
+  const next=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()+1,16)),end=new Date(next.getTime()-86_400_000);
+  return {start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10),endsAt:next,label:`${fr(start)} → ${fr(end)}`,monthly:true};
+}
+// Before MONTHLY_START the weekly races apply; the first monthly race shows the last weekly winners.
+export function raceRange(now:Date,offset=0):RaceRange{
+  if(now.toISOString().slice(0,10)<MONTHLY_START)return weekRange(now,offset);
+  const r=monthRange(now,offset);
+  return r.start<MONTHLY_START?weekRange(new Date(MONTHLY_START+'T00:00:00Z'),-1):r;
 }
 
 export function maskName(name:string):string{
@@ -39,23 +54,24 @@ export function ranking(entries:readonly RaceEntry[]){
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/ | /g,' ')} $`;
 
 export async function racePanel(current:RaceEntry[],previous:RaceEntry[],now:Date){
-  const week=weekRange(now),prev=weekRange(now,-1);
+  const week=raceRange(now),prev=raceRange(now,-1);
   const top=ranking(current);
   const pot=RACE_PRIZES_EUR.reduce((a,b)=>a+b,0);
-  const image=await renderRace({month:week.label,endsLabel:'fin dimanche minuit',pot,prizes:RACE_PRIZES_EUR,minWagerUsd:RACE_MIN_WAGER_USD,
+  const image=await renderRace({month:week.label,endsLabel:week.monthly?`fin le ${fr(new Date(week.end+'T00:00:00Z'))} à minuit`:'fin dimanche minuit',pot,prizes:RACE_PRIZES_EUR,minWagerUsd:RACE_MIN_WAGER_USD,
     rows:top.map(e=>({rank:e.rank,name:maskName(e.username),wagered:e.wagered,prize:e.prize})),
     updatedLabel:now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Paris'})});
   const embed=new EmbedBuilder().setColor(16747069).setTitle(RACE_TITLE).setURL(REFERRAL_URL)
     .setDescription([
-      `**${pot} € à gagner chaque semaine** · ${RACE_PRIZES_EUR.map((p,i)=>`${RANKS[i]} ${p} €`).join(' · ')}`,
-      `Race de la ${week.label} · fin <t:${Math.floor(week.endsAt.getTime()/1000)}:R>`,
-      `Inscris-toi avec notre lien RainBet, joue, et grimpe au classement. **${usd(RACE_MIN_WAGER_USD)} misés minimum** sur la semaine pour être payé.`,
+      `**${pot} € à gagner ${week.monthly?'chaque mois':'chaque semaine'}** · ${RACE_PRIZES_EUR.map((p,i)=>`${RANKS[i]} ${p} €`).join(' · ')}`,
+      `Race ${week.monthly?'du mois · ':'de la '}${week.label} · fin <t:${Math.floor(week.endsAt.getTime()/1000)}:R>`,
+      `Inscris-toi avec notre lien RainBet, joue, et grimpe au classement. **${usd(RACE_MIN_WAGER_USD)} misés minimum** sur ${week.monthly?'le mois':'la semaine'} pour être payé.`,
+      '-# Mises pondérées par RainBet selon le RTP du jeu : le dice et les originals comptent moins que les slots.',
     ].join('\n'))
     .setImage('attachment://wager-race.png')
     .setFooter({text:'18+ · Joue de façon responsable · Classement mis à jour toutes les 5 min'})
     .setTimestamp(now);
   const winners=prev.start>=RACE_FIRST_START?ranking(previous).filter(e=>e.prize):[];
-  if(winners.length)embed.addFields({name:`🏆 Gagnants de la ${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} €**`).join('\n')});
+  if(winners.length)embed.addFields({name:`🏆 Gagnants ${prev.monthly?'du mois · ':'de la '}${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} €**`).join('\n')});
   return {embeds:[embed],files:[new AttachmentBuilder(image,{name:'wager-race.png'})],attachments:[] as never[],
     components:[{type:1,components:[{type:2,style:5,label:'Rejoindre la race',emoji:{name:'🏁'},url:REFERRAL_URL}]}],allowedMentions:{parse:[] as never[]}};
 }
@@ -102,7 +118,7 @@ export function startRainbetRace(client:Client):()=>void{
     running=true;
     try{
       const now=new Date();
-      const [current,previous]=await Promise.all([fetchWagers(weekRange(now)),fetchWagers(weekRange(now,-1))]);
+      const [current,previous]=await Promise.all([fetchWagers(raceRange(now)),fetchWagers(raceRange(now,-1))]);
       const payload=await racePanel(current,previous,now);
       // discord.js ajoute les fichiers dans payload.attachments à chaque envoi : un tableau neuf par salon.
       for(const channel of await raceChannels(client))
