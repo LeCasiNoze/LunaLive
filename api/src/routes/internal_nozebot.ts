@@ -1,3 +1,4 @@
+import {linkByComment,linkTargets} from '../belva_link_comment.js';
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
 import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
@@ -128,12 +129,16 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
 const LINK_STREAMERS=['lecasinoze','belvaa'];
 internalNozeBotRouter.post('/internal/bot/nozebot/automod/:action',requireNozeBot,a(async(req,res)=>{
  const identity=readIdentity(req,res);if(!identity)return;
- const slug=req.params.action==='link'&&LINK_STREAMERS.includes(String(req.body?.streamer))?String(req.body.streamer):'lecasinoze';
+ const slug=['link','link-check'].includes(req.params.action)&&LINK_STREAMERS.includes(String(req.body?.streamer))?String(req.body.streamer):'lecasinoze';
  const sid=(await pool.query("SELECT id FROM streamers WHERE lower(slug)=$1 LIMIT 1",[slug])).rows[0]?.id;
  if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
  if(req.params.action==='profile')return res.json({ok:true,profile:await automodDiscordProfile(pool,Number(sid),identity.discordUserId)});
+ if(req.params.action==='link-check'&&slug==='belvaa')return res.json({ok:true,...await linkByComment(pool,Number(sid),identity.discordUserId)});
  if(req.params.action!=='link')return res.status(404).json({ok:false,error:'unknown_action'});
- try{return res.json({ok:true,...await requestAutomodDiscordLink(pool,Number(sid),identity.discordUserId)});}
+ try{
+  const link=await requestAutomodDiscordLink(pool,Number(sid),identity.discordUserId);
+  return res.json({ok:true,...link,...(slug==='belvaa'&&!link.linked?{targets:await linkTargets(pool,Number(sid))}:{})});
+ }
  catch(e){if(e instanceof Error&&e.message==='link_cooldown')return res.status(429).json({ok:false,error:'link_cooldown'});throw e;}
 }));
 

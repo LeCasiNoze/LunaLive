@@ -36,7 +36,7 @@ export function linkCard(){
     {type:9,components:[T('# 🔗 Relie ton compte Rumble'),T('Ton pseudo Rumble est reconnu sur le Discord de Belva : c’est ce qui permettra de compter tes participations pendant les lives.\n-# 30 secondes, une seule fois.')],
       accessory:{type:11,media:{url:'attachment://logo-belva.png'},description:'Belva'}},
     SEP(),
-    T('### Comment faire\n**1 ·** Clique sur **Lier mon Rumble** juste en dessous (ou tape **/lier**).\n**2 ·** Le bot t’envoie en message privé une commande `!lier …`.\n**3 ·** Colle-la dans le **chat Rumble de Belva** pendant un live : le bot confirme dans le chat.\n-# La commande est valable 10 minutes et ne sert qu’une fois. Ouvre tes messages privés pour la recevoir.'),
+    T('### Comment faire\n**1 ·** Clique sur **Lier mon Rumble** juste en dessous (ou tape **/lier**).\n**2 ·** Le bot t’envoie en message privé une commande `!lier …`.\n**3 ·** **Belva est en live ?** Colle-la dans son chat Rumble. **Hors live ?** Poste-la en commentaire sous sa dernière vidéo, puis clique sur **Vérifier mon commentaire** dans le message privé.\n-# La commande est valable 10 minutes et ne sert qu’une fois. Ouvre tes messages privés pour la recevoir.'),
     {type:1,components:[{type:2,style:1,label:'Lier mon Rumble',emoji:{name:'🔗'},custom_id:LINK_BUTTON},link('Ouvrir le live','🟢','https://rumble.com/user/Belvaa/live')]},
     SEP(1),T('-# Ton compte est déjà lié ? Le bouton te le confirme. Pour changer de compte, ouvre un ticket.')]};
 }

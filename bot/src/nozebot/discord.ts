@@ -34,6 +34,7 @@ import { ensureBelvaRainbetPanel, handleBelvaRainbet } from './belva-rainbet.js'
 import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js';
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
+import { startBelvaWelcome } from './belva-welcome.js';
 import { belvaLiveConfig } from './belva-live.js';
 import { handleBelvaGameMessage, handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
 import { handleBelvaTombola, handleBelvaTombolaMessage, registerBelvaTombolaCommands, startBelvaTombola } from './belva-tombola.js';
@@ -653,6 +654,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     });
     void routeInteraction(interaction, config, pool);
   });
+  startBelvaWelcome(client);
   client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
     console.error("[nozebot] member welcome failed", error);
   }));

@@ -1,0 +1,43 @@
+import {ChannelType,Events,MessageFlags,type Client,type GuildMember} from 'discord.js';
+import {BELVA_ROLES} from './belva-roles.js';
+import {LINK_BUTTON} from './belva-info.js';
+
+// Arrivée sur le Discord de Belva (remplace MEE6) : rôle Invité + carte de bienvenue dans 👋︱bienvenue.
+const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
+const T=(content:string)=>({type:10,content});
+const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
+
+export function welcomeCard(member:{id:string;avatarUrl:string},count:number,channels:{offers?:string;link?:string;notifs?:string;games?:string}){
+  const ch=(id?:string,fallback='')=>id?`<#${id}>`:fallback;
+  const url=(id:string)=>`https://discord.com/channels/${GUILD_ID()}/${id}`;
+  return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{users:[member.id]},components:[{type:17,accent_color:0x19d3d3,components:[
+    {type:9,components:[T(`# Bienvenue <@${member.id}> !`),T(`Tu es le **${count}e** membre de la commu Belva 🎰\n-# Casino, lives Rumble et bonus entre nous.`)],
+      accessory:{type:11,media:{url:member.avatarUrl},description:'Nouveau membre'}},
+    {type:14,divider:true,spacing:1},
+    T([`🎁 **Ton bonus** · jusqu’à 30 € remboursés ou 20 € offerts sur ton 1er dépôt : ${ch(channels.offers,'salons Casinos Partenaires')}`,
+      `🔗 **Relie ton Rumble** · pour gagner des BCoins et des tickets de tombola : ${ch(channels.link,'/lier')}`,
+      `🔔 **Ne rate aucun live** · active tes notifications : ${ch(channels.notifs,'salon notifications')}`,
+      ...(channels.games?[`🃏 **Mini-jeux** · blackjack et machine à sous en BCoins : ${ch(channels.games)}`]:[])].join('\n')),
+    {type:1,components:[
+      {type:2,style:1,label:'Lier mon Rumble',emoji:{name:'🔗'},custom_id:LINK_BUTTON},
+      ...(channels.offers?[link('Voir les offres','🎁',url(channels.offers))]:[]),
+      link('Regarder Belva','🟢','https://rumble.com/user/Belvaa/live')]},
+    T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+  ]}] as never[]};
+}
+
+async function welcome(member:GuildMember){
+  if(member.guild.id!==GUILD_ID()||member.user.bot)return;
+  await member.roles.add(BELVA_ROLES.invite,'Arrivée sur le serveur').catch(e=>console.error('[nozebot] rôle Invité Belva',e?.message||e));
+  const all=await member.guild.channels.fetch();
+  const find=(suffix:string)=>all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith(suffix))?.id;
+  const channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('bienvenue'));
+  if(channel?.type!==ChannelType.GuildText)return;
+  await channel.send(welcomeCard({id:member.id,avatarUrl:member.displayAvatarURL({size:256,extension:'png'})},member.guild.memberCount,
+    {offers:find('toutes-les-offres'),link:find('lier-mon-compte'),notifs:find('notifications'),games:find('mini-jeux')}));
+}
+
+export function startBelvaWelcome(client:Client){
+  if(process.env.BELVA_WELCOME==='false')return;
+  client.on(Events.GuildMemberAdd,m=>void welcome(m).catch(e=>console.error('[nozebot] bienvenue Belva',e)));
+}

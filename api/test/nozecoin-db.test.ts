@@ -5,6 +5,8 @@ import type {Pool} from 'pg';
 import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName,weeklyCnz} from '../src/nozecoins/wallet.js';
 import {handleCoinsChat} from '../src/nozecoins/chat.js';
 import {tickBelvaTombola} from '../src/belva_tombola.js';
+import {linkByComment,finishPendingLink} from '../src/belva_link_comment.js';
+import {requestAutomodDiscordLink} from '../src/automod-shop/discord-profile.js';
 
 // Real PostgreSQL WASM engine, isolated in memory. A single serialized connection
 // validates SQL, transactions, constraints and receipts; not a multiprocess load test.
@@ -131,4 +133,19 @@ test('Belva tombola announces one code per 40 min of live, retried if the chat s
  assert.match(said[1],/^🎟️ Code tombola : [A-Z2-9]{4} — tape \/code /);
  const live=(await pool.query(`SELECT count(*)::int n FROM belva_tombola_codes WHERE bucket>0 AND announced_at IS NOT NULL AND expires_at>NOW()`)).rows[0].n;assert.equal(live,1);
  delete process.env.BELVA_TOMBOLA_START;
+});
+test('Belva link by Rumble comment: known chatter links at once, newcomer links at first chat message',async()=>{
+ await pool.query(`CREATE TABLE IF NOT EXISTS rumble_chat_messages(streamer_id bigint,rumble_user_id text,username text,created_at timestamptz DEFAULT NOW())`);
+ await pool.query(`INSERT INTO rumble_chat_messages(streamer_id,rumble_user_id,username) VALUES(1,'285749146','wznnn')`);
+ const item=(u:string,t:string)=>`<li class="comment-item" data-comment-id="1" data-username="${u}" data-entity-type="user"><a>${u}</a><p class="comment-text">${t}</p></li>`;
+ const a=await requestAutomodDiscordLink(pool,1,'111111111111111111');const codeA=a.command!.split(' ')[1];
+ assert.deepEqual(await linkByComment(pool,1,'111111111111111111',async()=>item('someone','hello')),{status:'not_found'});
+ assert.deepEqual(await linkByComment(pool,1,'111111111111111111',async()=>item('someone','x')+item('WZNNN',`mon code ${codeA.toLowerCase()}`)),{status:'linked',username:'WZNNN'});
+ assert.equal((await pool.query(`SELECT rumble_user_id FROM automod_discord_links WHERE discord_user_id='111111111111111111'`)).rows[0].rumble_user_id,'285749146');
+ assert.deepEqual(await linkByComment(pool,1,'111111111111111111',async()=>''),{status:'no_code'});
+ const b=await requestAutomodDiscordLink(pool,1,'222222222222222222');
+ assert.deepEqual(await linkByComment(pool,1,'222222222222222222',async()=>item('Newbie',b.command!.split(' ')[1])),{status:'pending',username:'Newbie'});
+ assert.equal(await finishPendingLink(pool,1,'287000001','someoneelse'),null);
+ assert.match(String(await finishPendingLink(pool,1,'287000001','newbie')),/relié/);
+ assert.equal((await pool.query(`SELECT rumble_user_id FROM automod_discord_links WHERE discord_user_id='222222222222222222'`)).rows[0].rumble_user_id,'287000001');
 });

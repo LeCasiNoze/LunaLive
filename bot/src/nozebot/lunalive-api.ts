@@ -112,8 +112,13 @@ function cleanBaseUrl(value: string): string {
 export function fetchAutomodProfile(config:LunaLiveApiConfig,discordUserId:string){
  return post<{ok:true;profile:null|{username:string;message:string}}>(config,'/internal/bot/nozebot/automod/profile',discordUserId);
 }
+export type LinkTargets={live:boolean;liveUrl:string;videoUrl:string};
 export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string,streamer?:string){
- return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId,streamer?{streamer}:{});
+ return post<{ok:true;linked:boolean;username?:string;command?:string;targets?:LinkTargets}>(config,'/internal/bot/nozebot/automod/link',discordUserId,streamer?{streamer}:{});
+}
+
+export function checkBelvaCommentLink(config:LunaLiveApiConfig,discordUserId:string){
+ return post<{ok:true;status:'no_code'|'not_found'|'unavailable'|'conflict'|'linked'|'pending';username?:string}>(config,'/internal/bot/nozebot/automod/link-check',discordUserId,{streamer:'belvaa'});
 }
 
 export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;journal?:Array<{id:string;label:string;complete:boolean}>;

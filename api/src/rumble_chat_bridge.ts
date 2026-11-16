@@ -22,6 +22,7 @@ import { handleDiscordLinkChat } from "./automod-shop/discord-profile.js";
 import {handleCoinsChat,tickCoinsRain} from './nozecoins/chat.js';
 const BELVA_COINS={coin:'BCoins',automod:false};
 import {tickBelvaTombola} from './belva_tombola.js';
+import {finishPendingLink} from './belva_link_comment.js';
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
@@ -491,6 +492,8 @@ export function ensureRumbleBridge(opts: {
       if(process.env.NOZECOINS_ENABLED==='true'&&/^!(?:claim|slot)\s*$/i.test(m.text.trim()))return;
     }
     if(opts.slug==='belvaa'){
+      const linked=await finishPendingLink(opts.pool,opts.streamerId,String(m.userId),m.username).catch(()=>null);
+      if(linked)void sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',linked);
       await observeCoinName(opts.pool,opts.streamerId,m.userId,m.username,m.createdAt);
       const coinReply=await handleCoinsChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,text:m.text,createdAt:m.createdAt},BELVA_COINS).catch(()=>null);
       if(coinReply){for(const chunk of shopReplyChunks(coinReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
