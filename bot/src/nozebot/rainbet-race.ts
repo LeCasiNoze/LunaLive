@@ -2,7 +2,10 @@ import {AttachmentBuilder,ChannelType,EmbedBuilder,type Client,type Message,type
 import {renderRace} from './race-renderer.js';
 
 export const RACE_TITLE='🏁 Wager Race RainBet';
-export const RACE_PRIZES_EUR=[100,50,25];
+// Monthly prizes in dollars, funded by Rainbet's 200 $ leaderboard budget. Weekly races (until 15 Nov) paid in euros.
+export const RACE_PRIZES_USD=[100,60,40];
+const WEEKLY_PRIZES_EUR=[100,50,25];
+const prizesOf=(r:RaceRange)=>r.monthly?{list:RACE_PRIZES_USD,cur:'$'}:{list:WEEKLY_PRIZES_EUR,cur:'€'};
 export const RACE_MIN_WAGER_USD=1000;
 const REFERRAL_URL='https://rainbet.com/?r=nivoranet';
 const MAIN_CHANNEL_ID=()=>process.env.NOZEBOT_RAINBET_RACE_CHANNEL_ID?.trim()||'1569141661403971686';
@@ -46,23 +49,24 @@ export function maskName(name:string):string{
   return n.slice(0,2).join('')+'*'.repeat(Math.min(4,n.length-3))+n[n.length-1];
 }
 
-export function ranking(entries:readonly RaceEntry[]){
+export function ranking(entries:readonly RaceEntry[],prizes:readonly number[]=RACE_PRIZES_USD){
   return [...entries].filter(e=>e.wagered>0).sort((a,b)=>b.wagered-a.wagered).slice(0,10).map((e,i)=>({
-    ...e,rank:i+1,prize:i<RACE_PRIZES_EUR.length&&e.wagered>=RACE_MIN_WAGER_USD?RACE_PRIZES_EUR[i]:0}));
+    ...e,rank:i+1,prize:i<prizes.length&&e.wagered>=RACE_MIN_WAGER_USD?prizes[i]:0}));
 }
 
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/ | /g,' ')} $`;
 
 export async function racePanel(current:RaceEntry[],previous:RaceEntry[],now:Date){
   const week=raceRange(now),prev=raceRange(now,-1);
-  const top=ranking(current);
-  const pot=RACE_PRIZES_EUR.reduce((a,b)=>a+b,0);
-  const image=await renderRace({month:week.label,endsLabel:week.monthly?`fin le ${fr(new Date(week.end+'T00:00:00Z'))} à minuit`:'fin dimanche minuit',pot,prizes:RACE_PRIZES_EUR,minWagerUsd:RACE_MIN_WAGER_USD,
+  const {list:prizes,cur}=prizesOf(week),{list:prevPrizes,cur:prevCur}=prizesOf(prev);
+  const top=ranking(current,prizes);
+  const pot=prizes.reduce((a,b)=>a+b,0);
+  const image=await renderRace({month:week.label,endsLabel:week.monthly?`fin le ${fr(new Date(week.end+'T00:00:00Z'))} à minuit`:'fin dimanche minuit',pot,prizes,currency:cur,minWagerUsd:RACE_MIN_WAGER_USD,
     rows:top.map(e=>({rank:e.rank,name:maskName(e.username),wagered:e.wagered,prize:e.prize})),
     updatedLabel:now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Paris'})});
   const embed=new EmbedBuilder().setColor(16747069).setTitle(RACE_TITLE).setURL(REFERRAL_URL)
     .setDescription([
-      `**${pot} € à gagner ${week.monthly?'chaque mois':'chaque semaine'}** · ${RACE_PRIZES_EUR.map((p,i)=>`${RANKS[i]} ${p} €`).join(' · ')}`,
+      `**${pot} ${cur} à gagner ${week.monthly?'chaque mois':'chaque semaine'}** · ${prizes.map((p,i)=>`${RANKS[i]} ${p} ${cur}`).join(' · ')}`,
       `Race ${week.monthly?'du mois · ':'de la '}${week.label} · fin <t:${Math.floor(week.endsAt.getTime()/1000)}:R>`,
       `Inscris-toi avec notre lien RainBet, joue, et grimpe au classement. **${usd(RACE_MIN_WAGER_USD)} misés minimum** sur ${week.monthly?'le mois':'la semaine'} pour être payé.`,
       '-# Mises pondérées par RainBet selon le RTP du jeu : le dice et les originals comptent moins que les slots.',
@@ -70,8 +74,8 @@ export async function racePanel(current:RaceEntry[],previous:RaceEntry[],now:Dat
     .setImage('attachment://wager-race.png')
     .setFooter({text:'18+ · Joue de façon responsable · Classement mis à jour toutes les 5 min'})
     .setTimestamp(now);
-  const winners=prev.start>=RACE_FIRST_START?ranking(previous).filter(e=>e.prize):[];
-  if(winners.length)embed.addFields({name:`🏆 Gagnants ${prev.monthly?'du mois · ':'de la '}${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} €**`).join('\n')});
+  const winners=prev.start>=RACE_FIRST_START?ranking(previous,prevPrizes).filter(e=>e.prize):[];
+  if(winners.length)embed.addFields({name:`🏆 Gagnants ${prev.monthly?'du mois · ':'de la '}${prev.label}`,value:winners.map(e=>`${RANKS[e.rank-1]} ${maskName(e.username)} · ${usd(e.wagered)} · **${e.prize} ${prevCur}**`).join('\n')});
   return {embeds:[embed],files:[new AttachmentBuilder(image,{name:'wager-race.png'})],attachments:[] as never[],
     components:[{type:1,components:[{type:2,style:5,label:'Rejoindre la race',emoji:{name:'🏁'},url:REFERRAL_URL}]}],allowedMentions:{parse:[] as never[]}};
 }

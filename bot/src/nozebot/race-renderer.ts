@@ -1,13 +1,13 @@
 import sharp from 'sharp';
 
 export type RaceRow={rank:number;name:string;wagered:number;prize:number};
-export type RaceImageInput={month:string;endsLabel:string;pot:number;prizes:number[];minWagerUsd:number;rows:RaceRow[];updatedLabel:string};
+export type RaceImageInput={month:string;endsLabel:string;pot:number;prizes:number[];currency?:string;minWagerUsd:number;rows:RaceRow[];updatedLabel:string};
 
 const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/ | /g,' ')} $`;
 const MEDALS=[{fill:'#f6c453',ink:'#3a2a05'},{fill:'#d9dee8',ink:'#2a2f3a'},{fill:'#e0995e',ink:'#3b1f08'}];
 
-function podium(row:RaceRow|undefined,place:number,x:number,top:number,prize:number){
+function podium(row:RaceRow|undefined,place:number,x:number,top:number,prize:number,cur:string){
   const m=MEDALS[place-1],h=485-top,w=320;
   const name=row?esc(row.name):'Place libre';
   return `<g>
@@ -17,11 +17,12 @@ function podium(row:RaceRow|undefined,place:number,x:number,top:number,prize:num
     <text x="${x+w/2}" y="${top+82}" text-anchor="middle" fill="${row?'#ffffff':'#6f6880'}" font-size="30" font-weight="800">${name}</text>
     <text x="${x+w/2}" y="${top+122}" text-anchor="middle" fill="${row?'#ffb067':'#4d4659'}" font-size="26" font-weight="700">${row?usd(row.wagered):'—'}</text>
     <rect x="${x+w/2-78}" y="${top+h-64}" width="156" height="46" rx="23" fill="${m.fill}" fill-opacity=".14" stroke="${m.fill}" stroke-opacity=".6"/>
-    <text x="${x+w/2}" y="${top+h-33}" text-anchor="middle" fill="${m.fill}" font-size="24" font-weight="900">${prize} €</text>
+    <text x="${x+w/2}" y="${top+h-33}" text-anchor="middle" fill="${m.fill}" font-size="24" font-weight="900">${prize} ${cur}</text>
   </g>`;
 }
 
 export function buildRaceSvg(input:RaceImageInput):string{
+  const cur=input.currency??'€';
   const rows=input.rows;
   const max=Math.max(1,...rows.map(r=>r.wagered));
   const tableTop=525,rowH=58;
@@ -36,7 +37,7 @@ export function buildRaceSvg(input:RaceImageInput):string{
       <rect x="520" y="${y+18}" width="330" height="12" rx="6" fill="#2c2340"/>
       ${bar?`<rect x="520" y="${y+18}" width="${bar}" height="12" rx="6" fill="url(#bar)"/>`:''}
       <text x="990" y="${y+32}" text-anchor="end" fill="${row?'#ffb067':'#4d4659'}" font-size="23" font-weight="800">${row?usd(row.wagered):'—'}</text>
-      <text x="1110" y="${y+32}" text-anchor="end" fill="${prize?'#45e0a8':'#4d4659'}" font-size="22" font-weight="900">${prize?`${prize} €`:''}</text>
+      <text x="1110" y="${y+32}" text-anchor="end" fill="${prize?'#45e0a8':'#4d4659'}" font-size="22" font-weight="900">${prize?`${prize} ${cur}`:''}</text>
     </g>`;
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1000" viewBox="0 0 1200 1000" font-family="DejaVu Sans, sans-serif">
@@ -53,11 +54,11 @@ export function buildRaceSvg(input:RaceImageInput):string{
     <text x="60" y="78" fill="#ffffff" font-size="40" font-weight="900" letter-spacing="3">WAGER RACE</text>
     <text x="60" y="114" fill="#a99dbb" font-size="22">RainBet × LeCasiNoze × Belva · ${esc(input.month)}</text>
     <rect x="930" y="44" width="210" height="72" rx="20" fill="#ff8a3d" fill-opacity=".12" stroke="#ff8a3d" stroke-width="2"/>
-    <text x="1035" y="92" text-anchor="middle" fill="#ffb067" font-size="36" font-weight="900">${input.pot} €</text>
+    <text x="1035" y="92" text-anchor="middle" fill="#ffb067" font-size="36" font-weight="900">${input.pot} ${cur}</text>
     <text x="1035" y="144" text-anchor="middle" fill="#a99dbb" font-size="18">${esc(input.endsLabel)}</text>
-    ${podium(rows.find(r=>r.rank===2),2,60,215,input.prizes[1])}
-    ${podium(rows.find(r=>r.rank===1),1,440,170,input.prizes[0])}
-    ${podium(rows.find(r=>r.rank===3),3,820,255,input.prizes[2])}
+    ${podium(rows.find(r=>r.rank===2),2,60,215,input.prizes[1],cur)}
+    ${podium(rows.find(r=>r.rank===1),1,440,170,input.prizes[0],cur)}
+    ${podium(rows.find(r=>r.rank===3),3,820,255,input.prizes[2],cur)}
     ${table}
     <text x="60" y="968" fill="#766d82" font-size="17">${usd(input.minWagerUsd)} misés minimum pour être payé · 18+ · Joue de façon responsable</text>
     <text x="1140" y="968" text-anchor="end" fill="#766d82" font-size="17">Mis à jour ${esc(input.updatedLabel)}</text>
