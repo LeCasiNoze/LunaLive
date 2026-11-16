@@ -27,5 +27,7 @@ COPY --from=build /repo/bot/package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /repo/bot/dist ./dist
+# Visuels des cartes Discord de Belva, lus à l'exécution depuis dist/../assets.
+COPY bot/assets ./assets
 
 CMD ["node", "/srv/lunalive-bot/dist/index.js"]
