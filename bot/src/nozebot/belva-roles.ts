@@ -9,13 +9,17 @@ export const BELVA_ROLES={
 } as const;
 
 // The brand list follows the channels of the "Offres Casino" category: one channel = one brand.
-// "35€-offerts-celsius" → Celsius with a 35 € refund; any other name → its first word, no refund.
+// "35€-offerts-celsius" → Celsius with a 35 € refund; "💜︱hazcasino" → its first word, refund cap from DEFAULT_BONUS.
+// Info channels of the category (toutes-les-offres…) are not brands.
 const OFFERS_CATEGORY='1570917911206563931';
+const DEFAULT_BONUS:Record<string,number>={hazcasino:30,velobet:30,celsius:35,betportal:30};
+const NOT_BRANDS=new Set(['toutes','tous','offres','infos']);
 export type Brand={id:string;name:string;emoji:string;role:string;bonus?:number;channelId?:string;api?:boolean};
 const KNOWN:Brand[]=[
   {id:'hazcasino',name:'HazCasino',emoji:'💜',role:'1571169951102931038',bonus:30,channelId:'1518632995945189507'},
   {id:'velobet',name:'VeloBet',emoji:'💚',role:'1571169952436715631',bonus:30,channelId:'1569361303192084521'},
   {id:'celsius',name:'Celsius',emoji:'🧡',role:'1571169954412101664',bonus:35,channelId:'1570927516301004990'},
+  {id:'betportal',name:'Betportal',emoji:'🟢',role:'',bonus:30},
   {id:'rainbet',name:'Rainbet',emoji:'🌧️',role:'1571169955616002059',channelId:'1571169962041811014',api:true},
 ];
 let current:Brand[]=KNOWN;
@@ -37,12 +41,12 @@ export async function refreshBrands(guild:Guild){
   if(!channels.length)return current;
   const next:Brand[]=[];
   for(const ch of channels){
-    const parsed=parseOfferChannel(ch.name);if(!parsed||next.some(b=>b.id===parsed.id))continue;
+    const parsed=parseOfferChannel(ch.name);if(!parsed||NOT_BRANDS.has(parsed.id)||next.some(b=>b.id===parsed.id))continue;
     const known=KNOWN.find(b=>b.id===parsed.id);
     const name=known?.name??parsed.id[0].toUpperCase()+parsed.id.slice(1);
-    let role=known?.role??guild.roles.cache.find(r=>norm(r.name).endsWith(parsed.id))?.id;
-    if(!role)role=(await guild.roles.create({name:`🎰 ${name}`,color:0x94a3b8,reason:`Nouveau casino dans Offres Casino : #${ch.name}`})).id;
-    next.push({...known,id:parsed.id,name,emoji:known?.emoji??'🎰',role,channelId:ch.id,bonus:parsed.bonus});
+    let role=known?.role||guild.roles.cache.find(r=>norm(r.name).endsWith(parsed.id))?.id;
+    if(!role)role=(await guild.roles.create({name:`${known?.emoji??'🎰'} ${name}`,color:0x94a3b8,reason:`Nouveau casino dans Offres Casino : #${ch.name}`})).id;
+    next.push({...known,id:parsed.id,name,emoji:known?.emoji??'🎰',role,channelId:ch.id,bonus:parsed.bonus??DEFAULT_BONUS[parsed.id]});
   }
   if(next.length)current=next;
   return current;

@@ -6,6 +6,7 @@ import {
 import type {Pool} from 'pg';
 import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand} from './belva-roles.js';
 import {OFFERS,ensureOfferCards} from './belva-offers.js';
+import {ensureInfoCards} from './belva-info.js';
 
 // Belva's community server: ticket system for casino account checks and the "30 € offerts" deposit refunds.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -481,6 +482,7 @@ async function ensureOfferButtons(client:Client){
 export async function ensureBelvaTicketPanel(client:Client){
   if(process.env.BELVA_TICKETS_ENABLED==='false')return;
   await ensureOfferCards(client).catch(e=>console.error('[nozebot] cartes offres Belva',e));
+  await ensureInfoCards(client).catch(e=>console.error('[nozebot] cartes info Belva',e));
   await ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e));
   setInterval(()=>void ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e)),10*60_000).unref();
   const channel=await client.channels.fetch(PANEL_CHANNEL).catch(()=>null);

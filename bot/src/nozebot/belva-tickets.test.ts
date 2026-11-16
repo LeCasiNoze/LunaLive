@@ -6,9 +6,9 @@ test('notification panel passes Discord builder validation',()=>{
 });
 test('panel and casino menus pass Discord builder validation',()=>{
   belvaTicketPanel().components.forEach(row=>row.toJSON());
-  assert.equal(casinoMenu('refund').toJSON().components[0].options.length,3);
-  assert.equal(casinoMenu('offer').toJSON().components[0].options.length,3);
-  assert.equal(casinoMenu('verify').toJSON().components[0].options.length,4);
+  assert.equal(casinoMenu('refund').toJSON().components[0].options.length,4);
+  assert.equal(casinoMenu('offer').toJSON().components[0].options.length,4);
+  assert.equal(casinoMenu('verify').toJSON().components[0].options.length,5);
 });
 test('every modal passes Discord builder validation',()=>{
   for(const id of ['hazcasino','velobet','celsius','rainbet'])for(const kind of ['refund','offer','verify'] as const)accountModal(kind,casino(id)!).toJSON();
@@ -17,9 +17,9 @@ test('every modal passes Discord builder validation',()=>{
 });
 test('refunds go to a casino the member does not have yet, else where they played',()=>{
   const opts=(owned:string[])=>destMenu({id:1,casino:'hazcasino'},new Set(owned)).toJSON().components[0].options.map(o=>o.value);
-  assert.deepEqual(opts(['hazcasino']),['velobet','celsius']);
-  assert.deepEqual(opts(['hazcasino','velobet']),['celsius']);
-  assert.deepEqual(opts(['hazcasino','velobet','celsius']),['hazcasino']);
+  assert.deepEqual(opts(['hazcasino']),['velobet','celsius','betportal']);
+  assert.deepEqual(opts(['hazcasino','velobet','celsius']),['betportal']);
+  assert.deepEqual(opts(['hazcasino','velobet','celsius','betportal']),['hazcasino']);
 });
 import {offerVerifyMessage} from './belva-tickets.js';
 import {belvaRainbetModal,belvaRainbetPanel} from './belva-rainbet.js';
@@ -43,7 +43,7 @@ test('offer channel names map to brands',()=>{
 });
 test('verify ticket offers every brand in multi-select',()=>{
   const rows=verifyRows('1');rows.forEach(r=>r.toJSON());
-  assert.equal((rows[0].toJSON() as {components:{options:unknown[];max_values:number}[]}).components[0].options.length,4);
+  assert.equal((rows[0].toJSON() as {components:{options:unknown[];max_values:number}[]}).components[0].options.length,5);
 });
 import {OFFERS,offerCard} from './belva-offers.js';
 test('every offer card has its visuals and two copies of each action button',()=>{
@@ -55,3 +55,5 @@ test('every offer card has its visuals and two copies of each action button',()=
     assert.ok(json.includes(id==='celsius'?'jusqu’à 35 €':'jusqu’à 30 €'));
   }
 });
+import {hubCard,linkCard,rewardsCard} from './belva-info.js';
+test('info cards build with their images',()=>{for(const c of [hubCard(),linkCard(),rewardsCard()]){assert.ok(c.files.length>=1);assert.ok(JSON.stringify(c.components).length<4000);}});

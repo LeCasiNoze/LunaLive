@@ -1,5 +1,6 @@
 import {EmbedBuilder,SlashCommandBuilder,type Client,type Interaction} from 'discord.js';
 import {LunaLiveApiError,requestAutomodLink,type LunaLiveApiConfig} from './lunalive-api.js';
+import {LINK_BUTTON} from './belva-info.js';
 
 // /lier sur le Discord de Belva : le bot envoie en MP une commande !lier à coller dans le chat Rumble de Belva.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -13,7 +14,9 @@ export async function registerBelvaCommands(client:Client){
 }
 
 export async function handleBelvaLink(interaction:Interaction,config:LunaLiveApiConfig):Promise<boolean>{
-  if(!interaction.isChatInputCommand()||interaction.commandName!=='lier'||interaction.guildId!==GUILD_ID())return false;
+  const slash=interaction.isChatInputCommand()&&interaction.commandName==='lier';
+  const button=interaction.isButton()&&interaction.customId===LINK_BUTTON;
+  if((!slash&&!button)||interaction.guildId!==GUILD_ID()||!interaction.isRepliable())return false;
   await interaction.deferReply({ephemeral:true});
   try{
     const link=await requestAutomodLink(config,interaction.user.id,STREAMER);
