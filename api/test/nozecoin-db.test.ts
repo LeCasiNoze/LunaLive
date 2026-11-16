@@ -95,6 +95,13 @@ test('stale and future chat messages cannot credit; rain stays Rumble-only',asyn
  assert.equal(await handleCoinsChat(pool,{...m,createdAt:new Date(Date.now()+60000)}),null);
  assert.equal((await coinsProfile(pool,1,m.userId,m.username)).balance,0);
 });
+test('a channel without Automod answers in its own coin',async()=>{
+ const m={streamerId:1,userId:'284177720',username:'Belvafan',messageId:'bc1',text:'!claim',createdAt:new Date()};
+ const o={coin:'BCoins',automod:false};
+ assert.match(String(await handleCoinsChat(pool,m,o)),/\+100 BCoins · solde 100/);
+ assert.match(String(await handleCoinsChat(pool,{...m,messageId:'bc2',text:'!bcoins'},o)),/100 BCoins\. Claim/);
+ assert.match(String(await handleCoinsChat(pool,{...m,messageId:'bc3',text:'!rain'},o)),/rain BCoins en cours|\+25 BCoins/);
+});
 test('nickname observations follow native IDs and ignore older events',async()=>{
  const now=new Date();await observeCoinName(pool,1,'284177710','Newest',now);
  await observeCoinName(pool,1,'284177710','Older',new Date(now.getTime()-1000));

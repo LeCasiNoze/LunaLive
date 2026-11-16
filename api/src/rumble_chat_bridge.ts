@@ -20,6 +20,7 @@ import { removeLatestRumbleCall } from "./calls/queue.js";
 import { handleShopChat } from "./automod-shop/commands.js";
 import { handleDiscordLinkChat } from "./automod-shop/discord-profile.js";
 import {handleCoinsChat,tickCoinsRain} from './nozecoins/chat.js';
+const BELVA_COINS={coin:'BCoins',automod:false};
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
@@ -468,7 +469,7 @@ export function ensureRumbleBridge(opts: {
       if(greeting)for(const chunk of shopReplyChunks(greeting))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);
     }).catch(()=>{});
 
-    if(opts.slug==='belvaa'&&/^!liers+[a-f0-9]{16}s*$/i.test(m.text.trim())){
+    if(opts.slug==='belvaa'&&/^!lier\s+[a-f0-9]{16}\s*$/i.test(m.text.trim())){
       const reply=await handleDiscordLinkChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,text:m.text,createdAt:m.createdAt},{command:'/lier',success:'Ton Discord Belva est maintenant relié à ce compte Rumble.'}).catch(()=>`@${m.username} — Liaison indisponible, réessaie dans un instant.`);
       if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
       return;
@@ -487,6 +488,11 @@ export function ensureRumbleBridge(opts: {
       const coinReply=await handleCoinsChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,text:m.text,createdAt:m.createdAt});
       if(coinReply){for(const chunk of shopReplyChunks(coinReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
       if(process.env.NOZECOINS_ENABLED==='true'&&/^!(?:claim|slot)\s*$/i.test(m.text.trim()))return;
+    }
+    if(opts.slug==='belvaa'){
+      await observeCoinName(opts.pool,opts.streamerId,m.userId,m.username,m.createdAt);
+      const coinReply=await handleCoinsChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,messageId:m.msgId,text:m.text,createdAt:m.createdAt},BELVA_COINS).catch(()=>null);
+      if(coinReply){for(const chunk of shopReplyChunks(coinReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
     }
     if (opts.slug === "lecasinoze" && (/^!(?:compte|lier|upgrade|offert|points|camp|profil|profile|xp|parrain|parrainer|shop|rain|achat|duree|mise|hunt|pari|oui|non|vote)(?:\s|$)/i.test(m.text) || /^![1-4]\s*$/.test(m.text.trim())
       || /^!call\s+\+[123]\s/i.test(m.text) || /^(?:[1-9]|1[0-6])$/.test(m.text.trim()))) {
@@ -645,6 +651,7 @@ export function ensureRumbleBridge(opts: {
         bridge.setFlags({ publicOn, popupOn, videoIdNumeric: nextVid });
       }
       if(opts.slug==='lecasinoze'&&commandsOn&&nextVid)await tickCoinsRain(opts.pool,opts.streamerId);
+      if(opts.slug==='belvaa'&&commandsOn&&nextVid)await tickCoinsRain(opts.pool,opts.streamerId,BELVA_COINS,async text=>{const r=await sendRumbleMessageReliable(opts.pool,nextVid,text);return {sent:Boolean(r.sent||r.queued)};});
     } catch (e: any) {
       console.warn(`[rumble_chat] ${opts.slug}: target refresh failed`, e?.message || e);
     }
