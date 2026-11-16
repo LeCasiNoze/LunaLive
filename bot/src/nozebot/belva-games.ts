@@ -1,4 +1,4 @@
-import {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,SlashCommandBuilder,type Client,type Interaction} from 'discord.js';
+import {ActionRowBuilder,AttachmentBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,SlashCommandBuilder,type Client,type Interaction,type Message} from 'discord.js';
 import {LunaLiveApiError,bcoinRequest,type LunaLiveApiConfig,type LunaLiveBlackjack} from './lunalive-api.js';
 import {renderBlackjackTable} from './blackjack-renderer.js';
 import {revealCoinSlot} from './coin-reveal.js';
@@ -65,24 +65,47 @@ export async function handleBelvaGames(interaction:Interaction,config:LunaLiveAp
   if(!interaction.isChatInputCommand()||!NAMES.has(interaction.commandName))return false;
   const cmd=interaction.commandName;
   await interaction.deferReply({ephemeral:cmd==='bcoins'||cmd==='claim'});
+  const edit=(p:Payload)=>interaction.editReply(p);
+  await play(cmd,config,interaction.user,interaction.id,edit,edit);
+  return true;
+}
+
+type Payload={content?:string;embeds?:EmbedBuilder[];components?:ActionRowBuilder<ButtonBuilder>[];files?:AttachmentBuilder[]};
+const TEXT=/^[/!](blackjack|bj|claim|slot|bcoins|solde)\s*$/i;
+
+// Sur mobile, « /blackjack » part souvent en message texte si la commande n'est pas choisie dans la liste : on y répond pareil.
+export async function handleBelvaGameMessage(message:Message,config:LunaLiveApiConfig):Promise<boolean>{
+  const m=TEXT.exec(message.content.trim());
+  if(!m||message.author.bot||message.guildId!==GUILD_ID())return false;
+  const cmd=({bj:'blackjack',solde:'bcoins'} as Record<string,string>)[m[1].toLowerCase()]??m[1].toLowerCase();
+  let sent:Message|null=null;
+  const first=async(p:Payload)=>{sent=await message.reply({...p,allowedMentions:{parse:[],repliedUser:false}});return sent;};
+  await play(cmd,config,message.author,message.id,first,p=>sent?sent.edit(p):first(p));
+  return true;
+}
+
+async function play(cmd:string,config:LunaLiveApiConfig,user:{id:string;username:string},receipt:string,send:(p:Payload)=>Promise<unknown>,edit:(p:Payload)=>Promise<unknown>){
   try{
-    if(cmd==='blackjack'){const r=await bcoinRequest<{game:Bj}>(config,interaction.user.id,'bj-start');await interaction.editReply(await bjMessage(r.game,interaction.user.username));return true;}
+    if(cmd==='blackjack'){const r=await bcoinRequest<{game:Bj}>(config,user.id,'bj-start');await send(await bjMessage(r.game,user.username));return;}
     if(cmd==='bcoins'){
-      const {profile:p}=await bcoinRequest<{profile:{username:string;balance:number;nextClaimAt:string|null;rules:{claim:number;claimMs:number;bet:number}}}>(config,interaction.user.id,'profile');
-      await interaction.editReply({embeds:[new EmbedBuilder().setColor(0x19d3d3).setTitle(`${p.username} · Belva`).addFields(
+      const {profile:p}=await bcoinRequest<{profile:{username:string;balance:number;nextClaimAt:string|null;rules:{claim:number;claimMs:number;bet:number}}}>(config,user.id,'profile');
+      await send({embeds:[new EmbedBuilder().setColor(0x19d3d3).setTitle(`${p.username} · Belva`).addFields(
         {name:COIN,value:`**${p.balance}**`,inline:true},
         {name:'Claim',value:`${p.rules.claim} / ${p.rules.claimMs/3_600_000} h`,inline:true},
         {name:'Prochain claim',value:p.nextClaimAt&&new Date(p.nextClaimAt).getTime()>Date.now()?ts(p.nextClaimAt):'Disponible · /claim',inline:true},
-        {name:'Jeux',value:`/slot · mise ${p.rules.bet}\n/blackjack · mise 20`,inline:false})
+        {name:'Jeux',value:`/slot · mise ${p.rules.bet}
+/blackjack · mise 20`,inline:false})
         .setFooter({text:'BCoins gratuits, sans valeur monétaire, non échangeables'})]});
-      return true;
+      return;
     }
-    const r=await bcoinRequest<{ok:boolean;nextAt?:string;delta:number;balance:number;art?:string;bet?:number;payout?:number;replayed?:boolean}>(config,interaction.user.id,cmd as 'claim'|'slot',{receipt:interaction.id});
-    if(!r.ok){await interaction.editReply(`Délai en cours. Reviens ${r.nextAt?ts(r.nextAt):'plus tard'}.`);return true;}
-    if(cmd==='claim'){await interaction.editReply(`+${r.delta} ${COIN} · Solde : **${r.balance} ${COIN}**${r.nextAt?`\nProchain claim ${ts(r.nextAt)}`:''}`);return true;}
-    const final=`**${formatCoinSlot(String(r.art))}**\nMise : ${r.bet} · Retour : ${r.payout} ${COIN}\nSolde : **${r.balance}** ${COIN}`;
+    const r=await bcoinRequest<{ok:boolean;nextAt?:string;delta:number;balance:number;art?:string;bet?:number;payout?:number;replayed?:boolean}>(config,user.id,cmd as 'claim'|'slot',{receipt});
+    if(!r.ok){await send({content:`Délai en cours. Reviens ${r.nextAt?ts(r.nextAt):'plus tard'}.`});return;}
+    if(cmd==='claim'){await send({content:`+${r.delta} ${COIN} · Solde : **${r.balance} ${COIN}**${r.nextAt?`
+Prochain claim ${ts(r.nextAt)}`:''}`});return;}
+    const final=`**${formatCoinSlot(String(r.art))}**
+Mise : ${r.bet} · Retour : ${r.payout} ${COIN}
+Solde : **${r.balance}** ${COIN}`;
     // Le débit et le résultat sont déjà enregistrés avant l'animation.
-    try{if(r.replayed)await interaction.editReply(final);else await revealCoinSlot(t=>interaction.editReply(t),String(r.art),final);}catch{await interaction.editReply(final).catch(()=>undefined);}
-  }catch(e){await interaction.editReply(errorText(e));}
-  return true;
+    try{if(r.replayed)await send({content:final});else{let n=0;await revealCoinSlot(t=>(n++?edit:send)({content:t}),String(r.art),final);}}catch{await edit({content:final}).catch(()=>undefined);}
+  }catch(e){await send({content:errorText(e)}).catch(()=>undefined);}
 }

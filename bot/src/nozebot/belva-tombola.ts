@@ -1,5 +1,5 @@
 import {randomInt} from 'node:crypto';
-import {SlashCommandBuilder,type Client,type Interaction,type TextChannel} from 'discord.js';
+import {SlashCommandBuilder,type Client,type Guild,type Interaction,type Message,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {BELVA_ROLES} from './belva-roles.js';
 
@@ -44,28 +44,40 @@ const mine=async(pool:Pool,id:string)=>(await pool.query(`SELECT count(*)::int n
 export async function handleBelvaTombola(i:Interaction,pool?:Pool):Promise<boolean>{
   if(i.guildId!==GUILD_ID()||!i.isChatInputCommand()||!NAMES.has(i.commandName))return false;
   await i.deferReply({ephemeral:true});
-  if(!pool){await i.editReply('Tombola indisponible pour le moment.');return true;}
+  const code=i.commandName==='code'?i.options.getString('code',true):null;
+  await i.editReply(await tombolaReply(pool,i.guild!,i.user.id,code));
+  return true;
+}
+
+// Version texte (« /code K7QX » envoyé comme message sur mobile).
+export async function handleBelvaTombolaMessage(message:Message,pool?:Pool):Promise<boolean>{
+  const m=/^[/!](?:code\s+(\S{4,8})|(tombola|tickets))\s*$/i.exec(message.content.trim());
+  if(!m||message.author.bot||message.guildId!==GUILD_ID()||!message.guild)return false;
+  const content=await tombolaReply(pool,message.guild,message.author.id,m[1]??null);
+  await message.reply({content,allowedMentions:{parse:[],repliedUser:false}});
+  return true;
+}
+
+async function tombolaReply(pool:Pool|undefined,guild:Guild,userId:string,rawCode:string|null):Promise<string>{
+  if(!pool)return 'Tombola indisponible pour le moment.';
   await schema(pool);
-  const member=await i.guild!.members.fetch(i.user.id).catch(()=>null);
+  const member=await guild.members.fetch(userId).catch(()=>null);
   const eligible=member?.roles.cache.has(BELVA_ROLES.membre)??false;
   const warn=eligible?'':'\n⚠️ Pour être tiré au sort, vérifie d’abord un compte casino dans un salon d’offre (#toutes-les-offres) : seuls les membres vérifiés peuvent gagner.';
-  if(i.commandName==='code'){
-    const code=i.options.getString('code',true).trim().toUpperCase();
+  if(rawCode!==null){
+    const code=rawCode.trim().toUpperCase();
     const ok=(await pool.query(`INSERT INTO belva_tombola_tickets(code,discord_id,draw_at)
       SELECT code,$2,(${NEXT_DRAW}) FROM belva_tombola_codes WHERE code=$1 AND bucket>0 AND announced_at IS NOT NULL AND expires_at>NOW()
-      ON CONFLICT DO NOTHING RETURNING code`,[code,i.user.id])).rowCount;
-    const t=await mine(pool,i.user.id);
+      ON CONFLICT DO NOTHING RETURNING code`,[code,userId])).rowCount;
+    const t=await mine(pool,userId);
     if(!ok){
-      const known=(await pool.query(`SELECT 1 FROM belva_tombola_tickets WHERE code=$1 AND discord_id=$2`,[code,i.user.id])).rowCount;
-      await i.editReply(known?`Tu as déjà validé ce code. Tickets cette semaine : **${t.n}**.`:'Code inconnu ou expiré : un code est valable 10 minutes après son annonce dans le chat Rumble de Belva.');
-      return true;
+      const known=(await pool.query(`SELECT 1 FROM belva_tombola_tickets WHERE code=$1 AND discord_id=$2`,[code,userId])).rowCount;
+      return known?`Tu as déjà validé ce code. Tickets cette semaine : **${t.n}**.`:'Code inconnu ou expiré : un code est valable 10 minutes après son annonce dans le chat Rumble de Belva.';
     }
-    await i.editReply(`🎟️ **+1 ticket !** Tu en as **${t.n}** pour le tirage du ${ts(t.draw_at)} (${WINNERS()} gagnants à ${PRIZE()}).${warn}`);
-    return true;
+    return `🎟️ **+1 ticket !** Tu en as **${t.n}** pour le tirage du ${ts(t.draw_at)} (${WINNERS()} gagnants à ${PRIZE()}).${warn}`;
   }
-  const t=await mine(pool,i.user.id);
-  await i.editReply(`🎟️ Tickets cette semaine : **${t.n}**\nTirage : ${ts(t.draw_at)} · ${WINNERS()} gagnants à ${PRIZE()}\nUn code est annoncé toutes les 40 minutes pendant le live de Belva sur Rumble : tape **/code** suivi du code ici.${warn}`);
-  return true;
+  const t=await mine(pool,userId);
+  return `🎟️ Tickets cette semaine : **${t.n}**\nTirage : ${ts(t.draw_at)} · ${WINNERS()} gagnants à ${PRIZE()}\nUn code est annoncé toutes les 40 minutes pendant le live de Belva sur Rumble : tape **/code** suivi du code ici.${warn}`;
 }
 
 // Tirage pondéré par le nombre de tickets, parmi les membres encore présents avec le rôle vérifié.

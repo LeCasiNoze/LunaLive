@@ -35,8 +35,8 @@ import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js'
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { belvaLiveConfig } from './belva-live.js';
-import { handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
-import { handleBelvaTombola, registerBelvaTombolaCommands, startBelvaTombola } from './belva-tombola.js';
+import { handleBelvaGameMessage, handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
+import { handleBelvaTombola, handleBelvaTombolaMessage, registerBelvaTombolaCommands, startBelvaTombola } from './belva-tombola.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -532,6 +532,10 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   });
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
+    if(message.guildId===(process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668')&&!message.author.bot){
+      void handleBelvaGameMessage(message,config.commands.lunaLive).then(done=>done||handleBelvaTombolaMessage(message,pool)).catch(e=>console.error('[nozebot] commande texte Belva',e));
+      return;
+    }
     if(message.author.bot||message.guildId!==config.guildId||!/^!(?:(profil|solde|points|shop|help|insta|youtube)\s*|ameliorer (claim|cooldown|rain|slot) [1-3])$/i.test(message.content))return;
     const cooldownKey=/^!(insta|youtube)\s*$/i.test(message.content)?`${message.author.id}:${message.content.trim().toLowerCase()}`:message.author.id;
     const now=Date.now();if(now-(profileCooldown.get(cooldownKey)??0)<15000)return;
