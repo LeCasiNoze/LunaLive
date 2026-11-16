@@ -71,6 +71,10 @@ function emitChatAll(io: Server, slug: string, event: string, payload?: any) {
   io.to(`chat:${s}:popup`).emit(event as any, payload);
 }
 
+// Chaînes dont le compte Rumble accepte que LunaBot réponde aux calls dans le chat.
+const RUMBLE_REPLY_SLUGS=new Set((process.env.RUMBLE_CALL_REPLY_SLUGS||'lecasinoze,belvaa').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean));
+const repliesOnRumble=(slug:string)=>RUMBLE_REPLY_SLUGS.has(String(slug||'').trim().toLowerCase());
+
 export async function sendBotChat(
   pool: Pool,
   io: Server,
@@ -83,7 +87,7 @@ export async function sendBotChat(
     console.warn("[calls] BOT_USER_ID missing, skip bot chat:", body);
     // Rumble viewer replies must not depend on the LunaLive overlay bot account.
     // The public Rumble response is sent/queued independently when a live ID exists.
-    if (String(opts.slug || "").trim().toLowerCase() === "lecasinoze") {
+    if (repliesOnRumble(opts.slug)) {
       await mirrorBotMessageToRumble(pool, opts.streamerId, body, opts.rumbleVideoIdNumeric);
     }
     return;
@@ -117,8 +121,8 @@ export async function sendBotChat(
   emitChatAll(io, opts.slug, "chat:message", msg);
 
   // Imported channels mirror Rumble messages into LunaLive, but LunaBot must
-  // never speak back on their Rumble account. LeCasiNoze is the sole opt-in.
-  if (String(opts.slug || "").trim().toLowerCase() === "lecasinoze") {
+  // never speak back on their Rumble account, except the opted-in channels.
+  if (repliesOnRumble(opts.slug)) {
     void mirrorBotMessageToRumble(pool, opts.streamerId, text, opts.rumbleVideoIdNumeric);
   }
 }
@@ -296,6 +300,11 @@ export async function handleCallsCommand(opts: {
   function emitUserToast(targetIo: Server, userId: number, toast: UiToast) {
     defaultEmitUserToast(targetIo, userId, toast);
     opts.onFeedback?.(toast);
+    // Un viewer Rumble ne voit pas les toasts LunaLive : on lui répond dans le chat (LeCasiNoze garde son flux Automod).
+    if (userId === 0 && rumbleUserId && !externalActorKey && slug.toLowerCase() !== "lecasinoze" && repliesOnRumble(slug)) {
+      const text = `@${actorUsername} — ${toast.title}${toast.message ? ` : ${toast.message}` : ""}`;
+      void sendBotChat(pool, targetIo, { streamerId, slug, rumbleVideoIdNumeric }, text).catch(() => undefined);
+    }
   }
 
   // Ces deux actions sensibles se pilotent uniquement depuis l'interface.
@@ -514,7 +523,7 @@ export async function handleCallsCommand(opts: {
 
   // Pour les viewers DLive, on vérifie la limite par username (pas par userId=0 partagé)
   if (isDliveViewer && lim > 0 && actorUsername) {
-    const n = externalActorKey ? await countUserCallsByExternalKey(pool, streamerId, externalActorKey) : rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)',[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
+    const n = externalActorKey ? await countUserCallsByExternalKey(pool, streamerId, externalActorKey) : rumbleUserId?Number((await pool.query('SELECT COUNT(*) AS n FROM calls_queue WHERE streamer_id=$1 AND rumble_user_id=$2 AND COALESCE(is_bonus,FALSE)=FALSE AND (bet IS NULL OR bet<=0)'+(slug.toLowerCase()==='lecasinoze'?'':" AND created_at>NOW()-INTERVAL '12 hours'"),[streamerId,rumbleUserId])).rows[0].n):await countUserCallsByUsername(pool, streamerId, actorUsername);
     if (n >= lim) {
       await sendBotChat(pool, io, { streamerId, slug }, `❌ @${actorUsername} : tu as déjà ${n}/${lim} calls en file.`);
       return { handled: true, showOriginalInChat };
