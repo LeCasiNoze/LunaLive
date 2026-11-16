@@ -99,9 +99,12 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
  }
 }));
 
+// La liaison Rumble ↔ Discord est propre à chaque chaîne : seules celles dont le chat lit !lier sont acceptées.
+const LINK_STREAMERS=['lecasinoze','belvaa'];
 internalNozeBotRouter.post('/internal/bot/nozebot/automod/:action',requireNozeBot,a(async(req,res)=>{
  const identity=readIdentity(req,res);if(!identity)return;
- const sid=(await pool.query("SELECT id FROM streamers WHERE lower(slug)='lecasinoze' LIMIT 1")).rows[0]?.id;
+ const slug=req.params.action==='link'&&LINK_STREAMERS.includes(String(req.body?.streamer))?String(req.body.streamer):'lecasinoze';
+ const sid=(await pool.query("SELECT id FROM streamers WHERE lower(slug)=$1 LIMIT 1",[slug])).rows[0]?.id;
  if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
  if(req.params.action==='profile')return res.json({ok:true,profile:await automodDiscordProfile(pool,Number(sid),identity.discordUserId)});
  if(req.params.action!=='link')return res.status(404).json({ok:false,error:'unknown_action'});

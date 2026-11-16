@@ -18,6 +18,7 @@ import { parseBangCommand, handleCallsCommand } from "./calls/commands.js";
 import { createClipForStreamer } from "./shared/clip_service.js";
 import { removeLatestRumbleCall } from "./calls/queue.js";
 import { handleShopChat } from "./automod-shop/commands.js";
+import { handleDiscordLinkChat } from "./automod-shop/discord-profile.js";
 import {handleCoinsChat,tickCoinsRain} from './nozecoins/chat.js';
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
@@ -467,6 +468,11 @@ export function ensureRumbleBridge(opts: {
       if(greeting)for(const chunk of shopReplyChunks(greeting))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);
     }).catch(()=>{});
 
+    if(opts.slug==='belvaa'&&/^!liers+[a-f0-9]{16}s*$/i.test(m.text.trim())){
+      const reply=await handleDiscordLinkChat(opts.pool,{streamerId:opts.streamerId,userId:m.userId,username:m.username,text:m.text,createdAt:m.createdAt},{command:'/lier',success:'Ton Discord Belva est maintenant relié à ce compte Rumble.'}).catch(()=>`@${m.username} — Liaison indisponible, réessaie dans un instant.`);
+      if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
+      return;
+    }
     const externalMessage={provider:'rumble' as const,externalId:m.userId,streamerId:opts.streamerId,slug:opts.slug,username:m.username,text:m.text,createdAt:m.createdAt};
     try{
       const communityReply=await handleExternalCommunityChat(opts.pool,opts.io,externalMessage);

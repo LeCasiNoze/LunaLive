@@ -112,8 +112,8 @@ function cleanBaseUrl(value: string): string {
 export function fetchAutomodProfile(config:LunaLiveApiConfig,discordUserId:string){
  return post<{ok:true;profile:null|{username:string;message:string}}>(config,'/internal/bot/nozebot/automod/profile',discordUserId);
 }
-export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string){
- return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId);
+export function requestAutomodLink(config:LunaLiveApiConfig,discordUserId:string,streamer?:string){
+ return post<{ok:true;linked:boolean;username?:string;command?:string}>(config,'/internal/bot/nozebot/automod/link',discordUserId,streamer?{streamer}:{});
 }
 
 export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;journal?:Array<{id:string;label:string;complete:boolean}>;
