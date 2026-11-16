@@ -32,6 +32,7 @@ import { ensureBelvaTicketPanel, handleBelvaTickets } from './belva-tickets.js';
 import { ensureBelvaNotifPanel, handleBelvaNotifs } from './belva-notifs.js';
 import { ensureBelvaRainbetPanel, handleBelvaRainbet } from './belva-rainbet.js';
 import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js';
+import { startBelvaStats } from './belva-stats.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -622,6 +623,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void ensureBelvaNotifPanel(readyClient).catch((error) => console.error("[nozebot] panneau notifs Belva", error));
     void ensureBelvaRainbetPanel(readyClient).catch((error) => console.error("[nozebot] panneau Rainbet Belva", error));
     void startBelvaGiveaways(readyClient, pool).catch((error) => console.error("[nozebot] giveaways Belva", error));
+    void startBelvaStats(readyClient, pool).catch((error) => console.error("[nozebot] stats Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     console.log("[nozebot] interaction reçue", {
