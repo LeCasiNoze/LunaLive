@@ -1,6 +1,7 @@
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
 import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
+import {actCoinBlackjack,startCoinBlackjack,type CoinBjAction} from '../nozecoins/blackjack.js';
 import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
 import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -53,6 +54,30 @@ function readIdentity(req: Request, res: Response): { discordUserId: string; dis
   }
   return { discordUserId, discordGuildId };
 }
+
+// BCoins : points de chaîne de Belva, même moteur que les NozeCoins mais portefeuille séparé (streamer belvaa).
+internalNozeBotRouter.post('/internal/bot/nozebot/bcoins/:action',requireNozeBot,a(async(req,res)=>{
+ const identity=readIdentity(req,res);if(!identity)return;
+ const sid=Number((await pool.query("SELECT id FROM streamers WHERE lower(slug)='belvaa' LIMIT 1")).rows[0]?.id);
+ if(!sid)return res.status(404).json({ok:false,error:'streamer_missing'});
+ try{
+  const link=await linkedCoins(pool,sid,identity.discordUserId);
+  const action=req.params.action;
+  if(action==='profile')return res.json({ok:true,profile:await coinsProfile(pool,sid,link.rumble_user_id,link.username)});
+  if(action==='bj-start')return res.json({ok:true,game:await startCoinBlackjack(pool,sid,link.rumble_user_id,link.username,identity.discordUserId)});
+  if(action==='bj-act'){
+   const move=String(req.body?.move||''),session=String(req.body?.sessionId||'');
+   if(!['hit','stand','double','split'].includes(move)||!/^[0-9a-f-]{36}$/.test(session))return res.status(400).json({ok:false,error:'bad_action'});
+   return res.json({ok:true,game:await actCoinBlackjack(pool,sid,link.rumble_user_id,identity.discordUserId,session,move as CoinBjAction)});
+  }
+  if(!['claim','slot'].includes(action))return res.status(400).json({ok:false,error:'bad_action'});
+  const receipt=String(req.body?.receipt||'');if(!/^\d{17,20}$/.test(receipt))return res.status(400).json({ok:false,error:'bad_receipt'});
+  return res.json(await coinAction(pool,sid,link.rumble_user_id,link.username,action as 'claim'|'slot',`discord:${action}:${receipt}`));
+ }catch(e){const code=e instanceof Error?e.message:'';
+  if(e instanceof InsufficientCoins)return res.status(409).json({ok:false,error:e.message,balance:e.balance,cost:e.cost,missing:e.cost-e.balance});
+  if(['rumble_not_linked','insufficient_coins','session_not_found','session_forbidden','invalid_action'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
+ }
+}));
 
 internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,a(async(req,res)=>{
  const identity=readIdentity(req,res);if(!identity)return;

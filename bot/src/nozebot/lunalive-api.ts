@@ -122,6 +122,10 @@ export function coinRequest(config:LunaLiveApiConfig,discordUserId:string,action
  return post<{ok:boolean;error?:string;nextAt?:string;profile?:CoinProfile;balance?:number;delta?:number;art?:string;bet?:number;payout?:number;replayed?:boolean}>(
   config,`/internal/bot/nozebot/coins/${action}`,discordUserId,{receipt,upgrade,expectedTier});
 }
+// BCoins du Discord de Belva (portefeuille séparé des NozeCoins).
+export function bcoinRequest<T=any>(config:LunaLiveApiConfig,discordUserId:string,action:'profile'|'claim'|'slot'|'bj-start'|'bj-act',body:Record<string,unknown>={}){
+ return post<T>(config,`/internal/bot/nozebot/bcoins/${action}`,discordUserId,body);
+}
 export function fetchLinkedCoinNames(config:LunaLiveApiConfig,discordUserId:string,cursor=''){
  return post<{ok:true;links:Array<{discordId:string;username:string;rumbleId?:string;usernameVerifiedAt?:string|null}>;nextCursor:string|null}>(config,'/internal/bot/nozebot/coins/links',discordUserId,{cursor});
 }

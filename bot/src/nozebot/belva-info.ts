@@ -54,8 +54,19 @@ export function rewardsCard(){
     SEP(1),FOOTER]};
 }
 
+export function gamesCard(){
+  return {files:[file('logo-belva.png')],components:[
+    {type:9,components:[T('# 🎰 Mini-jeux Belva'),T('Joue avec tes **BCoins**, la monnaie gratuite du serveur.\n-# BCoins gratuits, sans valeur monétaire, non échangeables.')],
+      accessory:{type:11,media:{url:'attachment://logo-belva.png'},description:'Belva'}},
+    SEP(),
+    T('### Les commandes\n> 💰 **/claim** · tes BCoins gratuits, une fois par jour\n> 🎰 **/slot** · la machine à sous, toutes les 30 minutes\n> 🃏 **/blackjack** · une table de blackjack, mise 20 BCoins\n> 👛 **/bcoins** · ton solde et ton prochain claim'),
+    SEP(1,false),
+    T('### Pour commencer\nRelie ton compte Rumble dans 🔗︱lier-mon-compte : tes BCoins sont attachés à ton pseudo Rumble.\n-# Tape les commandes directement dans ce salon.'),
+    SEP(1),FOOTER]};
+}
+
 const CARDS:[string,()=>{files:{attachment:Buffer;name:string}[];components:object[]}][]=[
-  ['toutes-les-offres',hubCard],['lier-mon-compte',linkCard],['récompenses',rewardsCard]];
+  ['toutes-les-offres',hubCard],['lier-mon-compte',linkCard],['récompenses',rewardsCard],['mini-jeux',gamesCard]];
 
 // Le container porte un id dérivé du contenu : la carte n'est réécrite que si son contenu change.
 const versionOf=(components:object[])=>parseInt(createHash('sha1').update(JSON.stringify(components)).digest('hex').slice(0,7),16);
