@@ -15,7 +15,6 @@ export type Brand={id:string;name:string;emoji:string;role:string;bonus?:number;
 const KNOWN:Brand[]=[
   {id:'hazcasino',name:'HazCasino',emoji:'💜',role:'1571169951102931038',bonus:30,channelId:'1518632995945189507'},
   {id:'velobet',name:'VeloBet',emoji:'💚',role:'1571169952436715631',bonus:30,channelId:'1569361303192084521'},
-  {id:'boo',name:'Boo!',emoji:'🩵',role:'1571169953468514445',bonus:30,channelId:'1570060951452123226'},
   {id:'celsius',name:'Celsius',emoji:'🧡',role:'1571169954412101664',bonus:35,channelId:'1570927516301004990'},
   {id:'rainbet',name:'Rainbet',emoji:'🌧️',role:'1571169955616002059',channelId:'1571169962041811014',api:true},
 ];

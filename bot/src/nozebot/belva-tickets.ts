@@ -5,6 +5,7 @@ import {
 } from 'discord.js';
 import type {Pool} from 'pg';
 import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand} from './belva-roles.js';
+import {OFFERS,ensureOfferCards} from './belva-offers.js';
 
 // Belva's community server: ticket system for casino account checks and the "30 € offerts" deposit refunds.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -21,20 +22,25 @@ export const casino=brand;
 
 const KINDS={
   refund:{emoji:'💸',label:'Remboursement de dépôt',short:'remb',description:'Récupérer tes 30 € offerts après ton dépôt via le lien de Belva.'},
+  offer:{emoji:'🎁',label:'Dépôt offert (nouveau compte)',short:'offert',description:'20 € offerts pour ton 1er dépôt sur un casino où tu n’as pas de compte.'},
   verify:{emoji:'🔎',label:'Vérification de compte',short:'verif',description:'Faire vérifier ton compte sur un casino partenaire.'},
   help:{emoji:'🛟',label:'Aide / question',short:'aide',description:'Un problème ou une question pour le staff.'},
   partner:{emoji:'🤝',label:'Partenariat',short:'partenariat',description:'Proposition professionnelle ou prise de contact.'},
   other:{emoji:'📝',label:'Autre demande',short:'autre',description:'Tout ce qui ne rentre pas dans les autres choix.'},
 } as const;
 type Kind=keyof typeof KINDS;
+type MoneyKind='refund'|'offer';
+const OFFER_EUR=20;
+// Remboursement = montant déposé, plafonné au bonus du casino (30 €, 35 € Celsius) ; en dessous de 20 € le CPA n'est pas garanti.
+const MIN_DEPOSIT=20;
 
 const P='belva:t:';
 const ID={
   panel:P+'new',casinoSelect:P+'casino:',modal:P+'modal:',approve:P+'approve:',reject:P+'reject:',close:P+'close',
   wallet:P+'wallet:',walletModal:P+'walletmodal:',paid:P+'paid:',unpaid:P+'unpaid:',verified:P+'verified:',quick:P+'quick:',
-  verifySel:P+'vsel:',verifyDep:P+'vdep:',
+  verifySel:P+'vsel:',verifyDep:P+'vdep:',dest:P+'dest:',
 };
-const IN={user:'user',email:'email',proof:'proof',details:'details',network:'network',address:'address',walletProof:'walletproof'};
+const IN={user:'user',email:'email',proof:'proof',details:'details',network:'network',address:'address',walletProof:'walletproof',destUser:'destuser',deposit:'deposit'};
 
 const clean=(s:string,max=200)=>s.replace(/[`\\*_~|<>@]/g,'').replace(/[\r\n]+/g,' ').trim().slice(0,max);
 const code=(s:string)=>'`'+(clean(s,180)||'—')+'`';
@@ -55,12 +61,15 @@ export async function ensureTables(pool:Pool){
     status TEXT NOT NULL DEFAULT 'pending', ticket_channel_id TEXT, wallet_network TEXT, wallet_address TEXT,
     list_message_id TEXT, approved_by TEXT, approved_at TIMESTAMPTZ, paid_by TEXT, paid_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+  // kind=offer : 20 € envoyés pour un 1er dépôt sur un nouveau compte. dest_casino : casino où l'argent est versé (adresse de dépôt).
+  await pool.query(`ALTER TABLE belva_refunds ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'refund',
+    ADD COLUMN IF NOT EXISTS dest_casino TEXT, ADD COLUMN IF NOT EXISTS dest_username TEXT, ADD COLUMN IF NOT EXISTS deposit_eur INT`);
   tablesReady=true;
 }
 
 type Refund={id:number;discord_id:string;discord_tag:string;casino:string;casino_username:string;casino_email:string;amount_eur:number;
   status:string;ticket_channel_id:string|null;wallet_network:string|null;wallet_address:string|null;list_message_id:string|null;
-  approved_by:string|null;paid_by:string|null;paid_at:Date|null};
+  approved_by:string|null;paid_by:string|null;paid_at:Date|null;kind:MoneyKind;dest_casino:string|null;dest_username:string|null};
 const getRefund=async(pool:Pool,id:number)=>(await pool.query(`SELECT * FROM belva_refunds WHERE id=$1 AND guild_id=$2`,[id,GUILD_ID()])).rows[0] as Refund|undefined;
 
 const isStaff=(m:GuildMember)=>m.roles.cache.has(PATRON_ROLE)||m.roles.cache.has(VIDEUR_ROLE)||m.permissions.has(PermissionFlagsBits.Administrator);
@@ -85,7 +94,8 @@ export function belvaTicketPanel(){
       .setDescription([
         'Choisis ta demande dans le menu ci-dessous, un salon privé s’ouvrira avec le staff.',
         '',
-        '💸 **Remboursement de dépôt** · tes 30 € offerts (35 € sur Celsius) après ton inscription via le lien de Belva et ton dépôt.',
+        '🎁 **Dépôt offert** · pas encore de compte sur un de nos casinos ? Inscris-toi avec le lien de Belva : on t’offre ton 1er dépôt de 20 €.',
+        '💸 **Remboursement de dépôt** · tes 30 € offerts (35 € sur Celsius) après ton dépôt via le lien de Belva, versés de préférence sur un casino où tu n’as pas encore de compte.',
         '🔎 **Vérification de compte** · faire vérifier ton compte sur un casino partenaire.',
         '🛟 **Aide**, 🤝 **Partenariat** ou 📝 **Autre** pour le reste.',
         '',
@@ -98,18 +108,23 @@ export function belvaTicketPanel(){
   };
 }
 
-export function casinoMenu(kind:'refund'|'verify'){
+export function casinoMenu(kind:MoneyKind|'verify'){
   const list=brands().filter(c=>kind==='verify'||c.bonus).slice(0,25);
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(ID.casinoSelect+kind)
     .setPlaceholder('Sur quel casino ?')
-    .addOptions(list.map(c=>({value:c.id,label:c.name,emoji:c.emoji,description:kind==='refund'?`${c.bonus} € offerts`:'Vérifier mon compte'}))));
+    .addOptions(list.map(c=>({value:c.id,label:c.name,emoji:c.emoji,description:kind==='refund'?`${c.bonus} € offerts`:kind==='offer'?`${OFFER_EUR} € offerts pour ton 1er dépôt`:'Vérifier mon compte'}))));
 }
 
-export function accountModal(kind:'refund'|'verify',c:Casino){
-  const m=new ModalBuilder().setCustomId(`${ID.modal}${kind}:${c.id}`).setTitle(`${kind==='refund'?'Remboursement':'Vérification'} · ${c.name}`.slice(0,45));
+export function accountModal(kind:MoneyKind|'verify',c:Casino){
+  const m=new ModalBuilder().setCustomId(`${ID.modal}${kind}:${c.id}`).setTitle(`${{refund:'Remboursement',offer:'Dépôt offert',verify:'Vérification'}[kind]} · ${c.name}`.slice(0,45));
   m.addLabelComponents(
     new LabelBuilder().setLabel(`Ton pseudo sur ${c.name}`).setTextInputComponent(new TextInputBuilder().setCustomId(IN.user).setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(60).setRequired(true)),
     new LabelBuilder().setLabel(`Ton adresse mail sur ${c.name}`).setTextInputComponent(new TextInputBuilder().setCustomId(IN.email).setStyle(TextInputStyle.Short).setMinLength(5).setMaxLength(120).setRequired(true)),
+  );
+  if(kind==='refund')m.addLabelComponents(new LabelBuilder().setLabel('Montant de ton dépôt (€)')
+    .setDescription(`Minimum ${MIN_DEPOSIT} €. Remboursé jusqu’à ${c.bonus} €.`)
+    .setTextInputComponent(new TextInputBuilder().setCustomId(IN.deposit).setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(6).setPlaceholder('20').setRequired(true)));
+  m.addLabelComponents(
     new LabelBuilder().setLabel(kind==='refund'?'Capture de ton dépôt':'Capture de ton compte (facultatif)')
       .setDescription(kind==='refund'?'Montant, date et pseudo visibles.':'Ta page profil par exemple.')
       .setFileUploadComponent(new FileUploadBuilder().setCustomId(IN.proof).setMinValues(kind==='refund'?1:0).setMaxValues(3).setRequired(kind==='refund')),
@@ -122,15 +137,31 @@ export function freeModal(kind:Kind){
     new LabelBuilder().setLabel('Explique ta demande').setTextInputComponent(new TextInputBuilder().setCustomId(IN.details).setStyle(TextInputStyle.Paragraph).setMinLength(5).setMaxLength(1500).setRequired(true)));
 }
 
-export function walletModal(refundId:number){
-  return new ModalBuilder().setCustomId(ID.walletModal+refundId).setTitle('Mon wallet pour le remboursement').addLabelComponents(
+// Sans dest : ancien flux (wallet perso). Avec dest : l'argent part directement sur l'adresse de dépôt crypto du casino.
+export function walletModal(refundId:number,dest?:Casino,askUser=false){
+  const m=new ModalBuilder().setCustomId(ID.walletModal+refundId).setTitle(dest?`Recevoir sur ${dest.name}`.slice(0,45):'Mon wallet pour le remboursement');
+  if(dest&&askUser)m.addLabelComponents(new LabelBuilder().setLabel(`Ton pseudo sur ${dest.name}`.slice(0,45)).setDescription('Le compte créé avec le lien de Belva.')
+    .setTextInputComponent(new TextInputBuilder().setCustomId(IN.destUser).setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(60).setRequired(true)));
+  return m.addLabelComponents(
     new LabelBuilder().setLabel('Crypto et réseau').setDescription('Ex. USDT TRC20, USDT ERC20, BTC, SOL, LTC…')
       .setTextInputComponent(new TextInputBuilder().setCustomId(IN.network).setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(40).setRequired(true)),
-    new LabelBuilder().setLabel('Adresse du wallet').setDescription('Copie-colle-la, ne la tape pas à la main.')
+    new LabelBuilder().setLabel(dest?`Adresse de dépôt ${dest.name}`.slice(0,45):'Adresse du wallet')
+      .setDescription(dest?`Sur ${dest.name}, ouvre Dépôt, choisis la crypto et copie l’adresse.`.slice(0,100):'Copie-colle-la, ne la tape pas à la main.')
       .setTextInputComponent(new TextInputBuilder().setCustomId(IN.address).setStyle(TextInputStyle.Short).setMinLength(20).setMaxLength(130).setRequired(true)),
-    new LabelBuilder().setLabel('Capture de ton adresse de réception').setDescription('Écran de réception de ton wallet, avec l’adresse visible.')
+    new LabelBuilder().setLabel(dest?'Capture de l’écran de dépôt':'Capture de ton adresse de réception').setDescription(dest?'Avec l’adresse et ton pseudo visibles.':'Écran de réception de ton wallet, avec l’adresse visible.')
       .setFileUploadComponent(new FileUploadBuilder().setCustomId(IN.walletProof).setMinValues(1).setMaxValues(1).setRequired(true)));
 }
+
+// Règle Belva : le remboursement va sur un casino CPA où le membre n'a pas encore de compte (nouveau FTD) ; s'il les a tous, sur celui où il a joué.
+export function destMenu(r:{id:number;casino:string},owned:Set<string>){
+  const missing=brands().filter(b=>b.bonus&&b.id!==r.casino&&!owned.has(b.id));
+  const options=missing.length
+    ?missing.map(b=>({value:b.id,label:`${b.name} · nouveau compte`,emoji:b.emoji,description:'Inscris-toi d’abord avec le lien de Belva.'}))
+    :[{value:r.casino,label:casino(r.casino)?.name??r.casino,emoji:casino(r.casino)?.emoji,description:'Le casino où tu as joué.'}];
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(ID.dest+r.id)
+    .setPlaceholder('Où veux-tu recevoir ton remboursement ?').addOptions(options.slice(0,25)));
+}
+const ownedCasinos=async(pool:Pool,userId:string)=>new Set(((await pool.query(`SELECT casino FROM belva_casino_accounts WHERE guild_id=$1 AND discord_id=$2`,[GUILD_ID(),userId])).rows as {casino:string}[]).map(x=>x.casino));
 
 async function openChannel(i:ModalSubmitInteraction,kind:Kind,c?:Casino):Promise<TextChannel|null>{
   const guild=i.guild!;
@@ -169,19 +200,24 @@ const staffPing=`<@&${PATRON_ROLE}> <@&${VIDEUR_ROLE}>`;
 async function submitTicket(i:ModalSubmitInteraction,pool:Pool|undefined,kind:Kind,casinoId:string){
   await i.deferReply({ephemeral:true});
   const c=casino(casinoId);
-  if(kind==='refund'||kind==='verify'){
-    if(!c||(kind==='refund'&&!c.bonus)){await i.editReply('Ce casino n’est plus proposé. Réessaie depuis le salon ticket.');return;}
+  if(kind==='refund'||kind==='offer'||kind==='verify'){
+    const money=kind==='refund'||kind==='offer';
+    if(!c||(money&&!c.bonus)){await i.editReply('Ce casino n’est plus proposé. Réessaie depuis le salon ticket.');return;}
     if(!pool){await i.editReply('Le système de tickets est momentanément indisponible. Réessaie dans quelques minutes.');return;}
     await ensureTables(pool);
     const user=clean(i.fields.getTextInputValue(IN.user),60);
     const email=i.fields.getTextInputValue(IN.email).trim().toLowerCase().slice(0,120);
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)){await i.editReply('Cette adresse mail ne semble pas valide. Réessaie.');return;}
     const proofs=[...(i.fields.getUploadedFiles(IN.proof)?.values()??[])];
+    const deposit=kind==='refund'?Math.floor(Number(i.fields.getTextInputValue(IN.deposit).replace(',','.').replace(/[^0-9.]/g,''))):0;
+    if(kind==='refund'&&!(deposit>=MIN_DEPOSIT&&deposit<=100000)){await i.editReply(`Indique le montant de ton dépôt en euros (minimum ${MIN_DEPOSIT} €).`);return;}
     let warning='';
-    if(kind==='refund'){
-      const dup=(await pool.query(`SELECT id,discord_id,status FROM belva_refunds WHERE guild_id=$1 AND casino=$2 AND status<>'rejected'
-        AND (discord_id=$3 OR lower(casino_username)=lower($4) OR casino_email=$5)`,[GUILD_ID(),c.id,i.user.id,user,email])).rows as {id:number;discord_id:string;status:string}[];
-      if(dup.some(d=>d.discord_id===i.user.id)){await i.editReply(`Tu as déjà une demande de remboursement ${c.name} (n°${dup.find(d=>d.discord_id===i.user.id)!.id}). Une seule par casino.`);return;}
+    if(kind==='offer'&&(await ownedCasinos(pool,i.user.id)).has(c.id)){
+      await i.editReply(`Tu as déjà un compte ${c.name} chez nous : le dépôt offert est réservé aux nouveaux comptes. Regarde nos autres casinos dans les offres !`);return;}
+    if(money){
+      const dup=(await pool.query(`SELECT id,discord_id,status FROM belva_refunds WHERE guild_id=$1 AND casino=$2 AND kind=$6 AND status<>'rejected'
+        AND (discord_id=$3 OR lower(casino_username)=lower($4) OR casino_email=$5)`,[GUILD_ID(),c.id,i.user.id,user,email,kind])).rows as {id:number;discord_id:string;status:string}[];
+      if(dup.some(d=>d.discord_id===i.user.id)){await i.editReply(`Tu as déjà une demande ${kind==='offer'?'de dépôt offert':'de remboursement'} ${c.name} (n°${dup.find(d=>d.discord_id===i.user.id)!.id}). Une seule par casino.`);return;}
       if(dup.length)warning=`⚠️ **Attention staff** : ce pseudo ou ce mail ${c.name} a déjà servi pour la demande n°${dup[0].id} de <@${dup[0].discord_id}>.`;
     }
     const channel=await openChannel(i,kind,c);if(!channel)return;
@@ -189,22 +225,28 @@ async function submitTicket(i:ModalSubmitInteraction,pool:Pool|undefined,kind:Ki
       ON CONFLICT (guild_id,discord_id,casino) DO UPDATE SET casino_username=EXCLUDED.casino_username,casino_email=EXCLUDED.casino_email,discord_tag=EXCLUDED.discord_tag,updated_at=now()`,
       [GUILD_ID(),i.user.id,i.user.username,c.id,user,email]);
     let refundId=0;
-    if(kind==='refund')refundId=(await pool.query(`INSERT INTO belva_refunds (guild_id,discord_id,discord_tag,casino,casino_username,casino_email,amount_eur,ticket_channel_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,[GUILD_ID(),i.user.id,i.user.username,c.id,user,email,c.bonus,channel.id])).rows[0].id;
+    const amount=kind==='offer'?OFFER_EUR:Math.min(deposit,c.bonus!);
+    if(money)refundId=(await pool.query(`INSERT INTO belva_refunds (guild_id,discord_id,discord_tag,casino,casino_username,casino_email,amount_eur,ticket_channel_id,kind,dest_casino,dest_username,deposit_eur)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,[GUILD_ID(),i.user.id,i.user.username,c.id,user,email,amount,channel.id,kind,
+      kind==='offer'?c.id:null,kind==='offer'?user:null,kind==='refund'?deposit:OFFER_EUR])).rows[0].id;
     const files=await reupload(proofs,kind==='refund'?'depot':'compte');
-    const embed=new EmbedBuilder().setColor(kind==='refund'?0xf1c40f:0x4cc9f0)
+    const embed=new EmbedBuilder().setColor(kind==='refund'?0xf1c40f:kind==='offer'?0x22c55e:0x4cc9f0)
       .setTitle(`${KINDS[kind].emoji} ${KINDS[kind].label} · ${c.emoji} ${c.name}${refundId?` · n°${refundId}`:''}`)
       .setDescription(kind==='refund'
-        ?`Merci ! Le staff vérifie ton inscription et ton dépôt. Dès que c’est validé, tu recevras ici un bouton pour envoyer ton **wallet**.${files.length?'':'\n\n⚠️ La capture n’a pas pu être récupérée : renvoie-la dans ce salon.'}`
+        ?`Merci ! Le staff vérifie ton inscription et ton dépôt. Dès que c’est validé, tu choisiras ici sur quel casino recevoir tes **${amount} €**.${files.length?'':'\n\n⚠️ La capture n’a pas pu être récupérée : renvoie-la dans ce salon.'}`
+        :kind==='offer'
+        ?`Merci ! Le staff vérifie que ton compte ${c.name} a bien été créé avec le lien de Belva. Dès que c’est validé, tu enverras ici ton adresse de dépôt ${c.name} et on y verse tes **${amount} €**.`
         :'Merci ! Le staff vérifie ton compte et te répond ici.')
       .addFields(
         {name:'Membre',value:`<@${i.user.id}>\n${code(i.user.username)}`,inline:true},
         {name:'Casino',value:`${c.emoji} ${c.name}`,inline:true},
         {name:`Pseudo ${c.name}`,value:code(user),inline:true},
         {name:'Mail',value:code(email),inline:true},
-        ...(refundId?[{name:'Montant',value:`**${c.bonus} €**`,inline:true}]:[]),
+        ...(kind==='refund'?[{name:'Dépôt déclaré',value:`${deposit} €`,inline:true}]:[]),
+        ...(refundId?[{name:kind==='refund'?'Remboursement':'Montant',value:`**${amount} €**`,inline:true}]:[]),
+        ...(kind==='offer'?[{name:'Staff',value:'Valide seulement si ce pseudo apparaît dans le dashboard affilié.',inline:false}]:[]),
       ).setFooter({text:'Belva • Support privé'}).setTimestamp();
-    const components=kind==='refund'
+    const components=money
       ?[new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(ID.approve+refundId).setLabel('Valider').setEmoji('✅').setStyle(ButtonStyle.Success),
         new ButtonBuilder().setCustomId(ID.reject+refundId).setLabel('Refuser').setEmoji('❌').setStyle(ButtonStyle.Danger),closeButton())]
       :verifyRows(i.user.id);
@@ -237,22 +279,24 @@ async function listChannel(guild:Guild):Promise<TextChannel>{
 }
 
 function listEntry(r:Refund,image?:string){
-  const c=casino(r.casino);const paid=r.status==='paid';
-  const embed=new EmbedBuilder().setColor(paid?0x2ecc71:0xf1c40f)
-    .setTitle(`${paid?'✅ Remboursé':'⏳ À rembourser'} · n°${r.id} · ${c?.emoji??''} ${c?.name??r.casino} · ${r.amount_eur} €`)
+  const c=casino(r.casino);const paid=r.status==='paid';const offer=r.kind==='offer';
+  const d=r.dest_casino?casino(r.dest_casino):undefined;const fresh=!!r.dest_casino&&(offer||r.dest_casino!==r.casino);
+  const embed=new EmbedBuilder().setColor(paid?0x2ecc71:offer?0x22c55e:0xf1c40f)
+    .setTitle(`${paid?'✅ Envoyé':offer?'🎁 Dépôt offert à envoyer':'⏳ À rembourser'} · n°${r.id} · ${c?.emoji??''} ${c?.name??r.casino} · ${r.amount_eur} €`)
     .addFields(
       {name:'Membre',value:`<@${r.discord_id}>\n${code(r.discord_tag)}`,inline:true},
       {name:`Pseudo ${c?.name??r.casino}`,value:code(r.casino_username),inline:true},
       {name:'Mail',value:code(r.casino_email),inline:true},
+      ...(r.dest_casino?[{name:'Verser sur',value:`${d?.emoji??''} **${d?.name??r.dest_casino}**${fresh?' · nouveau compte (vérifie-le dans le dashboard)':''}${r.dest_username?'\n'+code(r.dest_username):''}`,inline:false}]:[]),
       {name:'Réseau',value:code(r.wallet_network??''),inline:true},
-      {name:'Wallet',value:'```'+clean(r.wallet_address??'',150)+'```',inline:false},
+      {name:r.dest_casino?'Adresse de dépôt':'Wallet',value:'```'+clean(r.wallet_address??'',150)+'```',inline:false},
       ...(r.ticket_channel_id?[{name:'Ticket',value:`<#${r.ticket_channel_id}>`,inline:true}]:[]),
       ...(paid?[{name:'Remboursé par',value:`<@${r.paid_by}> · <t:${Math.floor(new Date(r.paid_at!).getTime()/1000)}:f>`,inline:true}]:[]),
     ).setTimestamp();
   if(image)embed.setImage(`attachment://${image}`);
   const row=new ActionRowBuilder<ButtonBuilder>().addComponents(paid
     ?new ButtonBuilder().setCustomId(ID.unpaid+r.id).setLabel('Annuler (pas encore payé)').setEmoji('↩️').setStyle(ButtonStyle.Secondary)
-    :new ButtonBuilder().setCustomId(ID.paid+r.id).setLabel('Remboursé').setEmoji('✅').setStyle(ButtonStyle.Success));
+    :new ButtonBuilder().setCustomId(ID.paid+r.id).setLabel(offer?'Envoyé':'Remboursé').setEmoji('✅').setStyle(ButtonStyle.Success));
   return {embeds:[embed],components:[row]};
 }
 
@@ -267,19 +311,22 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
 
   if(i.isStringSelectMenu()&&cid===ID.panel){
     const kind=i.values[0] as Kind;
-    if(kind==='refund'||kind==='verify'){
-      await i.reply({ephemeral:true,content:kind==='refund'?'💸 Pour quel casino veux-tu ton remboursement ?':'🔎 Quel compte veux-tu faire vérifier ?',components:[casinoMenu(kind)]});
+    if(kind==='refund'||kind==='offer'||kind==='verify'){
+      await i.reply({ephemeral:true,content:{refund:'💸 Pour quel casino veux-tu ton remboursement ?',offer:'🎁 Sur quel casino viens-tu de créer ton compte avec le lien de Belva ?',verify:'🔎 Quel compte veux-tu faire vérifier ?'}[kind],components:[casinoMenu(kind)]});
     }else if(KINDS[kind])await i.showModal(freeModal(kind));
     return true;
   }
   if(i.isStringSelectMenu()&&cid.startsWith(ID.casinoSelect)){
-    const kind=cid.slice(ID.casinoSelect.length) as 'refund'|'verify';const c=casino(i.values[0]);
+    const kind=cid.slice(ID.casinoSelect.length) as MoneyKind|'verify';const c=casino(i.values[0]);
     if(c)await i.showModal(accountModal(kind,c));
     return true;
   }
-  if(i.isButton()&&cid.startsWith(ID.quick)){
-    const c=casino(cid.slice(ID.quick.length));
-    if(c)await i.showModal(accountModal('verify',c));
+  // Boutons des cartes d'offres (chaque action existe deux fois sur la carte : dans sa section et en bas).
+  const quick=/^belva:t:(quick|qoffer|qrefund)2?:([a-z0-9]+)$/.exec(cid);
+  if(i.isButton()&&quick){
+    const c=casino(quick[2]);const kind=({quick:'verify',qoffer:'offer',qrefund:'refund'} as const)[quick[1] as 'quick'|'qoffer'|'qrefund'];
+    if(!c||(kind!=='verify'&&!c.bonus)){await i.reply({ephemeral:true,content:'Cette offre n’est plus disponible.'});return true;}
+    await i.showModal(accountModal(kind,c));
     return true;
   }
   if(i.isModalSubmit()&&cid.startsWith(ID.modal)){
@@ -332,21 +379,35 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
     const ok=cid.startsWith(ID.approve);
     await pool.query(`UPDATE belva_refunds SET status=$1,approved_by=$2,approved_at=now(),updated_at=now() WHERE id=$3`,[ok?'approved':'rejected',i.user.id,r.id]);
     await i.update({components:[new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton())]});
+    const offer=r.kind==='offer';
     if(ok){
       const target=await i.guild!.members.fetch(r.discord_id).catch(()=>null);
-      if(target)await grantCasinoRoles(target,r.casino,true,`Dépôt ${r.casino} validé par ${i.user.username}`).catch(e=>console.error('[nozebot] rôles Belva',e));
+      if(target)await grantCasinoRoles(target,r.casino,!offer,`${offer?'Compte':'Dépôt'} ${r.casino} validé par ${i.user.username}`).catch(e=>console.error('[nozebot] rôles Belva',e));
     }
-    if(ok)await i.followUp({content:`✅ <@${r.discord_id}>, ta demande est **validée** par <@${i.user.id}> !\nClique ci-dessous pour envoyer l’adresse de ton **wallet** avec une capture, puis Belva t’envoie tes **${r.amount_eur} €**.`,
+    if(ok&&offer)await i.followUp({content:`✅ <@${r.discord_id}>, ton compte est **validé** par <@${i.user.id}> !\nClique ci-dessous pour envoyer ton **adresse de dépôt ${casino(r.casino)?.name??r.casino}** avec une capture : Belva y verse tes **${r.amount_eur} €**.`,
       allowedMentions:{users:[r.discord_id]},components:[new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setCustomId(ID.wallet+r.id).setLabel('Envoyer mon wallet').setEmoji('💳').setStyle(ButtonStyle.Primary))]});
-    else await i.followUp({content:`❌ <@${r.discord_id}>, ta demande de remboursement est **refusée** par <@${i.user.id}>. Le staff t’explique pourquoi ici.`,allowedMentions:{users:[r.discord_id]}});
+        new ButtonBuilder().setCustomId(ID.wallet+r.id).setLabel('Envoyer mon adresse de dépôt').setEmoji('💳').setStyle(ButtonStyle.Primary))]});
+    else if(ok)await i.followUp({content:`✅ <@${r.discord_id}>, ta demande est **validée** par <@${i.user.id}> !\nChoisis où recevoir tes **${r.amount_eur} €** : on les verse directement en dépôt sur un casino où tu n’as pas encore de compte (inscris-toi d’abord avec le lien de Belva, dans les offres). Si tu as déjà tous nos casinos, ils vont sur celui où tu as joué.`,
+      allowedMentions:{users:[r.discord_id]},components:[destMenu(r,await ownedCasinos(pool,r.discord_id))]});
+    else await i.followUp({content:`❌ <@${r.discord_id}>, ta demande ${offer?'de dépôt offert':'de remboursement'} est **refusée** par <@${i.user.id}>. Le staff t’explique pourquoi ici.`,allowedMentions:{users:[r.discord_id]}});
     return true;
   }
   if(i.isButton()&&cid.startsWith(ID.wallet)){
     if(i.user.id!==r.discord_id){await i.reply({ephemeral:true,content:'Seul le membre qui a ouvert la demande peut envoyer son wallet.'});return true;}
     if(r.status==='paid'){await i.reply({ephemeral:true,content:'Ce remboursement est déjà envoyé ✅'});return true;}
     if(r.status!=='approved'&&r.status!=='wallet_received'){await i.reply({ephemeral:true,content:'Ta demande doit d’abord être validée par le staff.'});return true;}
-    await i.showModal(walletModal(r.id));
+    if(r.kind==='refund'&&!r.dest_casino){await i.reply({ephemeral:true,content:'Choisis d’abord où recevoir ton remboursement :',components:[destMenu(r,await ownedCasinos(pool,r.discord_id))]});return true;}
+    await i.showModal(walletModal(r.id,r.dest_casino?casino(r.dest_casino):undefined));
+    return true;
+  }
+  if(i.isStringSelectMenu()&&cid.startsWith(ID.dest)){
+    if(i.user.id!==r.discord_id){await i.reply({ephemeral:true,content:'Seul le membre qui a ouvert la demande peut choisir.'});return true;}
+    if(r.status!=='approved'&&r.status!=='wallet_received'){await i.reply({ephemeral:true,content:'Cette demande ne peut plus être modifiée.'});return true;}
+    const allowed=destMenu(r,await ownedCasinos(pool,r.discord_id)).toJSON().components[0].options.map(o=>o.value);
+    const d=casino(i.values[0]);
+    if(!d||!allowed.includes(d.id)){await i.reply({ephemeral:true,content:'Ce casino n’est plus disponible, rouvre le menu.'});return true;}
+    await pool.query(`UPDATE belva_refunds SET dest_casino=$1,dest_username=NULL,updated_at=now() WHERE id=$2`,[d.id,r.id]);
+    await i.showModal(walletModal(r.id,d,d.id!==r.casino));
     return true;
   }
   if(i.isModalSubmit()&&cid.startsWith(ID.walletModal)){
@@ -356,7 +417,10 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
     const address=i.fields.getTextInputValue(IN.address).replace(/\s+/g,'');
     if(!/^[A-Za-z0-9:_.-]{20,130}$/.test(address)){await i.editReply('Cette adresse contient des caractères inattendus. Copie-colle exactement l’adresse de réception.');return true;}
     const [proof]=await reupload(i.fields.getUploadedFiles(IN.walletProof)?.values()??[],`wallet-${r.id}`);
-    await pool.query(`UPDATE belva_refunds SET wallet_network=$1,wallet_address=$2,status='wallet_received',updated_at=now() WHERE id=$3`,[network,address,r.id]);
+    let destUser:string|null=null;try{destUser=clean(i.fields.getTextInputValue(IN.destUser),60)||null;}catch{/* champ absent : pas de nouveau compte */}
+    await pool.query(`UPDATE belva_refunds SET wallet_network=$1,wallet_address=$2,status='wallet_received',dest_username=COALESCE($4,dest_username),updated_at=now() WHERE id=$3`,[network,address,r.id,destUser]);
+    if(destUser&&r.dest_casino)await pool.query(`INSERT INTO belva_casino_accounts (guild_id,discord_id,discord_tag,casino,casino_username,casino_email) VALUES ($1,$2,$3,$4,$5,'')
+      ON CONFLICT (guild_id,discord_id,casino) DO UPDATE SET casino_username=EXCLUDED.casino_username,updated_at=now()`,[GUILD_ID(),r.discord_id,r.discord_tag,r.dest_casino,destUser]);
     const fresh=(await getRefund(pool,r.id))!;
     const list=await listChannel(i.guild!);
     const entry={...listEntry(fresh,proof?.name),files:proof?[proof]:[],allowedMentions:{parse:[] as never[]}};
@@ -364,19 +428,27 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
     const msg=old?await old.edit({...entry,attachments:[]}):await list.send(entry);
     if(!old)await pool.query(`UPDATE belva_refunds SET list_message_id=$1 WHERE id=$2`,[msg.id,r.id]);
     const ticket=fresh.ticket_channel_id?await i.guild!.channels.fetch(fresh.ticket_channel_id).catch(()=>null):null;
-    if(ticket?.type===ChannelType.GuildText)await ticket.send({content:`💳 Wallet reçu (${code(network)}) : ${code(address)}\nBelva t’envoie tes **${fresh.amount_eur} €** dès que possible. Tu seras prévenu ici.`,files:proof?[proof]:[],allowedMentions:{parse:[]}});
+    const dn=fresh.dest_casino?casino(fresh.dest_casino)?.name??fresh.dest_casino:null;
+    if(ticket?.type===ChannelType.GuildText)await ticket.send({content:`💳 ${dn?`Adresse de dépôt ${dn}`:'Wallet'} reçue (${code(network)}) : ${code(address)}\nBelva t’envoie tes **${fresh.amount_eur} €** dès que possible. Tu seras prévenu ici.`,files:proof?[proof]:[],allowedMentions:{parse:[]}});
     await i.editReply('✅ Wallet enregistré ! Tu seras prévenu dans ton ticket quand le remboursement sera envoyé.');
     return true;
   }
   if(i.isButton()&&(cid.startsWith(ID.paid)||cid.startsWith(ID.unpaid))){
-    if(!isPatron(await memberOf(i))){await i.reply({ephemeral:true,content:'Seul Belva (Patron) peut marquer un remboursement.'});return true;}
+    if(!isPatron(await memberOf(i))){await i.reply({ephemeral:true,content:'Seul un Patron peut marquer un paiement.'});return true;}
     const paid=cid.startsWith(ID.paid);
     if(paid)await pool.query(`UPDATE belva_refunds SET status='paid',paid_by=$1,paid_at=now(),updated_at=now() WHERE id=$2`,[i.user.id,r.id]);
     else await pool.query(`UPDATE belva_refunds SET status='wallet_received',paid_by=NULL,paid_at=NULL,updated_at=now() WHERE id=$1`,[r.id]);
     const fresh=(await getRefund(pool,r.id))!;
     await i.update(listEntry(fresh,i.message.attachments.first()?.name));
     const ticket=fresh.ticket_channel_id?await i.guild!.channels.fetch(fresh.ticket_channel_id).catch(()=>null):null;
-    if(paid&&ticket?.type===ChannelType.GuildText)await ticket.send({content:`💸 <@${fresh.discord_id}>, ton remboursement de **${fresh.amount_eur} €** a été envoyé ! Vérifie ton wallet. Tu peux fermer le ticket quand c’est bon.`,allowedMentions:{users:[fresh.discord_id]}});
+    // Payer sur un nouveau compte suppose que le staff l'a vu dans le dashboard affilié : on le marque vérifié avec son rôle casino.
+    if(paid&&fresh.dest_casino&&(fresh.kind==='offer'||fresh.dest_casino!==fresh.casino)){
+      await pool.query(`UPDATE belva_casino_accounts SET verified_by=$1,verified_at=now(),updated_at=now() WHERE guild_id=$2 AND discord_id=$3 AND casino=$4`,[i.user.id,GUILD_ID(),fresh.discord_id,fresh.dest_casino]);
+      const target=await i.guild!.members.fetch(fresh.discord_id).catch(()=>null);
+      if(target)await grantCasinoRoles(target,fresh.dest_casino,true,`Dépôt ${fresh.dest_casino} envoyé par ${i.user.username}`).catch(e=>console.error('[nozebot] rôles Belva',e));
+    }
+    const dn=fresh.dest_casino?casino(fresh.dest_casino)?.name??fresh.dest_casino:null;
+    if(paid&&ticket?.type===ChannelType.GuildText)await ticket.send({content:`💸 <@${fresh.discord_id}>, tes **${fresh.amount_eur} €** ont été envoyés${dn?` sur ton adresse de dépôt **${dn}**`:''} ! ${dn?'Ils arrivent en quelques minutes.':'Vérifie ton wallet.'} Tu peux fermer le ticket quand c’est bon. Joue de façon responsable.`,allowedMentions:{users:[fresh.discord_id]}});
     return true;
   }
   return true;
@@ -397,7 +469,7 @@ const checkedOfferChannels=new Set<string>();
 async function ensureOfferButtons(client:Client){
   const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
   for(const c of await refreshBrands(guild)){
-    if(c.api||!c.channelId||checkedOfferChannels.has(c.channelId))continue;
+    if(c.api||!c.channelId||OFFERS[c.id]||checkedOfferChannels.has(c.channelId))continue;
     const channel=await client.channels.fetch(c.channelId).catch(()=>null);
     if(channel?.type!==ChannelType.GuildText)continue;
     const recent=await channel.messages.fetch({limit:30});
@@ -408,11 +480,14 @@ async function ensureOfferButtons(client:Client){
 
 export async function ensureBelvaTicketPanel(client:Client){
   if(process.env.BELVA_TICKETS_ENABLED==='false')return;
+  await ensureOfferCards(client).catch(e=>console.error('[nozebot] cartes offres Belva',e));
   await ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e));
   setInterval(()=>void ensureOfferButtons(client).catch(e=>console.error('[nozebot] boutons offres Belva',e)),10*60_000).unref();
   const channel=await client.channels.fetch(PANEL_CHANNEL).catch(()=>null);
   if(channel?.type!==ChannelType.GuildText)return;
   const recent=await channel.messages.fetch({limit:30});
-  if(recent.some(m=>m.author.id===client.user!.id&&m.components.some(row=>JSON.stringify(row.toJSON()).includes(ID.panel))))return;
+  // Panneau déjà posté : on le remet à jour pour qu'il propose toujours les types de demande actuels.
+  const old=recent.find(m=>m.author.id===client.user!.id&&m.components.some(row=>JSON.stringify(row.toJSON()).includes(ID.panel)));
+  if(old){await old.edit(belvaTicketPanel());return;}
   await channel.send(belvaTicketPanel());
 }
