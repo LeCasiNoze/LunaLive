@@ -20,6 +20,8 @@ export type LiveAlertConfig = {
   lunaLiveUrl: string;
   rumbleUrl: string;
   pollMs: number;
+  // Carte personnalisée (ex. Belva) ; sinon la carte LeCasiNoze par défaut.
+  render?: (snapshot: LiveSnapshot, pingRole: boolean) => object;
 };
 
 export type LiveSnapshot = {
@@ -488,7 +490,7 @@ class LeCasiNozeLiveAlerts {
           await clearMissingMessage(this.pool, this.config, snapshot, state.messageId);
           state = await loadState(this.pool, this.config);
         } else {
-          await message.edit(buildLiveAlertMessage(snapshot, this.config, false));
+          await message.edit(this.render(snapshot, false) as never);
           await touchLive(this.pool, this.config, snapshot);
           console.log("[nozebot][live] carte mise à jour sans nouveau ping", {
             messageId: state.messageId,
@@ -505,7 +507,7 @@ class LeCasiNozeLiveAlerts {
     if (!claimToken) return;
 
     try {
-      const message = await channel.send(buildLiveAlertMessage(snapshot, this.config, true));
+      const message = await channel.send(this.render(snapshot, true) as never);
       await completeClaim(this.pool, this.config, snapshot, claimToken, message.id);
       this.verifiedLiveKey = snapshot.liveKey;
       console.log("[nozebot][live] alerte publiée", {
@@ -516,6 +518,10 @@ class LeCasiNozeLiveAlerts {
       await releaseClaim(this.pool, this.config, snapshot, claimToken).catch(() => undefined);
       throw error;
     }
+  }
+
+  private render(snapshot: LiveSnapshot, pingRole: boolean): object {
+    return this.config.render ? this.config.render(snapshot, pingRole) : buildLiveAlertMessage(snapshot, this.config, pingRole);
   }
 
   private async getChannel(): Promise<AlertChannel> {

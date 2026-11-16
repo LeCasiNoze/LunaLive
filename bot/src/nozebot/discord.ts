@@ -34,6 +34,7 @@ import { ensureBelvaRainbetPanel, handleBelvaRainbet } from './belva-rainbet.js'
 import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js';
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
+import { belvaLiveConfig } from './belva-live.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -696,6 +697,12 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
       stopLiveAlerts = await startLeCasiNozeLiveAlerts(client, pool, config.liveAlerts);
     } catch (error) {
       console.error("[nozebot][live] démarrage impossible", error);
+    }
+    if (process.env.BELVA_LIVE_ALERTS !== "false") {
+      const stopLeCasiNoze = stopLiveAlerts;
+      const stopBelva = await startLeCasiNozeLiveAlerts(client, pool, belvaLiveConfig(config.liveAlerts.apiBase, config.liveAlerts.pollMs))
+        .catch((error) => { console.error("[nozebot][live] alertes Belva impossibles", error); return () => undefined; });
+      stopLiveAlerts = () => { stopLeCasiNoze(); stopBelva(); };
     }
   } else {
     console.warn("[nozebot][live] pool PostgreSQL absent, alertes désactivées");
