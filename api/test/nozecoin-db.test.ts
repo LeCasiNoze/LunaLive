@@ -4,6 +4,7 @@ import {PGlite} from '@electric-sql/pglite';
 import type {Pool} from 'pg';
 import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName,weeklyCnz} from '../src/nozecoins/wallet.js';
 import {handleCoinsChat} from '../src/nozecoins/chat.js';
+import {tickBelvaTombola} from '../src/belva_tombola.js';
 
 // Real PostgreSQL WASM engine, isolated in memory. A single serialized connection
 // validates SQL, transactions, constraints and receipts; not a multiprocess load test.
@@ -119,4 +120,15 @@ test('weekly CNZ rewards require a fresh tagged native identity and cannot dupli
  await weeklyCnz(pool,1);assert.equal((await coinsProfile(pool,1,'284177710','CNZ Viewer')).balance,before+200);
  await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW()');
  assert.equal((await weeklyCnz(pool,1)).length,0);
+});
+test('Belva tombola announces one code per 40 min of live, retried if the chat send fails',async()=>{
+ process.env.BELVA_TOMBOLA_START='2020-01-01T00:00:00Z';const said:string[]=[];let up=false;
+ const say=async(t:string)=>{said.push(t);return {sent:up};};
+ await tickBelvaTombola(pool,'900',say);assert.equal(said.length,0);
+ const later=Date.now()+41*60_000;
+ await tickBelvaTombola(pool,'900',say,later);assert.equal(said.length,1);
+ up=true;await tickBelvaTombola(pool,'900',say,later);await tickBelvaTombola(pool,'900',say,later);assert.equal(said.length,2);
+ assert.match(said[1],/^🎟️ Code tombola : [A-Z2-9]{4} — tape \/code /);
+ const live=(await pool.query(`SELECT count(*)::int n FROM belva_tombola_codes WHERE bucket>0 AND announced_at IS NOT NULL AND expires_at>NOW()`)).rows[0].n;assert.equal(live,1);
+ delete process.env.BELVA_TOMBOLA_START;
 });

@@ -36,6 +36,7 @@ import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { belvaLiveConfig } from './belva-live.js';
 import { handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
+import { handleBelvaTombola, registerBelvaTombolaCommands, startBelvaTombola } from './belva-tombola.js';
 import {
   handleNozeBotCommand,
   registerNozeBotCommands,
@@ -491,6 +492,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
   try {
     if (await handleBelvaLink(interaction, config.commands.lunaLive)) return;
     if (await handleBelvaGames(interaction, config.commands.lunaLive)) return;
+    if (await handleBelvaTombola(interaction, pool)) return;
     if (await handleBelvaTickets(interaction, pool)) return;
     if (await handleBelvaNotifs(interaction)) return;
     if (await handleBelvaRainbet(interaction, pool)) return;
@@ -631,6 +633,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void startBelvaStats(readyClient, pool).catch((error) => console.error("[nozebot] stats Belva", error));
     void registerBelvaCommands(readyClient).catch((error) => console.error("[nozebot] commandes Belva", error));
     void registerBelvaGameCommands(readyClient).catch((error) => console.error("[nozebot] jeux Belva", error));
+    void registerBelvaTombolaCommands(readyClient).then(() => startBelvaTombola(readyClient, pool)).catch((error) => console.error("[nozebot] tombola Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     console.log("[nozebot] interaction reçue", {

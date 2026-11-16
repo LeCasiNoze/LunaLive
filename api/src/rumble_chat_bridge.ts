@@ -21,6 +21,7 @@ import { handleShopChat } from "./automod-shop/commands.js";
 import { handleDiscordLinkChat } from "./automod-shop/discord-profile.js";
 import {handleCoinsChat,tickCoinsRain} from './nozecoins/chat.js';
 const BELVA_COINS={coin:'BCoins',automod:false};
+import {tickBelvaTombola} from './belva_tombola.js';
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
@@ -651,7 +652,11 @@ export function ensureRumbleBridge(opts: {
         bridge.setFlags({ publicOn, popupOn, videoIdNumeric: nextVid });
       }
       if(opts.slug==='lecasinoze'&&commandsOn&&nextVid)await tickCoinsRain(opts.pool,opts.streamerId);
-      if(opts.slug==='belvaa'&&commandsOn&&nextVid)await tickCoinsRain(opts.pool,opts.streamerId,BELVA_COINS,async text=>{const r=await sendRumbleMessageReliable(opts.pool,nextVid,text);return {sent:Boolean(r.sent||r.queued)};});
+      if(opts.slug==='belvaa'&&commandsOn&&nextVid){
+        const say=async(text:string)=>{const r=await sendRumbleMessageReliable(opts.pool,nextVid,text);return {sent:Boolean(r.sent||r.queued)};};
+        await tickCoinsRain(opts.pool,opts.streamerId,BELVA_COINS,say);
+        await tickBelvaTombola(opts.pool,nextVid,say).catch(e=>console.warn('[belva-tombola]',e?.message||e));
+      }
     } catch (e: any) {
       console.warn(`[rumble_chat] ${opts.slug}: target refresh failed`, e?.message || e);
     }

@@ -48,7 +48,7 @@ export function rewardsCard(){
     SEP(),
     T('### 🎁 Tout de suite\n> 💸 **Dépôt remboursé** · jusqu’à 30 € (35 € sur Celsius) sur ton 1er dépôt\n> 🎁 **Dépôt offert** · 20 € pour ton 1er dépôt sur un nouveau casino\n> 🏁 **Race Rainbet** · 200 $ chaque mois pour le top 3 (100 / 60 / 40), du 16 au 15\n> 🎉 **Giveaways** · annoncés dans les salons giveaways et live'),
     SEP(1,false),
-    T('### 📅 À partir du 1er décembre\n> 🎟️ **Tombola du dimanche** · plusieurs gagnants chaque semaine, tickets gagnés en tapant les codes du live sur le Discord\n> ⚔️ **Saison du tournoi** · une session chaque dimanche, des points à chaque fois, le top 3 du mois gagne\n> 📱 **Giveaways réseaux** · des tickets pour tes commentaires sur nos vidéos YouTube, Instagram et TikTok'),
+    T('### 📅 À partir du 1er décembre\n> 🎟️ **Tombola du dimanche** · 2 gagnants à 15 € chaque dimanche à 23 h. Un code est annoncé toutes les 40 min pendant le live : tape **/code** ici = 1 ticket\n> ⚔️ **Saison du tournoi** · une session chaque dimanche, des points à chaque fois, le top 3 du mois gagne\n> 📱 **Giveaways réseaux** · des tickets pour tes commentaires sur nos vidéos YouTube, Instagram et TikTok'),
     SEP(),
     T('### ✅ Pour participer\n**1 ·** Vérifie un compte casino dans un salon d’offre.\n**2 ·** Relie ton Rumble dans 🔗︱lier-mon-compte.\n**3 ·** Active les notifications dans 🔔︱notifications pour ne rien rater.'),
     SEP(1),FOOTER]};
