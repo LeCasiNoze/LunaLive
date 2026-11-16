@@ -22,11 +22,11 @@ export function buildBelvaLiveMessage(s:LiveSnapshot,ping:boolean){
   const T=(content:string)=>({type:10,content});
   const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
   const started=s.startedAt?`<t:${Math.floor(s.startedAt.getTime()/1000)}:R>`:'à l’instant';
-  const header=[T(`-# <@&${roleId}>`),T(`# 🔴 Belva est en live !\n**${s.title}**\n-# Lancé ${started}`)];
+  const header=[T(`-# @everyone · <@&${roleId}>`),T(`# Belva est en live !\n**${s.title}**\n-# En direct · lancé ${started}`)];
   const offers=brands().find(b=>b.channelId&&!b.api)?.channelId;
   const watch=[link('Regarder sur Rumble','🟢',LINKS.rumble),link('LunaLive','🌙',LINKS.lunalive),
     ...(LINKS.kick?[link('Kick','💚',LINKS.kick)]:[]),...(LINKS.twitch?[link('Twitch','💜',LINKS.twitch)]:[])];
-  return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:ping?{roles:[roleId]}:{parse:[] as never[]},components:[{type:17,accent_color:0xff2d55,components:[
+  return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:ping?{parse:['everyone' as const],roles:[roleId]}:{parse:[] as never[]},components:[{type:17,accent_color:0xff2d55,components:[
     ...(s.avatarUrl?[{type:9,components:header,accessory:{type:11,media:{url:s.avatarUrl},description:'Belva'}}]:header),
     ...(s.thumbnailUrl?[{type:12,items:[{media:{url:s.thumbnailUrl},description:`Aperçu du live : ${s.title}`}]}]:[]),
     {type:14,divider:true,spacing:2},
