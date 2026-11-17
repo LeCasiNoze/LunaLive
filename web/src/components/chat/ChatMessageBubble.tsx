@@ -166,7 +166,8 @@ function renderBodyRich(
     if (/[a-z0-9.-]+\.[a-z]{2,63}(\/|$)/i.test(s)) return `https://${s}`;
     return s;
   }
-  const re = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63})(?:\/[^\s<]*)?)|@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):/gi;
+  // Kick relaie ses emotes (animées comprises) sous la forme [emote:ID:nom]
+  const re = /((?:https?:\/\/|www\.)[^\s<]+|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63})(?:\/[^\s<]*)?)|@([^\s@]{1,32})|:(e|g):([a-z0-9_]{1,32}):|\[emote:(\d{1,12}):([^\]\s]{1,64})\]/gi;
   const parts: React.ReactNode[] = [];
   let last = 0, m: RegExpExecArray | null, emotesCount = 0;
   while ((m = re.exec(body))) {
@@ -208,6 +209,13 @@ function renderBodyRich(
       );
       last = end; continue;
     }
+    if (m[5]) {
+      const kickName = String(m[6] ?? "");
+      if (emotesCount >= MAX_EMOTES_PER_MSG) { parts.push(kickName); last = end; continue; }
+      emotesCount += 1;
+      parts.push(<EmoteImg key={`k-${start}`} src={`https://files.kick.com/emotes/${m[5]}/fullsize`} kind="emoji" alt={kickName} title={kickName} />);
+      last = end; continue;
+    }
     const kindToken = String(m[3] ?? "").toLowerCase();
     const name = safeTokenName(String(m[4] ?? ""));
     const kind: EmoteKind = kindToken === "g" ? "gif" : "emoji";
@@ -225,13 +233,16 @@ function renderBodyRich(
 
 /* ─── Main component ─────────────────────────────────────── */
 function ChatMessageBubbleImpl({
-  msg, streamerAppearance, currentUsername, resolveEmote, isGrouped,
+  msg, streamerAppearance, currentUsername, resolveEmote, isGrouped, sourceNeutral,
 }: {
   msg: ChatMsgLike;
   streamerAppearance: StreamerAppearance;
   currentUsername?: string | null;
   resolveEmote?: ResolveEmote;
   isGrouped?: boolean;
+  /** overlay OBS : messages Rumble/Kick/Twitch aux couleurs de la chaîne,
+      seule la pastille d'origine garde la couleur de la plateforme */
+  sourceNeutral?: boolean;
 }) {
   const isDlive = !!(msg as any)?.dlive;
   const dliveFrom = ((msg as any)?.dliveRestreamFrom ?? null) as string | null;
@@ -324,7 +335,7 @@ function ChatMessageBubbleImpl({
         background:"linear-gradient(135deg,rgba(48,12,25,.96),rgba(27,10,22,.94))",
         boxShadow:"0 10px 40px rgba(0,0,0,.32),0 0 18px rgba(239,68,68,.10)",
       }
-    : sourcePresentation.accent
+    : sourcePresentation.accent && !sourceNeutral
     ? {
         borderRadius:16, borderLeft:`3px solid ${sourcePresentation.accent}`,
         outline:`1px solid ${sourcePresentation.accent}55`,
@@ -333,7 +344,7 @@ function ChatMessageBubbleImpl({
       }
     : isDlive
     ? { borderRadius:14, outline:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.025)" }
-    : isRumble
+    : isRumble && !sourceNeutral
     ? {
         borderRadius:16,
         borderLeft:"3px solid rgba(133,224,80,.82)",
@@ -427,7 +438,7 @@ function ChatMessageBubbleImpl({
                       minWidth: 0,
                       ["--uname-color" as any]: isBot
                         ? "rgba(252,165,165,.95)"
-                        : isRumble && !rumbleLinked
+                        : isRumble && !rumbleLinked && !sourceNeutral
                           ? "rgba(214,246,194,.97)"
                           : (effectiveUnameColor ?? "var(--chat-name-color)"),
                       ...(isBot ? { fontWeight:950, letterSpacing:".5px", textTransform:"uppercase" } : null),
@@ -512,7 +523,7 @@ function ChatMessageBubbleImpl({
               meta/message, maquette Stitch) */}
           <div className="chatBodyBubble" style={{
             marginTop: isGrouped ? 0 : undefined,
-            ...(isRumble ? {
+            ...(isRumble && !sourceNeutral ? {
               borderColor:"rgba(133,224,80,.10)",
               background:"linear-gradient(135deg,rgba(133,224,80,.075),rgba(255,255,255,.028))",
             } : null),
@@ -523,7 +534,7 @@ function ChatMessageBubbleImpl({
                 minWidth:0, whiteSpace:"pre-wrap", overflowWrap:"anywhere",
                 wordBreak:"break-word", lineHeight:1.35,
                 opacity: isDlive ? .92 : undefined,
-                color:sourcePresentation.textColor || "var(--chat-msg-color,rgba(235,232,255,.88))",
+                color:(!sourceNeutral && sourcePresentation.textColor) || "var(--chat-msg-color,rgba(235,232,255,.88))",
               }}>
               {renderBodyRich(String(msg.body ?? ""), currentUsername, resolveEmote)}
             </div>
@@ -548,7 +559,7 @@ function bubblePropsEqual(
   if (a.rumble !== b.rumble || a.rumbleLinked !== b.rumbleLinked) return false;
   if (a.externalSource !== b.externalSource || a.msgColor !== b.msgColor) return false;
   if (a.style?.msgColor !== b.style?.msgColor) return false;
-  if (prev.isGrouped !== next.isGrouped) return false;
+  if (prev.isGrouped !== next.isGrouped || prev.sourceNeutral !== next.sourceNeutral) return false;
   if (prev.currentUsername !== next.currentUsername) return false;
   if (prev.streamerAppearance !== next.streamerAppearance) return false;
   if (prev.resolveEmote !== next.resolveEmote) return false;

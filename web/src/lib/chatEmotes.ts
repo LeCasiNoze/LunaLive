@@ -68,6 +68,6 @@ export function emojiTextParts(text: string) {
 }
 export function isEmotesOnly(text: string) {
   if (!text.trim()) return false;
-  const remainder = text.replace(/:(e|g):[a-z0-9_]{1,32}:/gi, "");
+  const remainder = text.replace(/:(e|g):[a-z0-9_]{1,32}:|\[emote:\d{1,12}:[^\]\s]{1,64}\]/gi, "");
   return emojiTextParts(remainder).every(part => !part.text.trim() || part.emoji);
 }

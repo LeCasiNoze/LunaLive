@@ -990,6 +990,7 @@ export function NativeOverlayChat({
               msg={m}
               streamerAppearance={appearance}
               resolveEmote={resolveEmote}
+              sourceNeutral
             />}
           </div>
         ))}
