@@ -64,11 +64,12 @@ const exemptChannel=(msg:Message|PartialMessage)=>{
 export function startBelvaModeration(client:Client,_pool?:Pool){
   if(process.env.BELVA_MODERATION==='false')return;
   let log:TextChannel|null=null,leave:TextChannel|null=null;
-  const ready=(async()=>{
+  // Démarré avant la connexion : les salons sont créés une fois le bot prêt.
+  const ready=new Promise<void>(done=>client.once(Events.ClientReady,()=>void (async()=>{
     const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
     log=await staffChannel(guild,LOG_NAME,'Messages supprimés par le bot (liens, spam), messages modifiés et supprimés par les membres.');
     leave=await staffChannel(guild,LEAVE_NAME,'Membres qui quittent le serveur.');
-  })().catch(e=>console.error('[nozebot] modération Belva',e));
+  })().catch(e=>console.error('[nozebot] modération Belva',e)).finally(done)));
   const post=async(embed:EmbedBuilder)=>{await ready;await log?.send({embeds:[embed],allowedMentions:{parse:[]}}).catch(()=>undefined);};
   const ours=(g?:{id:string}|null)=>g?.id===GUILD_ID();
   const author=(m:Message|PartialMessage)=>m.author?`<@${m.author.id}> (${m.author.tag})`:'inconnu';
