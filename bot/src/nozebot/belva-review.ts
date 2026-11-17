@@ -115,7 +115,7 @@ export const DESIGNS:Design[]=[
         {key:'1-1',round:1,a:b,b:d,bestOf:1,legs:[],winsA:0,winsB:0,winner:null,loser:null,status:'ready'},
         {key:'2-0',round:2,a,b:null,bestOf:3,legs:[],winsA:0,winsB:0,winner:null,loser:null,status:'waiting'}]}};
     return [
-      text(`**Le site** : ${BRACKET_URL} · bracket en direct, et pour le staff connecté : saisie et correction des gains (source de vérité).`),
+      text(`**Le site** : <${BRACKET_URL}> · bracket en direct, et pour le staff connecté : saisie et correction des gains (source de vérité).`),
       text('**Carte en direct dans ⚔️︱tournoi :**'),{...bracketCard('Tournoi du samedi 6 décembre',state),allowedMentions:{parse:[]}} as Preview,
       text(['**Dans le chat Rumble (après chaque `!tournoi <gain>` de Belva ou d’un modo) :**',
         `> 🎰 ${players[a]!.slot} (Mise_Max) : 245 € · au tour de ${players[cc]!.slot} (Spin_Sam)`,

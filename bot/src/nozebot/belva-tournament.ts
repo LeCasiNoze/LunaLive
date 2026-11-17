@@ -93,6 +93,7 @@ export function registrationCard(t:{title:string;status:string;buy_cents:number}
       :[T('Aucun inscrit pour l’instant : sois le premier !')]),
     ...(rest.length?[SEP(1,false),T(rest.map((e,i)=>line(e,i+10)).join('\n'))]:[]),
     SEP(),
+    {type:1,components:[{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
     T(`-# ${entries.length} inscrit${entries.length>1?'s':''} · 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.`),
   ]}] as never[]};
 }

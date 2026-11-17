@@ -18,6 +18,28 @@ const eur = (c: number | null) => (c === null ? "—" : (c / 100).toLocaleString
 const roundName = (r: number, n: number) => (r === n ? "Finale" : r === n - 1 ? "Demi-finales" : r === n - 2 ? "Quarts" : r === n - 3 ? "Huitièmes" : `Tour ${r}`);
 const who = (p?: Player) => (p ? p.rumble ?? p.name : "À venir");
 
+// Démo (?demo=1 bracket en cours, ?demo=open inscriptions) : données d'exemple, rien n'est lu ni écrit en base.
+const DEMO_SLOTS = [["Wanted Dead or a Wild", "Duel at Dawn", "Mise_Max"], ["Fruit Party", "Free Spins", "Lucky_Léo"], ["Le Bandit", "Luck of the Bandit", "Spin_Sam"],
+  ["Sugar Rush 1000", "Free Spins", "Tilt_Zéro"], ["Gates of Olympus", "Free Spins", "Bonus_Hunter"], ["Chaos Crew", "Bonus", "Zeus_Kid"], ["RIP City", "Bounty", "Max_Win"], ["Dog House", "Free Spins", "Spinz"]];
+async function demoState(mode: string): Promise<State> {
+  const players: Record<string, Player> = {};
+  await Promise.all(DEMO_SLOTS.map(async ([slot, bonus, who], i) => {
+    const r = await fetch(`${API}/api/public/slots/search?q=${encodeURIComponent(slot)}&limit=1`).then((x) => x.json()).catch(() => null);
+    players[`p${i}`] = { discordId: `p${i}`, name: who, rumble: who, slot, image: r?.items?.[0]?.imageUrl ?? null, bonus, multiplier: 100, betCents: 120 };
+  }));
+  const tournament = { id: 0, title: "Tournoi du samedi 6 décembre", status: mode === "open" ? "open" : "live", buyCents: 12000, drawAt: new Date(Date.now() + 2 * 86400e3 + 5400e3).toISOString(), champion: null, version: 1 };
+  if (mode === "open") return { tournament, players, bracket: null };
+  const M = (key: string, round: number, idx: number, a: string | null, b: string | null, legs: Leg[], winner: string | null, status: string, bestOf = 1): Match =>
+    ({ key, round, idx, a, b, bestOf, legs, winsA: winner === a && a ? 1 : 0, winsB: winner === b && b ? 1 : 0, winner, loser: winner ? (winner === a ? b : a) : null, status });
+  const matches = [
+    M("1-0", 1, 0, "p0", "p4", [{ a: 24500, b: 8000 }], "p0", "done"), M("1-1", 1, 1, "p1", "p5", [{ a: 0, b: 0 }, { a: 31200, b: 45600 }], "p5", "done"),
+    M("1-2", 1, 2, "p2", "p6", [{ a: 18750, b: null }], null, "live"), M("1-3", 1, 3, "p3", "p7", [], null, "ready"),
+    M("2-0", 2, 0, "p0", "p5", [], null, "waiting"), M("2-1", 2, 1, null, null, [], null, "waiting"), M("3-0", 3, 0, null, null, [], null, "waiting", 3),
+  ];
+  return { tournament, players, bracket: { size: 8, rounds: 3, matches, current: { key: "1-2", leg: 0, side: "b", player: "p6" }, champion: null, places: { p4: 5, p1: 5 } } };
+}
+
+
 function useCountdown(to: string | null) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
@@ -65,13 +87,15 @@ export default function BelvaTournamentPage() {
   const [staff, setStaff] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const demo = new URLSearchParams(window.location.search).get("demo");
   const load = useCallback(async () => {
+    if (demo) { setState(await demoState(demo)); return; }
     try {
       const r = await fetch(`${API}/api/public/belva/tournament`).then((x) => x.json());
       if (r?.ok) setState(r.state);
     } catch { setErr("Le serveur ne répond pas, nouvel essai dans quelques secondes."); }
-  }, []);
-  useEffect(() => { load(); const t = setInterval(load, 5000); return () => clearInterval(t); }, [load]);
+  }, [demo]);
+  useEffect(() => { load(); if (demo) return; const t = setInterval(load, 5000); return () => clearInterval(t); }, [load, demo]);
   useEffect(() => {
     const token = getToken(); if (!token) return;
     fetch(`${API}/api/belva/tournament/staff`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((r) => setStaff(!!r?.staff)).catch(() => {});
@@ -92,6 +116,7 @@ export default function BelvaTournamentPage() {
         <span className="bt-kicker">Belva × LeCasiNoze</span>
         <h1>{t?.title ?? "Tournoi du samedi"}</h1>
         {t && <p>Élimination directe · finale en 3 manches · {eur(t.buyCents)} par bonus · le plus gros gain passe</p>}
+        {demo && <p className="bt-demo">Aperçu avec des données d’exemple</p>}
         {err && <p className="bt-err">{err}</p>}
       </header>
 

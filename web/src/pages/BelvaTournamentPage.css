@@ -7,6 +7,7 @@
 .bt-head h1{font-family:"Bebas Neue","Anton",sans-serif;font-size:clamp(40px,7vw,72px);letter-spacing:.02em;margin:4px 0 6px;line-height:1;
   background:linear-gradient(90deg,#fff,var(--c) 60%,var(--c2));-webkit-background-clip:text;background-clip:text;color:transparent}
 .bt-head p{color:var(--mut);margin:0}
+.bt-demo{display:inline-block;margin-top:10px!important;padding:4px 10px;border-radius:99px;background:rgba(243,193,75,.15);color:var(--gold)!important;font-size:13px}
 .bt-err{color:#ff8a8a!important;margin-top:8px!important}
 .bt-empty{position:relative;text-align:center;color:var(--mut)}
 .bt-reg{position:relative;max-width:1200px;margin:0 auto}
