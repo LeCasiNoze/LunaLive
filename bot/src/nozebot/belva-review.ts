@@ -13,6 +13,7 @@ import {bjMessage} from './belva-games.js';
 import {BUY_CENTS,bonusOptions,confirmCard,registrationCard,searchSlots} from './belva-tournament.js';
 import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
+import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -89,6 +90,7 @@ export const DESIGNS:Design[]=[
     text('**Simple sous-niveau (Or I → Or II…) :**'),{...tierUpLine(c.botId,11_640),allowedMentions:{parse:[]}}]},
   {key:'quests',title:'Journal de quêtes',where:'Réponse privée à /quetes',note:'Maquette avec un exemple : rien n’est actif.',previews:async()=>[v2(questJournalCard(49))]},
   {key:'season',title:'Classement de la saison du tournoi',where:'🏅︱classement-saison · réécrit après chaque tournoi, figé à la fin du mois (historique)',note:'Pseudos fictifs. Le détail montre chaque place obtenue ; un absent compte juste dans le « 3/4 ».',previews:async()=>[v2(seasonCard(SEASON_EXAMPLE))]},
+  {key:'offer-rainbet',title:'Carte Rainbet (partenaire principal)',where:'🌧️︱rainbet · remplace l’ancien message, Rainbet passe en tête des offres',previews:async()=>[{...rainbetCard(),allowedMentions:{parse:[]}} as Preview]},
   {key:'tournament',title:'Tournoi : inscriptions /tournoi et choix du bonus',where:'⚔️︱tournoi · /tournoi + nom de la machine (autocomplétion), puis confirmation privée',
     note:`Prix d’achat commun : ${(BUY_CENTS()/100).toLocaleString('fr-FR')} € par bonus (modifiable à l’ouverture). La mise découle du multiplicateur du bonus. Une machine ne peut être prise qu’une fois.`,previews:async c=>{
     const pick=async(name:string,bonus:number)=>{const s=(await searchSlots(c.pool,name,1))[0];if(!s)return null;const o=(await bonusOptions(c.pool,s))[bonus]??(await bonusOptions(c.pool,s))[0]!;
@@ -191,6 +193,7 @@ export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolea
   if(!row)return true;
   if(i.isButton())await i.update(verdict(d,row));
   else if(i.isModalSubmit()){await i.deferUpdate();await i.message?.edit(verdict(d,row));}
+  if(key==='offer-rainbet'&&status==='approved')await ensureBelvaRainbetPanel(i.client,pool).catch(e=>console.error('[nozebot] carte Rainbet',e));
   if(key==='roles'&&status==='approved')await applyRoles(i.guild,pool,i.channel as TextChannel|null,row.version+APPLY_REV);
   return true;
 }

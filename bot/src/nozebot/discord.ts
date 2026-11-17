@@ -636,7 +636,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     console.log(`[nozebot] connecté: ${readyClient.user.tag} (${readyClient.user.id})`);
     void ensureBelvaTicketPanel(readyClient).catch((error) => console.error("[nozebot] panneau tickets Belva", error));
     void ensureBelvaNotifPanel(readyClient).catch((error) => console.error("[nozebot] panneau notifs Belva", error));
-    void ensureBelvaRainbetPanel(readyClient).catch((error) => console.error("[nozebot] panneau Rainbet Belva", error));
+    void ensureBelvaRainbetPanel(readyClient, pool).catch((error) => console.error("[nozebot] panneau Rainbet Belva", error));
     void startBelvaGiveaways(readyClient, pool).catch((error) => console.error("[nozebot] giveaways Belva", error));
     void startBelvaStats(readyClient, pool).catch((error) => console.error("[nozebot] stats Belva", error));
     void registerBelvaCommands(readyClient).catch((error) => console.error("[nozebot] commandes Belva", error));

@@ -1,4 +1,7 @@
-import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelType,EmbedBuilder,LabelBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,type Client,type Interaction} from 'discord.js';
+import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {ActionRowBuilder,ButtonBuilder,ButtonStyle,ChannelType,EmbedBuilder,LabelBuilder,MessageFlags,ModalBuilder,TextInputBuilder,TextInputStyle,type Client,type Interaction} from 'discord.js';
+import {isApproved} from './belva-approval.js';
 import type {Pool} from 'pg';
 import {findReferred,referredUsers} from './rainbet.js';
 import {fetchWagers} from './rainbet-race.js';
@@ -11,6 +14,39 @@ const CHANNEL='1571169962041811014';
 const LINK='https://rainbet.com/?r=nivoranet';
 const P='belva:rb:';
 const ID={verify:P+'verify',modal:P+'modal'};
+
+const RACE_CHANNEL='1481939824947626105';
+const ASSETS=new URL('../../assets/belva/',import.meta.url);
+const T=(content:string)=>({type:10,content});
+const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
+const linkBtn=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
+const verifyBtn=(label='Vérifier')=>({type:2,style:3,label,emoji:{name:'✅'},custom_id:ID.verify});
+
+// Carte du salon Rainbet, partenaire principal : même format que les autres casinos, en plus mis en avant.
+export function rainbetCard(){
+  const race=`https://discord.com/channels/${GUILD_ID()}/${RACE_CHANNEL}`;
+  const container={type:17,accent_color:0x3D8BFF,components:[
+    {type:12,items:[{media:{url:'attachment://banner-rainbet.png'},description:'Rainbet × Belva : +20 % de rakeback pendant 7 jours avec le code NIVORANET'}]},
+    SEP(2,false),
+    {type:9,components:[T('# 🌧️ Rainbet × Belva'),T('⭐ **Notre partenaire principal.** L’offre de bienvenue exclusive au lien de Belva.\n-# Casino et sport crypto · 18+')],
+      accessory:{type:11,media:{url:'attachment://logo-rainbet.png'},description:'Logo Rainbet'}},
+    SEP(),
+    {type:9,components:[T('### 🎁 +20 % de rakeback pendant 7 jours\nInscris-toi avec le lien de Belva, code **NIVORANET** : ton rakeback est boosté de **20 %** pendant ta première semaine.')],accessory:linkBtn('S’inscrire','🌧️',LINK)},
+    SEP(1,false),
+    {type:9,components:[T('### 🏁 Race du mois : 200 $\nChaque mois, du 16 au 15, le top 3 des joueurs Rainbet de la commu gagne **100 $ · 60 $ · 40 $**.\n-# Classement en direct dans le salon de la race')],accessory:linkBtn('Voir la race','🏁',race)},
+    SEP(1,false),
+    {type:9,components:[T('### ✅ Déjà inscrit ?\nVérification **automatique** en 10 secondes : tu reçois le rôle 🌧️ Rainbet et tu passes 🃏 Membre du Club.')],accessory:verifyBtn()},
+    SEP(),
+    T('### 📋 Comment ça marche\n**1 ·** Crée ton compte avec le bouton **S’inscrire** (le code NIVORANET est déjà dans le lien).\n**2 ·** Clique sur **Vérifier mon compte** et entre ton pseudo Rainbet.\n**3 ·** Joue : ton wager compte automatiquement pour la race du mois.'),
+    SEP(),
+    {type:1,components:[linkBtn('S’inscrire sur Rainbet','🌧️',LINK),verifyBtn('Vérifier mon compte'),linkBtn('La race','🏁',race)]},
+    SEP(1),
+    T('-# 🔞 Les jeux d’argent comportent des risques : endettement, isolement, dépendance. Joueurs Info Service : 09 74 75 13 13.'),
+  ]};
+  return {flags:MessageFlags.IsComponentsV2 as const,components:[container] as never[],
+    files:['banner-rainbet.png','logo-rainbet.png'].map(name=>({attachment:readFileSync(new URL(name,ASSETS)),name}))};
+}
+const cardVersion=()=>createHash('sha1').update(JSON.stringify(rainbetCard().components)).digest('hex').slice(0,10);
 
 export function belvaRainbetPanel(){
   return {embeds:[new EmbedBuilder().setColor(0x3b82f6).setTitle('🌧️ Rainbet · +20 % de rakeback boost pendant 7 jours').setURL(LINK)
@@ -68,11 +104,18 @@ export async function handleBelvaRainbet(i:Interaction,pool?:Pool):Promise<boole
   return true;
 }
 
-export async function ensureBelvaRainbetPanel(client:Client){
+export async function ensureBelvaRainbetPanel(client:Client,pool?:Pool){
   if(process.env.BELVA_TICKETS_ENABLED==='false')return;
   const channel=await client.channels.fetch(CHANNEL).catch(()=>null);
   if(channel?.type!==ChannelType.GuildText)return;
   const recent=await channel.messages.fetch({limit:20});
-  if(recent.some(m=>m.author.id===client.user!.id&&m.components.length>0))return;
-  await channel.send(belvaRainbetPanel());
+  const mine=recent.filter(m=>m.author.id===client.user!.id&&m.components.length>0);
+  // La nouvelle carte ne remplace l'ancien panneau qu'une fois validée dans le salon validation-design.
+  if(!await isApproved(pool,'offer-rainbet')){if(!mine.size)await channel.send(belvaRainbetPanel());return;}
+  const v=cardVersion();
+  const card=mine.find(m=>m.components[0]?.type===17);
+  if(card&&card.components[0]?.id===parseInt(v.slice(0,7),16))return;
+  const payload={...rainbetCard(),components:[{...(rainbetCard().components[0] as object),id:parseInt(v.slice(0,7),16)}] as never[]};
+  if(card)await card.edit({...payload,attachments:[]});else await channel.send(payload);
+  for(const m of mine.filter(m=>m.id!==card?.id&&m.components[0]?.type!==17).values())await m.delete().catch(()=>undefined);
 }

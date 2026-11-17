@@ -23,9 +23,10 @@ export function hubCard(){
     SEP(2,false),
     T('# Toutes les offres casino\nChoisis ton casino : chaque salon contient l’offre complète et les boutons pour en profiter en 2 clics.'),
     SEP(),
-    ...casinos.flatMap((b,i)=>[...(i?[SEP(1,false)]:[]),{type:9,components:[T(`### ${OFFERS[b.id].title}\nJusqu’à **${b.bonus} €** remboursés · 1er dépôt de **20 €** offert\n-# ${OFFERS[b.id].tagline}`)],
+    ...(rainbet?[{type:9,components:[T('## ⭐ 🌧️ Rainbet · partenaire principal\n**+20 % de rakeback** pendant 7 jours avec le code **NIVORANET**\n🏁 Race du mois : **200 $** pour le top 3 (100 / 60 / 40)')],accessory:link('Voir l’offre','👉',channel(rainbet.channelId!))},SEP(2)]:[]),
+    T('### 🎰 Nos autres casinos'),
+    ...casinos.flatMap((b,i)=>[...(i?[SEP(1,false)]:[]),{type:9,components:[T(`**${OFFERS[b.id].title}**\nJusqu’à **${b.bonus} €** remboursés · 1er dépôt de **20 €** offert\n-# ${OFFERS[b.id].tagline}`)],
       accessory:link('Voir l’offre','👉',channel(b.channelId!))}]),
-    ...(rainbet?[SEP(1,false),{type:9,components:[T('### 🌧️ Rainbet\n**+20 % de rakeback** pendant 7 jours avec le code **NIVORANET**\n-# Race du mois : 200 $ pour le top 3 (100 / 60 / 40)')],accessory:link('Voir l’offre','👉',channel(rainbet.channelId!))}]:[]),
     SEP(),
     T('### 📋 En bref\n**Remboursement** · tu déposes avec notre lien, on te rembourse ton dépôt (jusqu’au plafond du casino).\n**Dépôt offert** · nouveau sur un casino ? On t’envoie 20 € pour ton premier dépôt.\n-# Un remboursement et un dépôt offert par casino. L’argent part directement sur ton adresse de dépôt, en priorité sur un casino où tu n’as pas encore de compte.'),
     SEP(1),FOOTER]};
