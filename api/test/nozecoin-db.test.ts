@@ -124,6 +124,9 @@ test('weekly CNZ rewards require a fresh tagged native identity and cannot dupli
  assert.equal((await weeklyCnz(pool,1)).length,0);
 });
 test('Belva tombola announces one code per 40 min of live, retried if the chat send fails',async()=>{
+ await pool.query(`CREATE TABLE IF NOT EXISTS belva_design_reviews(key text PRIMARY KEY,version text,status text)`);
+ const said0:string[]=[];await tickBelvaTombola(pool,'899',async t=>{said0.push(t);return {sent:true};},Date.now()+3_600_000);assert.equal(said0.length,0);
+ await pool.query(`INSERT INTO belva_design_reviews VALUES('tombola','v','approved')`);
  process.env.BELVA_TOMBOLA_START='2020-01-01T00:00:00Z';const said:string[]=[];let up=false;
  const say=async(t:string)=>{said.push(t);return {sent:up};};
  await tickBelvaTombola(pool,'900',say);assert.equal(said.length,0);

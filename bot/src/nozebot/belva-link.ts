@@ -16,7 +16,7 @@ export async function registerBelvaCommands(client:Client){
   await guild.commands.create(COMMAND.toJSON());
 }
 
-const CHECK_TEXT={
+export const CHECK_TEXT={
   linked:(u?:string)=>`✅ C’est fait : ton compte Rumble **${u}** est relié à ton Discord.`,
   pending:(u?:string)=>`✅ Commentaire trouvé ! Ton compte **${u}** sera activé dès ton premier message dans le chat de Belva (tes BCoins et tes tickets y sont attachés).`,
   not_found:()=>'Je ne trouve pas encore ton commentaire. Vérifie qu’il contient la commande complète (`!lier …`) sous la dernière vidéo de Belva, puis réessaie dans 30 secondes.',
@@ -40,20 +40,7 @@ export async function handleBelvaLink(interaction:Interaction,config:LunaLiveApi
     const link=await requestAutomodLink(config,interaction.user.id,STREAMER);
     if(link.linked){await interaction.editReply(`✅ Ton compte Rumble **${link.username}** est déjà lié.`);return true;}
     const t=link.targets??{live:false,liveUrl:`${CHANNEL_URL}/live`,videoUrl:CHANNEL_URL};
-    const embed=new EmbedBuilder().setColor(0x19d3d3).setTitle('🔗 Lier ton compte Rumble').setDescription([
-      t.live?'🟢 **Belva est en live !** Colle la commande ci-dessous dans son chat Rumble : le bot te répond tout de suite.'
-        :'⚫ **Belva n’est pas en live**, pas de souci :',
-      '',
-      `${t.live?'**Ou, hors live :**':'**1 ·**'} poste la commande ci-dessous en **commentaire** sous [la dernière vidéo de Belva](${t.videoUrl}).`,
-      `${t.live?'puis':'**2 ·**'} clique sur **Vérifier mon commentaire** : c’est lié.`,
-      '',
-      `-# Abonne-toi à la chaîne pour les prochains lives : ${CHANNEL_URL}`,
-      '-# La commande est valable 10 minutes et ne sert qu’une fois.',
-    ].join('\n'));
-    const buttons=new ActionRowBuilder<ButtonBuilder>().addComponents(
-      ...(t.live?[new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Ouvrir le live').setEmoji('🟢').setURL(t.liveUrl)]:[]),
-      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Ouvrir la vidéo').setEmoji('💬').setURL(t.videoUrl),
-      new ButtonBuilder().setCustomId(CHECK_BUTTON).setStyle(ButtonStyle.Success).setLabel('Vérifier mon commentaire').setEmoji('✅'));
+    const {embed,buttons}=linkDm(t);
     const dm=await interaction.user.send({embeds:[embed]}).then(()=>interaction.user.send({content:link.command!,components:[buttons]})).then(()=>true).catch(()=>false);
     await interaction.editReply(dm?'📩 Je t’ai envoyé la marche à suivre en message privé.'
       :{content:`Je n’ai pas pu t’écrire en privé (MP fermés). Voici ta commande :\n\`${link.command}\`\n${t.live?'Colle-la dans le chat du live de Belva, ou p':'P'}oste-la en commentaire sous [la dernière vidéo de Belva](${t.videoUrl}), puis clique sur Vérifier.\n-# Valable 10 minutes.`,components:[buttons]});
@@ -61,4 +48,22 @@ export async function handleBelvaLink(interaction:Interaction,config:LunaLiveApi
     await interaction.editReply(e instanceof LunaLiveApiError&&e.code==='link_cooldown'?'Patiente une minute avant de redemander une commande.':'Liaison indisponible pour le moment. Réessaie dans un instant.');
   }
   return true;
+}
+
+export function linkDm(t:{live:boolean;liveUrl:string;videoUrl:string}){
+  const embed=new EmbedBuilder().setColor(0x19d3d3).setTitle('🔗 Lier ton compte Rumble').setDescription([
+    t.live?'🟢 **Belva est en live !** Colle la commande ci-dessous dans son chat Rumble : le bot te répond tout de suite.'
+      :'⚫ **Belva n’est pas en live**, pas de souci :',
+    '',
+    `${t.live?'**Ou, hors live :**':'**1 ·**'} poste la commande ci-dessous en **commentaire** sous [la dernière vidéo de Belva](${t.videoUrl}).`,
+    `${t.live?'puis':'**2 ·**'} clique sur **Vérifier mon commentaire** : c’est lié.`,
+    '',
+    `-# Abonne-toi à la chaîne pour les prochains lives : ${CHANNEL_URL}`,
+    '-# La commande est valable 10 minutes et ne sert qu’une fois.',
+  ].join('\n'));
+  const buttons=new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...(t.live?[new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Ouvrir le live').setEmoji('🟢').setURL(t.liveUrl)]:[]),
+    new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Ouvrir la vidéo').setEmoji('💬').setURL(t.videoUrl),
+    new ButtonBuilder().setCustomId(CHECK_BUTTON).setStyle(ButtonStyle.Success).setLabel('Vérifier mon commentaire').setEmoji('✅'));
+  return {embed,buttons};
 }

@@ -32,7 +32,7 @@ function bjButtons(g:Bj){
     new ButtonBuilder().setCustomId(`belva:bj:${g.sessionId}:split`).setLabel('Splitter').setEmoji('⚡').setStyle(ButtonStyle.Secondary).setDisabled(off||!g.actions.split));
 }
 
-async function bjMessage(g:Bj,username:string){
+export async function bjMessage(g:Bj,username:string){
   const name=`belva-blackjack-${g.sessionId}.png`;
   const r=g.result;
   const text=!r?'À toi de jouer. La partie est enregistrée : tu peux la reprendre avec ces boutons.'

@@ -21,6 +21,9 @@ export function tombolaSchema(pool:Pool){
 export async function tickBelvaTombola(pool:Pool,videoId:string,announce:(text:string)=>Promise<{sent:boolean}>,now=Date.now()){
  if(process.env.BELVA_TOMBOLA_ENABLED==='false'||now<startsAt())return;
  await tombolaSchema(pool);
+ // Le message d'annonce doit d'abord être validé par le staff dans le salon validation-design du Discord.
+ const approved=(await pool.query(`SELECT 1 FROM belva_design_reviews WHERE key='tombola' AND status='approved'`).catch(()=>({rows:[]}))).rows.length;
+ if(!approved)return;
  const code=await inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[8244171]);
   // bucket 0 marque seulement le début du live : le premier code tombe après 40 min.

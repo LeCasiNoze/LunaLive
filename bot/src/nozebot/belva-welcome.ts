@@ -1,6 +1,8 @@
 import {ChannelType,Events,MessageFlags,type Client,type GuildMember} from 'discord.js';
 import {BELVA_ROLES} from './belva-roles.js';
 import {LINK_BUTTON} from './belva-info.js';
+import {isApproved} from './belva-approval.js';
+import type {Pool} from 'pg';
 
 // Arrivée sur le Discord de Belva (remplace MEE6) : rôle Invité + carte de bienvenue dans 👋︱bienvenue.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -26,9 +28,10 @@ export function welcomeCard(member:{id:string;avatarUrl:string},count:number,cha
   ]}] as never[]};
 }
 
-async function welcome(member:GuildMember){
+async function welcome(member:GuildMember,pool?:Pool){
   if(member.guild.id!==GUILD_ID()||member.user.bot)return;
   await member.roles.add(BELVA_ROLES.invite,'Arrivée sur le serveur').catch(e=>console.error('[nozebot] rôle Invité Belva',e?.message||e));
+  if(!await isApproved(pool,'welcome'))return;
   const all=await member.guild.channels.fetch();
   const find=(suffix:string)=>all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith(suffix))?.id;
   const channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('bienvenue'));
@@ -37,7 +40,7 @@ async function welcome(member:GuildMember){
     {offers:find('toutes-les-offres'),link:find('lier-mon-compte'),notifs:find('notifications'),games:find('mini-jeux')}));
 }
 
-export function startBelvaWelcome(client:Client){
+export function startBelvaWelcome(client:Client,pool?:Pool){
   if(process.env.BELVA_WELCOME==='false')return;
-  client.on(Events.GuildMemberAdd,m=>void welcome(m).catch(e=>console.error('[nozebot] bienvenue Belva',e)));
+  client.on(Events.GuildMemberAdd,m=>void welcome(m,pool).catch(e=>console.error('[nozebot] bienvenue Belva',e)));
 }

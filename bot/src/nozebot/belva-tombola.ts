@@ -104,9 +104,7 @@ async function drawDue(client:Client,pool:Pool){
     const total=tickets.reduce((s,t)=>s+t.n,0);
     await pool.query(`UPDATE belva_tombola_draws SET winner_ids=$2,tickets=$3 WHERE draw_at=$1`,[draw_at,winners,total]);
     const channel=await client.channels.fetch(GIVEAWAY_CHANNEL).catch(()=>null) as TextChannel|null;
-    await channel?.send({content:winners.length
-      ?`🎟️ **Tombola du dimanche** · ${total} tickets en jeu\n🥳 ${winners.map(id=>`<@${id}>`).join(' et ')} : vous gagnez **${PRIZE()}** chacun ! Ouvrez un ticket pour le récupérer.\n-# Prochaine tombola : un code toutes les 40 minutes pendant le live de Belva, à taper avec /code. 18+`
-      :`🎟️ Tombola du dimanche : aucun membre vérifié parmi les ${total} tickets, pas de gagnant cette semaine.`,allowedMentions:{users:winners}});
+    await channel?.send({content:drawAnnouncement(winners,total),allowedMentions:{users:winners}});
     const panel=await client.channels.fetch(PANEL_CHANNEL).catch(()=>null) as TextChannel|null;
     await panel?.send({content:`Tombola du ${ts(draw_at)} · ${total} tickets · gagnant(s) à payer (${PRIZE()} chacun) : ${winners.map(id=>`<@${id}>`).join(', ')||'aucun'}`,allowedMentions:{parse:[]}});
   }
@@ -120,4 +118,10 @@ export async function startBelvaTombola(client:Client,pool?:Pool){
     if(busy)return;busy=true;
     void drawDue(client,pool).catch(e=>console.error('[nozebot] tombola Belva',e)).finally(()=>{busy=false;});
   },60_000).unref();
+}
+
+export function drawAnnouncement(winners:string[],total:number){
+  return winners.length
+      ?`🎟️ **Tombola du dimanche** · ${total} tickets en jeu\n🥳 ${winners.map(id=>`<@${id}>`).join(' et ')} : vous gagnez **${PRIZE()}** chacun ! Ouvrez un ticket pour le récupérer.\n-# Prochaine tombola : un code toutes les 40 minutes pendant le live de Belva, à taper avec /code. 18+`
+      :`🎟️ Tombola du dimanche : aucun membre vérifié parmi les ${total} tickets, pas de gagnant cette semaine.`;
 }

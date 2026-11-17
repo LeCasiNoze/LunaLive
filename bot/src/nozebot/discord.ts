@@ -35,6 +35,7 @@ import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js'
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { startBelvaWelcome } from './belva-welcome.js';
+import { ensureReviews, handleBelvaReview } from './belva-review.js';
 import { belvaLiveConfig } from './belva-live.js';
 import { handleBelvaGameMessage, handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
 import { handleBelvaTombola, handleBelvaTombolaMessage, registerBelvaTombolaCommands, startBelvaTombola } from './belva-tombola.js';
@@ -494,6 +495,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaLink(interaction, config.commands.lunaLive)) return;
     if (await handleBelvaGames(interaction, config.commands.lunaLive)) return;
     if (await handleBelvaTombola(interaction, pool)) return;
+    if (await handleBelvaReview(interaction, pool)) return;
     if (await handleBelvaTickets(interaction, pool)) return;
     if (await handleBelvaNotifs(interaction)) return;
     if (await handleBelvaRainbet(interaction, pool)) return;
@@ -638,6 +640,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void startBelvaStats(readyClient, pool).catch((error) => console.error("[nozebot] stats Belva", error));
     void registerBelvaCommands(readyClient).catch((error) => console.error("[nozebot] commandes Belva", error));
     void registerBelvaGameCommands(readyClient).catch((error) => console.error("[nozebot] jeux Belva", error));
+    void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
     void registerBelvaTombolaCommands(readyClient).then(() => startBelvaTombola(readyClient, pool)).catch((error) => console.error("[nozebot] tombola Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
@@ -654,7 +657,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     });
     void routeInteraction(interaction, config, pool);
   });
-  startBelvaWelcome(client);
+  startBelvaWelcome(client, pool);
   client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
     console.error("[nozebot] member welcome failed", error);
   }));
