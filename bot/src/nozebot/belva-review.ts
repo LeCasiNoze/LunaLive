@@ -138,6 +138,17 @@ export async function ensureReviews(client:Client,pool?:Pool){
       ON CONFLICT(key) DO UPDATE SET version=$2,status='pending',note=NULL,decided_by=NULL,decided_at=NULL,message_ids=$3,updated_at=NOW()`,[d.key,version,ids]);
     forgetApproval(d.key);
   }
+  // Palette validée mais pas (entièrement) appliquée : on la réapplique au démarrage.
+  const roles=(await pool.query(`SELECT version,status,applied_version FROM belva_design_reviews WHERE key='roles'`)).rows[0];
+  if(roles?.status==='approved'&&roles.applied_version!==roles.version+APPLY_REV)await applyRoles(guild,pool,channel,roles.version+APPLY_REV);
+}
+
+// À incrémenter quand applyRoleSpec change sans que la palette change (ex. correctif d'ordre des rôles).
+const APPLY_REV=':2';
+async function applyRoles(guild:Guild,pool:Pool,channel:TextChannel|null,applied:string){
+  const report=await applyRoleSpec(guild).catch(e=>[`❌ ${(e as Error).message}`]);
+  await pool.query(`UPDATE belva_design_reviews SET applied_version=$1 WHERE key='roles'`,[applied]);
+  await channel?.send({content:`### 🎨 Rôles appliqués\n${report.join('\n')}`,allowedMentions:{parse:[]}});
 }
 
 export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolean>{
@@ -158,14 +169,13 @@ export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolea
   const status=action==='ok'?'approved':'rejected';
   const note=i.isModalSubmit()?i.fields.getTextInputValue('note').trim()||null:null;
   await reviewSchema(pool);
-  const row=(await pool.query(`UPDATE belva_design_reviews SET status=$2,note=$3,decided_by=$4,decided_at=NOW(),updated_at=NOW() WHERE key=$1 RETURNING *`,[key,status,note,i.user.id])).rows[0];
+  // Valider après « À revoir » garde la note écrite ; chaque clic est aussi historisé.
+  const row=(await pool.query(`UPDATE belva_design_reviews SET status=$2,note=COALESCE($3,note),decided_by=$4,decided_at=NOW(),updated_at=NOW() WHERE key=$1 RETURNING *`,[key,status,note,i.user.id])).rows[0];
+  await pool.query(`INSERT INTO belva_design_review_log(key,version,status,note,decided_by) VALUES($1,$2,$3,$4,$5)`,[key,row?.version??null,status,note,i.user.id]);
   forgetApproval(key);
   if(!row)return true;
   if(i.isButton())await i.update(verdict(d,row));
   else if(i.isModalSubmit()){await i.deferUpdate();await i.message?.edit(verdict(d,row));}
-  if(key==='roles'&&status==='approved'){
-    const report=await applyRoleSpec(i.guild).catch(e=>[`❌ ${(e as Error).message}`]);
-    await (i.channel as TextChannel|null)?.send({content:`### 🎨 Rôles appliqués\n${report.join('\n')}`,allowedMentions:{parse:[]}});
-  }
+  if(key==='roles'&&status==='approved')await applyRoles(i.guild,pool,i.channel as TextChannel|null,row.version+APPLY_REV);
   return true;
 }

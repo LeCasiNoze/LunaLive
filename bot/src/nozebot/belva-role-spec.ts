@@ -53,20 +53,23 @@ export async function gradeRoleId(guild:Guild,key:typeof GRADE_KEYS[number]){
 export async function applyRoleSpec(guild:Guild):Promise<string[]>{
   const report:string[]=[];
   const roles=await guild.roles.fetch();
-  const me=await guild.members.fetchMe();const ceiling=me.roles.highest.position;
+  // Les positions bougent à chaque création de rôle : on compare toujours au rôle du bot en direct.
+  const me=await guild.members.fetchMe();
+  const below=(r:{position:number})=>me.roles.highest.comparePositionTo(r as never)>0;
   const ids:Record<string,string>={};
   for(const s of ROLE_SPEC){
     const found=(s.id?roles.get(s.id):undefined)??roles.find(r=>r.name===s.name);
     const data={name:s.name,colors:{primaryColor:s.color},hoist:s.hoist,...(s.perms===null?{}:{permissions:s.perms}),reason:'Refonte des rôles validée'};
     try{
-      if(found){if(found.position>=ceiling){report.push(`⚠️ ${s.name} : au-dessus du bot, non modifié`);continue;}
+      if(found){if(!below(found)){report.push(`⚠️ ${s.name} : au-dessus du bot, non modifié`);continue;}
         await found.edit(data);ids[s.key]=found.id;}
       else{const r=await guild.roles.create(data);ids[s.key]=r.id;report.push(`➕ ${s.name} créé`);}
     }catch(e){report.push(`❌ ${s.name} : ${(e as Error).message}`);}
   }
   // Positions : bloc collé sous le rôle du bot, dans l'ordre de la spec.
   const ordered=ROLE_SPEC.map(s=>ids[s.key]).filter(Boolean);
-  try{await guild.roles.setPositions(ordered.map((id,i)=>({role:id,position:ceiling-1-i})));}
+  try{const top=(await guild.roles.fetch(me.roles.highest.id,{force:true}))!.position;
+    await guild.roles.setPositions(ordered.map((id,i)=>({role:id,position:top-1-i})));}
   catch(e){report.push(`⚠️ Ordre des rôles : ${(e as Error).message}`);}
   const members=await guild.members.fetch();
   for(const old of RETIRED){
@@ -77,7 +80,7 @@ export async function applyRoleSpec(guild:Guild):Promise<string[]>{
       .catch(e=>report.push(`❌ ${old.name} : ${(e as Error).message}`));
   }
   for(const m of MANUAL_SPEC){const r=roles.get(m.id);
-    if(r&&r.position<ceiling)await r.edit({name:m.name,colors:{primaryColor:m.color}}).then(()=>report.push(`✅ ${m.name}`)).catch(()=>report.push(`⚠️ ${m.name} : à faire à la main (${hex(m.color)})`));
+    if(r&&below(r))await r.edit({name:m.name,colors:{primaryColor:m.color}}).then(()=>report.push(`✅ ${m.name}`)).catch(()=>report.push(`⚠️ ${m.name} : à faire à la main (${hex(m.color)})`));
     else report.push(`⚠️ ${m.name} : au-dessus du bot, à faire à la main → couleur ${hex(m.color)}`);}
   report.unshift(`✅ ${Object.keys(ids).length} rôles mis à jour`);
   return report;

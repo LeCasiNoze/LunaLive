@@ -9,21 +9,27 @@ const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
 const T=(content:string)=>({type:10,content});
 const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
 
+// Pensée mobile : une étape par bloc, son bouton juste à côté, de l'air entre les blocs.
 export function welcomeCard(member:{id:string;avatarUrl:string},count:number,channels:{offers?:string;link?:string;notifs?:string;games?:string}){
-  const ch=(id?:string,fallback='')=>id?`<#${id}>`:fallback;
-  const url=(id:string)=>`https://discord.com/channels/${GUILD_ID()}/${id}`;
+  const url=(id?:string)=>id?`https://discord.com/channels/${GUILD_ID()}/${id}`:null;
+  const GAP={type:14,divider:false,spacing:2},LINE={type:14,divider:true,spacing:2};
+  const step=(title:string,body:string,accessory:object|null)=>accessory
+    ?{type:9,components:[T(`### ${title}\n${body}`)],accessory}:T(`### ${title}\n${body}`);
+  const go=(label:string,emoji:string,id?:string)=>{const u=url(id);return u?link(label,emoji,u):null;};
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{users:[member.id]},components:[{type:17,accent_color:0x19d3d3,components:[
-    {type:9,components:[T(`# Bienvenue <@${member.id}> !`),T(`Tu es le **${count}e** membre de la commu Belva 🎰\n-# Casino, lives Rumble et bonus entre nous.`)],
+    {type:9,components:[T('# 👋 Bienvenue !'),T(`<@${member.id}>`),T(`Tu es le **${count}ᵉ** membre de la commu Belva 🎰`)],
       accessory:{type:11,media:{url:member.avatarUrl},description:'Nouveau membre'}},
-    {type:14,divider:true,spacing:1},
-    T([`🎁 **Ton bonus** · jusqu’à 30 € remboursés ou 20 € offerts sur ton 1er dépôt : ${ch(channels.offers,'salons Casinos Partenaires')}`,
-      `🔗 **Relie ton Rumble** · pour gagner des BCoins et des tickets de tombola : ${ch(channels.link,'/lier')}`,
-      `🔔 **Ne rate aucun live** · active tes notifications : ${ch(channels.notifs,'salon notifications')}`,
-      ...(channels.games?[`🃏 **Mini-jeux** · blackjack et machine à sous en BCoins : ${ch(channels.games)}`]:[])].join('\n')),
-    {type:1,components:[
-      {type:2,style:1,label:'Lier mon Rumble',emoji:{name:'🔗'},custom_id:LINK_BUTTON},
-      ...(channels.offers?[link('Voir les offres','🎁',url(channels.offers))]:[]),
-      link('Regarder Belva','🟢','https://rumble.com/user/Belvaa/live')]},
+    LINE,
+    T('**Pour bien démarrer, 4 étapes :**'),
+    GAP,
+    step('🎁 1 · Ton bonus','Jusqu’à **30 € remboursés** ou **20 € offerts** sur ton 1er dépôt.',go('Les offres','🎁',channels.offers)),
+    GAP,
+    step('🔗 2 · Relie ton Rumble','Gagne des **BCoins** et des **tickets de tombola**.',{type:2,style:1,label:'Lier',emoji:{name:'🔗'},custom_id:LINK_BUTTON}),
+    GAP,
+    step('🔔 3 · Les notifs','Sois prévenu dès que Belva lance un live.',go('Activer','🔔',channels.notifs)),
+    ...(channels.games?[GAP,step('🃏 4 · Les mini-jeux','Blackjack et machine à sous avec tes BCoins.',go('Jouer','🃏',channels.games))]:[]),
+    LINE,
+    {type:1,components:[link('Regarder Belva sur Rumble','🟢','https://rumble.com/user/Belvaa/live')]},
     T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
   ]}] as never[]};
 }
