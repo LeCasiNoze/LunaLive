@@ -18,6 +18,7 @@ const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
 const ShopPage = React.lazy(() => import("./pages/ShopPage").then((m) => ({ default: m.ShopPage })));
 const HuntPage = React.lazy(() => import("./pages/HuntPage"));
 const EventPage = React.lazy(() => import("./pages/EventPage"));
+const BelvaTournamentPage = React.lazy(() => import("./pages/BelvaTournamentPage"));
 const ParticipatePage = React.lazy(() => import("./pages/ParticipatePage"));
 const BecomeStreamerPage = React.lazy(() => import("./pages/BecomeStreamerPage"));
 // Page utilitaire de consultation des skins d'event (non listée)
@@ -394,6 +395,7 @@ function AppInner() {
               </React.Suspense>
             }
           />
+          <Route path="/belva/tournoi" element={<BelvaTournamentPage />} />
           <Route path="/event" element={<EventPage />} />
           <Route path="/event/:type" element={<EventPage />} />
           <Route path="/skins-events" element={<EventSkinsPreviewPage />} />

@@ -10,7 +10,7 @@ import {welcomeCard} from './belva-welcome.js';
 import {CHECK_TEXT,linkDm} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
-import {BUY_CENTS,bonusOptions,confirmCard,registrationCard,searchSlots} from './belva-tournament.js';
+import {BRACKET_URL,BUY_CENTS,bonusOptions,bracketCard,championText,confirmCard,eliminationText,registrationCard,searchSlots,type LiveState} from './belva-tournament.js';
 import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
@@ -102,6 +102,29 @@ export const DESIGNS:Design[]=[
       text('**Si la machine est déjà prise :**'),{...confirmCard(first.s,[],null,c.botId),allowedMentions:{parse:[]}} as Preview,
       text('**Étape 2 · la carte des inscriptions dans ⚔️︱tournoi :**'),
       {...registrationCard({title:'Tournoi du samedi 6 décembre',status:'open',buy_cents:BUY_CENTS()},rows.map(r=>r.e)),allowedMentions:{parse:[]}} as Preview];}},
+  {key:'bracket',title:'Tournoi en direct : bracket, chat Rumble, pings',where:'⚔️︱tournoi + chat Rumble de Belva + page web lunalive.win/belva/tournoi',
+    note:'Exemple avec 4 joueurs fictifs. Tirage automatique samedi 18 h ; tant que cette fiche n’est pas validée, aucun tirage ne se fait.',previews:async c=>{
+    const names=['wanted dead or a wild','fruit party','le bandit','sugar rush 1000'],pseudo=['Mise_Max','Lucky_Léo','Spin_Sam','Tilt_Zéro'];
+    const players:LiveState['players']={};const ids=['1','2','3','4'].map(n=>`${c.botId.slice(0,-1)}${n}`);
+    for(const [k,q] of names.entries()){const s=(await searchSlots(c.pool,q,1))[0];const o=s?(await bonusOptions(c.pool,s))[0]:null;
+      players[ids[k]!]={rumble:pseudo[k]!,name:pseudo[k]!,slot:s?.name??q,image:s?.image??null,bonus:o?.label??'Bonus'};}
+    const [a,b,cc,d]=ids as [string,string,string,string];
+    const state:LiveState={tournament:{id:0,status:'live',version:3,champion:null},players,bracket:{rounds:2,champion:null,places:{[cc]:3},
+      current:{key:'1-1',player:b,opponent:d},
+      matches:[{key:'1-0',round:1,a,b:cc,bestOf:1,legs:[{a:24500,b:8000}],winsA:1,winsB:0,winner:a,loser:cc,status:'done'},
+        {key:'1-1',round:1,a:b,b:d,bestOf:1,legs:[],winsA:0,winsB:0,winner:null,loser:null,status:'ready'},
+        {key:'2-0',round:2,a,b:null,bestOf:3,legs:[],winsA:0,winsB:0,winner:null,loser:null,status:'waiting'}]}};
+    return [
+      text(`**Le site** : ${BRACKET_URL} · bracket en direct, et pour le staff connecté : saisie et correction des gains (source de vérité).`),
+      text('**Carte en direct dans ⚔️︱tournoi :**'),{...bracketCard('Tournoi du samedi 6 décembre',state),allowedMentions:{parse:[]}} as Preview,
+      text(['**Dans le chat Rumble (après chaque `!tournoi <gain>` de Belva ou d’un modo) :**',
+        `> 🎰 ${players[a]!.slot} (Mise_Max) : 245 € · au tour de ${players[cc]!.slot} (Spin_Sam)`,
+        `> 🎰 ${players[cc]!.slot} (Spin_Sam) : 80 € · ⚔️ Mise_Max passe, Spin_Sam est éliminé (3ᵉ) · Au suivant : ${players[b]!.slot} (Lucky_Léo) contre ${players[d]!.slot} (Tilt_Zéro)`,
+        '> 🎰 … : 0 € · 🤝 égalité, on rachète les deux bonus !',
+        `> 🎰 … · 🏆 Mise_Max remporte le tournoi avec ${players[a]!.slot} ! Classement : ${BRACKET_URL}`].join('\n')),
+      text('**Ping au joueur éliminé (⚔️︱tournoi) :**\n'+eliminationText(c.botId,'Demi-finales',3)),
+      text('**Fin du tournoi :**\n'+championText(c.botId,players[a]!.slot)),
+    ];}},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){

@@ -643,7 +643,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void registerBelvaGameCommands(readyClient).catch((error) => console.error("[nozebot] jeux Belva", error));
     startBelvaLinkSync(readyClient, pool);
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
-    void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool)).catch((error) => console.error("[nozebot] tournoi Belva", error));
+    void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive.baseUrl)).catch((error) => console.error("[nozebot] tournoi Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     console.log("[nozebot] interaction reçue", {

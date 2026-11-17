@@ -42,7 +42,7 @@ const spec=(key:string)=>ROLE_SPEC.find(r=>r.key===key)!;
 const fr=(n:number)=>n.toLocaleString('fr-FR');
 const bar=(pct:number)=>'▰'.repeat(Math.round(pct/10))+'▱'.repeat(10-Math.round(pct/10))+` ${pct} %`;
 const FOOT=T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.');
-const v2=(accent:number,components:object[],mention?:string)=>({flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{users:mention?[mention]:[]},
+const v2=(accent:number,components:object[],mention?:string|string[])=>({flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{users:mention?[mention].flat():[]},
   components:[{type:17,accent_color:accent,components}] as never[]});
 
 // Nouveau grade (Bronze → Fer…) : carte complète. Simple sous-niveau (Or II → Or III) : une ligne.
@@ -84,7 +84,7 @@ export function questJournalCard(week:number){
   ]);
 }
 
-export type SeasonRow={name:string;places:(number|null)[]};
+export type SeasonRow={name:string;id?:string;places:(number|null)[]};
 export function seasonScore(r:SeasonRow,total:number){
   const P=SEASON_POINTS,played=r.places.filter((p):p is number=>p!==null);
   return played.length*P.presence+played.reduce((s,p)=>s+(P.place[p-1]??0),0)+(total>0&&played.length===total?P.fullAttendance:0);
@@ -101,11 +101,11 @@ export function seasonCard(s:{month:string;total:number;rows:SeasonRow[];final?:
     T(s.final?`Saison close après **${s.total}** tournois. Le top 3 gagne **${P.prizes.join(' · ')}**.`
       :`Un tournoi **chaque samedi** pendant le live (**${s.total}** joué${s.total>1?'s':''}). Le top 3 du mois gagne **${P.prizes.join(' · ')}** (comptes casino vérifiés).`),
     SEP(),
-    T(sorted.length?sorted.map((x,i)=>`${medal[i]??`\`${i+1}.\``} **${x.r.name}** · **${x.score} pts** · ${x.played}/${s.total}\n-# ${x.r.places.filter((p):p is number=>p!==null).map(place).join(' · ')}`).join('\n'):'Aucun résultat pour l’instant.'),
+    T(sorted.length?sorted.map((x,i)=>`${medal[i]??`\`${i+1}.\``} ${x.r.id?`<@${x.r.id}>`:`**${x.r.name}**`} · **${x.score} pts** · ${x.played}/${s.total}\n-# ${x.r.places.filter((p):p is number=>p!==null).map(place).join(' · ')}`).join('\n'):'Aucun résultat pour l’instant.'),
     SEP(),
     T(`### 📏 Barème\n> **${P.presence} pts** pour chaque tournoi joué\n> Bonus classement : 1er **+${P.place[0]}** · 2e **+${P.place[1]}** · 3e **+${P.place[2]}** · 4e-5e **+${P.place[3]}**\n> **+${P.fullAttendance} pts** si tu joues tous les tournois du mois\n-# Venir à chaque fois rapporte plus qu’un seul tournoi gagné. Égalité : le plus de tournois joués passe devant.`),
     FOOT,
-  ]);
+  ],s.rows.map(r=>r.id).filter((x):x is string=>!!x));
 }
 export const SEASON_EXAMPLE:{month:string;total:number;rows:SeasonRow[]}={month:'décembre',total:4,rows:[
   {name:'Mise_Max',places:[8,2,2,1]},{name:'Lucky_Léo',places:[1,5,9,6]},{name:'Tilt_Zéro',places:[null,1,1,3]},

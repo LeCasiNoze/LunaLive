@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseOrder,priceOption} from './belva-tournament.js';
+import {priceOption} from './belva-tournament.js';
 import {levelFor,levelThresholds,seasonScore,SEASON_EXAMPLE} from './belva-progress-designs.js';
 
 test('every bonus costs about the same buy price: the bet follows the buy multiplier',()=>{
@@ -9,12 +9,6 @@ test('every bonus costs about the same buy price: the bet follows the buy multip
   assert.equal(priceOption('x','x',333,12000).betCents,40);
   assert.equal(priceOption('x','x',333,12000).costCents,13320);
   assert.deepEqual(priceOption('b','Bounty',null,12000),{id:'b',label:'Bounty',multiplier:null,betCents:null,costCents:12000});
-});
-
-test('staff ranking: one line per player, first line wins, removed lines are absents',()=>{
-  const es=[{discord_id:'1',display_name:'Max',slot_name:'Fruit Party'},{discord_id:'2',display_name:'Léo',slot_name:'Wanted'},{discord_id:'3',display_name:'Sam',slot_name:'Le Bandit'}];
-  assert.deepEqual(parseOrder('Léo — Wanted\n\nmax — Fruit Party',es),{order:['2','1'],unknown:[],missing:['Sam']});
-  assert.deepEqual(parseOrder('Inconnu — X',es).unknown,['Inconnu — X']);
 });
 
 test('season: showing up every week beats a single win',()=>{

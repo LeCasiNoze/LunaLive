@@ -6,6 +6,8 @@ import {startSoundboardMaintenance} from './nozecoins/soundboard-maintenance.js'
 import { Server as IOServer } from "socket.io";
 
 import { migrate, pool } from "./db.js";
+import { drawDue } from "./belva_bracket.js";
+import { sendRumbleMessageReliable } from "./rumble_chat_bridge.js";
 import { createApp } from "./app.js";
 import { startOutboundHttpMetrics } from "./utils/outbound_http_metrics.js";
 import { startBotRainScheduler } from "./routes/bot_rain.js";
@@ -131,6 +133,7 @@ async function bootstrapBackground() {
     // Catalogue Rainbet : Cloudflare refuse les IP Render (403 même via curl),
     // le crawl tourne sur le VPS (scripts/slots-rainbet-vps). Opt-in ici.
     if (process.env.SLOTS_UPDATER_ON_API === "1") startSlotsCatalogUpdater(12);
+    startBelvaTournamentScheduler();
     refreshAllAffiPageSnapshots().catch((e) => {
       console.warn("[boot] affi snapshots refresh failed", e?.message || e);
     });
@@ -242,3 +245,13 @@ function setupProcessCrashGuards() {
   // ✅ Pour que Render puisse arrêter proprement (évite deploys qui traînent)
   setupGracefulShutdown(server);
 })();
+
+// Tirage automatique du bracket du tournoi de Belva (samedi 18 h, heure de Paris) ; annonce dans son chat si elle est en live.
+function startBelvaTournamentScheduler() {
+  const tick = () => drawDue(pool, async (text) => {
+    const vid = (await pool.query(`SELECT i.live_video_id_numeric FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id
+      WHERE lower(s.slug)='belvaa' AND i.is_live=TRUE`)).rows[0]?.live_video_id_numeric;
+    if (vid) await sendRumbleMessageReliable(pool, String(vid), text);
+  }).catch((e) => console.warn("[belva-tournoi] tirage", e?.message || e));
+  setInterval(tick, 60_000);
+}

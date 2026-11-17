@@ -5,6 +5,7 @@ import type {Pool} from 'pg';
 import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName,weeklyCnz} from '../src/nozecoins/wallet.js';
 import {handleCoinsChat} from '../src/nozecoins/chat.js';
 import {tickBelvaTombola} from '../src/belva_tombola.js';
+import {drawDue,recordGain,tournamentState} from '../src/belva_bracket.js';
 import {linkByComment,finishPendingLink} from '../src/belva_link_comment.js';
 import {requestAutomodDiscordLink} from '../src/automod-shop/discord-profile.js';
 
@@ -151,4 +152,21 @@ test('Belva link by Rumble comment: known chatter links at once, newcomer links 
  assert.equal(await finishPendingLink(pool,1,'287000001','someoneelse'),null);
  assert.match(String(await finishPendingLink(pool,1,'287000001','newbie')),/relié/);
  assert.equal((await pool.query(`SELECT rumble_user_id FROM automod_discord_links WHERE discord_user_id='222222222222222222'`)).rows[0].rumble_user_id,'287000001');
+});
+test('Belva bracket: Saturday draw, gains typed in chat, winner and places saved',async()=>{
+ await pool.query(`INSERT INTO belva_design_reviews VALUES('bracket','v','approved') ON CONFLICT DO NOTHING`);
+ await tournamentState(pool);
+ const t=(await pool.query(`INSERT INTO belva_tournaments(title,buy_cents,created_by,draw_at) VALUES('T',12000,'x',NOW()-interval '1 minute') RETURNING id`)).rows[0].id;
+ for(const [id,slot] of [['111','Wanted'],['222','Fruit Party']])await pool.query(`INSERT INTO belva_tournament_entries(tournament_id,discord_id,display_name,slot_key,slot_name,bonus_id,bonus_label,cost_cents) VALUES($1,$2,$2,$3,$3,'b','Bonus',12000)`,[t,id,slot]);
+ const said:string[]=[];await drawDue(pool,async x=>{said.push(x);});
+ assert.match(said[0]!,/bracket du tournoi est tiré : 2 joueurs/);
+ assert.equal((await tournamentState(pool))!.tournament.status,'live');
+ // Finale directe en BO3 : 100/50 puis 30/40 puis 20/10 -> le premier tiré gagne 2-1
+ const first=(await tournamentState(pool))!.bracket!.current!.player;
+ for(const g of [100,50,30,40])assert.doesNotMatch(await recordGain(pool,g*100),/remporte/);
+ await recordGain(pool,2000);assert.match(await recordGain(pool,1000),/remporte le tournoi/);
+ const st=(await tournamentState(pool))!;assert.equal(st.tournament.status,'done');assert.equal(st.tournament.champion,first);
+ const places=(await pool.query(`SELECT discord_id,place FROM belva_tournament_entries WHERE tournament_id=$1 ORDER BY place`,[t])).rows.map(r=>[r.discord_id,r.place]);
+ assert.deepEqual(places.map(p=>p[1]),[1,2]);assert.equal(places[0]![0],first);
+ assert.equal(await recordGain(pool,100),'Aucun tournoi en cours.');
 });
