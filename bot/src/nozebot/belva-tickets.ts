@@ -47,6 +47,8 @@ const clean=(s:string,max=200)=>s.replace(/[`\\*_~|<>@]/g,'').replace(/[\r\n]+/g
 const code=(s:string)=>'`'+(clean(s,180)||'—')+'`';
 const slug=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'membre';
 const marker=(userId:string,status:'open'|'closed')=>`belva-ticket:${userId}:${status}`;
+// Pseudo affiché sur le serveur ; s'il n'a aucune lettre (emojis seuls), le nom d'utilisateur.
+const ticketName=(i:ModalSubmitInteraction)=>{const shown=slug((i.member&&'displayName' in i.member?i.member.displayName:null)??i.user.displayName);return shown==='membre'?slug(i.user.username):shown;};
 
 let tablesReady=false;
 export async function ensureTables(pool:Pool){
@@ -171,7 +173,8 @@ async function openChannel(i:ModalSubmitInteraction,kind:Kind,c?:Casino):Promise
   if(existing){await i.editReply(`Tu as déjà un ticket ouvert : <#${existing.id}>. Termine-le avant d’en ouvrir un autre.`);return null;}
   const view=[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory,PermissionFlagsBits.AttachFiles,PermissionFlagsBits.EmbedLinks];
   return guild.channels.create({
-    name:`${KINDS[kind].emoji}︱${KINDS[kind].short}${c?'-'+c.id:''}-${slug(i.user.username)}`.slice(0,90),
+    // Pseudo affiché sur le serveur (celui que le staff voit), pas le nom d'utilisateur Discord.
+    name:`${KINDS[kind].emoji}︱${KINDS[kind].short}${c?'-'+c.id:''}-${ticketName(i)}`.slice(0,90),
     type:ChannelType.GuildText,parent:OPEN_CATEGORY,
     topic:`${marker(i.user.id,'open')};type:${kind}${c?';casino:'+c.id:''}`,
     permissionOverwrites:[
