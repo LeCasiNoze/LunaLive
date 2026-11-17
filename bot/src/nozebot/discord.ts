@@ -36,6 +36,7 @@ import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { startBelvaWelcome } from './belva-welcome.js';
 import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
+import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { ensureReviews, handleBelvaReview } from './belva-review.js';
 import { startBelvaLinkSync } from './belva-link-sync.js';
 import { belvaLiveConfig } from './belva-live.js';
@@ -645,6 +646,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void registerBelvaGameCommands(readyClient).catch((error) => console.error("[nozebot] jeux Belva", error));
     startBelvaLinkSync(readyClient, pool);
     void registerAgendaCommand(readyClient).then(() => startBelvaAgenda(readyClient, pool)).catch((error) => console.error("[nozebot] agenda Belva", error));
+    startBelvaRainbetWatch(readyClient, pool);
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
     void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive.baseUrl)).catch((error) => console.error("[nozebot] tournoi Belva", error));
   });
