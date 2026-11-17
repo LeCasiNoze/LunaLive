@@ -3,6 +3,7 @@ import {
   OverwriteType,PermissionFlagsBits,StringSelectMenuBuilder,TextInputBuilder,TextInputStyle,
   type Attachment,type Client,type Guild,type GuildMember,type Interaction,type ModalSubmitInteraction,type TextChannel,
 } from 'discord.js';
+import {matchBetportalDeposit} from './belva-betportal-match.js';
 import type {Pool} from 'pg';
 import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand} from './belva-roles.js';
 import {OFFERS,ensureOfferCards} from './belva-offers.js';
@@ -127,10 +128,12 @@ export function accountModal(kind:MoneyKind|'verify',c:Casino){
   if(kind==='refund')m.addLabelComponents(new LabelBuilder().setLabel('Montant de ton dépôt (€)')
     .setDescription(`Minimum ${MIN_DEPOSIT} €. Remboursé jusqu’à ${c.bonus} €.`)
     .setTextInputComponent(new TextInputBuilder().setCustomId(IN.deposit).setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(6).setPlaceholder('20').setRequired(true)));
+  // Betportal ne transmet pas le pseudo : la capture du dépôt (montant et heure) sert à retrouver le joueur.
+  const depositProof=kind==='refund'||(kind==='verify'&&c.id==='betportal');
   m.addLabelComponents(
-    new LabelBuilder().setLabel(kind==='refund'?'Capture de ton dépôt':'Capture de ton compte (facultatif)')
-      .setDescription(kind==='refund'?'Montant, date et pseudo visibles.':'Ta page profil par exemple.')
-      .setFileUploadComponent(new FileUploadBuilder().setCustomId(IN.proof).setMinValues(kind==='refund'?1:0).setMaxValues(3).setRequired(kind==='refund')),
+    new LabelBuilder().setLabel(depositProof?'Capture de ton dépôt':'Capture de ton compte (facultatif)')
+      .setDescription(depositProof?'Montant, date et heure du dépôt visibles.':'Ta page profil par exemple.')
+      .setFileUploadComponent(new FileUploadBuilder().setCustomId(IN.proof).setMinValues(depositProof?1:0).setMaxValues(3).setRequired(depositProof)),
   );
   return m;
 }
@@ -256,6 +259,12 @@ async function submitTicket(i:ModalSubmitInteraction,pool:Pool|undefined,kind:Ki
       :verifyRows(i.user.id);
     await channel.send({content:`<@${i.user.id}> ${staffPing}${warning?'\n'+warning:''}`,embeds:[embed],files,
       components,allowedMentions:{users:[i.user.id],roles:[PATRON_ROLE,VIDEUR_ROLE]}});
+    if(c.id==='betportal'&&kind!=='offer'&&files[0]&&pool){
+      const ext=files[0].name.split('.').pop()?.toLowerCase();
+      void matchBetportalDeposit(i.client,pool,{discordId:i.user.id,ticketChannelId:channel.id,image:files[0].attachment,
+        mediaType:ext==='jpg'||ext==='jpeg'?'image/jpeg':ext==='webp'?'image/webp':'image/png',declared:kind==='refund'?deposit:undefined})
+        .catch(e=>console.error('[nozebot] rapprochement Betportal',e));
+    }
     await i.editReply(`✅ Ton ticket est ouvert : <#${channel.id}>.`);
     return;
   }

@@ -35,6 +35,7 @@ import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js'
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { startBelvaWelcome } from './belva-welcome.js';
+import { handleBetportalMatch } from './belva-betportal-match.js';
 import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
 import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { handleBelvaHunt, registerHuntCommand, startBelvaHunt } from './belva-hunt.js';
@@ -506,6 +507,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaXp(interaction, pool)) return;
     if (await handleBelvaQuests(interaction, pool)) return;
     if (await handleBelvaReview(interaction, pool)) return;
+    if (await handleBetportalMatch(interaction, pool)) return;
     if (await handleBelvaTickets(interaction, pool)) return;
     if (await handleBelvaNotifs(interaction)) return;
     if (await handleBelvaRainbet(interaction, pool)) return;
