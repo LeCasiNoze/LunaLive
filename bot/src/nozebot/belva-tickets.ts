@@ -210,6 +210,7 @@ async function submitTicket(i:ModalSubmitInteraction,pool:Pool|undefined,kind:Ki
   if(kind==='refund'||kind==='offer'||kind==='verify'){
     const money=kind==='refund'||kind==='offer';
     if(!c||(money&&!c.bonus)){await i.editReply('Ce casino n’est plus proposé. Réessaie depuis le salon ticket.');return;}
+    if(kind==='offer'&&!offerOpen()){await i.editReply(OFFER_SOON);return;}
     if(!pool){await i.editReply('Le système de tickets est momentanément indisponible. Réessaie dans quelques minutes.');return;}
     await ensureTables(pool);
     const user=clean(i.fields.getTextInputValue(IN.user),60);
@@ -315,6 +316,11 @@ function listEntry(r:Refund,image?:string){
 
 async function memberOf(i:Interaction){return i.guild!.members.fetch(i.user.id);}
 
+// Les dépôts offerts démarrent avec le lancement du duo ; avant, le remboursement reste ouvert.
+const OFFER_START=()=>Date.parse(process.env.BELVA_OFFER_START?.trim()||'2026-12-01T00:00:00+01:00');
+export const offerOpen=(now=Date.now())=>now>=OFFER_START();
+const OFFER_SOON='🎁 Le **dépôt offert** démarre le **1er décembre**. Le remboursement de dépôt, lui, est déjà disponible.';
+
 export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Promise<boolean>{
   const cid='customId' in interaction?String(interaction.customId):'';
   if(!cid.startsWith(P))return false;
@@ -324,6 +330,7 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
 
   if(i.isStringSelectMenu()&&cid===ID.panel){
     const kind=i.values[0] as Kind;
+    if(kind==='offer'&&!offerOpen()){await i.reply({ephemeral:true,content:OFFER_SOON});return true;}
     if(kind==='refund'||kind==='offer'||kind==='verify'){
       await i.reply({ephemeral:true,content:{refund:'💸 Pour quel casino veux-tu ton remboursement ?',offer:'🎁 Sur quel casino viens-tu de créer ton compte avec le lien de Belva ?',verify:'🔎 Quel compte veux-tu faire vérifier ?'}[kind],components:[casinoMenu(kind)]});
     }else if(KINDS[kind])await i.showModal(freeModal(kind));
@@ -331,6 +338,7 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
   }
   if(i.isStringSelectMenu()&&cid.startsWith(ID.casinoSelect)){
     const kind=cid.slice(ID.casinoSelect.length) as MoneyKind|'verify';const c=casino(i.values[0]);
+    if(kind==='offer'&&!offerOpen()){await i.reply({ephemeral:true,content:OFFER_SOON});return true;}
     if(c)await i.showModal(accountModal(kind,c));
     return true;
   }
@@ -339,6 +347,7 @@ export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Pro
   if(i.isButton()&&quick){
     const c=casino(quick[2]);const kind=({quick:'verify',qoffer:'offer',qrefund:'refund'} as const)[quick[1] as 'quick'|'qoffer'|'qrefund'];
     if(!c||(kind!=='verify'&&!c.bonus)){await i.reply({ephemeral:true,content:'Cette offre n’est plus disponible.'});return true;}
+    if(kind==='offer'&&!offerOpen()){await i.reply({ephemeral:true,content:OFFER_SOON});return true;}
     await i.showModal(accountModal(kind,c));
     return true;
   }

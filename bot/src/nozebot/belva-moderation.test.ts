@@ -24,3 +24,9 @@ test('spam, invitations et mentions de masse', ()=>{
   assert.equal(verdict('contact me on telegram','💬︱général'),'spam / démarchage');
   assert.equal(verdict('@everyone live','💬︱général'),'mention @everyone/@here');
 });
+
+test('dépôt offert fermé avant le 1er décembre (heure de Paris)', async ()=>{
+  const {offerOpen}=await import('./belva-tickets.js');
+  assert.equal(offerOpen(Date.parse('2026-11-30T23:59:00+01:00')),false);
+  assert.equal(offerOpen(Date.parse('2026-12-01T00:00:00+01:00')),true);
+});
