@@ -9,8 +9,8 @@ import {seasonCard,type SeasonRow} from './belva-progress-designs.js';
 // Tournoi du samedi de Belva : chaque joueur réserve UNE machine (jamais deux fois la même dans un tournoi)
 // et choisit son bonus. Tous les bonus s'achètent au même prix ; la mise découle du multiplicateur d'achat.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
-const EVENTS_CATEGORY='1483116441476530286';
-const REG_CHANNEL='⚔️︱tournoi',SEASON_CHANNEL='🏅︱classement-saison';
+const EVENTS_CATEGORY='1481924757380272289';
+const REG_CHANNEL='⚔️︱tournoi',SEASON_CHANNEL='🏅︱classements';
 export const BUY_CENTS=()=>Number(process.env.BELVA_TOURNAMENT_BUY_CENTS)||12_000;
 const P='belva:tn:';
 const ACCENT=0x4C7DFF;

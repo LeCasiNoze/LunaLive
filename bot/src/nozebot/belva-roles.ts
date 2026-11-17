@@ -11,9 +11,10 @@ export const BELVA_ROLES={
 // The brand list follows the channels of the "Offres Casino" category: one channel = one brand.
 // "35€-offerts-celsius" → Celsius with a 35 € refund; "💜︱hazcasino" → its first word, refund cap from DEFAULT_BONUS.
 // Info channels of the category (toutes-les-offres…) are not brands.
-const OFFERS_CATEGORY='1570917911206563931';
+// Catégorie « Rainbet ★ » (partenaire principal, tout en haut) + catégorie des autres casinos.
+const OFFERS_CATEGORIES=new Set(['1572066401592549406','1570917911206563931']);
 const DEFAULT_BONUS:Record<string,number>={hazcasino:30,velobet:30,celsius:35,betportal:30};
-const NOT_BRANDS=new Set(['toutes','tous','offres','infos']);
+const NOT_BRANDS=new Set(['toutes','tous','offres','infos','wager','race']);
 export type Brand={id:string;name:string;emoji:string;role:string;bonus?:number;channelId?:string;api?:boolean};
 const KNOWN:Brand[]=[
   {id:'hazcasino',name:'HazCasino',emoji:'💜',role:'1571169951102931038',bonus:30,channelId:'1518632995945189507'},
@@ -36,7 +37,7 @@ export function parseOfferChannel(name:string):{id:string;bonus?:number}|null{
 const norm=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
 
 export async function refreshBrands(guild:Guild){
-  const channels=[...guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText&&c.parentId===OFFERS_CATEGORY)
+  const channels=[...guild.channels.cache.values()].filter(c=>c.type===ChannelType.GuildText&&OFFERS_CATEGORIES.has(c.parentId??''))
     .sort((a,b)=>('position' in a?a.position:0)-('position' in b?b.position:0));
   if(!channels.length)return current;
   const next:Brand[]=[];

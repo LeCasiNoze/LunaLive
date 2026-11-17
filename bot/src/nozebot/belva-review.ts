@@ -89,7 +89,7 @@ export const DESIGNS:Design[]=[
     text('**Nouveau grade (Bronze → Fer, Fer → Or…) :**'),v2(gradeUpCard(demo(c),9_000)),
     text('**Simple sous-niveau (Or I → Or II…) :**'),{...tierUpLine(c.botId,11_640),allowedMentions:{parse:[]}}]},
   {key:'quests',title:'Journal de quêtes',where:'Réponse privée à /quetes',note:'Maquette avec un exemple : rien n’est actif.',previews:async()=>[v2(questJournalCard(49))]},
-  {key:'season',title:'Classement de la saison du tournoi',where:'🏅︱classement-saison · réécrit après chaque tournoi, figé à la fin du mois (historique)',note:'Pseudos fictifs. Le détail montre chaque place obtenue ; un absent compte juste dans le « 3/4 ».',previews:async()=>[v2(seasonCard(SEASON_EXAMPLE))]},
+  {key:'season',title:'Classement de la saison du tournoi',where:'🏅︱classements · réécrit après chaque tournoi, figé à la fin du mois (historique)',note:'Pseudos fictifs. Le détail montre chaque place obtenue ; un absent compte juste dans le « 3/4 ».',previews:async()=>[v2(seasonCard(SEASON_EXAMPLE))]},
   {key:'offer-rainbet',title:'Carte Rainbet (partenaire principal)',where:'🌧️︱rainbet · remplace l’ancien message, Rainbet passe en tête des offres',previews:async()=>[{...rainbetCard(),allowedMentions:{parse:[]}} as Preview]},
   {key:'tournament',title:'Tournoi : inscriptions /tournoi et choix du bonus',where:'⚔️︱tournoi · /tournoi + nom de la machine (autocomplétion), puis confirmation privée',
     note:`Prix d’achat commun : ${(BUY_CENTS()/100).toLocaleString('fr-FR')} € par bonus (modifiable à l’ouverture). La mise découle du multiplicateur du bonus. Une machine ne peut être prise qu’une fois.`,previews:async c=>{
