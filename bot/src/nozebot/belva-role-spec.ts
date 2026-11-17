@@ -24,6 +24,7 @@ export const ROLE_SPEC:RoleSpec[]=[
   {key:'celsius',id:'1571169954412101664',name:'🧡 Celsius',color:0xFF6A3D,shade:'Braise Celsius',hoist:false,perms:0n,group:'Casinos',auto:'Automatique · compte Celsius vérifié'},
   {key:'betportal',id:'1571974642480980059',name:'🟢 Betportal',color:0x1FF25E,shade:'Vert portail',hoist:false,perms:0n,group:'Casinos',auto:'Automatique · compte Betportal vérifié'},
   {key:'rainbet',id:'1571169955616002059',name:'🌧️ Rainbet',color:0x3D8BFF,shade:'Averse électrique',hoist:false,perms:0n,group:'Casinos',auto:'Automatique · compte Rainbet vérifié (code NIVORANET)'},
+  {key:'habitue',name:'🌙 Habitué',color:0x8AB4F8,shade:'Lune d’argent',hoist:false,perms:0n,group:'Accueil',auto:'Automatique · règlement accepté + Rumble lié'},
   {key:'invite',id:'1482854045210120343',name:'🎟️ Invité',color:0xB9A88F,shade:'Ticket kraft',hoist:false,perms:0n,group:'Accueil',auto:'Automatique · à l’arrivée'},
   {key:'notifLive',id:'1571152748030722179',name:'🔴 Notif Live',color:0xFF4D4D,shade:'Rouge On Air',hoist:false,perms:0n,group:'Notifications',auto:'Au choix · salon notifications'},
   {key:'notifGiveaways',id:'1571152748970385530',name:'🎁 Notif Giveaways',color:0xFF8FCB,shade:'Ruban rose',hoist:false,perms:0n,group:'Notifications',auto:'Au choix · salon notifications'},

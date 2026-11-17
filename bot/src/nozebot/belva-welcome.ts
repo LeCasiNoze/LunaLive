@@ -10,7 +10,7 @@ const T=(content:string)=>({type:10,content});
 const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
 
 // Pensée mobile : une étape par bloc, son bouton juste à côté, de l'air entre les blocs.
-export function welcomeCard(member:{id:string;avatarUrl:string},count:number,channels:{offers?:string;link?:string;notifs?:string;games?:string}){
+export function welcomeCard(member:{id:string;avatarUrl:string},count:number,channels:{offers?:string;link?:string;notifs?:string;games?:string;rules?:string}){
   const url=(id?:string)=>id?`https://discord.com/channels/${GUILD_ID()}/${id}`:null;
   const GAP={type:14,divider:false,spacing:2},LINE={type:14,divider:true,spacing:2};
   const step=(title:string,body:string,accessory:object|null)=>accessory
@@ -20,8 +20,9 @@ export function welcomeCard(member:{id:string;avatarUrl:string},count:number,cha
     {type:9,components:[T('# 👋 Bienvenue !'),T(`<@${member.id}>`),T(`Tu es le **${count}ᵉ** membre de la commu Belva 🎰`)],
       accessory:{type:11,media:{url:member.avatarUrl},description:'Nouveau membre'}},
     LINE,
-    T('**Pour bien démarrer, 4 étapes :**'),
+    T('**Pour bien démarrer :**'),
     GAP,
+    ...(channels.rules?[step('📜 D’abord, le règlement','Un clic sur **J’accepte** et tout le serveur s’ouvre.',go('Le règlement','📜',channels.rules)),GAP]:[]),
     step('🎁 1 · Ton bonus','Jusqu’à **30 € remboursés** ou **20 € offerts** sur ton 1er dépôt.',go('Les offres','🎁',channels.offers)),
     GAP,
     step('🔗 2 · Relie ton Rumble','Gagne des **BCoins** et de l’**XP** pour monter en grade.',{type:2,style:1,label:'Lier',emoji:{name:'🔗'},custom_id:LINK_BUTTON}),
@@ -36,14 +37,15 @@ export function welcomeCard(member:{id:string;avatarUrl:string},count:number,cha
 
 async function welcome(member:GuildMember,pool?:Pool){
   if(member.guild.id!==GUILD_ID()||member.user.bot)return;
-  await member.roles.add(BELVA_ROLES.invite,'Arrivée sur le serveur').catch(e=>console.error('[nozebot] rôle Invité Belva',e?.message||e));
+  const gated=await isApproved(pool,'onboarding');
+  if(!gated)await member.roles.add(BELVA_ROLES.invite,'Arrivée sur le serveur').catch(e=>console.error('[nozebot] rôle Invité Belva',e?.message||e));
   if(!await isApproved(pool,'welcome'))return;
   const all=await member.guild.channels.fetch();
   const find=(suffix:string)=>all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith(suffix))?.id;
   const channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('bienvenue'));
   if(channel?.type!==ChannelType.GuildText)return;
   await channel.send(welcomeCard({id:member.id,avatarUrl:member.displayAvatarURL({size:256,extension:'png'})},member.guild.memberCount,
-    {offers:find('toutes-les-offres'),link:find('lier-mon-compte'),notifs:find('notifications'),games:find('mini-jeux')}));
+    {offers:find('toutes-les-offres'),link:find('lier-mon-compte'),notifs:find('notifications'),games:find('mini-jeux'),rules:gated?find('règlement'):undefined}));
 }
 
 export function startBelvaWelcome(client:Client,pool?:Pool){

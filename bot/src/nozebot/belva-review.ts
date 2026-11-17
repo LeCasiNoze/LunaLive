@@ -19,6 +19,7 @@ import {huntCard} from './belva-hunt.js';
 import {rankText,topCard} from './belva-xp.js';
 import {questJournal} from './belva-quests.js';
 import {tipDm} from './belva-tips.js';
+import {applyOnboarding,doneStep,linkStep,notifStep,rulesCard} from './belva-onboarding.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -185,6 +186,10 @@ export const DESIGNS:Design[]=[
     note:'Le MP n’est envoyé qu’après validation. La réponse dans le chat donne le pseudo casino vérifié pour tipper tout de suite.',previews:async()=>[
       text(['**Dans le chat Rumble :**','> !tips Mise_Max 20','> 💸 Tip pour Mise_Max (20 €) → Rainbet : MiseMax77','> 💸 Tip pour Spin_Sam : compte pas encore relié. Spin_Sam, tape !lier pour qu’on te retrouve sur le Discord de Belva.'].join('\n')),
       text('**MP reçu par le joueur :**'),{...tipDm('LeCasiNoze',20),allowedMentions:{parse:[]}} as Preview]},
+  {key:'onboarding',title:'Parcours d’arrivée : règlement → notifications → Rumble',where:'📜 règlement + réponses privées · ⚠️ Valider ferme le serveur aux nouveaux tant qu’ils n’ont pas accepté le règlement',
+    note:'À la validation : rôle technique 🔓 Accès donné à tous les membres actuels (personne ne perd l’accès), catégories fermées aux non-acceptés, ancien règlement remplacé par la carte ci-dessous. 🌙 Habitué = règlement accepté + Rumble lié (après validation de la fiche Rôles).',
+    previews:async c=>[text('**Le règlement (un seul message) :**'),v2(rulesCard()),text('**Après le clic, en privé :**'),v2(notifStep()),v2(linkStep()),
+      v2(doneStep({offers:c.channel('toutes-les-offres'),rewards:c.channel('récompenses'),games:c.channel('mini-jeux')}))]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
@@ -276,6 +281,7 @@ export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolea
   if(!row)return true;
   if(i.isButton())await i.update(verdict(d,row));
   else if(i.isModalSubmit()){await i.deferUpdate();await i.message?.edit(verdict(d,row));}
+  if(key==='onboarding'&&status==='approved')await applyOnboarding(i.client,pool).catch(e=>console.error('[nozebot] parcours d’arrivée',e));
   if(key==='agenda'&&status==='approved')await refreshAgenda(i.client,pool).catch(e=>console.error('[nozebot] agenda',e));
   if(key==='offer-rainbet'&&status==='approved')await ensureBelvaRainbetPanel(i.client,pool).catch(e=>console.error('[nozebot] carte Rainbet',e));
   if(key==='roles'&&status==='approved')await applyRoles(i.guild,pool,i.channel as TextChannel|null,row.version+APPLY_REV);
