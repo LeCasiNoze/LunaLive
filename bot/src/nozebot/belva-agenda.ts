@@ -9,6 +9,8 @@ const INFOS_CATEGORY='1429525571661987936';
 const CHANNEL_NAME='📅︱agenda';
 const DAYS=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'] as const;
 const SLOTS={matin:'🌅 10 h',soir:'🌙 19 h 30'} as const;
+// Qui stream : le matin LeCasiNoze, le soir Belva (comptes Discord).
+export const HOSTS={matin:'682472610868887567',soir:'506048442813120513'} as const;
 type Slot=keyof typeof SLOTS;
 // Programme type ; à ajuster ici quand le planning change.
 export const WEEK:{[d in typeof DAYS[number]]?:{event:string;matin?:string;soir?:string}}={
@@ -46,7 +48,7 @@ export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())
     const slot=(s:Slot)=>{
       const abs=ns.filter(n=>n.kind==='absent'&&(n.slot===s||n.slot==='journee'));
       const what=w?.[s]??'stream';
-      return `> ${SLOTS[s]} · ${what}${abs.length?` · ⚠️ ${abs.map(a=>`${a.who} absent`).join(', ')}`:''}`;
+      return `> ${SLOTS[s]} · <@${HOSTS[s]}> · ${what}${abs.length?` · ⚠️ ${abs.map(a=>`${a.who} absent`).join(', ')}`:''}`;
     };
     const extra=ns.filter(n=>n.kind==='note').map(n=>`> 📝 ${n.text}`);
     const head=`**${iso===today?'▶️ ':''}${d[0]!.toUpperCase()+d.slice(1)} ${label(iso)}**${w?` · ${w.event}`:''}`;
@@ -54,7 +56,7 @@ export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())
   });
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:0x19D3D3,components:[
     T(`# 📅 Agenda · semaine du ${label(monday)}`),
-    T('Deux streams par jour : **10 h** et **19 h 30**. Les events de la semaine sont indiqués à côté du jour.'),
+    T(`Deux streams par jour : **10 h** avec <@${HOSTS.matin}> et **19 h 30** avec <@${HOSTS.soir}>. Les events sont indiqués à côté du jour.`),
     SEP(),
     T(lines.slice(0,4).join('\n\n')),SEP(1,false),T(lines.slice(4).join('\n\n')),
     SEP(),
