@@ -7,6 +7,7 @@ import {
   EmbedBuilder,
   Events,
   GatewayIntentBits,
+  Partials,
   ModalBuilder,
   MessageFlags,
   PermissionFlagsBits,
@@ -38,6 +39,7 @@ import { startBelvaWelcome } from './belva-welcome.js';
 import { handleBetportalMatch } from './belva-betportal-match.js';
 import { startBelvaTips } from './belva-tips.js';
 import { handleBelvaOnboarding } from './belva-onboarding.js';
+import { startBelvaModeration } from './belva-moderation.js';
 import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
 import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { handleBelvaHunt, registerHuntCommand, startBelvaHunt } from './belva-hunt.js';
@@ -547,6 +549,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,
       ...(prefixEnabled?[GatewayIntentBits.MessageContent]:[])],
+    partials: [Partials.Message, Partials.GuildMember],
   });
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
@@ -680,6 +683,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void routeInteraction(interaction, config, pool);
   });
   startBelvaWelcome(client, pool);
+  startBelvaModeration(client, pool);
   client.on(Events.GuildMemberAdd, (member) => void welcomeNewMember(member, config).catch((error) => {
     console.error("[nozebot] member welcome failed", error);
   }));

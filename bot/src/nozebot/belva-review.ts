@@ -189,7 +189,7 @@ export const DESIGNS:Design[]=[
   {key:'onboarding',title:'Parcours d’arrivée : règlement → notifications → Rumble',where:'📜 règlement + réponses privées · ⚠️ Valider ferme le serveur aux nouveaux tant qu’ils n’ont pas accepté le règlement',
     note:'À la validation : rôle technique 🔓 Accès donné à tous les membres actuels (personne ne perd l’accès), catégories fermées aux non-acceptés, ancien règlement remplacé par la carte ci-dessous. 🌙 Habitué = règlement accepté + Rumble lié (après validation de la fiche Rôles).',
     previews:async c=>[text('**Le règlement (un seul message) :**'),v2(rulesCard()),text('**Après le clic, en privé :**'),v2(notifStep()),v2(linkStep()),
-      v2(doneStep({offers:c.channel('toutes-les-offres'),rewards:c.channel('récompenses'),games:c.channel('mini-jeux')}))]},
+      v2(doneStep({offers:c.channel('toutes-les-offres'),rewards:c.channel('récompenses'),games:c.channel('mini-jeux'),general:c.channel('général')}))]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){

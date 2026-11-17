@@ -53,10 +53,11 @@ export function linkStep(){
   ]}] as never[]};
 }
 
-export function doneStep(ch:{offers?:string;rewards?:string;games?:string}){
+export function doneStep(ch:{offers?:string;rewards?:string;games?:string;general?:string}){
   return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:0x2FBF71,components:[
     T('### 🎉 Tout est prêt !\nTu as accès à tout le serveur. Par où commencer :'),
     {type:1,components:[{type:2,style:5,label:'Les offres casino',emoji:{name:'🎁'},url:url(ch.offers)},{type:2,style:5,label:'Les récompenses',emoji:{name:'🏆'},url:url(ch.rewards)},{type:2,style:5,label:'Mini-jeux',emoji:{name:'🃏'},url:url(ch.games)}]},
+    {type:1,components:[{type:2,style:5,label:'Le chat général',emoji:{name:'💬'},url:url(ch.general)},{type:2,style:5,label:'La chaîne de Belva',emoji:{name:'🟢'},url:'https://rumble.com/user/Belvaa'}]},
     T('-# Tu peux relier ton Rumble plus tard dans 🔗 lier-mon-compte.'),
   ]}] as never[]};
 }
@@ -64,7 +65,7 @@ export function doneStep(ch:{offers?:string;rewards?:string;games?:string}){
 const accessRole=async(guild:Guild)=>(await guild.roles.fetch()).find(r=>r.name===ACCESS_ROLE_NAME)??null;
 async function channelsOf(guild:Guild){
   const all=await guild.channels.fetch();const f=(s:string)=>all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith(s))?.id;
-  return {offers:f('︱toutes-les-offres'),rewards:f('︱récompenses'),games:f('︱mini-jeux')};
+  return {offers:f('︱toutes-les-offres'),rewards:f('︱récompenses'),games:f('︱mini-jeux'),general:f('︱général')};
 }
 
 export async function handleBelvaOnboarding(i:Interaction,pool?:Pool):Promise<boolean>{
