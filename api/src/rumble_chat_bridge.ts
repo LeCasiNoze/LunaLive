@@ -25,6 +25,7 @@ import {tickBelvaTombola} from './belva_tombola.js';
 import {finishPendingLink} from './belva_link_comment.js';
 import {parseGain,recordGain,tournamentState} from './belva_bracket.js';
 import {huntChat} from './belva_hunt.js';
+import {tipChat} from './belva_tips.js';
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
@@ -503,6 +504,12 @@ export function ensureRumbleBridge(opts: {
       if(!await reserveBelvaInput(opts.pool,m.msgId,m.createdAt))return;
       const b=/^!bonus\s+(\d{1,7}(?:[.,]\d{1,2})?)\s*€?$/i.exec(m.text.trim());
       const reply=await huntChat(opts.pool,/^!open/i.test(m.text.trim())?'open':'bonus',b?Number(b[1]!.replace(',','.')):null).catch(e=>{console.warn('[belva-hunt]',e?.message||e);return null;});
+      if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
+      return;
+    }
+    if(opts.slug==='belvaa'&&/^!tips?(?:\s|$)/i.test(m.text.trim())&&isBelvaStaff(m.userId,m.username,videoIdNumeric||'')){
+      if(!await reserveBelvaInput(opts.pool,m.msgId,m.createdAt))return;
+      const reply=await tipChat(opts.pool,opts.streamerId,m.username,m.text).catch(e=>{console.warn('[belva-tips]',e?.message||e);return null;});
       if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
       return;
     }

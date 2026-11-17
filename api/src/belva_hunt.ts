@@ -11,7 +11,12 @@ export function huntSchema(pool:Pool){
   ready??=pool.query(`CREATE TABLE IF NOT EXISTS belva_hunts(id serial PRIMARY KEY,status text NOT NULL DEFAULT 'farm',started_by text NOT NULL,
     started_at timestamptz NOT NULL DEFAULT NOW(),opened_at timestamptz,finished_at timestamptz,version int NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS belva_hunt_calls(hunt_id int NOT NULL REFERENCES belva_hunts(id) ON DELETE CASCADE,discord_id text NOT NULL,
-    call_id text NOT NULL,slot_key text NOT NULL,created_at timestamptz NOT NULL DEFAULT NOW(),PRIMARY KEY(hunt_id,discord_id),UNIQUE(hunt_id,slot_key))`).catch(e=>{ready=null;throw e;});
+    call_id text NOT NULL,slot_key text NOT NULL,created_at timestamptz NOT NULL DEFAULT NOW(),PRIMARY KEY(hunt_id,call_id),UNIQUE(hunt_id,slot_key));
+    DO $$ BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.key_column_usage WHERE constraint_name='belva_hunt_calls_pkey' AND column_name='discord_id') THEN
+        ALTER TABLE belva_hunt_calls DROP CONSTRAINT belva_hunt_calls_pkey; ALTER TABLE belva_hunt_calls ADD PRIMARY KEY(hunt_id,call_id);
+      END IF;
+    END $$`).catch(e=>{ready=null;throw e;});
   return ready;
 }
 const approved=async(pool:Pool)=>(await pool.query(`SELECT 1 FROM belva_design_reviews WHERE key='hunt' AND status='approved'`).catch(()=>({rows:[]}))).rows.length>0;
@@ -62,8 +67,11 @@ export async function addViewerCall(pool:Pool,c:{discordId:string;name:string;sl
   const key=c.slot.normalize('NFKC').replace(/\s+/g,' ').trim().toLowerCase();
   const taken=(await pool.query(`SELECT discord_id FROM belva_hunt_calls WHERE hunt_id=$1 AND slot_key=$2`,[h.id,key])).rows[0]?.discord_id;
   if(taken&&taken!==c.discordId)return {ok:false as const,error:'slot_taken'};
-  const mine=(await pool.query(`SELECT call_id FROM belva_hunt_calls WHERE hunt_id=$1 AND discord_id=$2`,[h.id,c.discordId])).rows[0]?.call_id;
-  if(mine)return {ok:false as const,error:'already_called'};
+  // Avantage de grade : 2 calls à partir de Saphir, 1 sinon.
+  const grade=(await pool.query(`SELECT grade FROM belva_xp_levels WHERE discord_id=$1`,[c.discordId]).catch(()=>({rows:[]}))).rows[0]?.grade as string|undefined;
+  const limit=['saphir','diamant','obsidienne'].includes(grade??'')?2:1;
+  const mine=Number((await pool.query(`SELECT count(*)::int n FROM belva_hunt_calls WHERE hunt_id=$1 AND discord_id=$2`,[h.id,c.discordId])).rows[0]?.n??0);
+  if(mine>=limit)return {ok:false as const,error:'already_called',limit};
   const r=await addCall(pool,s.id,0,c.name.slice(0,40),c.slot,c.provider,{bypassLimit:true});
   if(!r.ok)return {ok:false as const,error:r.error};
   await pool.query(`INSERT INTO belva_hunt_calls(hunt_id,discord_id,call_id,slot_key) VALUES($1,$2,$3,$4)`,[h.id,c.discordId,r.item.id,key]);

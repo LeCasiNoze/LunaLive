@@ -6,11 +6,11 @@ import {ROLE_SPEC,GRADE_KEYS} from './belva-role-spec.js';
 export const GRADES=[
   {key:'bronze',xp:300,perk:'Ton grade s’affiche dans la liste des membres'},
   {key:'fer',xp:3_000,perk:'+10 BCoins sur chaque /claim'},
-  {key:'or',xp:9_000,perk:'+25 BCoins sur chaque /claim · giveaways réservés aux grades Or et plus'},
-  {key:'rubis',xp:22_000,perk:'+50 BCoins sur chaque /claim · accès au salon 💎 VIP',deposit:true},
-  {key:'saphir',xp:45_000,perk:'+75 BCoins sur chaque /claim · giveaway mensuel réservé Saphir et plus',deposit:true},
-  {key:'diamant',xp:85_000,perk:'+100 BCoins sur chaque /claim · ton !call passe en priorité une fois par live',deposit:true},
-  {key:'obsidienne',xp:150_000,perk:'Tous les avantages · rôle affiché tout en haut · cadeau surprise de Belva',deposit:true},
+  {key:'or',xp:9_000,perk:'+25 BCoins sur chaque /claim · **!pcall** : ton call passe en priorité, une fois par live'},
+  {key:'rubis',xp:22_000,perk:'+50 BCoins sur chaque /claim · accès au salon 💎 VIP et à ses giveaways exclusifs',deposit:true},
+  {key:'saphir',xp:45_000,perk:'+75 BCoins sur chaque /claim · **2 calls** au hunt du mercredi',deposit:true},
+  {key:'diamant',xp:85_000,perk:'+100 BCoins sur chaque /claim · **cash prize de 100 €** en arrivant Diamant',deposit:true},
+  {key:'obsidienne',xp:150_000,perk:'Tous les avantages · rôle affiché tout en haut · une surprise de Belva et LeCasiNoze',deposit:true},
 ] as const;
 const XP_MAX=250_000;
 const ROMAN=['I','II','III','IV','V'];

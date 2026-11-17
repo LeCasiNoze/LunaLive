@@ -12,7 +12,8 @@ const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
 const GENERAL_CHANNEL='1482859803905753372';
 const REWARDS_CATEGORY='1481924757380272289';
 const TOP_CHANNEL='🏅︱classements';
-export const XP_START=()=>process.env.BELVA_XP_START?.trim()||'2026-12-01T00:00:00+01:00';
+// XP comptée rétroactivement depuis le début du duo (décision de Lucas, 17/11/2026).
+export const XP_START=()=>process.env.BELVA_XP_START?.trim()||'2026-11-01T00:00:00+01:00';
 export const XP={chat:5,tournament:25,duel:20,verified:300};
 
 let ready:Promise<unknown>|null=null;
@@ -68,6 +69,24 @@ export function cappedLevel(xp:number,deposited:boolean){
   return levelFor(below);
 }
 
+const VIP_CATEGORY='1483118160344514650';
+// Rubis et plus voient le salon 💎 VIP (et ses giveaways exclusifs).
+async function ensureVipAccess(guild:Guild){
+  const roles=await guild.roles.fetch();
+  const ids=['rubis','saphir','diamant','obsidienne'].map(k=>roles.find(r=>r.name===ROLE_SPEC.find(s=>s.key===k)!.name)?.id).filter((x):x is string=>!!x);
+  for(const c of (await guild.channels.fetch()).filter(c=>c&&(c.id===VIP_CATEGORY||c.parentId===VIP_CATEGORY)).values())
+    for(const id of ids)if(c&&'permissionOverwrites' in c&&!c.permissionOverwrites.cache.has(id))await c.permissionOverwrites.edit(id,{ViewChannel:true,Connect:true},{reason:'Avantage de grade Rubis+'}).catch(()=>undefined);
+}
+
+async function diamondReward(client:Client,pool:Pool,guild:Guild,discordId:string){
+  await pool.query(`CREATE TABLE IF NOT EXISTS belva_grade_rewards(discord_id text NOT NULL,grade text NOT NULL,at timestamptz NOT NULL DEFAULT NOW(),PRIMARY KEY(discord_id,grade))`);
+  const fresh=(await pool.query(`INSERT INTO belva_grade_rewards(discord_id,grade) VALUES($1,'diamant') ON CONFLICT DO NOTHING RETURNING 1`,[discordId])).rowCount;if(!fresh)return;
+  const list=(await guild.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&c.name==='📋︱liste-remboursements') as TextChannel|undefined;
+  await list?.send({content:`💎 <@${discordId}> vient d’atteindre **Diamant** : **cash prize de 100 €** à verser (même règle que les remboursements : en priorité sur un casino où il n’a pas encore de compte).`,allowedMentions:{parse:[]}});
+  const user=await client.users.fetch(discordId).catch(()=>null);
+  await user?.send('💎 Bravo, tu es **Diamant** sur le Discord de Belva ! Ton **cash prize de 100 €** arrive : le staff te contacte pour savoir où te l’envoyer.').catch(()=>undefined);
+}
+
 async function applyGrades(client:Client,pool:Pool,guild:Guild,announce:boolean){
   const roles=await guild.roles.fetch();
   const gradeRole=Object.fromEntries(GRADE_KEYS.map(k=>[k,roles.find(r=>r.name===ROLE_SPEC.find(s=>s.key===k)!.name)?.id]));
@@ -84,6 +103,8 @@ async function applyGrades(client:Client,pool:Pool,guild:Guild,announce:boolean)
     if(before?.label===l.label)continue;
     await pool.query(`INSERT INTO belva_xp_levels(discord_id,label,grade) VALUES($1,$2,$3) ON CONFLICT(discord_id) DO UPDATE SET label=$2,grade=$3,updated_at=NOW()`,[t.discord_id,l.label,l.grade.key]);
     // Changement de grade : grande carte ; simple sous-niveau : une ligne. Premier calcul : rien n'est annoncé.
+    // Diamant : cash prize de 100 € une seule fois, le staff le verse comme un remboursement.
+    if(l.grade.key==='diamant'||l.grade.key==='obsidienne')await diamondReward(client,pool,guild,m.id);
     if(!general||!before)continue;
     if(before.grade!==l.grade.key)await general.send(gradeUpCard({id:m.id,avatarUrl:m.displayAvatarURL({size:256,extension:'png'})},t.xp)).catch(()=>undefined);
     else await general.send(tierUpLine(m.id,t.xp)).catch(()=>undefined);
@@ -138,6 +159,7 @@ async function tick(client:Client,pool:Pool){
   await schema(pool);
   await collect(pool);
   const guild=await client.guilds.fetch(GUILD_ID());
+  await ensureVipAccess(guild).catch(e=>console.error('[nozebot] accès VIP',e?.message||e));
   await applyGrades(client,pool,guild,true);
   if(await isApproved(pool,'xp-top'))await refreshTop(client,pool,guild);
 }

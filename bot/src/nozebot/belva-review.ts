@@ -18,6 +18,7 @@ import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
 import {huntCard} from './belva-hunt.js';
 import {rankText,topCard} from './belva-xp.js';
 import {questJournal} from './belva-quests.js';
+import {tipDm} from './belva-tips.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -180,6 +181,10 @@ export const DESIGNS:Design[]=[
     ]},
   {key:'link-prompt',title:'Message « relie ton compte » avec bouton',where:'Réponse privée quand le compte Rumble n’est pas relié : /blackjack, /slot, /claim, /bcoins, /tournoi',
     note:'Le bouton lance directement la liaison (même parcours que /lier, MP compris).',previews:async()=>[{...linkPrompt('Tes **BCoins** sont attachés à ton pseudo Rumble : relie ton compte pour jouer.'),allowedMentions:{parse:[]}} as Preview]},
+  {key:'tips',title:'!tips : tip annoncé en live',where:'Chat Rumble de Belva (staff) + MP au joueur + note staff dans 📋︱liste-remboursements',
+    note:'Le MP n’est envoyé qu’après validation. La réponse dans le chat donne le pseudo casino vérifié pour tipper tout de suite.',previews:async()=>[
+      text(['**Dans le chat Rumble :**','> !tips Mise_Max 20','> 💸 Tip pour Mise_Max (20 €) → Rainbet : MiseMax77','> 💸 Tip pour Spin_Sam : compte pas encore relié. Spin_Sam, tape !lier pour qu’on te retrouve sur le Discord de Belva.'].join('\n')),
+      text('**MP reçu par le joueur :**'),{...tipDm('LeCasiNoze',20),allowedMentions:{parse:[]}} as Preview]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){

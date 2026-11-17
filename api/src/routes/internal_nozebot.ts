@@ -75,7 +75,19 @@ internalNozeBotRouter.post('/internal/bot/nozebot/bcoins/:action',requireNozeBot
   }
   if(!['claim','slot'].includes(action))return res.status(400).json({ok:false,error:'bad_action'});
   const receipt=String(req.body?.receipt||'');if(!/^\d{17,20}$/.test(receipt))return res.status(400).json({ok:false,error:'bad_receipt'});
-  return res.json(await coinAction(pool,sid,link.rumble_user_id,link.username,action as 'claim'|'slot',`discord:${action}:${receipt}`));
+  const r=await coinAction(pool,sid,link.rumble_user_id,link.username,action as 'claim'|'slot',`discord:${action}:${receipt}`);
+  // Avantage de grade : BCoins en plus sur chaque /claim (une seule fois par claim, clé de ledger dédiée).
+  if(action==='claim'&&r.ok&&!r.replayed){
+   const grade=(await pool.query(`SELECT grade FROM belva_xp_levels WHERE discord_id=$1`,[identity.discordUserId]).catch(()=>({rows:[]}))).rows[0]?.grade as string|undefined;
+   const bonus=({fer:10,or:25,rubis:50,saphir:75,diamant:100,obsidienne:100} as Record<string,number>)[grade??'']??0;
+   if(bonus){
+    const key=`claimbonus:${receipt}`;
+    const fresh=(await pool.query(`INSERT INTO nozecoin_ledger(streamer_id,rumble_user_id,event_key,delta,reason,result) VALUES($1,$2,$3,$4,'grade','{}'::jsonb) ON CONFLICT DO NOTHING RETURNING 1`,[sid,link.rumble_user_id,key,bonus])).rowCount;
+    if(fresh){const b=(await pool.query(`UPDATE nozecoin_accounts SET balance=balance+$3 WHERE streamer_id=$1 AND rumble_user_id=$2 RETURNING balance`,[sid,link.rumble_user_id,bonus])).rows[0];
+     return res.json({...r,delta:Number(r.delta??0)+bonus,balance:Number(b?.balance??r.balance),gradeBonus:bonus});}
+   }
+  }
+  return res.json(r);
  }catch(e){const code=e instanceof Error?e.message:'';
   if(e instanceof InsufficientCoins)return res.status(409).json({ok:false,error:e.message,balance:e.balance,cost:e.cost,missing:e.cost-e.balance});
   if(['rumble_not_linked','insufficient_coins','session_not_found','session_forbidden','invalid_action'].includes(code))return res.status(409).json({ok:false,error:code});throw e;

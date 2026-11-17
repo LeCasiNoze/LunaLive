@@ -481,10 +481,10 @@ export async function handleCallsCommand(opts: {
     const view = items.slice(0, max);
 
     const line = view
-      .map((x, i) => `${i + 1}) ${x.slotName}${x.provider ? ` (${x.provider})` : ""} — @${x.username}`)
-      .join(" • ");
+      .map((x, i) => `❮ ${i + 1}. ${x.slotName} · @${x.username} ❯`)
+      .join(" ");
 
-    await sendBotChat(pool, io, { streamerId, slug }, `📋 Calls: ${line}${extra ? ` • … +${extra}` : ""}`);
+    await sendBotChat(pool, io, { streamerId, slug }, `📋 Calls (${items.length > max ? `${max}+` : view.length}) : ${line}${extra ? ` ❮ +${extra} ❯` : ""}`);
 
     return { handled: true, showOriginalInChat };
   }
@@ -546,7 +546,13 @@ export async function handleCallsCommand(opts: {
   const isPcall = cmd === "pcall";
   const isRcall = cmd === "rcall";
 
-  if (isPcall || isRcall) {
+  const belvaPcall = isPcall && slug === "belvaa" && opts.rumbleUserId ? await belvaPcallCheck(pool, streamerId, String(opts.rumbleUserId)) : null;
+  if (belvaPcall && !belvaPcall.ok) {
+    emitUserToast(io, actorUserId, { kind: "error", title: "Call prioritaire", message: belvaPcall.reason });
+    return { handled: true, showOriginalInChat };
+  }
+
+  if ((isPcall && !belvaPcall) || isRcall) {
     const level = await getUserTalentLevel(pool, actorUserId, CALLS_TALENT_CODE);
 
     const premiumViewer = await hasActivePremiumViewer(pool, actorUserId);
@@ -642,7 +648,9 @@ export async function handleCallsCommand(opts: {
     return { handled: true, showOriginalInChat };
   }
 
-  if (cmd === "pcall") {
+  if (cmd === "pcall" && belvaPcall?.ok) {
+    await pool.query(`INSERT INTO belva_pcall_uses(rumble_user_id,live_id) VALUES($1,$2) ON CONFLICT DO NOTHING`, [String(opts.rumbleUserId), belvaPcall.liveId]);
+  } else if (cmd === "pcall") {
     const channelSub = await hasChannelSub(pool, actorUserId, streamerId);
     const scopeId = pcallScopeStreamerId(streamerId, channelSub);
     await setPcallCooldown(pool, scopeId, actorUserId, Date.now() + pcallCooldownMs(channelSub));
@@ -666,4 +674,19 @@ export async function handleCallsCommand(opts: {
   }
 
   return { handled: true, showOriginalInChat };
+}
+
+// Call prioritaire chez Belva : grade Or ou plus (compte Rumble relié au Discord), une fois par live.
+const PCALL_GRADES = ["or", "rubis", "saphir", "diamant", "obsidienne"];
+async function belvaPcallCheck(pool: Pool, streamerId: number, rumbleUserId: string): Promise<{ ok: true; liveId: string } | { ok: false; reason: string }> {
+  await pool.query(`CREATE TABLE IF NOT EXISTS belva_pcall_uses(rumble_user_id text NOT NULL,live_id text NOT NULL,at timestamptz NOT NULL DEFAULT NOW(),PRIMARY KEY(rumble_user_id,live_id))`);
+  const grade = (await pool.query(`SELECT x.grade FROM automod_discord_links l JOIN belva_xp_levels x ON x.discord_id=l.discord_user_id
+    WHERE l.streamer_id=$1 AND l.rumble_user_id=$2`, [streamerId, rumbleUserId]).catch(() => ({ rows: [] as any[] }))).rows[0]?.grade as string | undefined;
+  if (!grade) return { ok: false, reason: "Le call prioritaire se débloque au grade 🥇 Or : relie ton compte avec !lier et gagne de l’XP." };
+  if (!PCALL_GRADES.includes(grade)) return { ok: false, reason: "Le call prioritaire se débloque au grade 🥇 Or." };
+  const live = (await pool.query(`SELECT live_video_id_numeric FROM streamer_rumble_info WHERE streamer_id=$1`, [streamerId])).rows[0]?.live_video_id_numeric;
+  const liveId = String(live || new Date().toISOString().slice(0, 10));
+  const used = (await pool.query(`SELECT 1 FROM belva_pcall_uses WHERE rumble_user_id=$1 AND live_id=$2`, [rumbleUserId, liveId])).rowCount;
+  if (used) return { ok: false, reason: "Tu as déjà utilisé ton call prioritaire pendant ce live." };
+  return { ok: true, liveId };
 }

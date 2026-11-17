@@ -27,7 +27,7 @@ export async function registerHuntCommand(client:Client){
 const ERRORS:Record<string,string>={
   no_hunt:'Pas de hunt des viewers en cours : les calls ouvrent le mercredi matin.',
   slot_taken:'Cette machine est déjà callée par quelqu’un d’autre : choisis-en une autre.',
-  already_called:'Tu as déjà un call dans ce hunt (une machine par personne).',
+  already_called:'Tu as déjà utilisé tes calls pour ce hunt (1 machine, 2 à partir du grade 💠 Saphir).',
 };
 
 export async function handleBelvaHunt(i:Interaction,pool:Pool|undefined,config:LunaLiveApiConfig):Promise<boolean>{
