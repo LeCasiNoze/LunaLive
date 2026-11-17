@@ -90,6 +90,11 @@ export async function huntChat(pool:Pool,cmd:'open'|'bonus',gainEur:number|null)
   const list=await items(pool,s.id);const target=huntStats(list,start).next;
   if(!target)return 'Tous les bonus sont déjà ouverts.';
   await pool.query(`UPDATE calls_queue SET pay=$2 WHERE id=$1::bigint AND streamer_id=$3`,[target.id,gainEur,s.id]);
+  // XP du caller (1 XP par tranche de 5x, max 500), versée tout de suite : la file de calls peut être vidée ensuite.
+  if(target.bet)await pool.query(`INSERT INTO belva_xp_events(discord_id,source,ref,xp)
+    SELECT discord_id,'hunt',call_id,LEAST(500,floor($2::numeric/$3::numeric/5))::int FROM belva_hunt_calls
+    WHERE call_id=$1 AND NOW()>=$4::timestamptz AND floor($2::numeric/$3::numeric/5)>=1 ON CONFLICT DO NOTHING`,
+    [target.id,gainEur,target.bet,process.env.BELVA_XP_START?.trim()||'2026-12-01T00:00:00+01:00']).catch(()=>undefined);
   await pool.query(`UPDATE belva_hunts SET version=version+1 WHERE id=$1`,[h.id]);
   const after=huntStats(list.map(i=>i.id===target.id?{...i,pay:gainEur}:i),start);
   const head=`${target.slot}${target.caller?` (${target.caller})`:''} : ${eur(gainEur)} (${x(target.bet?gainEur/target.bet:0)})`;

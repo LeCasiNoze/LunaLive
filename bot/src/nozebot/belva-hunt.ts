@@ -77,7 +77,7 @@ export function huntCard(h:HuntView){
     ...(calls.length&&h.status==='farm'?[SEP(1,false),T(`### 📝 Calls en attente (${calls.length})\n${calls.map(c=>`${c.slot} (${c.caller??'?'})`).join(' · ')}`.slice(0,900))]:[]),
     ...(best.length?[SEP(),T(`### 🏅 Meilleurs calls\n${best.map((b,k)=>`${['🥇','🥈','🥉'][k]} **${b.caller??'?'}** · ${b.slot} · **${x(b.pay!/b.bet!)}**`).join('\n')}`)]:[]),
     SEP(),
-    T('-# Réservé aux membres 🍾 Carré Or · des points selon le multi, et des tips du staff sur les gros hits. 🔞 18+ · Joueurs Info Service : 09 74 75 13 13.'),
+    T('-# Réservé aux membres 🍾 Carré Or · ton call rapporte 1 XP par tranche de 5x (max 500), et le staff tippe les gros hits. 🔞 18+ · Joueurs Info Service : 09 74 75 13 13.'),
   ]}] as never[]};
 }
 

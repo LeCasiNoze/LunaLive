@@ -175,7 +175,7 @@ export const DESIGNS:Design[]=[
       text('**Réponse à /rang (visible par lui seul) :**\n> '+rankText(47,212,1_930).replace(/\n/g,'\n> ')),
       text(['**D’où vient l’XP :**','> 💬 Chat Rumble de Belva pendant le live · **+5** (max 1 toutes les 5 min, compte relié)',
         '> ⚔️ Tournoi du samedi · **25** + **20 par duel gagné**','> ✅ Compte casino vérifié · **+300** par casino',
-        '> 💸 Dépôt remboursé · **1 XP par €** déposé (les dépôts offerts ne comptent pas)','> 🌧️ Wager Rainbet · **1 XP par 10 $** misés',
+        '> 💸 Dépôt remboursé · **1 XP par €** déposé (les dépôts offerts ne comptent pas)','> 🌧️ Wager Rainbet · **1 XP par 10 $** misés','> 🎯 Call du hunt du mercredi · **1 XP par tranche de 5x** (max 500)',
         '-# Les quêtes (/quetes) arriveront ensuite avec leurs boutons et le MP du lundi.'].join('\n')),
     ]},
   {key:'link-prompt',title:'Message « relie ton compte » avec bouton',where:'Réponse privée quand le compte Rumble n’est pas relié : /blackjack, /slot, /claim, /bcoins, /tournoi',
