@@ -6,6 +6,8 @@ import {isApproved} from './belva-approval.js';
 import {seasonCard,type SeasonRow} from './belva-progress-designs.js';
 import {belvaTournamentState,type LunaLiveApiConfig} from './lunalive-api.js';
 import {linkPrompt} from './belva-link.js';
+import {LINK_BUTTON} from './belva-info.js';
+import * as L from './belva-layout.js';
 
 // Tournoi du samedi de Belva : chaque joueur réserve UNE machine (jamais deux fois la même dans un tournoi)
 // et choisit son bonus. Tous les bonus s'achètent au même prix ; la mise découle du multiplicateur d'achat.
@@ -85,19 +87,26 @@ const entriesOf=async(pool:Pool,id:number)=>(await pool.query(`SELECT * FROM bel
 
 // Carte des inscriptions : une ligne illustrée par machine (Discord limite un message à 40 composants).
 export function registrationCard(t:{title:string;status:string;buy_cents:number},entries:Entry[]){
-  const head=t.status==='open'?`🟢 **Inscriptions ouvertes** · clique sur **S’inscrire** (ou tape **/tournoi**) puis donne ta machine`
+  const head=t.status==='open'?`🟢 **Inscriptions ouvertes**`
     :t.status==='closed'?'🔒 **Inscriptions fermées** · bonne chance à tous !':'🏁 **Tournoi terminé** · résultats ci-dessous';
   const line=(e:Entry,i:number)=>`**${e.place?(e.place===1?'🥇':e.place===2?'🥈':e.place===3?'🥉':`${e.place}ᵉ`):`${i+1} ·`} ${e.slot_name}** · ${e.bonus_label}\n-# ${e.multiplier?`${Number(e.multiplier)}x · mise ${eur(e.bet_cents!)} · `:''}<@${e.discord_id}>`;
   // 10 lignes illustrées (40 composants max par message), puis une liste texte plafonnée.
-  const rich=entries.slice(0,10),rest=entries.slice(10,30),more=entries.length-30;
+  // Pendant les inscriptions, les étapes prennent de la place : 6 lignes illustrées au lieu de 10.
+  const R=t.status==='open'?6:10;
+  const rich=entries.slice(0,R),rest=entries.slice(R,30),more=entries.length-30;
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:ACCENT,components:[
     T(`# ⚔️ ${t.title}`),T(`${head}\nPrix d’achat : **${eur(t.buy_cents)} par bonus** · une machine par joueur · jamais deux fois la même machine`),
-    SEP(),
+    L.LINE,
+    ...(t.status==='open'?[
+      ...L.step('1 · Relie ton compte Rumble','C’est ton pseudo Rumble qui s’affiche dans le bracket. 30 secondes, une seule fois.',[L.btn('Lier mon Rumble','🔗',1,LINK_BUTTON)]),
+      L.GAP,
+      ...L.step('2 · Inscris-toi','Donne ta machine, puis choisis ton bonus.',[L.btn('S’inscrire','✍️',3,`${P}join`)]),
+      L.LINE,T('### 📋 Les inscrits')]:[]),
     ...(entries.length?rich.map((e,i)=>e.image_url?{type:9,components:[T(line(e,i))],accessory:{type:11,media:{url:e.image_url},description:e.slot_name}}:T(line(e,i)))
       :[T('Aucun inscrit pour l’instant : sois le premier !')]),
-    ...(rest.length?[SEP(1,false),T(`${rest.map((e,i)=>line(e,i+10)).join('\n')}${more>0?`\n-# … et ${more} autres inscrits`:''}`.slice(0,3000))]:[]),
+    ...(rest.length?[SEP(1,false),T(`${rest.map((e,i)=>line(e,i+R)).join('\n')}${more>0?`\n-# … et ${more} autres inscrits`:''}`.slice(0,3000))]:[]),
     SEP(),
-    {type:1,components:[...(t.status==='open'?[{type:2,style:3,label:'S’inscrire',emoji:{name:'✍️'},custom_id:`${P}join`}]:[]),{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
+    {type:1,components:[{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
     T(`-# ${entries.length} inscrit${entries.length>1?'s':''} · 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.`),
   ]}] as never[]};
 }

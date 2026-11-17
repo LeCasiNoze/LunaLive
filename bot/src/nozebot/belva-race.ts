@@ -1,5 +1,6 @@
 import sharp from 'sharp';
-import {MessageFlags,type Message,type TextChannel} from 'discord.js';
+import {MessageFlags,type Interaction,type Message,type TextChannel} from 'discord.js';
+import * as L from './belva-layout.js';
 import {RACE_MIN_WAGER_USD,RACE_PRIZES_USD,maskName,raceRange,ranking,type RaceEntry} from './rainbet-race.js';
 
 // Wager race Rainbet sur le Discord de Belva : carte Components V2 (même DA que les cartes casino),
@@ -7,6 +8,7 @@ import {RACE_MIN_WAGER_USD,RACE_PRIZES_USD,maskName,raceRange,ranking,type RaceE
 export const BELVA_GUILD=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
 const REFERRAL_URL='https://rainbet.com/?r=nivoranet';
 const MARK='belva-race-v2';
+export const JOIN_ID='belva:race:join';
 const T=(content:string)=>({type:10,content});
 const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/[  ]/g,' ')} $`;
@@ -45,9 +47,10 @@ export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now
     {type:12,items:[{media:{url:'attachment://race-banner.png'},description:`Wager race Rainbet : ${pot} $ à gagner`}]},
     T(`# 🏁 Wager Race Rainbet\n## ${pot} $ à gagner chaque mois\n🥇 **100 $** · 🥈 **60 $** · 🥉 **40 $** · fin <t:${ends}:R>`),
     SEP(),
-    T(`### 👉 Comment participer\n**1 ·** Crée ton compte Rainbet avec le lien de Belva (code **NIVORANET**).\n**2 ·** Joue : chaque mise compte automatiquement.\n**3 ·** Mise au moins **${usd(RACE_MIN_WAGER_USD)}** sur le mois pour être payé.`),
-    {type:1,components:[{type:2,style:5,label:'Rejoindre la race',emoji:{name:'🏁'},url:REFERRAL_URL}]},
-    SEP(),
+    ...L.step('1 · Crée ton compte Rainbet','Avec le lien de Belva (code **NIVORANET**) : c’est ce qui t’inscrit à la race.',[L.btn('Rejoindre la race','🏁',3,JOIN_ID)]),
+    L.GAP,
+    ...L.step('2 · Joue',`Chaque mise compte automatiquement. Mise au moins **${usd(RACE_MIN_WAGER_USD)}** sur le mois pour être payé.`),
+    L.LINE,
     T(`### 📊 Classement · ${r.label}\n${top.length?`🥇 ${top[0]?`${maskName(top[0].username)} · ${usd(top[0].wagered)}`:'—'}\n🥈 ${top[1]?`${maskName(top[1].username)} · ${usd(top[1].wagered)}`:'—'}\n🥉 ${top[2]?`${maskName(top[2].username)} · ${usd(top[2].wagered)}`:'—'}${rest.length?'\n'+rest.join('\n'):''}`:'Personne n’a encore misé ce mois-ci : la première place est à prendre !'}`),
     ...(winners.length?[SEP(1,false),T(`### 🏆 Gagnants du mois dernier\n${winners.map(e=>`${['🥇','🥈','🥉'][e.rank-1]} ${maskName(e.username)} · **${e.prize} $**`).join('\n')}`)]:[]),
     SEP(),
@@ -67,4 +70,14 @@ export async function upsertBelvaRace(channel:TextChannel,payload:Awaited<Return
   if(msg){await msg.edit({...payload,attachments:[]});return msg.id;}
   const sent=await channel.send(payload);await sent.pin('Garder la race visible').catch(()=>undefined);
   return sent.id;
+}
+
+// Bouton vert « Rejoindre la race » : réponse privée avec le lien Rainbet (un bouton lien ne peut pas être en couleur).
+export async function handleBelvaRace(i:Interaction):Promise<boolean>{
+  if(!i.isButton()||i.customId!==JOIN_ID)return false;
+  await i.reply({flags:MessageFlags.IsComponentsV2|MessageFlags.Ephemeral,components:[{type:17,accent_color:0x3D8BFF,components:[
+    L.T('### 🏁 Rejoins la race Rainbet\nInscris-toi avec ce lien (code **NIVORANET**) : tes mises comptent automatiquement pour le classement.'),
+    {type:1,components:[L.link('S’inscrire sur Rainbet','🌧️',REFERRAL_URL)]},
+  ]}] as never[]});
+  return true;
 }

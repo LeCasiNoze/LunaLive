@@ -41,6 +41,8 @@ import { startBelvaTips } from './belva-tips.js';
 import { handleBelvaOnboarding } from './belva-onboarding.js';
 import { startBelvaModeration } from './belva-moderation.js';
 import { startBelvaReminders } from './belva-reminders.js';
+import { handleBelvaRace } from './belva-race.js';
+import { startBelvaVipGuide } from './belva-vip-guide.js';
 import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
 import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { handleBelvaHunt, registerHuntCommand, startBelvaHunt } from './belva-hunt.js';
@@ -509,6 +511,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaTournament(interaction, pool)) return;
     if (await handleBelvaAgenda(interaction, pool)) return;
     if (await handleBelvaHunt(interaction, pool, config.commands.lunaLive)) return;
+    if (await handleBelvaRace(interaction)) return;
     if (await handleBelvaXp(interaction, pool)) return;
     if (await handleBelvaQuests(interaction, pool)) return;
     if (await handleBelvaReview(interaction, pool)) return;
@@ -664,6 +667,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     startBelvaRainbetWatch(readyClient, pool);
     startBelvaTips(readyClient, pool);
     startBelvaReminders(readyClient, pool);
+    startBelvaVipGuide(readyClient, pool);
     void registerQuestCommand(readyClient).then(() => startBelvaQuests(readyClient, pool)).catch((error) => console.error("[nozebot] quêtes Belva", error));
     void registerXpCommands(readyClient).then(() => startBelvaXp(readyClient, pool)).catch((error) => console.error("[nozebot] xp Belva", error));
     void registerHuntCommand(readyClient).then(() => startBelvaHunt(readyClient, pool, config.commands.lunaLive)).catch((error) => console.error("[nozebot] hunt Belva", error));

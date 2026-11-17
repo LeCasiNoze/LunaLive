@@ -3,49 +3,47 @@ import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {HUNT_RULES,dayLabel,nextHuntDay} from './belva-hunt.js';
 import {BRACKET_URL} from './belva-tournament.js';
+import {LINK_BUTTON} from './belva-info.js';
+import * as L from './belva-layout.js';
 
 // Rappels automatiques dans 📢︱annonces (@everyone) pour le hunt du mercredi et le tournoi du samedi :
 // au lancement, à mi-parcours, puis 24 h avant. Chaque rappel n'est envoyé qu'une fois par édition.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
 const ANNOUNCE_CHANNEL='1483108594575474749';
 export type ReminderKind='launch'|'mid'|'h24';
-const T=(content:string)=>({type:10,content});
-const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
-const url=(id?:string)=>`https://discord.com/channels/${GUILD_ID()}${id?'/'+id:''}`;
 const ts=(d:Date,f='F')=>`<t:${Math.floor(d.getTime()/1000)}:${f}>`;
 const HEAD:Record<ReminderKind,string>={launch:'C’est ouvert !',mid:'Pense à t’inscrire',h24:'Demain, c’est le grand jour'};
 
-export function huntReminder(kind:ReminderKind,day:string,at:Date,calls:number,ch:{hunt?:string;offers?:string}){
+export function huntReminder(kind:ReminderKind,day:string,at:Date,calls:number,ch:{hunt?:string;offers?:string;guide?:string}){
   return {allowedMentions:{parse:['everyone' as const]},flags:MessageFlags.IsComponentsV2 as const,components:[
-    T('@everyone'),
+    L.T('@everyone'),
     {type:17,accent_color:0xF3C14B,components:[
-      T(`# 🎯 Hunt des viewers · ${HEAD[kind]}`),
-      T(`**${dayLabel(day)}** · farm à **10 h**, ouverture en live à **19 h 30** (${ts(at,'R')}).\nTu choisis la machine, LeCasiNoze farme le bonus et Belva l’ouvre en live.${calls?`\n🎰 **${calls}** call${calls>1?'s':''} déjà réservé${calls>1?'s':''}.`:''}`),
-      SEP(),
-      T(`### ✅ Pour participer\n**1 ·** Avoir le rôle 🍾 **Carré Or** : compte casino vérifié et premier dépôt avec le lien de Belva.\n**2 ·** Cliquer sur **Faire mon call** et choisir ta machine.`),
-      SEP(1,false),
-      T(`### 📜 Les règles\n${HUNT_RULES.join('\n')}`),
-      SEP(),
-      {type:1,components:[{type:2,style:3,label:'Faire mon call',emoji:{name:'🎯'},custom_id:'belva:hunt:call'},
-        {type:2,style:5,label:'Le salon hunt',emoji:{name:'📺'},url:url(ch.hunt)},{type:2,style:5,label:'Les offres casino',emoji:{name:'🎁'},url:url(ch.offers)}]},
-      T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+      L.T(`# 🎯 Hunt des viewers\n## ${HEAD[kind]}`),
+      L.T(`**${dayLabel(day)}** · farm à **10 h**, ouverture en live à **19 h 30** (${ts(at,'R')}).\nTu choisis la machine, LeCasiNoze farme le bonus et Belva l’ouvre en live.${calls?`\n🎰 **${calls}** call${calls>1?'s':''} déjà réservé${calls>1?'s':''}.`:''}`),
+      L.LINE,
+      ...L.step('1 · Avoir le rôle 🍾 Carré Or','Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.link('Les offres casino','🎁',L.chUrl(ch.offers))]),
+      L.GAP,
+      ...L.step('2 · Faire ton call','Choisis ta machine en un clic.',[L.btn('Faire mon call','🎯',3,'belva:hunt:call')]),
+      L.LINE,
+      ...L.step('📜 Les règles',HUNT_RULES.join('\n'),[L.link('Guide VIP','📖',L.chUrl(ch.guide)),L.link('Le salon hunt','📺',L.chUrl(ch.hunt))]),
+      L.FOOT,
     ]}] as never[]};
 }
 
 export function tournamentReminder(kind:ReminderKind,title:string,drawAt:Date,entries:number,buyEur:number,ch:{tournament?:string}){
   return {allowedMentions:{parse:['everyone' as const]},flags:MessageFlags.IsComponentsV2 as const,components:[
-    T('@everyone'),
+    L.T('@everyone'),
     {type:17,accent_color:0x4C7DFF,components:[
-      T(`# ⚔️ ${title} · ${HEAD[kind]}`),
-      T(`Tirage du bracket ${ts(drawAt)} (${ts(drawAt,'R')}), puis les duels en live sur la chaîne de Belva.\n✍️ **${entries}** inscrit${entries>1?'s':''} pour l’instant.`),
-      SEP(),
-      T('### ✅ Pour participer\n**1 ·** Relier ton compte Rumble (bouton **Lier** dans 🔗 lier-mon-compte).\n**2 ·** Cliquer sur **S’inscrire** et donner ta machine, puis choisir ton bonus.'),
-      SEP(1,false),
-      T(`### 📜 Les règles\n**1 ·** Une machine par joueur, jamais deux fois la même : premier arrivé, premier servi.\n**2 ·** Tous les bonus au même prix d’achat (**${buyEur} €**), la mise dépend du bonus.\n**3 ·** Élimination directe : le plus gros gain en € gagne le duel. Finale en 3 manches.\n**4 ·** Points de saison pour tous, le top 3 du mois est récompensé.`),
-      SEP(),
-      {type:1,components:[{type:2,style:3,label:'S’inscrire',emoji:{name:'✍️'},custom_id:'belva:tn:join'},
-        {type:2,style:5,label:'Les inscrits',emoji:{name:'📋'},url:url(ch.tournament)},{type:2,style:5,label:'Le bracket',emoji:{name:'📺'},url:BRACKET_URL}]},
-      T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+      L.T(`# ⚔️ ${title}\n## ${HEAD[kind]}`),
+      L.T(`Tirage du bracket ${ts(drawAt)} (${ts(drawAt,'R')}), puis les duels en live sur la chaîne de Belva.\n✍️ **${entries}** inscrit${entries>1?'s':''} pour l’instant.`),
+      L.LINE,
+      ...L.step('1 · Relie ton compte Rumble','C’est ton pseudo Rumble qui s’affiche dans le bracket. 30 secondes, une seule fois.',[L.btn('Lier mon Rumble','🔗',1,LINK_BUTTON)]),
+      L.GAP,
+      ...L.step('2 · Inscris-toi','Donne ta machine, puis choisis ton bonus.',[L.btn('S’inscrire','✍️',3,'belva:tn:join')]),
+      L.LINE,
+      ...L.step('📜 Les règles',`**1 ·** Une machine par joueur, jamais deux fois la même : premier arrivé, premier servi.\n**2 ·** Tous les bonus au même prix d’achat (**${buyEur} €**), la mise dépend du bonus.\n**3 ·** Élimination directe : le plus gros gain en € gagne le duel. Finale en 3 manches.\n**4 ·** Points de saison pour tous, le top 3 du mois est récompensé.`,
+        [L.link('Les inscrits','📋',L.chUrl(ch.tournament)),L.link('Le bracket','📺',BRACKET_URL)]),
+      L.FOOT,
     ]}] as never[]};
 }
 
@@ -82,7 +80,7 @@ async function tick(client:Client,pool:Pool){
     const day=nextHuntDay(),at=parisAt(day,'19:30');
     const k=dueReminder(Date.now(),parisAt(day,'10:00'),await sentOf('hunt',day));
     if(k){const calls=Number((await pool.query(`SELECT count(*) n FROM belva_hunt_precalls WHERE hunt_id IS NULL`).catch(()=>({rows:[{n:0}]}))).rows[0].n);
-      await send('hunt',day,k,huntReminder(k,day,new Date(at),calls,{hunt:find('︱hunt'),offers:find('toutes-les-offres')}));}
+      await send('hunt',day,k,huntReminder(k,day,new Date(at),calls,{hunt:find('︱hunt'),offers:find('toutes-les-offres'),guide:find('guide-vip')}));}
   }
   if(await isApproved(pool,'tournament-reminder')){
     const t=(await pool.query(`SELECT id,title,draw_at,buy_cents,(SELECT count(*) FROM belva_tournament_entries e WHERE e.tournament_id=t.id) n FROM belva_tournaments t WHERE status='open' AND draw_at IS NOT NULL ORDER BY id DESC LIMIT 1`).catch(()=>({rows:[]}))).rows[0];

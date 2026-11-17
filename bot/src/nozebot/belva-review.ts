@@ -18,6 +18,7 @@ import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
 import {huntCard,huntInfoCard,notEligibleCard} from './belva-hunt.js';
 import {huntReminder,tournamentReminder} from './belva-reminders.js';
 import {belvaRaceCard} from './belva-race.js';
+import {ensureVipGuide,vipGuideCard} from './belva-vip-guide.js';
 import {rankText,topCard} from './belva-xp.js';
 import {questJournal} from './belva-quests.js';
 import {tipDm} from './belva-tips.js';
@@ -194,15 +195,18 @@ export const DESIGNS:Design[]=[
       v2(doneStep({offers:c.channel('toutes-les-offres'),rewards:c.channel('récompenses'),games:c.channel('mini-jeux'),general:c.channel('général')}))]},
   {key:'hunt-week',title:'Section hunt : calls à l’avance, règles, rappels',where:'🎯︱hunt (carte permanente) + réponse privée + 📢︱annonces (@everyone au lancement, à mi-parcours et 24 h avant)',
     note:'Premier hunt le mercredi 25 novembre ; les calls sont réservés dès maintenant et entrent dans la file à l’ouverture du farm. Réservé aux 🍾 Carré Or ; les autres reçoivent le message « réservé aux joueurs qui ont déposé ».',
-    previews:async c=>[text('**Carte du salon 🎯︱hunt :**'),v2(huntInfoCard('2026-11-25',[{slot:'Sweet Bonanza',who:'Mise_Max'},{slot:'Wanted Dead or a Wild',who:'Spin_Sam'}],c.channel('toutes-les-offres'))),
+    previews:async c=>[text('**Carte du salon 🎯︱hunt :**'),v2(huntInfoCard('2026-11-25',[{slot:'Sweet Bonanza',who:'Mise_Max'},{slot:'Wanted Dead or a Wild',who:'Spin_Sam'}],{offers:c.channel('toutes-les-offres'),guide:c.channel('guide-vip')})),
       text('**Si le membre n’est pas Carré Or (en privé) :**'),v2(notEligibleCard(c.channel('toutes-les-offres'))),
-      text('**Rappel dans 📢︱annonces (exemple : la veille) :**'),v2(huntReminder('h24','2026-11-25',new Date(Date.UTC(2026,10,25,18,30)),7,{hunt:c.channel('hunt'),offers:c.channel('toutes-les-offres')}))]},
+      text('**Rappel dans 📢︱annonces (exemple : la veille) :**'),v2(huntReminder('h24','2026-11-25',new Date(Date.UTC(2026,10,25,18,30)),7,{hunt:c.channel('hunt'),offers:c.channel('toutes-les-offres'),guide:c.channel('guide-vip')}))]},
   {key:'tournament-reminder',title:'Rappels du tournoi du samedi',where:'📢︱annonces (@everyone au lancement, à mi-parcours et 24 h avant)',
     note:'Premier tournoi le samedi 28 novembre (tirage à 18 h). Inscriptions ouvertes dès la validation de la fiche Tournoi, qui a maintenant un bouton S’inscrire.',
     previews:async c=>[v2(tournamentReminder('launch','Tournoi du samedi 28 novembre',new Date(Date.UTC(2026,10,28,17)),3,120,{tournament:c.channel('tournoi')}))]},
   {key:'race',title:'Wager race Rainbet (nouvelle carte)',where:'🏆︱wager-race · ⚠️ Valider vide le salon et n’y laisse que cette carte',
     note:'Exemple avec des mises fictives. Le classement réel vient de l’API Rainbet et se met à jour toutes les 5 minutes.',
     previews:async()=>[v2(await belvaRaceCard([{username:'BelvaaaTV',wagered:12450},{username:'PIAILLE',wagered:8120},{username:'MiseMax',wagered:2310},{username:'SpinSam',wagered:940},{username:'Lucky77',wagered:410}],[],new Date(Date.UTC(2026,10,20,12))))]},
+  {key:'vip-guide',title:'Guide VIP : XP, grades et avantages',where:'📖︱guide-vip (nouveau salon dans Récompenses)',
+    note:'Les boutons « Guide VIP » du hunt et des rappels y renvoient.',
+    previews:async c=>[v2(vipGuideCard({offers:c.channel('toutes-les-offres'),hunt:c.channel('hunt'),tournament:c.channel('tournoi')}))]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
@@ -295,6 +299,7 @@ export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolea
   if(i.isButton())await i.update(verdict(d,row));
   else if(i.isModalSubmit()){await i.deferUpdate();await i.message?.edit(verdict(d,row));}
   if(key==='onboarding'&&status==='approved')await applyOnboarding(i.client,pool).catch(e=>console.error('[nozebot] parcours d’arrivée',e));
+  if(key==='vip-guide'&&status==='approved')await ensureVipGuide(i.client,pool).catch(e=>console.error('[nozebot] guide VIP',e));
   if(key==='agenda'&&status==='approved')await refreshAgenda(i.client,pool).catch(e=>console.error('[nozebot] agenda',e));
   if(key==='offer-rainbet'&&status==='approved')await ensureBelvaRainbetPanel(i.client,pool).catch(e=>console.error('[nozebot] carte Rainbet',e));
   if(key==='roles'&&status==='approved')await applyRoles(i.guild,pool,i.channel as TextChannel|null,row.version+APPLY_REV);

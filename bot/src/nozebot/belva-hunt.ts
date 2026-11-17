@@ -1,6 +1,7 @@
 import {ChannelType,LabelBuilder,MessageFlags,ModalBuilder,SlashCommandBuilder,StringSelectMenuBuilder,TextInputBuilder,TextInputStyle,type Client,type Interaction,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
+import * as L from './belva-layout.js';
 import {BELVA_ROLES} from './belva-roles.js';
 import {searchSlots} from './belva-tournament.js';
 import {LunaLiveApiError,belvaHuntCall,type LunaLiveApiConfig} from './lunalive-api.js';
@@ -31,7 +32,6 @@ const ERRORS:Record<string,string>={
 };
 
 const P='belva:hunt:';
-const channelUrl=(id?:string)=>`https://discord.com/channels/${GUILD_ID()}${id?'/'+id:''}`;
 // Premier hunt des viewers : le mercredi 25 novembre 2026. D'ici là, les calls sont réservés d'avance.
 const FIRST_HUNT=()=>process.env.BELVA_HUNT_FIRST?.trim()||'2026-11-25';
 export function nextHuntDay(now=new Date()){
@@ -46,30 +46,31 @@ export const dayLabel=(iso:string)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'U
 export const HUNT_RULES=['**1 ·** Une machine par joueur (deux à partir du grade 💠 Saphir).','**2 ·** Jamais deux fois la même machine dans un hunt : premier arrivé, premier servi.',
   '**3 ·** Le matin, LeCasiNoze farme les bonus sur vos machines. Le soir, Belva les ouvre en live.','**4 ·** Ton call rapporte **1 XP par tranche de 5x** (max 500), et le staff tippe les gros hits.'];
 
-// Carte permanente du salon 🎯︱hunt : prochain hunt, règles, calls déjà réservés, bouton pour caller.
-export function huntInfoCard(day:string,calls:{slot:string;who:string}[],offers?:string){
+// Carte permanente du salon 🎯︱hunt : prochain hunt, étapes avec leurs boutons, règles, calls déjà réservés.
+export function huntInfoCard(day:string,calls:{slot:string;who:string}[],ch:{offers?:string;guide?:string}={}){
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:ACCENT,components:[
-    T('# 🎯 Hunt des viewers'),T(`Prochain hunt : **${dayLabel(day)}**\n🌅 **10 h** farm des bonus · 🌙 **19 h 30** ouverture en live`),
-    SEP(),
-    {type:9,components:[T('### 🎰 Fais ton call\nChoisis la machine que tu veux voir dans le hunt. Les calls sont ouverts dès maintenant.')],
-      accessory:{type:2,style:3,label:'Faire mon call',emoji:{name:'🎯'},custom_id:`${P}call`}},
-    SEP(1,false),
-    T(`### 📜 Les règles\n${HUNT_RULES.join('\n')}`),
-    SEP(1,false),
-    T('### 🔑 Qui peut caller ?\nLes membres 🍾 **Carré Or** : un compte casino vérifié avec un dépôt passé par le lien de Belva.'),
-    {type:1,components:[{type:2,style:5,label:'Voir les offres casino',emoji:{name:'🎁'},url:channelUrl(offers)},{type:2,style:2,label:'Retirer mon call',emoji:{name:'↩️'},custom_id:`${P}clear`}]},
-    SEP(),
-    T(calls.length?`### 📝 Calls réservés (${calls.length})\n${calls.map(c=>`${c.slot} (${c.who})`).join(' · ')}`.slice(0,1500):'### 📝 Calls réservés\nAucun call pour l’instant : sois le premier !'),
-    T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+    L.T('# 🎯 Hunt des viewers'),L.T(`Prochain hunt : **${dayLabel(day)}**\n🌅 **10 h** · farm des bonus\n🌙 **19 h 30** · ouverture en live`),
+    L.LINE,
+    ...L.step('1 · Avoir le rôle 🍾 Carré Or','Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.link('Les offres casino','🎁',L.chUrl(ch.offers))]),
+    L.GAP,
+    ...L.step('2 · Faire ton call','Choisis la machine que tu veux voir dans le hunt. Les calls sont ouverts dès maintenant.',[L.btn('Faire mon call','🎯',3,`${P}call`),L.btn('Retirer mon call','↩️',2,`${P}clear`)]),
+    L.LINE,
+    ...L.step('📜 Les règles',HUNT_RULES.join('\n'),[L.link('Guide VIP','📖',L.chUrl(ch.guide))]),
+    L.LINE,
+    L.T(calls.length?`### 📝 Calls réservés (${calls.length})\n${calls.map(c=>`${c.slot} (${c.who})`).join(' · ')}`.slice(0,1500):'### 📝 Calls réservés\nAucun call pour l’instant : sois le premier !'),
+    L.FOOT,
   ]}] as never[]};
 }
 
-// Pas encore Carré Or : on explique ce qu'il faut faire et on envoie vers les offres.
+// Pas encore Carré Or : on explique ce qu'il faut faire, chaque étape avec son bouton.
 export function notEligibleCard(offers?:string){
   return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:ACCENT,components:[
-    T('### 🔒 Le hunt est réservé aux joueurs qui ont déposé'),
-    T('Pour caller une machine, il te faut le rôle 🍾 **Carré Or** :\n**1 ·** Crée ton compte sur un de nos casinos avec le lien de Belva.\n**2 ·** Fais ton premier dépôt.\n**3 ·** Demande ton remboursement : une fois validé, tu as le rôle et tu peux caller.'),
-    {type:1,components:[{type:2,style:5,label:'Voir les offres casino',emoji:{name:'🎁'},url:channelUrl(offers)}]},
+    L.T('## 🔒 Le hunt est réservé aux joueurs qui ont déposé'),
+    L.T('Pour caller une machine, il te faut le rôle 🍾 **Carré Or**.'),
+    L.LINE,
+    ...L.step('1 · Crée ton compte et fais ton premier dépôt','Sur un de nos casinos, avec le lien de Belva.',[L.link('Les offres casino','🎁',L.chUrl(offers))]),
+    L.GAP,
+    ...L.step('2 · Demande ton remboursement','Bouton **Remboursement** sur la carte du casino. Une fois validé, tu as le rôle et tu peux caller.'),
   ]}] as never[]};
 }
 
@@ -80,6 +81,8 @@ const preSchema=(pool:Pool)=>preReady??=pool.query(`CREATE TABLE IF NOT EXISTS b
 const pendingCalls=async(pool:Pool)=>(await pool.query(`SELECT * FROM belva_hunt_precalls WHERE hunt_id IS NULL ORDER BY id`)).rows as {id:number;discord_id:string;name:string;slot:string;slot_key:string;provider:string|null}[];
 const callLimit=async(pool:Pool,discordId:string)=>['saphir','diamant','obsidienne'].includes((await pool.query(`SELECT grade FROM belva_xp_levels WHERE discord_id=$1`,[discordId]).catch(()=>({rows:[]}))).rows[0]?.grade??'')?2:1;
 const activeHunt=async(pool:Pool)=>(await pool.query(`SELECT id FROM belva_hunts WHERE status='farm' ORDER BY id DESC LIMIT 1`).catch(()=>({rows:[]}))).rows[0]?.id as number|undefined;
+const channelOf=async(client:Client,suffix:string)=>{const g=await client.guilds.fetch(GUILD_ID()).catch(()=>null);
+  return g?(await g.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith(suffix))?.id:undefined;};
 const offersChannelOf=async(client:Client)=>{const g=await client.guilds.fetch(GUILD_ID()).catch(()=>null);
   return g?(await g.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('toutes-les-offres'))?.id:undefined;};
 const rumbleName=async(pool:Pool,discordId:string)=>(await pool.query(`SELECT l.username FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[discordId]).catch(()=>({rows:[]}))).rows[0]?.username as string|undefined;
@@ -150,7 +153,7 @@ async function refreshInfo(client:Client,pool:Pool){
   await preSchema(pool);
   const channel=await huntChannel(client);if(!channel)return;
   const calls=(await pendingCalls(pool)).map(c=>({slot:c.slot,who:c.name}));
-  const card=huntInfoCard(nextHuntDay(),calls,await offersChannelOf(client));const sig=JSON.stringify(card.components);
+  const card=huntInfoCard(nextHuntDay(),calls,{offers:await offersChannelOf(client),guide:await channelOf(client,'guide-vip')});const sig=JSON.stringify(card.components);
   if(sig===infoSig)return;
   await pool.query(`CREATE TABLE IF NOT EXISTS belva_hunt_info(id int PRIMARY KEY DEFAULT 1,channel_id text NOT NULL,message_id text NOT NULL)`);
   const row=(await pool.query(`SELECT * FROM belva_hunt_info WHERE id=1`)).rows[0];
