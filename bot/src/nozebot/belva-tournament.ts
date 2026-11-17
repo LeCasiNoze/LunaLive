@@ -32,6 +32,7 @@ function schema(pool:Pool){
     PRIMARY KEY(tournament_id,discord_id),UNIQUE(tournament_id,slot_key));
     ALTER TABLE belva_tournaments ADD COLUMN IF NOT EXISTS draw jsonb,ADD COLUMN IF NOT EXISTS legs jsonb NOT NULL DEFAULT '{}',
       ADD COLUMN IF NOT EXISTS draw_at timestamptz,ADD COLUMN IF NOT EXISTS drawn_at timestamptz,ADD COLUMN IF NOT EXISTS champion text,ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 0;
+    ALTER TABLE belva_tournament_entries ADD COLUMN IF NOT EXISTS wins int;
     CREATE TABLE IF NOT EXISTS belva_tournament_pings(tournament_id int NOT NULL,discord_id text NOT NULL,PRIMARY KEY(tournament_id,discord_id));
     CREATE TABLE IF NOT EXISTS belva_seasons(month text PRIMARY KEY,label text NOT NULL,channel_id text NOT NULL,message_id text NOT NULL,final boolean NOT NULL DEFAULT false)`).catch(e=>{ready=null;throw e;});
   return ready;

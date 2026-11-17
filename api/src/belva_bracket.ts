@@ -17,6 +17,7 @@ export function bracketSchema(pool:Pool){
     ALTER TABLE belva_tournaments ADD COLUMN IF NOT EXISTS draw jsonb,ADD COLUMN IF NOT EXISTS legs jsonb NOT NULL DEFAULT '{}',
       ADD COLUMN IF NOT EXISTS draw_at timestamptz,ADD COLUMN IF NOT EXISTS drawn_at timestamptz,ADD COLUMN IF NOT EXISTS champion text,
       ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 0;
+    ALTER TABLE belva_tournament_entries ADD COLUMN IF NOT EXISTS wins int;
     CREATE UNIQUE INDEX IF NOT EXISTS belva_one_active_tournament ON belva_tournaments((1)) WHERE status IN ('open','live','closed')`).catch(e=>{ready=null;throw e;});
   return ready;
 }
@@ -73,7 +74,8 @@ const eur=(c:number)=>(c/100).toLocaleString('fr-FR',{maximumFractionDigits:2})+
 export const parseGain=(s:string)=>{const m=/^(\d{1,7})(?:[.,](\d{1,2}))?\s*€?$/.exec(s.trim());return m?Number(m[1])*100+Number((m[2]??'0').padEnd(2,'0')):null;};
 
 async function finish(pool:Pool,t:Row,b:Bracket){
-  for(const [id,place] of Object.entries(b.places))await pool.query(`UPDATE belva_tournament_entries SET place=$3 WHERE tournament_id=$1 AND discord_id=$2`,[t.id,id,place]);
+  // Duels gagnés (un passage d'office n'en est pas un) : sert à l'XP du tournoi.
+  for(const [id,place] of Object.entries(b.places))await pool.query(`UPDATE belva_tournament_entries SET place=$3,wins=$4 WHERE tournament_id=$1 AND discord_id=$2`,[t.id,id,place,b.wins[id]??0]);
   await pool.query(`UPDATE belva_tournaments SET status='done',champion=$2,finished_at=COALESCE(finished_at,NOW()) WHERE id=$1`,[t.id,b.champion]);
 }
 

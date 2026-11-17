@@ -16,6 +16,7 @@ import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
 import {huntCard} from './belva-hunt.js';
+import {rankText,topCard} from './belva-xp.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -166,6 +167,16 @@ export const DESIGNS:Design[]=[
         '> Sugar Rush 1000 (Tilt_Zéro) : 40 € (x40) · 🏁 Hunt terminé : 615 € pour 600 € (+15 €) · Meilleur call : Wanted Dead or a Wild x204 (Mise_Max)'].join('\n')),
       text('**Réponse à /hunt (visible par lui seul) :**\n> 🎯 **Call enregistré !** Le Bandit (3ᵉ dans la file). Suis le hunt en direct dans #🎯︱hunt.'),
     ];}},
+  {key:'xp-top',title:'Classement de l’XP : top 10 et /rang',where:'🏅︱classements (avec la saison du tournoi) · /rang en réponse privée',
+    note:'Exemple fictif. L’XP ne compte qu’à partir du lancement (BELVA_XP_START, 1er décembre). Les grades se posent tout seuls ; Rubis et plus demandent le rôle 🍾 Carré Or.',
+    previews:async c=>[
+      v2(topCard([{discord_id:c.botId,xp:12_480},{discord_id:c.botId,xp:9_350},{discord_id:c.botId,xp:4_120},{discord_id:c.botId,xp:2_910},{discord_id:c.botId,xp:640}])),
+      text('**Réponse à /rang (visible par lui seul) :**\n> '+rankText(47,212,1_930).replace(/\n/g,'\n> ')),
+      text(['**D’où vient l’XP :**','> 💬 Chat Rumble de Belva pendant le live · **+5** (max 1 toutes les 5 min, compte relié)',
+        '> ⚔️ Tournoi du samedi · **25** + **20 par duel gagné**','> ✅ Compte casino vérifié · **+300** par casino',
+        '> 💸 Dépôt remboursé · **1 XP par €** déposé (les dépôts offerts ne comptent pas)','> 🌧️ Wager Rainbet · **1 XP par 10 $** misés',
+        '-# Les quêtes (/quetes) arriveront ensuite avec leurs boutons et le MP du lundi.'].join('\n')),
+    ]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
