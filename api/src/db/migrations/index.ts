@@ -1,5 +1,6 @@
 import { mig153_chest_payout_history } from "./mig153_chest_payout_history.js";
 import {mig154_external_chat_bans} from "./mig154_external_chat_bans.js";
+import { mig155_slots_rainbet } from "./mig155_slots_rainbet.js";
 import {mig152_multichat_audience} from "./mig152_multichat_audience.js";
 import {mig150_multichat_bridge} from "./mig150_multichat_bridge.js";
 import {mig151_call_external_identity} from "./mig151_call_external_identity.js";
@@ -343,6 +344,7 @@ export async function migrateAll(pool: Pool) {
   await mig152_multichat_audience(pool);
   await mig153_chest_payout_history(pool);
   await mig154_external_chat_bans(pool);
+  await mig155_slots_rainbet(pool);
 
   // Rumble migrations
   await mig040_rumble_info(pool);

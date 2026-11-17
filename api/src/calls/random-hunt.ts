@@ -33,7 +33,9 @@ export async function generateHuntCalls(pool:Pool,sid:number,slug:string,count:n
   const allowed=new Set((await c.query('SELECT provider_norm FROM calls_allowed_providers WHERE streamer_id=$1',[sid])).rows.map(x=>String(randomHuntProvider(x.provider_norm)||normalizeProvider(x.provider_norm)||'').toLowerCase()));
   const aliases=[...new Set([...RANDOM_HUNT_PROVIDERS.flatMap(providerAliases),'elk studios'])];
   const candidates=(await c.query(`SELECT name,name_key,provider FROM slots_catalog s
-   WHERE lower(trim(s.provider))=ANY($2::text[]) AND NOT EXISTS
+   WHERE lower(trim(s.provider))=ANY($2::text[])
+   AND (s.rainbet_seen_at IS NOT NULL OR NOT EXISTS(SELECT 1 FROM slots_catalog WHERE rainbet_seen_at IS NOT NULL))
+   AND NOT EXISTS
    (SELECT 1 FROM calls_queue q WHERE q.streamer_id=$1 AND q.slot_key=s.name_key)
    ORDER BY random()`,[sid,aliases])).rows.filter(x=>{
     const provider=randomHuntProvider(x.provider)?.toLowerCase();

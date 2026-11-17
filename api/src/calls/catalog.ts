@@ -16,7 +16,35 @@ export type InsertedSlotRow = {
   imageUrl: string | null;
 };
 
-export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<InsertedSlotRow[]> {
+// Rainbet = source de vérité : dès que le catalogue Rainbet est peuplé, les
+// recherches ne proposent que les jeux vus chez Rainbet. Avant le 1er crawl,
+// tout le catalogue reste utilisable (sinon les !call échoueraient au déploiement).
+const RAINBET_READY_MIN = 1000;
+let rainbetReady: { value: boolean; at: number } | null = null;
+
+async function rainbetOnly(pool: Pool): Promise<boolean> {
+  if (rainbetReady && Date.now() - rainbetReady.at < 10 * 60_000) return rainbetReady.value;
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM (SELECT 1 FROM slots_catalog WHERE rainbet_seen_at IS NOT NULL LIMIT $1) x`,
+      [RAINBET_READY_MIN]
+    );
+    rainbetReady = { value: Number(r.rows?.[0]?.n || 0) >= RAINBET_READY_MIN, at: Date.now() };
+  } catch {
+    rainbetReady = { value: false, at: Date.now() };
+  }
+  return rainbetReady.value;
+}
+
+export function invalidateRainbetReady() {
+  rainbetReady = null;
+}
+
+export async function upsertSlots(
+  pool: Pool,
+  items: SlotRow[],
+  opts: { rainbet?: boolean } = {}
+): Promise<InsertedSlotRow[]> {
   if (!items.length) return [];
 
   // ✅ dédup par name_key pour éviter:
@@ -46,17 +74,18 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
 
   const values: any[] = [];
   const chunks: string[] = [];
+  const seen = opts.rainbet ? "NOW()" : "NULL::timestamptz";
   let i = 1;
 
   for (const [nameKey, v] of dedup.entries()) {
     values.push(v.name, nameKey, v.providerRaw, v.providerNorm, v.imageUrl);
-    chunks.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+    chunks.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, ${seen})`);
   }
 
   const { rows } = await pool.query(
     `
     WITH upserted AS (
-      INSERT INTO slots_catalog (name, name_key, provider, provider_norm, image_url)
+      INSERT INTO slots_catalog (name, name_key, provider, provider_norm, image_url, rainbet_seen_at)
       VALUES ${chunks.join(",")}
       ON CONFLICT (name_key) DO UPDATE
         SET name = EXCLUDED.name,
@@ -64,6 +93,7 @@ export async function upsertSlots(pool: Pool, items: SlotRow[]): Promise<Inserte
             provider_norm = EXCLUDED.provider_norm,
             -- ✅ si EXCLUDED.image_url est non-null, on met à jour même si la row existait déjà
             image_url = COALESCE(EXCLUDED.image_url, slots_catalog.image_url),
+            rainbet_seen_at = COALESCE(EXCLUDED.rainbet_seen_at, slots_catalog.rainbet_seen_at),
             updated_at = NOW()
       RETURNING
         name,
@@ -119,6 +149,7 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
   if (!qKey) return [];
 
   const like = `%${qKey}%`;
+  const onlyRainbet = await rainbetOnly(pool);
   const r = await pool.query(
     `
     SELECT
@@ -128,10 +159,11 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
       image_url AS "imageUrl"
     FROM slots_catalog
     WHERE name_key ILIKE $1
+      AND ($2::boolean = FALSE OR rainbet_seen_at IS NOT NULL)
     ORDER BY updated_at DESC
     LIMIT 80
     `,
-    [like]
+    [like, onlyRainbet]
   );
 
   const qToks = tokenize(qKey);
@@ -160,10 +192,11 @@ export async function searchSlots(pool: Pool, qRaw: string, limit: number) {
           word_similarity($1, name_key) AS sim
         FROM slots_catalog
         WHERE word_similarity($1, name_key) > 0.15
+          AND ($3::boolean = FALSE OR rainbet_seen_at IS NOT NULL)
         ORDER BY sim DESC
         LIMIT $2
         `,
-        [qKey, limit]
+        [qKey, limit, onlyRainbet]
       );
       if (tr.rows.length) {
         scored = tr.rows.map((row: any) => ({
@@ -191,8 +224,9 @@ export async function resolveSlot(
   if (!qKey) return null;
 
   const exact = await pool.query(
-    `SELECT name, provider_norm AS provider, image_url AS "imageUrl" FROM slots_catalog WHERE name_key=$1 LIMIT 1`,
-    [qKey]
+    `SELECT name, provider_norm AS provider, image_url AS "imageUrl" FROM slots_catalog
+     WHERE name_key=$1 AND ($2::boolean = FALSE OR rainbet_seen_at IS NOT NULL) LIMIT 1`,
+    [qKey, await rainbetOnly(pool)]
   );
   if (exact.rows?.[0]) {
     return {

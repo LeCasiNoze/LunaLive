@@ -1,11 +1,12 @@
 // api/src/calls/updater.ts
 import type { Pool } from "pg";
-import { upsertSlots, type SlotRow } from "./catalog.js";
+import { invalidateRainbetReady, upsertSlots, type SlotRow } from "./catalog.js";
 import { normText, keyText } from "./normalize.js";
-import { fetchShuffleProviders, fetchShuffleProviderSlots } from "./shuffle_fetcher.js";
+import { fetchRainbetSlots } from "./rainbet_fetcher.js";
 
 /**
- * Source active du catalogue : Shuffle GraphQL.
+ * Source active du catalogue : Rainbet (source de vérité, noms + images).
+ * shuffle_fetcher.ts n'est plus appelé par runSlotsUpdate().
  *
  * Les fonctions Gamba ci-dessous restent exportées uniquement pour les anciens
  * scripts de diagnostic. runSlotsUpdate() ne les utilise plus : la page Gamba
@@ -324,33 +325,33 @@ export async function runSlotsUpdate(
   error: string;
   providers: ProviderResult[];
 }> {
-  console.log(`[slots-updater] Starting Shuffle slots update`);
+  console.log(`[slots-updater] Starting Rainbet slots update`);
 
   const startTime = Date.now();
   const providers: ProviderResult[] = [];
 
   try {
-    const excludedSlugs = new Set(
-      String(process.env.SLOTS_EXCLUDED_PROVIDER_SLUGS || "shuffle-games,evolution,pragmatic-play-live")
-        .split(",")
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean)
-    );
-    const providerRows = (await fetchShuffleProviders()).filter(
-      (provider) => provider.gamesCount > 0 && !excludedSlugs.has(provider.slug.toLowerCase())
-    );
-    const interProviderMs = Math.max(0, Number(process.env.SHUFFLE_INTER_PROVIDER_MS || 250));
+    // Un seul crawl (≈115 pages, ~2 min), puis upsert groupé par provider
+    // pour conserver le rapport par provider de l'admin.
+    const all = await retryWithBackoff(() => fetchRainbetSlots(), 1, 5_000, 5_000);
+    const byProvider = new Map<string, SlotRow[]>();
+    for (const row of all) {
+      const key = row.provider || "Unknown";
+      const list = byProvider.get(key);
+      if (list) list.push(row);
+      else byProvider.set(key, [row]);
+    }
+    const providerRows = Array.from(byProvider.keys()).sort((a, b) => a.localeCompare(b));
 
-    console.log(`[slots-updater] Found ${providerRows.length} Shuffle providers`);
+    console.log(`[slots-updater] Rainbet: ${all.length} slots from ${providerRows.length} providers`);
 
     let totalFetchedRaw = 0;
     let totalInserted = 0;
     let successCount = 0;
     let failedCount = 0;
 
-    for (let i = 0; i < providerRows.length; i++) {
-      const provider = providerRows[i];
-      console.log(`[slots-updater] [${i + 1}/${providerRows.length}] Processing Shuffle provider: ${provider.slug}`);
+    for (const slug of providerRows) {
+      const provider = { slug };
 
       const providerResult: ProviderResult = {
         provider: provider.slug,
@@ -360,12 +361,7 @@ export async function runSlotsUpdate(
       };
 
       try {
-        const rows = await retryWithBackoff(
-          () => fetchShuffleProviderSlots(provider.id, provider.slug, provider.name),
-          2,
-          1_000,
-          8_000
-        );
+        const rows = byProvider.get(provider.slug) || [];
 
         providerResult.fetched = rows.length;
         totalFetchedRaw += rows.length;
@@ -400,7 +396,7 @@ export async function runSlotsUpdate(
             `[slots-updater] ${provider.slug}: fetched=${rows.length} unique=${uniq.size} dupInBatch=${dupInBatch} alreadyInDb=${alreadyInDb}`
           );
 
-          const inserted = await upsertSlots(pool, Array.from(uniq.values()));
+          const inserted = await upsertSlots(pool, Array.from(uniq.values()), { rainbet: true });
           providerResult.inserted = inserted.length;
           totalInserted += inserted.length;
 
@@ -435,12 +431,9 @@ export async function runSlotsUpdate(
       }
 
       providers.push(providerResult);
-
-      if (interProviderMs && i < providerRows.length - 1) {
-        await sleep(interProviderMs);
-      }
     }
 
+    invalidateRainbetReady();
     const duration = Date.now() - startTime;
     const failedProvidersList = providers.filter(p => !p.success).map(p => p.provider);
     

@@ -26,7 +26,7 @@ test('generation, retries, bans, viewer FIFO and hunt preservation on a real SQL
  CREATE TABLE calls_bans(streamer_id bigint,kind text,ban_key text);
  CREATE TABLE calls_provider_policy(streamer_id bigint,mode text);
  CREATE TABLE calls_allowed_providers(streamer_id bigint,provider_norm text);
- CREATE TABLE slots_catalog(name text,name_key text,provider text);
+ CREATE TABLE slots_catalog(name text,name_key text,provider text,rainbet_seen_at timestamptz);
  INSERT INTO slots_catalog VALUES('A','a','Pragmatic Play'),('B','b','backseat'),('C','c','Nolimit City'),('D','d','AvatarUX'),('E','e','BGaming'),('F','f','ELK Studios'),('Roulette','roulette','Pragmatic Play'),('Banned','banned','Pragmatic Play'),('Wrong','wrong','NetEnt');
  INSERT INTO calls_bans VALUES(1,'slot','banned');`);
  await mig147_random_hunt_calls(pool);await mig147_random_hunt_calls(pool);
