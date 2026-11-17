@@ -164,7 +164,7 @@ test('Belva bracket: Saturday draw, gains typed in chat, winner and places saved
  // Finale directe en BO3 : 100/50 puis 30/40 puis 20/10 -> le premier tiré gagne 2-1
  const first=(await tournamentState(pool))!.bracket!.current!.player;
  for(const g of [100,50,30,40])assert.doesNotMatch((await recordGain(pool,g*100)).join(' '),/Champion/);
- await recordGain(pool,2000);const last=(await recordGain(pool,1000)).join(' ');assert.match(last,/^\w+ \([\w ]+\) vs \w+ \([\w ]+\) \[20 € - 10 €\] \[Champion : \w+ \([\w ]+\) \+45 pts\] \[Perdant : \w+ \+25 pts\]$/);
+ await recordGain(pool,2000);const last=(await recordGain(pool,1000)).join(' ');assert.match(last,/^\w+ \([\w ]+\) vs \w+ \([\w ]+\) \[20 € - 10 €\] \[Champion : \w+ \([\w ]+\) \+25 pts\] \[Perdant : \w+ \+20 pts\]$/);
  const st=(await tournamentState(pool))!;assert.equal(st.tournament.status,'done');assert.equal(st.tournament.champion,first);
  const places=(await pool.query(`SELECT discord_id,place FROM belva_tournament_entries WHERE tournament_id=$1 ORDER BY place`,[t])).rows.map(r=>[r.discord_id,r.place]);
  assert.deepEqual(places.map(p=>p[1]),[1,2]);assert.equal(places[0]![0],first);

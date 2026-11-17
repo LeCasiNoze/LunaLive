@@ -14,6 +14,7 @@ import {BRACKET_URL,BUY_CENTS,bonusOptions,bracketCard,championText,confirmCard,
 import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
+import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -119,14 +120,18 @@ export const DESIGNS:Design[]=[
       text('**Carte en direct dans ⚔️︱tournoi :**'),{...bracketCard('Tournoi du samedi 6 décembre',state),allowedMentions:{parse:[]}} as Preview,
       text(['**Dans le chat Rumble (court, sans mise en page) :**',
         `> Mise_Max (${players[a]!.slot}) : 245 € · au tour de Spin_Sam (${players[cc]!.slot})`,
-        `> Mise_Max (${players[a]!.slot}) vs Spin_Sam (${players[cc]!.slot}) [245 € - 80 €] [Gagnant : Mise_Max (${players[a]!.slot})] [Perdant : Spin_Sam +25 pts]`,
+        `> Mise_Max (${players[a]!.slot}) vs Spin_Sam (${players[cc]!.slot}) [245 € - 80 €] [Gagnant : Mise_Max (${players[a]!.slot})] [Perdant : Spin_Sam +17 pts]`,
         `> Suivant : Lucky_Léo (${players[b]!.slot}) vs Tilt_Zéro (${players[d]!.slot})`,
         `> Lucky_Léo (${players[b]!.slot}) vs Tilt_Zéro (${players[d]!.slot}) [0 € - 0 €] [Égalité : on rachète]`,
-        `> Mise_Max (${players[a]!.slot}) vs Tilt_Zéro (${players[d]!.slot}) [310 € - 95 €] [Champion : Mise_Max (${players[a]!.slot}) +65 pts] [Perdant : Tilt_Zéro +45 pts]`,
-        '-# Points = 25 de participation + 20 par duel gagné (un qualifié d’office n’a pas de victoire en plus).'].join('\n')),
+        `> Mise_Max (${players[a]!.slot}) vs Tilt_Zéro (${players[d]!.slot}) [310 € - 95 €] [Champion : Mise_Max (${players[a]!.slot}) +25 pts] [Perdant : Tilt_Zéro +20 pts]`,
+        '-# Points de saison = 10 de présence + bonus de place (1er +15, 2e +10, 3e +7, 4e-5e +4).'].join('\n')),
       text('**Ping au joueur éliminé (⚔️︱tournoi) :**\n'+eliminationText(c.botId,'Demi-finales',3)),
       text('**Fin du tournoi :**\n'+championText(c.botId,players[a]!.slot)),
     ];}},
+  {key:'agenda',title:'Agenda de la semaine',where:'📅︱agenda (nouveau salon dans Infos) · /agenda absent, note, effacer pour le staff',
+    note:'Exemple avec une absence et une note. Le programme type (hunt mercredi, tournoi samedi, giveaways dimanche) se règle dans belva-agenda.ts.',
+    previews:async()=>{const m=mondayOf(new Date(Date.UTC(2026,11,1,12)));
+      return [v2(agendaCard(m,[{day:'2026-12-02',slot:'matin',kind:'absent',who:'LeCasiNoze',text:null},{day:'2026-12-06',slot:'journee',kind:'note',who:null,text:'Giveaway 50 € à 21 h'}],null))];}},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
@@ -218,6 +223,7 @@ export async function handleBelvaReview(i:Interaction,pool?:Pool):Promise<boolea
   if(!row)return true;
   if(i.isButton())await i.update(verdict(d,row));
   else if(i.isModalSubmit()){await i.deferUpdate();await i.message?.edit(verdict(d,row));}
+  if(key==='agenda'&&status==='approved')await refreshAgenda(i.client,pool).catch(e=>console.error('[nozebot] agenda',e));
   if(key==='offer-rainbet'&&status==='approved')await ensureBelvaRainbetPanel(i.client,pool).catch(e=>console.error('[nozebot] carte Rainbet',e));
   if(key==='roles'&&status==='approved')await applyRoles(i.guild,pool,i.channel as TextChannel|null,row.version+APPLY_REV);
   return true;

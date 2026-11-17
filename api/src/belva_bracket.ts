@@ -77,8 +77,8 @@ async function finish(pool:Pool,t:Row,b:Bracket){
 }
 
 // Saisie d'un gain (chat ou page staff) : renvoie le message à annoncer dans le chat.
-// XP du tournoi : 25 de participation + 20 par duel gagné (un passage d'office n'est pas une victoire).
-export const tournamentPoints=(duelsWon:number)=>25+20*duelsWon;
+// Points de saison gagnés sur ce tournoi : 10 de présence + bonus de place (1er 15, 2e 10, 3e 7, 4e-5e 4).
+export const seasonPoints=(place:number)=>10+([15,10,7,4,4][place-1]??0);
 
 // Saisie d'un gain (chat ou page staff) : renvoie les messages courts à poster dans le chat Rumble (pas de mise en page).
 export async function recordGain(pool:Pool,cents:number):Promise<string[]>{
@@ -97,8 +97,8 @@ export async function recordGain(pool:Pool,cents:number):Promise<string[]>{
   const next=b.current?[`Suivant : ${who(b.current.player)} vs ${who(b.current.opponent)}`]:[];
   if(leg.a===leg.b)return [`${duel} [Égalité : on rachète]`,...next];
   if(!m.winner)return [`${duel} [${roundName(m.round,b.rounds)} ${m.winsA}-${m.winsB}]`,...next];
-  const lost=`[Perdant : ${nm(ps,m.loser!)} +${tournamentPoints(b.wins[m.loser!]??0)} pts]`;
-  if(b.champion){await finish(pool,t,b);return [`${duel} [Champion : ${who(b.champion)} +${tournamentPoints(b.wins[b.champion]??0)} pts] ${lost}`];}
+  const lost=`[Perdant : ${nm(ps,m.loser!)} +${seasonPoints(b.places[m.loser!]!)} pts]`;
+  if(b.champion){await finish(pool,t,b);return [`${duel} [Champion : ${who(b.champion)} +${seasonPoints(1)} pts] ${lost}`];}
   return [`${duel} [Gagnant : ${who(m.winner)}] ${lost}`,...next];
 }
 

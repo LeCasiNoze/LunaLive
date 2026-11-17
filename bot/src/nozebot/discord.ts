@@ -35,6 +35,7 @@ import { handleBelvaGiveaways, startBelvaGiveaways } from './belva-giveaways.js'
 import { startBelvaStats } from './belva-stats.js';
 import { handleBelvaLink, registerBelvaCommands } from './belva-link.js';
 import { startBelvaWelcome } from './belva-welcome.js';
+import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
 import { ensureReviews, handleBelvaReview } from './belva-review.js';
 import { startBelvaLinkSync } from './belva-link-sync.js';
 import { belvaLiveConfig } from './belva-live.js';
@@ -496,6 +497,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaLink(interaction, config.commands.lunaLive)) return;
     if (await handleBelvaGames(interaction, config.commands.lunaLive)) return;
     if (await handleBelvaTournament(interaction, pool)) return;
+    if (await handleBelvaAgenda(interaction, pool)) return;
     if (await handleBelvaReview(interaction, pool)) return;
     if (await handleBelvaTickets(interaction, pool)) return;
     if (await handleBelvaNotifs(interaction)) return;
@@ -642,6 +644,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void registerBelvaCommands(readyClient).catch((error) => console.error("[nozebot] commandes Belva", error));
     void registerBelvaGameCommands(readyClient).catch((error) => console.error("[nozebot] jeux Belva", error));
     startBelvaLinkSync(readyClient, pool);
+    void registerAgendaCommand(readyClient).then(() => startBelvaAgenda(readyClient, pool)).catch((error) => console.error("[nozebot] agenda Belva", error));
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
     void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive.baseUrl)).catch((error) => console.error("[nozebot] tournoi Belva", error));
   });
