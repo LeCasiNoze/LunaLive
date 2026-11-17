@@ -5,7 +5,7 @@ import type {Pool} from 'pg';
 import {coinsSchema,coinsProfile,coinAction,linkedCoins,observeCoinName,weeklyCnz} from '../src/nozecoins/wallet.js';
 import {handleCoinsChat} from '../src/nozecoins/chat.js';
 import {tickBelvaTombola} from '../src/belva_tombola.js';
-import {drawDue,recordGain,tournamentState} from '../src/belva_bracket.js';
+import {drawDue,publicState,recordGain,setMatchLegs,tournamentState} from '../src/belva_bracket.js';
 import {linkByComment,finishPendingLink} from '../src/belva_link_comment.js';
 import {requestAutomodDiscordLink} from '../src/automod-shop/discord-profile.js';
 
@@ -169,4 +169,19 @@ test('Belva bracket: Saturday draw, gains typed in chat, winner and places saved
  const places=(await pool.query(`SELECT discord_id,place FROM belva_tournament_entries WHERE tournament_id=$1 ORDER BY place`,[t])).rows.map(r=>[r.discord_id,r.place]);
  assert.deepEqual(places.map(p=>p[1]),[1,2]);assert.equal(places[0]![0],first);
  assert.deepEqual(await recordGain(pool,100),['Aucun tournoi en cours.']);
+});
+test('Belva bracket: a staff correction that changes a winner resets the next duels; stale edits are refused; public state hides Discord ids',async()=>{
+ const t=(await pool.query(`INSERT INTO belva_tournaments(title,buy_cents,created_by,draw_at) VALUES('T2',12000,'x',NOW()-interval '1 minute') RETURNING id`)).rows[0].id;
+ for(const id of ['901','902','903','904'])await pool.query(`INSERT INTO belva_tournament_entries(tournament_id,discord_id,display_name,slot_key,slot_name,bonus_id,bonus_label,cost_cents) VALUES($1,$2,$2,$2,$2,'b','Bonus',12000)`,[t,id]);
+ await drawDue(pool,async()=>{});
+ for(const g of [100,50,30,40,70,10])await recordGain(pool,g*100);
+ let st=(await tournamentState(pool))!;const final=st.bracket!.matches.find(m=>m.key==='2-0')!;
+ assert.equal(final.legs.length,1);const winner=st.bracket!.matches.find(m=>m.key==='1-0')!.winner;
+ await assert.rejects(setMatchLegs(pool,'1-0',[{a:1,b:500}],st.tournament.version-1),/stale/);
+ await setMatchLegs(pool,'1-0',[{a:1,b:500}],st.tournament.version);
+ st=(await tournamentState(pool))!;
+ assert.notEqual(st.bracket!.matches.find(m=>m.key==='1-0')!.winner,winner);
+ assert.equal(st.bracket!.matches.find(m=>m.key==='2-0')!.legs.length,0);
+ const pub=publicState(st)!;assert.ok(Object.keys(pub.players).every(k=>/^p\d+$/.test(k)));assert.ok(Object.values(pub.players).every(p=>/^p\d+$/.test(p.discordId)));assert.ok(pub.bracket!.matches.every(m=>[m.a,m.b].every(x=>x===null||/^p\d+$/.test(x))));
+ await assert.rejects(setMatchLegs(pool,'1-0',[{a:'abc' as never,b:1}]),/bad_legs/);
 });

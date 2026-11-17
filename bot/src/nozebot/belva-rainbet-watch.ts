@@ -38,7 +38,7 @@ async function tick(client:Client,pool:Pool){
   for(const d of deposits)await pool.query(`INSERT INTO belva_rainbet_deposit_signals(username,delta,wagered) VALUES($1,$2,$3)`,[d.username,d.delta,d.wagered]);
   // Membres vérifiés sur Rainbet qui ont misé depuis : rôle Carré Or (avoir misé = avoir déposé).
   const wagered=new Set(list.filter(w=>w.wagered>0).map(w=>w.username.toLowerCase()));
-  const accounts=(await pool.query(`SELECT discord_id,casino_username FROM belva_casino_accounts WHERE guild_id=$1 AND casino='rainbet'`,[GUILD_ID()]).catch(()=>({rows:[]}))).rows as {discord_id:string;casino_username:string}[];
+  const accounts=(await pool.query(`SELECT discord_id,casino_username FROM belva_casino_accounts WHERE guild_id=$1 AND casino='rainbet' AND verified_at IS NOT NULL`,[GUILD_ID()]).catch(()=>({rows:[]}))).rows as {discord_id:string;casino_username:string}[];
   const todo=accounts.filter(a=>wagered.has(a.casino_username.toLowerCase()));
   if(!todo.length)return;
   const guild=await client.guilds.fetch(GUILD_ID());

@@ -73,6 +73,7 @@ export async function applyRoleSpec(guild:Guild):Promise<string[]>{
   for(const old of RETIRED){
     const role=roles.get(old.id);if(!role)continue;
     const target=old.to?ids[old.to]:null;let moved=0;
+    if(old.to&&!target){report.push(`⚠️ ${old.name} gardé : le grade cible n’a pas pu être créé`);continue;}
     for(const m of members.filter(m=>m.roles.cache.has(old.id)).values()){if(target){await m.roles.add(target,'Grade remplaçant '+old.name).catch(()=>undefined);moved++;}}
     await role.delete('Remplacé par les grades').then(()=>report.push(`🗑️ ${old.name} supprimé${moved?` (${moved} membre${moved>1?'s':''} → ${ROLE_SPEC.find(s=>s.key===old.to)?.name})`:''}`))
       .catch(e=>report.push(`❌ ${old.name} : ${(e as Error).message}`));

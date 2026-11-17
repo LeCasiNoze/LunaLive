@@ -1,4 +1,5 @@
 import {addViewerCall} from '../belva_hunt.js';
+import {tournamentState} from '../belva_bracket.js';
 import {linkByComment,linkTargets} from '../belva_link_comment.js';
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
@@ -124,6 +125,11 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
   if(e instanceof SoundboardError)return res.status(409).json({ok:false,error:e.message});
   if(['rumble_not_linked','insufficient_coins','max_tier','bad_upgrade','stale_shop'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
  }
+}));
+
+// État complet du tournoi (avec identifiants Discord) pour le suivi du bracket par NozeBot.
+internalNozeBotRouter.post('/internal/bot/nozebot/belva-tournament/state',requireNozeBot,a(async(_req,res)=>{
+ res.json({ok:true,state:await tournamentState(pool)});
 }));
 
 // Call du hunt des viewers depuis le Discord de Belva (/hunt) : il entre dans la file de calls de LeCasiNoze.

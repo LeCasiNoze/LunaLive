@@ -3,6 +3,8 @@ import {readFileSync} from 'node:fs';
 import {ChannelType,MessageFlags,type Client,type Message} from 'discord.js';
 import {brands,refreshBrands} from './belva-roles.js';
 import {OFFERS} from './belva-offers.js';
+import {isApproved} from './belva-approval.js';
+import type {Pool} from 'pg';
 
 // Cartes d'information des salons fixes du Discord de Belva (offres, liaison Rumble, récompenses).
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -73,12 +75,14 @@ const CARDS:[string,()=>{files:{attachment:Buffer;name:string}[];components:obje
 const versionOf=(components:object[])=>parseInt(createHash('sha1').update(JSON.stringify(components)).digest('hex').slice(0,7),16);
 const isMine=(m:Message,client:Client)=>m.author.id===client.user!.id&&m.components[0]?.type===17;
 
-export async function ensureInfoCards(client:Client){
+const REVIEW_KEY:Record<string,string>={'lier-mon-compte':'link-card','récompenses':'rewards','mini-jeux':'games'};
+export async function ensureInfoCards(client:Client,pool?:Pool){
   if(process.env.BELVA_INFO_CARDS==='false')return;
   const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
   await refreshBrands(guild).catch(()=>undefined);
   const all=await guild.channels.fetch();
   for(const [suffix,build] of CARDS){
+    if(REVIEW_KEY[suffix]&&!await isApproved(pool,REVIEW_KEY[suffix]!))continue;
     const channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('︱'+suffix));
     if(channel?.type!==ChannelType.GuildText)continue;
     const {files,components}=build();const id=versionOf(components);

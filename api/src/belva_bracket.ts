@@ -16,7 +16,8 @@ export function bracketSchema(pool:Pool){
     PRIMARY KEY(tournament_id,discord_id),UNIQUE(tournament_id,slot_key));
     ALTER TABLE belva_tournaments ADD COLUMN IF NOT EXISTS draw jsonb,ADD COLUMN IF NOT EXISTS legs jsonb NOT NULL DEFAULT '{}',
       ADD COLUMN IF NOT EXISTS draw_at timestamptz,ADD COLUMN IF NOT EXISTS drawn_at timestamptz,ADD COLUMN IF NOT EXISTS champion text,
-      ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 0`).catch(e=>{ready=null;throw e;});
+      ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 0;
+    CREATE UNIQUE INDEX IF NOT EXISTS belva_one_active_tournament ON belva_tournaments((1)) WHERE status IN ('open','live','closed')`).catch(e=>{ready=null;throw e;});
   return ready;
 }
 // Le tournoi (tirage, annonces) ne tourne qu'une fois son design validé dans le salon staff du Discord.
@@ -103,18 +104,42 @@ export async function recordGain(pool:Pool,cents:number):Promise<string[]>{
 }
 
 // Correction depuis la page staff : remplace les gains d'un duel, le reste du bracket se recalcule.
-export async function setMatchLegs(pool:Pool,key:string,legs:Leg[]){
+export async function setMatchLegs(pool:Pool,key:string,legs:Leg[],version?:number){
   await bracketSchema(pool);
   if(!/^\d+-\d+$/.test(key)||!Array.isArray(legs)||legs.length>12)throw Error('bad_legs');
-  const clean=legs.map(l=>({a:l.a===null?null:Math.max(0,Math.round(Number(l.a))),b:l.b===null?null:Math.max(0,Math.round(Number(l.b)))}));
+  const num=(v:unknown)=>v===null?null:Number.isFinite(Number(v))?Math.max(0,Math.round(Number(v))):NaN;
+  const clean=legs.map(l=>({a:num(l?.a),b:num(l?.b)}));
   if(clean.some(l=>Number.isNaN(l.a)||Number.isNaN(l.b)))throw Error('bad_legs');
   const t=(await pool.query(`SELECT * FROM belva_tournaments WHERE draw IS NOT NULL ORDER BY id DESC LIMIT 1`)).rows[0] as Row|undefined;
   if(!t?.draw)throw Error('no_tournament');
-  const all={...(t.legs??{}),[key]:clean};
+  // La page staff renvoie la version qu'elle affichait : une saisie du chat arrivée entre-temps n'est jamais écrasée.
+  if(version!==undefined&&version!==t.version)throw Error('stale');
+  const all:Record<string,Leg[]>={...(t.legs??{}),[key]:clean};
+  // Si le vainqueur du duel change, les duels suivants sur son chemin repartent de zéro (leurs gains étaient ceux de l'ancien vainqueur).
+  const before=computeBracket(t.draw,t.legs??{}).matches.find(m=>m.key===key)?.winner??null;
+  const after=computeBracket(t.draw,all);
+  if(before!==(after.matches.find(m=>m.key===key)?.winner??null)){
+    let [r,i]=key.split('-').map(Number) as [number,number];
+    while(r<after.rounds){r++;i=Math.floor(i/2);delete all[`${r}-${i}`];}
+  }
   const b=computeBracket(t.draw,all);
-  await pool.query(`UPDATE belva_tournaments SET legs=$2::jsonb,version=version+1,status=$3,champion=$4,finished_at=CASE WHEN $4::text IS NULL THEN NULL ELSE finished_at END WHERE id=$1`,
-    [t.id,JSON.stringify(all),b.champion?'done':'live',b.champion]);
+  const ok=(await pool.query(`UPDATE belva_tournaments SET legs=$2::jsonb,version=version+1,status=$3,champion=$4,finished_at=CASE WHEN $4::text IS NULL THEN NULL ELSE finished_at END WHERE id=$1 AND version=$5 RETURNING id`,
+    [t.id,JSON.stringify(all),b.champion?'done':'live',b.champion,t.version])).rowCount;
+  if(!ok)throw Error('stale');
   await pool.query(`UPDATE belva_tournament_entries SET place=NULL WHERE tournament_id=$1`,[t.id]);
   if(b.champion)await finish(pool,{...t,legs:all},b);
   return b;
+}
+
+// Version publique (page web) : les identifiants Discord sont remplacés par des clés neutres.
+export function publicState(st:Awaited<ReturnType<typeof tournamentState>>){
+  if(!st)return st;
+  const ids=[...new Set([...(Object.keys(st.players)),...(st.bracket?.matches.flatMap(m=>[m.a,m.b]).filter((x):x is string=>!!x)??[])])];
+  const map=new Map(ids.map((id,k)=>[id,`p${k}`]));const r=(id:string|null)=>id===null?null:map.get(id)??id;
+  const players=Object.fromEntries(Object.entries(st.players).map(([id,p])=>[r(id)!,{...p,discordId:r(id)!}]));
+  const b=st.bracket&&{...st.bracket,champion:r(st.bracket.champion),places:Object.fromEntries(Object.entries(st.bracket.places).map(([id,v])=>[r(id)!,v])),
+    wins:Object.fromEntries(Object.entries(st.bracket.wins).map(([id,v])=>[r(id)!,v])),
+    current:st.bracket.current&&{...st.bracket.current,player:r(st.bracket.current.player)!,opponent:r(st.bracket.current.opponent)!},
+    matches:st.bracket.matches.map(m=>({...m,a:r(m.a),b:r(m.b),winner:r(m.winner),loser:r(m.loser)}))};
+  return {...st,tournament:{...st.tournament,champion:r(st.tournament.champion)},players,bracket:b};
 }

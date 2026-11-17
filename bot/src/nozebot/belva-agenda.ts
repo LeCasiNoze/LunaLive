@@ -39,7 +39,8 @@ const addDays=(iso:string,n:number)=>new Date(Date.parse(iso+'T12:00:00Z')+n*864
 const label=(iso:string)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'UTC',day:'numeric',month:'long'}).format(new Date(iso+'T12:00:00Z')).replace(/^1 /,'1er ');
 
 type Note={day:string;slot:string;kind:'absent'|'note';who:string|null;text:string|null};
-export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())===monday?new Date().toISOString().slice(0,10):null){
+const parisDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())===monday?parisDay():null){
   const lines=DAYS.map((d,i)=>{
     const iso=addDays(monday,i),w=WEEK[d],ns=notes.filter(n=>n.day===iso);
     const slot=(s:Slot)=>{

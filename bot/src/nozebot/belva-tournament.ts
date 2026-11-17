@@ -4,6 +4,7 @@ import {
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {seasonCard,type SeasonRow} from './belva-progress-designs.js';
+import {belvaTournamentState,type LunaLiveApiConfig} from './lunalive-api.js';
 
 // Tournoi du samedi de Belva : chaque joueur réserve UNE machine (jamais deux fois la même dans un tournoi)
 // et choisit son bonus. Tous les bonus s'achètent au même prix ; la mise découle du multiplicateur d'achat.
@@ -85,13 +86,14 @@ export function registrationCard(t:{title:string;status:string;buy_cents:number}
   const head=t.status==='open'?`🟢 **Inscriptions ouvertes** · tape **/tournoi** puis le nom de ta machine`
     :t.status==='closed'?'🔒 **Inscriptions fermées** · bonne chance à tous !':'🏁 **Tournoi terminé** · résultats ci-dessous';
   const line=(e:Entry,i:number)=>`**${e.place?(e.place===1?'🥇':e.place===2?'🥈':e.place===3?'🥉':`${e.place}ᵉ`):`${i+1} ·`} ${e.slot_name}** · ${e.bonus_label}\n-# ${e.multiplier?`${Number(e.multiplier)}x · mise ${eur(e.bet_cents!)} · `:''}<@${e.discord_id}>`;
-  const rich=entries.slice(0,10),rest=entries.slice(10);
+  // 10 lignes illustrées (40 composants max par message), puis une liste texte plafonnée.
+  const rich=entries.slice(0,10),rest=entries.slice(10,30),more=entries.length-30;
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:ACCENT,components:[
     T(`# ⚔️ ${t.title}`),T(`${head}\nPrix d’achat : **${eur(t.buy_cents)} par bonus** · une machine par joueur · jamais deux fois la même machine`),
     SEP(),
     ...(entries.length?rich.map((e,i)=>e.image_url?{type:9,components:[T(line(e,i))],accessory:{type:11,media:{url:e.image_url},description:e.slot_name}}:T(line(e,i)))
       :[T('Aucun inscrit pour l’instant : sois le premier !')]),
-    ...(rest.length?[SEP(1,false),T(rest.map((e,i)=>line(e,i+10)).join('\n'))]:[]),
+    ...(rest.length?[SEP(1,false),T(`${rest.map((e,i)=>line(e,i+10)).join('\n')}${more>0?`\n-# … et ${more} autres inscrits`:''}`.slice(0,3000))]:[]),
     SEP(),
     {type:1,components:[{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
     T(`-# ${entries.length} inscrit${entries.length>1?'s':''} · 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.`),
@@ -138,13 +140,14 @@ const monthOf=(d:Date)=>{const p=new Intl.DateTimeFormat('fr-FR',{timeZone:'Euro
   return `${p.find(x=>x.type==='year')!.value}-${p.find(x=>x.type==='month')!.value}`;};
 const monthLabel=(d:Date)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',month:'long',year:'numeric'}).format(d);
 async function seasonData(pool:Pool,month:string){
-  const ts=(await pool.query(`SELECT id FROM belva_tournaments WHERE status='done' AND to_char(finished_at AT TIME ZONE 'Europe/Paris','YYYY-MM')=$1 ORDER BY finished_at`,[month])).rows.map(r=>Number(r.id));
+  const ts=(await pool.query(`SELECT id FROM belva_tournaments WHERE status='done' AND to_char(COALESCE(draw_at,finished_at) AT TIME ZONE 'Europe/Paris','YYYY-MM')=$1 ORDER BY finished_at`,[month])).rows.map(r=>Number(r.id));
   const es=(await pool.query(`SELECT tournament_id,discord_id,display_name,place FROM belva_tournament_entries WHERE tournament_id=ANY($1::int[])`,[ts])).rows;
   const rows=new Map<string,SeasonRow>();
   for(const e of es){const r=rows.get(e.discord_id)??{name:e.display_name,id:String(e.discord_id),places:ts.map(()=>null)};r.name=e.display_name;r.places[ts.indexOf(Number(e.tournament_id))]=e.place??null;rows.set(e.discord_id,r);}
   return {total:ts.length,rows:[...rows.values()]};
 }
 export async function refreshSeason(client:Client,pool:Pool){
+  if(!await isApproved(pool,'season'))return;
   const guild=await client.guilds.fetch(GUILD_ID());
   const now=new Date(),month=monthOf(now);
   const open=(await pool.query(`SELECT * FROM belva_seasons WHERE final=false`)).rows as {month:string;label:string;channel_id:string;message_id:string}[];
@@ -201,10 +204,12 @@ export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<bo
     if(!t||t.status!=='open'||!o){await i.update({components:[{type:17,components:[T('Les inscriptions sont fermées.')]}] as never[]});return true;}
     const name=(i.member&&'displayName' in i.member?i.member.displayName:null)??i.user.username;
     try{
-      await pool.query(`INSERT INTO belva_tournament_entries(tournament_id,discord_id,display_name,slot_key,slot_name,provider,image_url,bonus_id,bonus_label,multiplier,bet_cents,cost_cents)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(tournament_id,discord_id) DO UPDATE SET display_name=$3,slot_key=$4,slot_name=$5,provider=$6,image_url=$7,
+      // Inscription seulement si le tournoi est toujours ouvert (le tirage a pu passer entre-temps).
+      const done=(await pool.query(`INSERT INTO belva_tournament_entries(tournament_id,discord_id,display_name,slot_key,slot_name,provider,image_url,bonus_id,bonus_label,multiplier,bet_cents,cost_cents)
+        SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12 WHERE EXISTS(SELECT 1 FROM belva_tournaments WHERE id=$1 AND status='open') ON CONFLICT(tournament_id,discord_id) DO UPDATE SET display_name=$3,slot_key=$4,slot_name=$5,provider=$6,image_url=$7,
         bonus_id=$8,bonus_label=$9,multiplier=$10,bet_cents=$11,cost_cents=$12,created_at=NOW()`,
-        [t.id,i.user.id,name,draft.slot.key,draft.slot.name,draft.slot.provider,draft.slot.image,o.id,o.label,o.multiplier,o.betCents,o.costCents]);
+        [t.id,i.user.id,name,draft.slot.key,draft.slot.name,draft.slot.provider,draft.slot.image,o.id,o.label,o.multiplier,o.betCents,o.costCents])).rowCount;
+      if(!done){await i.update({components:[{type:17,components:[T('Les inscriptions viennent de fermer : le bracket est tiré.')]}] as never[]});return true;}
     }catch(e){
       if((e as {code?:string}).code==='23505'){
         const owner=(await pool.query(`SELECT discord_id FROM belva_tournament_entries WHERE tournament_id=$1 AND slot_key=$2`,[t.id,draft.slot.key])).rows[0]?.discord_id??'0';
@@ -281,7 +286,7 @@ export function bracketCard(title:string,s:LiveState){
     ...(cur&&b.current&&curPlayer?[SEP(),{type:9,components:[T(`### ▶️ En cours · ${roundName(cur.round,b.rounds)}\n**${who(b.current.player)}** · ${curPlayer.slot} (${curPlayer.bonus})\ncontre **${who(b.current.opponent)}** · ${ps[b.current.opponent]?.slot}`)],
       accessory:{type:11,media:{url:curPlayer.image??'https://cdn.discordapp.com/embed/avatars/0.png'},description:curPlayer.slot}}]:[]),
     SEP(),
-    T(rounds.map((ms,r)=>`### ${roundName(r+1,b.rounds)}\n${ms.map(line).join('\n')}`).join('\n').slice(0,3500)),
+    T(rounds.map((ms,r)=>`### ${roundName(r+1,b.rounds)}\n${ms.map(line).join('\n')}`).join('\n').slice(0,3000)),
     SEP(),
     {type:1,components:[{type:2,style:5,label:'Voir le bracket en direct',emoji:{name:'📺'},url:BRACKET_URL}]},
     T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
@@ -292,15 +297,16 @@ export const eliminationText=(userId:string,round:string,place:number)=>
 export const championText=(userId:string,slot:string)=>
   `🏆 <@${userId}> remporte le tournoi avec **${slot}** : **1re place** · **+${seasonPointsFor(1)} points** de saison ! Les inscriptions du prochain tournoi sont ouvertes : **/tournoi**.`;
 
-async function liveState(baseUrl:string):Promise<LiveState|null>{
-  const r=await fetch(`${baseUrl.replace(/\/$/,'')}/api/public/belva/tournament`,{signal:AbortSignal.timeout(8000)}).then(x=>x.json() as Promise<{ok?:boolean;state?:LiveState}>).catch(()=>null);
-  return r?.ok?r.state??null:null;
+// État complet (avec identifiants Discord, pour les pings) : route interne, la route publique les masque.
+async function liveState(config:LunaLiveApiConfig):Promise<LiveState|null>{
+  const r=await belvaTournamentState(config).catch(()=>null);
+  return (r?.state as LiveState|undefined)??null;
 }
 
 // Suit le bracket tenu par l'API : carte en direct, ping des éliminés, puis saison et nouvelles inscriptions.
-async function followBracket(client:Client,pool:Pool,baseUrl:string,seen:Map<number,number>){
+async function followBracket(client:Client,pool:Pool,config:LunaLiveApiConfig,seen:Map<number,number>){
   if(!await isApproved(pool,'bracket'))return;
-  const s=await liveState(baseUrl);if(!s?.bracket)return;
+  const s=await liveState(config);if(!s?.bracket)return;
   const t=(await pool.query(`SELECT * FROM belva_tournaments WHERE id=$1`,[s.tournament.id])).rows[0] as Tournament|undefined;if(!t)return;
   if(seen.get(t.id)===s.tournament.version)return;
   seen.set(t.id,s.tournament.version);
@@ -318,15 +324,15 @@ async function followBracket(client:Client,pool:Pool,baseUrl:string,seen:Map<num
       await channel?.send({content:championText(b.champion,s.players[b.champion]?.slot??''),allowedMentions:{users:[b.champion]}});
       await refreshSeason(client,pool);
       // Les inscriptions du tournoi suivant s'ouvrent dès qu'un vainqueur est désigné, au même prix.
-      if(!await current(pool))await openTournament(client,pool,t.buy_cents,client.user!.id);
+      if(!await current(pool)&&await isApproved(pool,'tournament'))await openTournament(client,pool,t.buy_cents,client.user!.id);
     }
   }
 }
 
-export function startBelvaTournament(client:Client,pool?:Pool,baseUrl='https://lunalive-api.onrender.com'){
+export function startBelvaTournament(client:Client,pool:Pool|undefined,config:LunaLiveApiConfig){
   if(!pool)return;
   const seen=new Map<number,number>();let busy=false;
-  setInterval(()=>{if(busy)return;busy=true;void schema(pool).then(()=>followBracket(client,pool,baseUrl,seen)).catch(e=>console.error('[nozebot] bracket tournoi',e)).finally(()=>{busy=false;});},15_000).unref();
+  setInterval(()=>{if(busy)return;busy=true;void schema(pool).then(()=>followBracket(client,pool,config,seen)).catch(e=>console.error('[nozebot] bracket tournoi',e)).finally(()=>{busy=false;});},15_000).unref();
   // Fige la saison du mois écoulé même sans nouveau tournoi.
   setInterval(()=>void schema(pool).then(()=>refreshSeason(client,pool)).catch(e=>console.error('[nozebot] saison tournoi',e)),60*60_000).unref();
 }

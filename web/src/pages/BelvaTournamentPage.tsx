@@ -101,8 +101,10 @@ export default function BelvaTournamentPage() {
     fetch(`${API}/api/belva/tournament/staff`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).then((r) => setStaff(!!r?.staff)).catch(() => {});
   }, []);
   const save = async (key: string, legs: Leg[]) => {
-    const r = await fetch(`${API}/api/belva/tournament/legs`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }, body: JSON.stringify({ key, legs }) }).then((x) => x.json()).catch(() => null);
-    if (r?.ok) setState(r.state); else setErr("Correction refusée : vérifie les montants.");
+    if (legs.some((l) => Number.isNaN(l.a) || Number.isNaN(l.b))) { setErr("Montant invalide : écris un nombre, par exemple 245 ou 245,50."); return; }
+    const r = await fetch(`${API}/api/belva/tournament/legs`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` }, body: JSON.stringify({ key, legs, version: state?.tournament.version }) }).then((x) => x.json()).catch(() => null);
+    if (r?.ok) { setErr(null); setState(r.state); }
+    else setErr(r?.error === "stale" ? "Le bracket a bougé pendant ta saisie (gain tapé dans le chat) : vérifie puis renvoie." : "Correction refusée : vérifie les montants.");
   };
 
   const t = state?.tournament, b = state?.bracket, ps = state?.players ?? {};
@@ -159,7 +161,7 @@ export default function BelvaTournamentPage() {
                           <Side p={m.a ? ps[m.a] : undefined} legs={m.legs} side="a" win={!!m.winner && m.winner === m.a} playing={live && b.current?.side === "a"} />
                           <div className="bt-vs">{m.bestOf > 1 ? `${m.winsA} – ${m.winsB}` : "VS"}</div>
                           <Side p={m.b ? ps[m.b] : undefined} legs={m.legs} side="b" win={!!m.winner && m.winner === m.b} playing={live && b.current?.side === "b"} />
-                          {staff && m.a && m.b && <StaffEditor key={`${m.key}-${t?.version}`} m={m} onSave={(legs) => save(m.key, legs)} />}
+                          {staff && m.a && m.b && <StaffEditor key={`${m.key}-${JSON.stringify(m.legs)}`} m={m} onSave={(legs) => save(m.key, legs)} />}
                         </>
                       )}
                     </article>

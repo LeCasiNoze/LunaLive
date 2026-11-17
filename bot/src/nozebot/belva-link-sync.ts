@@ -14,7 +14,11 @@ async function sync(client:Client,pool:Pool){
   if(!links.length)return;
   // Le rôle garde son ancien nom (« Sub ») tant que la refonte des rôles n'est pas validée : on ne l'attribue qu'après.
   const roleOn=await isApproved(pool,'roles');
-  const members=await guild.members.fetch({user:links.map(l=>l.discord_user_id)}).catch(()=>null);if(!members)return;
+  const members=new Map<string,import('discord.js').GuildMember>();
+  for(let k=0;k<links.length;k+=100){
+    const part=await guild.members.fetch({user:links.slice(k,k+100).map(l=>l.discord_user_id)}).catch(e=>{console.error('[nozebot] liaisons Belva',e?.message||e);return null;});
+    for(const [id,m] of part??[])members.set(id,m);
+  }
   for(const l of links){
     const m=members.get(l.discord_user_id);if(!m)continue;
     const name=l.username.slice(0,32);

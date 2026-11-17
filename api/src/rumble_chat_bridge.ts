@@ -46,7 +46,7 @@ type RumbleSseUser = {
   badges?: string[];
 };
 
-// Badges Rumble (moderator, admin…) vus dans le chat, par id utilisateur : sert aux commandes réservées aux modos.
+// Badges Rumble (moderator, admin…) vus dans un chat, par « id du live:id utilisateur » : un badge de modo d'une autre chaîne ne compte pas.
 export const rumbleBadges = new Map<string, string[]>();
 
 type RumbleSseMessage = {
@@ -248,7 +248,8 @@ export async function connectRumbleChatSse(
     if (!Array.isArray(arr)) return;
     for (const u of arr as RumbleSseUser[]) {
       if (u?.id && u?.username) userById.set(String(u.id), String(u.username));
-      if (u?.id && Array.isArray(u.badges)) rumbleBadges.set(String(u.id), u.badges.map(String));
+      const badgeKey = `${videoIdNumeric}:${u?.id}`;
+      if (u?.id && Array.isArray(u.badges)) rumbleBadges.set(badgeKey, u.badges.map(String)); else if (u?.id) rumbleBadges.delete(badgeKey);
     }
   }
 
@@ -498,14 +499,16 @@ export function ensureRumbleBridge(opts: {
       if(coinReply){for(const chunk of shopReplyChunks(coinReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
       if(process.env.NOZECOINS_ENABLED==='true'&&/^!(?:claim|slot)\s*$/i.test(m.text.trim()))return;
     }
-    if(opts.slug==='belvaa'&&/^!(?:open|bonus)(?:\s|$)/i.test(m.text.trim())&&isBelvaStaff(m.userId,m.username)){
+    if(opts.slug==='belvaa'&&/^!(?:open|bonus)(?:\s|$)/i.test(m.text.trim())&&isBelvaStaff(m.userId,m.username,videoIdNumeric||'')){
+      if(!await reserveBelvaInput(opts.pool,m.msgId,m.createdAt))return;
       const b=/^!bonus\s+(\d{1,7}(?:[.,]\d{1,2})?)\s*€?$/i.exec(m.text.trim());
       const reply=await huntChat(opts.pool,/^!open/i.test(m.text.trim())?'open':'bonus',b?Number(b[1]!.replace(',','.')):null).catch(e=>{console.warn('[belva-hunt]',e?.message||e);return null;});
       if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
       return;
     }
     if(opts.slug==='belvaa'&&/^!tournoi(?:\s|$)/i.test(m.text.trim())){
-      const reply=await belvaTournamentChat(opts.pool,m.userId,m.username,m.text).catch(e=>{console.warn('[belva-tournoi]',e?.message||e);return null;});
+      if(/^!tournoi\s+\S/i.test(m.text.trim())&&!await reserveBelvaInput(opts.pool,m.msgId,m.createdAt))return;
+      const reply=await belvaTournamentChat(opts.pool,m.userId,m.username,m.text,videoIdNumeric||'').catch(e=>{console.warn('[belva-tournoi]',e?.message||e);return null;});
       for(const line of [reply??[]].flat())await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',line);
       return;
     }
@@ -724,21 +727,28 @@ export function stopRumbleBridge(slug: string) {
 }
 
 // !tournoi <gain> : réservé à Belva, à ses modérateurs Rumble et aux comptes de BELVA_TOURNAMENT_ADMINS.
-async function belvaTournamentChat(pool:Pool,userId:string,username:string,text:string){
+async function belvaTournamentChat(pool:Pool,userId:string,username:string,text:string,videoId:string){
   const arg=text.trim().slice('!tournoi'.length).trim();
   if(!arg){
     const st=await tournamentState(pool);const cur=st?.bracket?.current;
     if(!st||st.tournament.status!=='live'||!cur)return st?.tournament.status==='open'?`@${username} — Inscriptions ouvertes sur le Discord : /tournoi + ta machine.`:null;
     const p=st.players,w=(id:string)=>`${p[id]?.rumble??p[id]?.name} (${p[id]?.slot})`;return `En cours : ${w(cur.player)} vs ${w(cur.opponent)} · à jouer : ${w(cur.player)}`;
   }
-  if(!isBelvaStaff(userId,username))return null;
+  if(!isBelvaStaff(userId,username,videoId))return null;
   const cents=parseGain(arg);
   if(cents===null)return `@${username} — Format : !tournoi 245 (gain du bonus en euros).`;
   return recordGain(pool,cents);
 }
 
 // Belva, ses modérateurs Rumble et les comptes de BELVA_TOURNAMENT_ADMINS : commandes du tournoi et du hunt.
-function isBelvaStaff(userId:string,username:string){
+function isBelvaStaff(userId:string,username:string,videoId:string){
   const admins=(process.env.BELVA_TOURNAMENT_ADMINS||'belvaa,lecasinoze').toLowerCase().split(',').map(s=>s.trim());
-  return admins.includes(username.toLowerCase())||(rumbleBadges.get(userId)??[]).some(b=>/moderator|admin|owner|broadcaster/i.test(b));
+  return admins.includes(username.toLowerCase())||(rumbleBadges.get(`${videoId}:${userId}`)??[]).some(b=>/moderator|admin|owner|broadcaster/i.test(b));
+}
+
+// Une saisie (gain du tournoi ou du hunt) ne compte qu'une fois : au redémarrage, Rumble renvoie les derniers messages du chat.
+async function reserveBelvaInput(pool:Pool,msgId:string,createdAt:Date){
+  if(!msgId||Date.now()-createdAt.getTime()>120_000)return false;
+  await pool.query(`CREATE TABLE IF NOT EXISTS belva_chat_inputs(msg_id text PRIMARY KEY,at timestamptz NOT NULL DEFAULT NOW())`);
+  return ((await pool.query(`INSERT INTO belva_chat_inputs(msg_id) VALUES($1) ON CONFLICT DO NOTHING RETURNING 1`,[msgId])).rowCount??0)>0;
 }

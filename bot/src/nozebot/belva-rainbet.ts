@@ -88,7 +88,7 @@ export async function handleBelvaRainbet(i:Interaction,pool?:Pool):Promise<boole
     return true;
   }
   await ensureTables(pool);
-  const taken=(await pool.query(`SELECT discord_id FROM belva_casino_accounts WHERE guild_id=$1 AND casino='rainbet' AND lower(casino_username)=lower($2) AND discord_id<>$3`,
+  const taken=(await pool.query(`SELECT discord_id FROM belva_casino_accounts WHERE guild_id=$1 AND casino='rainbet' AND lower(casino_username)=lower($2) AND discord_id<>$3 AND verified_at IS NOT NULL`,
     [GUILD_ID(),referred.username,i.user.id])).rows[0] as {discord_id:string}|undefined;
   if(taken){await i.editReply('Ce compte Rainbet est déjà lié à un autre membre du Discord. Ouvre un ticket « Vérification de compte » si c’est bien le tien.');return true;}
   await pool.query(`INSERT INTO belva_casino_accounts (guild_id,discord_id,discord_tag,casino,casino_username,casino_email,verified_by,verified_at) VALUES ($1,$2,$3,'rainbet',$4,'','api',now())

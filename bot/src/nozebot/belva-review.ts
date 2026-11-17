@@ -10,7 +10,7 @@ import {welcomeCard} from './belva-welcome.js';
 import {CHECK_TEXT,linkDm} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
-import {BRACKET_URL,BUY_CENTS,bonusOptions,bracketCard,championText,confirmCard,eliminationText,registrationCard,searchSlots,type LiveState} from './belva-tournament.js';
+import {BRACKET_URL,BUY_CENTS,bracketCard,championText,confirmCard,eliminationText,priceOption,registrationCard,type BonusOption,type LiveState,type Slot} from './belva-tournament.js';
 import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
@@ -66,6 +66,19 @@ const PERMS_TEXT=[
   '-# ✅ Valider applique tout automatiquement (noms, couleurs, ordre, permissions, migration) et poste le compte rendu ici.',
 ].join('\n');
 
+
+// Machines d'exemple FIXES pour les aperçus : lire la base ferait changer la fiche (donc sa validation) à chaque mise à jour du catalogue.
+const EX_SLOTS:Record<string,{slot:Slot;offers:[string,string,number|null][]}>={
+  'wanted dead or a wild':{slot:{name:'Wanted Dead or a Wild',key:'wanted dead or a wild',provider:'Hacksaw Gaming',image:'https://static.raincdn.com/cdn/max-w-256/slots/hacksaw-wanted-dead-or-a-wild.webp'},
+    offers:[['freespins_train','The Great Train Robbery',80],['freespins_duel','Duel At Dawn',200],['freespins_dead','Dead Man’s Hand',400]]},
+  'fruit party':{slot:{name:'Fruit Party',key:'fruit party',provider:'Pragmatic Play',image:'https://static.raincdn.com/cdn/max-w-256/slots/pragmatic-play-fruit-party.webp'},offers:[['fs','Free Spins',100]]},
+  'le bandit':{slot:{name:'Le Bandit',key:'le bandit',provider:'Hacksaw Gaming',image:'https://static.raincdn.com/cdn/max-w-256/slots/hacksaw-le-bandit.webp'},
+    offers:[['luck','Luck Of The Bandit',100],['gold','All That Glitters Is Gold',250]]},
+  'sugar rush 1000':{slot:{name:'Sugar Rush 1000',key:'sugar rush 1000',provider:'Pragmatic Play',image:'https://static.raincdn.com/cdn/max-w-256/slots/pragmatic-play-sugar-rush-1000.webp'},offers:[['classic','Bonus classique',null]]},
+};
+const exSlot=(q:string):Slot|undefined=>EX_SLOTS[q.toLowerCase()]?.slot;
+const exOptions=(s:Slot):BonusOption[]=>(EX_SLOTS[s.key]?.offers??[['classic','Bonus classique',null]]).map(([id,label,m])=>priceOption(id,label,m,BUY_CENTS()));
+
 export const DESIGNS:Design[]=[
   {key:'roles',title:'Rôles : noms, couleurs, ordre, permissions',where:'Liste des membres et pseudos colorés',previews:async()=>[
     {files:[new AttachmentBuilder(await rolesPalettePng(),{name:'roles-palette.png'})],allowedMentions:{parse:[]}},text(PERMS_TEXT)]},
@@ -95,12 +108,12 @@ export const DESIGNS:Design[]=[
   {key:'offer-rainbet',title:'Carte Rainbet (partenaire principal)',where:'🌧️︱rainbet · remplace l’ancien message, Rainbet passe en tête des offres',previews:async()=>[{...rainbetCard(),allowedMentions:{parse:[]}} as Preview]},
   {key:'tournament',title:'Tournoi : inscriptions /tournoi et choix du bonus',where:'⚔️︱tournoi · /tournoi + nom de la machine (autocomplétion), puis confirmation privée',
     note:`Prix d’achat commun : ${(BUY_CENTS()/100).toLocaleString('fr-FR')} € par bonus (modifiable à l’ouverture). La mise découle du multiplicateur du bonus. Une machine ne peut être prise qu’une fois.`,previews:async c=>{
-    const pick=async(name:string,bonus:number)=>{const s=(await searchSlots(c.pool,name,1))[0];if(!s)return null;const o=(await bonusOptions(c.pool,s))[bonus]??(await bonusOptions(c.pool,s))[0]!;
+    const pick=async(name:string,bonus:number)=>{const s=exSlot(name);if(!s)return null;const o=exOptions(s)[bonus]??exOptions(s)[0]!;
       return {s,o,e:{discord_id:c.botId,display_name:'Pseudo',slot_name:s.name,slot_key:s.key,provider:s.provider,image_url:s.image,bonus_label:o.label,multiplier:o.multiplier?String(o.multiplier):null,bet_cents:o.betCents,cost_cents:o.costCents,place:null}};};
     const rows=(await Promise.all([pick('wanted dead or a wild',1),pick('fruit party',0),pick('le bandit',0),pick('sugar rush 1000',0)])).filter(x=>x!==null);
     const first=rows[0]!;
     return [text('**Étape 1 · le joueur tape `/tournoi wanted` et choisit dans la liste. Il voit (lui seul) :**'),
-      {...confirmCard(first.s,await bonusOptions(c.pool,first.s),first.o.id),allowedMentions:{parse:[]}} as Preview,
+      {...confirmCard(first.s,exOptions(first.s),first.o.id),allowedMentions:{parse:[]}} as Preview,
       text('**Si la machine est déjà prise :**'),{...confirmCard(first.s,[],null,c.botId),allowedMentions:{parse:[]}} as Preview,
       text('**Étape 2 · la carte des inscriptions dans ⚔️︱tournoi :**'),
       {...registrationCard({title:'Tournoi du samedi 6 décembre',status:'open',buy_cents:BUY_CENTS()},rows.map(r=>r.e)),allowedMentions:{parse:[]}} as Preview];}},
@@ -108,7 +121,7 @@ export const DESIGNS:Design[]=[
     note:'Exemple avec 4 joueurs fictifs. Tirage automatique samedi 18 h ; tant que cette fiche n’est pas validée, aucun tirage ne se fait.',previews:async c=>{
     const names=['wanted dead or a wild','fruit party','le bandit','sugar rush 1000'],pseudo=['Mise_Max','Lucky_Léo','Spin_Sam','Tilt_Zéro'];
     const players:LiveState['players']={};const ids=['1','2','3','4'].map(n=>`${c.botId.slice(0,-1)}${n}`);
-    for(const [k,q] of names.entries()){const s=(await searchSlots(c.pool,q,1))[0];const o=s?(await bonusOptions(c.pool,s))[0]:null;
+    for(const [k,q] of names.entries()){const s=exSlot(q);const o=s?exOptions(s)[0]:null;
       players[ids[k]!]={rumble:pseudo[k]!,name:pseudo[k]!,slot:s?.name??q,image:s?.image??null,bonus:o?.label??'Bonus'};}
     const [a,b,cc,d]=ids as [string,string,string,string];
     const state:LiveState={tournament:{id:0,status:'live',version:3,champion:null},players,bracket:{rounds:2,champion:null,places:{[cc]:3},
@@ -135,7 +148,7 @@ export const DESIGNS:Design[]=[
       return [v2(agendaCard(m,[{day:'2026-12-02',slot:'matin',kind:'absent',who:'LeCasiNoze',text:null},{day:'2026-12-06',slot:'journee',kind:'note',who:null,text:'Giveaway 50 € à 21 h'}],null))];}},
   {key:'hunt',title:'Hunt des viewers du mercredi',where:'🎯︱hunt (nouveau salon dans Récompenses) + /hunt sur Discord + chat LunaLive de LeCasiNoze + chat Rumble de Belva',
     note:'Exemple fictif. Tant que cette fiche n’est pas validée : /hunt répond « bientôt », /hunt (LunaLive), !open et !bonus ne font rien.',previews:async c=>{
-    const img=async(q:string)=>(await searchSlots(c.pool,q,1))[0]?.image??null;
+    const img=async(q:string)=>exSlot(q)?.image??null;
     const it=async(slot:string,caller:string,bet:number,pay:number|null,bonus=true)=>({slot,caller,bet,pay,bonus,image:await img(slot)});
     const items=[await it('Wanted Dead or a Wild','Mise_Max',1.2,245),await it('Fruit Party','Lucky_Léo',1.2,18),await it('Le Bandit','Spin_Sam',1.2,null),
       await it('Sugar Rush 1000','Tilt_Zéro',1,null),await it('Gates of Olympus','Bonus_Hunter',0,null,false)];

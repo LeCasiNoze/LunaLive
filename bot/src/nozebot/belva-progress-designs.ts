@@ -94,7 +94,7 @@ const place=(p:number)=>p===1?'1er':`${p}ᵉ`;
 export function seasonCard(s:{month:string;total:number;rows:SeasonRow[];final?:boolean}){
   const P=SEASON_POINTS;
   const sorted=[...s.rows].map(r=>({r,score:seasonScore(r,s.total),played:r.places.filter(p=>p!==null).length}))
-    .sort((a,b)=>b.score-a.score||b.played-a.played);
+    .sort((a,b)=>b.score-a.score||b.played-a.played).slice(0,25);
   const medal=['🥇','🥈','🥉'];
   return v2(spec('saphir').color,[
     T(`# ⚔️ Saison du tournoi · ${s.month}${s.final?' · terminée':''}`),

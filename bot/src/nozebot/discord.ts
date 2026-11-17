@@ -639,7 +639,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   client.once(Events.ClientReady, (readyClient) => {
     gatewayUnavailableSince = 0;
     console.log(`[nozebot] connecté: ${readyClient.user.tag} (${readyClient.user.id})`);
-    void ensureBelvaTicketPanel(readyClient).catch((error) => console.error("[nozebot] panneau tickets Belva", error));
+    void ensureBelvaTicketPanel(readyClient, pool).catch((error) => console.error("[nozebot] panneau tickets Belva", error));
     void ensureBelvaNotifPanel(readyClient).catch((error) => console.error("[nozebot] panneau notifs Belva", error));
     void ensureBelvaRainbetPanel(readyClient, pool).catch((error) => console.error("[nozebot] panneau Rainbet Belva", error));
     void startBelvaGiveaways(readyClient, pool).catch((error) => console.error("[nozebot] giveaways Belva", error));
@@ -651,7 +651,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     startBelvaRainbetWatch(readyClient, pool);
     void registerHuntCommand(readyClient).then(() => startBelvaHunt(readyClient, pool)).catch((error) => console.error("[nozebot] hunt Belva", error));
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
-    void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive.baseUrl)).catch((error) => console.error("[nozebot] tournoi Belva", error));
+    void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive)).catch((error) => console.error("[nozebot] tournoi Belva", error));
   });
   client.on(Events.InteractionCreate, (interaction) => {
     console.log("[nozebot] interaction reçue", {
