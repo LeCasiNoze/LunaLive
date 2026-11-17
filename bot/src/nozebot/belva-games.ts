@@ -3,6 +3,9 @@ import {LunaLiveApiError,bcoinRequest,type LunaLiveApiConfig,type LunaLiveBlackj
 import {renderBlackjackTable} from './blackjack-renderer.js';
 import {revealCoinSlot} from './coin-reveal.js';
 import {formatCoinSlot} from './commands.js';
+import {linkPrompt} from './belva-link.js';
+import {isApproved} from './belva-approval.js';
+import type {Pool} from 'pg';
 
 // Mini-jeux du Discord de Belva en BCoins : mêmes jeux et même affichage que les NozeCoins du Discord LeCasiNoze.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -53,7 +56,7 @@ function errorText(e:unknown){
   return 'Action non confirmée. Vérifie ton solde avec **/bcoins** avant de réessayer.';
 }
 
-export async function handleBelvaGames(interaction:Interaction,config:LunaLiveApiConfig):Promise<boolean>{
+export async function handleBelvaGames(interaction:Interaction,config:LunaLiveApiConfig,pool?:Pool):Promise<boolean>{
   if(interaction.guildId!==GUILD_ID())return false;
   if(interaction.isButton()&&interaction.customId.startsWith('belva:bj:')){
     const [,,sessionId,move]=interaction.customId.split(':');
@@ -66,7 +69,9 @@ export async function handleBelvaGames(interaction:Interaction,config:LunaLiveAp
   const cmd=interaction.commandName;
   await interaction.deferReply({ephemeral:cmd==='bcoins'||cmd==='claim'});
   const edit=(p:Payload)=>interaction.editReply(p);
-  await play(cmd,config,interaction.user,interaction.id,edit,edit);
+  // La carte « relie ton compte » reste privée même quand la commande répond en public (/blackjack, /slot).
+  const privately=async(p:Payload)=>{await interaction.deleteReply().catch(()=>undefined);return interaction.followUp({...p,ephemeral:true});};
+  await play(cmd,config,interaction.user,interaction.id,edit,edit,pool,privately);
   return true;
 }
 
@@ -74,17 +79,17 @@ type Payload={content?:string;embeds?:EmbedBuilder[];components?:ActionRowBuilde
 const TEXT=/^[/!](blackjack|bj|claim|slot|bcoins|solde)\s*$/i;
 
 // Sur mobile, « /blackjack » part souvent en message texte si la commande n'est pas choisie dans la liste : on y répond pareil.
-export async function handleBelvaGameMessage(message:Message,config:LunaLiveApiConfig):Promise<boolean>{
+export async function handleBelvaGameMessage(message:Message,config:LunaLiveApiConfig,pool?:Pool):Promise<boolean>{
   const m=TEXT.exec(message.content.trim());
   if(!m||message.author.bot||message.guildId!==GUILD_ID())return false;
   const cmd=({bj:'blackjack',solde:'bcoins'} as Record<string,string>)[m[1].toLowerCase()]??m[1].toLowerCase();
   let sent:Message|null=null;
   const first=async(p:Payload)=>{sent=await message.reply({...p,allowedMentions:{parse:[],repliedUser:false}});return sent;};
-  await play(cmd,config,message.author,message.id,first,p=>sent?sent.edit(p):first(p));
+  await play(cmd,config,message.author,message.id,first,p=>sent?sent.edit(p):first(p),pool);
   return true;
 }
 
-async function play(cmd:string,config:LunaLiveApiConfig,user:{id:string;username:string},receipt:string,send:(p:Payload)=>Promise<unknown>,edit:(p:Payload)=>Promise<unknown>){
+async function play(cmd:string,config:LunaLiveApiConfig,user:{id:string;username:string},receipt:string,send:(p:Payload)=>Promise<unknown>,edit:(p:Payload)=>Promise<unknown>,pool?:Pool,privately=send){
   try{
     if(cmd==='blackjack'){const r=await bcoinRequest<{game:Bj}>(config,user.id,'bj-start');await send(await bjMessage(r.game,user.username));return;}
     if(cmd==='bcoins'){
@@ -107,5 +112,8 @@ Mise : ${r.bet} · Retour : ${r.payout} ${COIN}
 Solde : **${r.balance}** ${COIN}`;
     // Le débit et le résultat sont déjà enregistrés avant l'animation.
     try{if(r.replayed)await send({content:final});else{let n=0;await revealCoinSlot(t=>(n++?edit:send)({content:t}),String(r.art),final);}}catch{await edit({content:final}).catch(()=>undefined);}
-  }catch(e){await send({content:errorText(e)}).catch(()=>undefined);}
+  }catch(e){
+    if(e instanceof LunaLiveApiError&&e.code==='rumble_not_linked'&&await isApproved(pool,'link-prompt')){await privately({content:'',...linkPrompt('Tes **BCoins** sont attachés à ton pseudo Rumble : relie ton compte pour jouer.')}).catch(()=>undefined);return;}
+    await send({content:errorText(e)}).catch(()=>undefined);
+  }
 }

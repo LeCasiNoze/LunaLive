@@ -67,3 +67,16 @@ export function linkDm(t:{live:boolean;liveUrl:string;videoUrl:string}){
     new ButtonBuilder().setCustomId(CHECK_BUTTON).setStyle(ButtonStyle.Success).setLabel('Vérifier mon commentaire').setEmoji('✅'));
   return {embed,buttons};
 }
+
+// Réponse quand une commande a besoin du compte Rumble relié (/blackjack, /claim, /slot, /bcoins, /tournoi…).
+export function linkPrompt(reason:string){
+  return {embeds:[new EmbedBuilder().setColor(0x19d3d3).setTitle('🔗 Relie ton compte Rumble').setDescription([
+      reason,'',
+      '**30 secondes, une seule fois :** clique sur **Lier mon Rumble**. Le bot t’envoie une commande en message privé :',
+      '> 🟢 Belva en live → colle-la dans son chat Rumble',
+      '> ⚫ Hors live → poste-la en commentaire sous sa dernière vidéo, puis clique sur **Vérifier**',
+    ].join('\n')).setFooter({text:'Belva • tes BCoins, ton XP et tes tickets sont attachés à ton pseudo Rumble'})],
+    components:[new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(LINK_BUTTON).setStyle(ButtonStyle.Primary).setLabel('Lier mon Rumble').setEmoji('🔗'),
+      new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Voir le live').setEmoji('🟢').setURL(`${CHANNEL_URL}/live`))]};
+}

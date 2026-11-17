@@ -499,7 +499,7 @@ async function logMemberDeparture(member: GuildMember | PartialGuildMember, conf
 async function routeInteraction(interaction: Interaction, config: NozeBotConfig, pool?: Pool): Promise<void> {
   try {
     if (await handleBelvaLink(interaction, config.commands.lunaLive)) return;
-    if (await handleBelvaGames(interaction, config.commands.lunaLive)) return;
+    if (await handleBelvaGames(interaction, config.commands.lunaLive, pool)) return;
     if (await handleBelvaTournament(interaction, pool)) return;
     if (await handleBelvaAgenda(interaction, pool)) return;
     if (await handleBelvaHunt(interaction, pool, config.commands.lunaLive)) return;
@@ -546,7 +546,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   const profileCooldown=new Map<string,number>();
   client.on(Events.MessageCreate,message=>{
     if(message.guildId===(process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668')&&!message.author.bot){
-      void handleBelvaGameMessage(message,config.commands.lunaLive).catch(e=>console.error('[nozebot] commande texte Belva',e));
+      void handleBelvaGameMessage(message,config.commands.lunaLive,pool).catch(e=>console.error('[nozebot] commande texte Belva',e));
       return;
     }
     if(message.author.bot||message.guildId!==config.guildId||!/^!(?:(profil|solde|points|shop|help|insta|youtube)\s*|ameliorer (claim|cooldown|rain|slot) [1-3])$/i.test(message.content))return;

@@ -7,7 +7,7 @@ import {
 import type {Pool} from 'pg';
 import {ROLE_SPEC,MANUAL_SPEC,RETIRED,applyRoleSpec,hex} from './belva-role-spec.js';
 import {welcomeCard} from './belva-welcome.js';
-import {CHECK_TEXT,linkDm} from './belva-link.js';
+import {CHECK_TEXT,linkDm,linkPrompt} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
 import {BRACKET_URL,BUY_CENTS,bracketCard,championText,confirmCard,eliminationText,priceOption,registrationCard,type BonusOption,type LiveState,type Slot} from './belva-tournament.js';
@@ -178,6 +178,8 @@ export const DESIGNS:Design[]=[
         '> 💸 Dépôt remboursé · **1 XP par €** déposé (les dépôts offerts ne comptent pas)','> 🌧️ Wager Rainbet · **1 XP par 10 $** misés',
         '-# Les quêtes (/quetes) arriveront ensuite avec leurs boutons et le MP du lundi.'].join('\n')),
     ]},
+  {key:'link-prompt',title:'Message « relie ton compte » avec bouton',where:'Réponse privée quand le compte Rumble n’est pas relié : /blackjack, /slot, /claim, /bcoins, /tournoi',
+    note:'Le bouton lance directement la liaison (même parcours que /lier, MP compris).',previews:async()=>[{...linkPrompt('Tes **BCoins** sont attachés à ton pseudo Rumble : relie ton compte pour jouer.'),allowedMentions:{parse:[]}} as Preview]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){

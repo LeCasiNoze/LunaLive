@@ -48,13 +48,12 @@ export function questJournal(week:number,p:Record<string,number>,xp:number,chann
     blackjack:{type:2,style:5,label:'Mini-jeux',emoji:{name:'🃏'},url:url(channels.games)},
     casino:{type:2,style:5,label:'Les offres',emoji:{name:'🎁'},url:url(channels.offers)},
   };
-  const todo=QUESTS.filter(q=>!done(q)).map(q=>action[q.key]!).slice(0,5);
   return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:l?spec(l.grade.key).color:0x19D3D3,components:[
     {type:10,content:`# 📜 Journal de quêtes · semaine ${week}`},
     {type:10,content:`${l?l.label:'Pas encore de grade'} · **${xp.toLocaleString('fr-FR')} XP** · ${doneN}/${QUESTS.length} quêtes terminées\n\`${bar(Math.round(doneN/QUESTS.length*100))}\``},
     {type:14,divider:true,spacing:1},
-    {type:10,content:QUESTS.map(q=>`${done(q)?'✅':'⬜'} **${q.label}**${q.need>1?` · ${Math.min(p[q.key]??0,q.need)}/${q.need}`:''}\n-# ${q.reward}`).join('\n')},
-    ...(todo.length?[{type:1,components:todo}]:[]),
+    ...QUESTS.map(q=>{const t={type:10,content:`${done(q)?'✅':'⬜'} **${q.label}**${q.need>1?` · ${Math.min(p[q.key]??0,q.need)}/${q.need}`:''}\n-# ${q.reward}`};
+      return done(q)?t:{type:9,components:[t],accessory:action[q.key]};}),
     {type:14,divider:false,spacing:1},
     {type:10,content:'-# Nouvelles quêtes chaque lundi à 0 h. Les quêtes « une seule fois » ne reviennent pas. Tape /quetes à tout moment.'},
   ]}] as never[]};

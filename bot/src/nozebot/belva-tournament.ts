@@ -5,6 +5,7 @@ import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {seasonCard,type SeasonRow} from './belva-progress-designs.js';
 import {belvaTournamentState,type LunaLiveApiConfig} from './lunalive-api.js';
+import {linkPrompt} from './belva-link.js';
 
 // Tournoi du samedi de Belva : chaque joueur réserve UNE machine (jamais deux fois la même dans un tournoi)
 // et choisit son bonus. Tous les bonus s'achètent au même prix ; la mise découle du multiplicateur d'achat.
@@ -185,7 +186,8 @@ export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<bo
     const t=await current(pool);
     if(!t||t.status!=='open'){await i.reply({ephemeral:true,content:'Aucune inscription ouverte pour l’instant. Les inscriptions ouvrent avant chaque tournoi du samedi.'});return true;}
     const linked=(await pool.query(`SELECT 1 FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[i.user.id]).catch(()=>({rowCount:0}))).rowCount;
-    if(!linked){await i.reply({ephemeral:true,content:'Pour t’inscrire, relie d’abord ton compte Rumble avec **/lier** (ou dans 🔗︱lier-mon-compte).'});return true;}
+    if(!linked){await i.reply(await isApproved(pool,'link-prompt')?{ephemeral:true,...linkPrompt('Le tournoi est réservé aux comptes Rumble reliés : c’est ton pseudo Rumble qui s’affiche dans le bracket et dans le chat.')}
+      :{ephemeral:true,content:'Pour t’inscrire, relie d’abord ton compte Rumble avec **/lier** (ou dans 🔗︱lier-mon-compte).'});return true;}
     const q=i.options.getString('machine',true);
     const slot=(await searchSlots(pool,q,1))[0];
     if(!slot){await i.reply({ephemeral:true,content:`Je ne trouve pas « ${q.slice(0,60)} ». Tape le début du nom et choisis dans la liste.`});return true;}
