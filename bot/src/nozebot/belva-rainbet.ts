@@ -20,7 +20,7 @@ const ASSETS=new URL('../../assets/belva/',import.meta.url);
 const T=(content:string)=>({type:10,content});
 const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
 const linkBtn=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
-const verifyBtn=(label='Vérifier')=>({type:2,style:3,label,emoji:{name:'✅'},custom_id:ID.verify});
+const verifyBtn=(label='Vérifier',id=ID.verify)=>({type:2,style:3,label,emoji:{name:'✅'},custom_id:id});
 
 // Carte du salon Rainbet, partenaire principal : même format que les autres casinos, en plus mis en avant.
 export function rainbetCard(){
@@ -39,7 +39,7 @@ export function rainbetCard(){
     SEP(),
     T('### 📋 Comment ça marche\n**1 ·** Crée ton compte avec le bouton **S’inscrire** (le code NIVORANET est déjà dans le lien).\n**2 ·** Clique sur **Vérifier mon compte** et entre ton pseudo Rainbet.\n**3 ·** Joue : ton wager compte automatiquement pour la race du mois.'),
     SEP(),
-    {type:1,components:[linkBtn('S’inscrire sur Rainbet','🌧️',LINK),verifyBtn('Vérifier mon compte'),linkBtn('La race','🏁',race)]},
+    {type:1,components:[linkBtn('S’inscrire sur Rainbet','🌧️',LINK),verifyBtn('Vérifier mon compte',ID.verify+'2'),linkBtn('La race','🏁',race)]},
     SEP(1),
     T('-# 🔞 Les jeux d’argent comportent des risques : endettement, isolement, dépendance. Joueurs Info Service : 09 74 75 13 13.'),
   ]};
@@ -73,7 +73,7 @@ export async function handleBelvaRainbet(i:Interaction,pool?:Pool):Promise<boole
   const cid='customId' in i?String(i.customId):'';
   if(!cid.startsWith(P))return false;
   if(!i.guild||i.guildId!==GUILD_ID())return true;
-  if(i.isButton()&&cid===ID.verify){await i.showModal(belvaRainbetModal());return true;}
+  if(i.isButton()&&(cid===ID.verify||cid===ID.verify+'2')){await i.showModal(belvaRainbetModal());return true;}
   if(!i.isModalSubmit()||cid!==ID.modal)return true;
   await i.deferReply({ephemeral:true});
   if(Date.now()-(lastTry.get(i.user.id)??0)<20_000){await i.editReply('Patiente quelques secondes avant de réessayer.');return true;}
