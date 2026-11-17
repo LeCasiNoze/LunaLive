@@ -10,8 +10,8 @@ import {welcomeCard} from './belva-welcome.js';
 import {CHECK_TEXT,linkDm} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
-import {drawAnnouncement} from './belva-tombola.js';
-import {GRADES,XP_RULES,gradeUpCard,questJournalCard,seasonCard} from './belva-progress-designs.js';
+import {BUY_CENTS,bonusOptions,confirmCard,registrationCard,searchSlots} from './belva-tournament.js';
+import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
@@ -25,7 +25,7 @@ const P='belva:rv:';
 const demo=(c:Ctx)=>({id:c.botId,avatarUrl:'https://cdn.discordapp.com/embed/avatars/2.png'});
 
 type Preview=MessageCreateOptions;
-type Ctx={botId:string;channel:(suffix:string)=>string|undefined};
+type Ctx={botId:string;pool:Pool;channel:(suffix:string)=>string|undefined};
 type Design={key:string;title:string;where:string;note?:string;previews:(c:Ctx)=>Promise<Preview[]>};
 const text=(content:string):Preview=>({content,allowedMentions:{parse:[]}});
 const v2=(p:{flags?:unknown;components?:unknown;files?:unknown}):Preview=>({...p,allowedMentions:{parse:[]}} as Preview);
@@ -80,16 +80,26 @@ export const DESIGNS:Design[]=[
       hands:[{cards:[{rank:'9',suit:'♥'},{rank:'7',suit:'♣'}],total:16,bet:20,doubled:false,finished:false,active:true}],sideBetLines:[],
       actions:{hit:true,stand:true,double:true,split:false},balance:280,cooldownEndsAt:new Date(0).toISOString(),result:null} as never,'Pseudo') as Preview]},
   {key:'rewards',title:'Carte des récompenses',where:'🏆︱récompenses · déjà en ligne',previews:async()=>[v2(wrap(rewardsCard()))]},
-  {key:'tombola',title:'Tombola : code en live, ticket, tirage',where:'Chat Rumble de Belva + Discord · dès le 1er décembre',previews:async()=>[
-    text('**Dans le chat Rumble (toutes les 40 min de live) :**\n> 🎟️ Code tombola : K7QX — tape /code K7QX sur le Discord de Belva dans les 10 min = 1 ticket pour le tirage du dimanche (2 × 15 €). Discord : !discord · 18+'),
-    text('**Réponse à /code (visible par lui seul) :**\n> 🎟️ **+1 ticket !** Tu en as **3** pour le tirage du dimanche 7 décembre à 23 h (2 gagnants à 15 €).'),
-    text('**Annonce du tirage (salon giveaways) :**\n'+drawAnnouncement(['111111111111111111','222222222222222222'],47))]},
-  {key:'grades',title:'Grades : barème XP et message de passage',where:'Salon général · quand un membre change de grade',note:'Maquette avec un exemple : rien n’est actif.',previews:async c=>[
-    text(['### 📈 Barème proposé',...GRADES.map(g=>`> ${ROLE_SPEC.find(r=>r.key===g.key)!.name} · **${g.xp.toLocaleString('fr-FR')} XP**${'deposit' in g&&g.deposit?' · dépôt vérifié requis':''} · ${g.perk}`),
+  {key:'grades',title:'Grades : 5 sous-niveaux, barème XP et messages de passage',where:'Salon général · quand un membre monte de niveau',note:'Maquette avec un exemple : rien n’est actif.',previews:async c=>[
+    text(['### 📈 Paliers (XP cumulée)',...GRADES.map(g=>{const ls=levelThresholds().filter(l=>l.grade.key===g.key);
+      return `> ${ROLE_SPEC.find(r=>r.key===g.key)!.name} · ${ls.map(l=>`${['I','II','III','IV','V'][l.tier-1]} ${l.xp.toLocaleString('fr-FR')}`).join(' · ')}${'deposit' in g&&g.deposit?' · dépôt vérifié requis':''}`;}),
+      '### 🎁 Avantages par grade',...GRADES.map(g=>`> ${ROLE_SPEC.find(r=>r.key===g.key)!.name} · ${g.perk}`),
       '### ⚡ Gagner de l’XP',...XP_RULES.map(([a,b])=>`> ${a} · **${b}**`)].join('\n')),
-    v2(gradeUpCard(demo(c),'or',1640))]},
+    text('**Nouveau grade (Bronze → Fer, Fer → Or…) :**'),v2(gradeUpCard(demo(c),9_000)),
+    text('**Simple sous-niveau (Or I → Or II…) :**'),{...tierUpLine(c.botId,11_640),allowedMentions:{parse:[]}}]},
   {key:'quests',title:'Journal de quêtes',where:'Réponse privée à /quetes',note:'Maquette avec un exemple : rien n’est actif.',previews:async()=>[v2(questJournalCard(49))]},
-  {key:'season',title:'Classement de la saison du tournoi',where:'Salon tournoi · mis à jour après chaque tournoi du samedi',note:'Maquette avec des pseudos fictifs : rien n’est actif.',previews:async()=>[v2(seasonCard('décembre'))]},
+  {key:'season',title:'Classement de la saison du tournoi',where:'🏅︱classement-saison · réécrit après chaque tournoi, figé à la fin du mois (historique)',note:'Pseudos fictifs. Le détail montre chaque place obtenue ; un absent compte juste dans le « 3/4 ».',previews:async()=>[v2(seasonCard(SEASON_EXAMPLE))]},
+  {key:'tournament',title:'Tournoi : inscriptions /tournoi et choix du bonus',where:'⚔️︱tournoi · /tournoi + nom de la machine (autocomplétion), puis confirmation privée',
+    note:`Prix d’achat commun : ${(BUY_CENTS()/100).toLocaleString('fr-FR')} € par bonus (modifiable à l’ouverture). La mise découle du multiplicateur du bonus. Une machine ne peut être prise qu’une fois.`,previews:async c=>{
+    const pick=async(name:string,bonus:number)=>{const s=(await searchSlots(c.pool,name,1))[0];if(!s)return null;const o=(await bonusOptions(c.pool,s))[bonus]??(await bonusOptions(c.pool,s))[0]!;
+      return {s,o,e:{discord_id:c.botId,display_name:'Pseudo',slot_name:s.name,slot_key:s.key,provider:s.provider,image_url:s.image,bonus_label:o.label,multiplier:o.multiplier?String(o.multiplier):null,bet_cents:o.betCents,cost_cents:o.costCents,place:null}};};
+    const rows=(await Promise.all([pick('wanted dead or a wild',1),pick('fruit party',0),pick('le bandit',0),pick('sugar rush 1000',0)])).filter(x=>x!==null);
+    const first=rows[0]!;
+    return [text('**Étape 1 · le joueur tape `/tournoi wanted` et choisit dans la liste. Il voit (lui seul) :**'),
+      {...confirmCard(first.s,await bonusOptions(c.pool,first.s),first.o.id),allowedMentions:{parse:[]}} as Preview,
+      text('**Si la machine est déjà prise :**'),{...confirmCard(first.s,[],null,c.botId),allowedMentions:{parse:[]}} as Preview,
+      text('**Étape 2 · la carte des inscriptions dans ⚔️︱tournoi :**'),
+      {...registrationCard({title:'Tournoi du samedi 6 décembre',status:'open',buy_cents:BUY_CENTS()},rows.map(r=>r.e)),allowedMentions:{parse:[]}} as Preview];}},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
@@ -123,7 +133,12 @@ export async function ensureReviews(client:Client,pool?:Pool){
   const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
   const channel=await reviewChannel(guild);
   const chans=await guild.channels.fetch();
-  const ctx:Ctx={botId:client.user!.id,channel:suffix=>chans.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('︱'+suffix))?.id};
+  const ctx:Ctx={botId:client.user!.id,pool,channel:suffix=>chans.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('︱'+suffix))?.id};
+  // Designs retirés du code (ex. tombola) : leurs fiches disparaissent du salon.
+  for(const old of (await pool.query(`SELECT key,message_ids FROM belva_design_reviews WHERE NOT (key=ANY($1::text[]))`,[DESIGNS.map(d=>d.key)])).rows){
+    for(const id of old.message_ids??[])await channel.messages.delete(id).catch(()=>undefined);
+    await pool.query(`DELETE FROM belva_design_reviews WHERE key=$1`,[old.key]);forgetApproval(old.key);
+  }
   for(const [i,d] of DESIGNS.entries()){
     const previews=await d.previews(ctx);const version=versionOf(d,previews);
     const row=(await pool.query(`SELECT * FROM belva_design_reviews WHERE key=$1`,[d.key])).rows[0];

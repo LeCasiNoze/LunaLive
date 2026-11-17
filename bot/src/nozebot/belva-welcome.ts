@@ -24,7 +24,7 @@ export function welcomeCard(member:{id:string;avatarUrl:string},count:number,cha
     GAP,
     step('🎁 1 · Ton bonus','Jusqu’à **30 € remboursés** ou **20 € offerts** sur ton 1er dépôt.',go('Les offres','🎁',channels.offers)),
     GAP,
-    step('🔗 2 · Relie ton Rumble','Gagne des **BCoins** et des **tickets de tombola**.',{type:2,style:1,label:'Lier',emoji:{name:'🔗'},custom_id:LINK_BUTTON}),
+    step('🔗 2 · Relie ton Rumble','Gagne des **BCoins** et de l’**XP** pour monter en grade.',{type:2,style:1,label:'Lier',emoji:{name:'🔗'},custom_id:LINK_BUTTON}),
     GAP,
     step('🔔 3 · Les notifs','Sois prévenu dès que Belva lance un live.',go('Activer','🔔',channels.notifs)),
     ...(channels.games?[GAP,step('🃏 4 · Les mini-jeux','Blackjack et machine à sous avec tes BCoins.',go('Jouer','🃏',channels.games))]:[]),
