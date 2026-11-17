@@ -5,11 +5,9 @@ import {PermissionFlagsBits as P,type Guild} from 'discord.js';
 // La couleur affichée d'un membre est celle de son rôle coloré le plus haut : staff > grade > palier > casino > notifs.
 export type RoleSpec={key:string;id?:string;name:string;color:number;shade:string;hoist:boolean;perms:bigint|null;group:string;auto:string};
 
-const MOD=P.ViewAuditLog|P.KickMembers|P.BanMembers|P.ModerateMembers|P.ManageMessages|P.ManageNicknames|P.ManageThreads
-  |P.MuteMembers|P.DeafenMembers|P.MoveMembers|P.PinMessages|P.BypassSlowmode|P.PrioritySpeaker;
 
 export const ROLE_SPEC:RoleSpec[]=[
-  {key:'videur',id:'1483165106140352632',name:'🛡️ Videur',color:0xE8475F,shade:'Cordon de velours',hoist:true,perms:MOD,group:'Staff',auto:'À la main (modération)'},
+  {key:'videur',id:'1483165106140352632',name:'🛡️ Videur',color:0xE8475F,shade:'Cordon de velours',hoist:true,perms:P.Administrator,group:'Staff',auto:'À la main (admins : LeCasiNoze, Ricou)'}, // Videur = admins (demande de Lucas, 17/11/2026)
   {key:'blva',id:'1483154059534794883',name:'🔱 BLVA',color:0xF9F871,shade:'Néon citron',hoist:true,perms:0n,group:'Team BLVA',auto:'Automatique · pseudo Rumble « BLVA… » + compte lié'},
   {key:'obsidienne',name:'🖤 Obsidienne',color:0x9B7BD4,shade:'Reflet d’obsidienne',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (dépôt vérifié requis)'},
   {key:'diamant',name:'💎 Diamant',color:0xBFF4FF,shade:'Éclat de diamant',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (dépôt vérifié requis)'},

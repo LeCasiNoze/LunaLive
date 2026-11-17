@@ -56,9 +56,9 @@ ${parts.join('')}<text x="48" y="${H-24}" font-family="DejaVu Sans,Segoe UI,Aria
 
 const PERMS_TEXT=[
   '### 🔐 Permissions',
-  '> **🛡️ Videur** : modération seulement (messages, exclusion temporaire, expulsion, bannissement, pseudos, vocal, journal d’audit). Plus de gestion des emojis ni des événements.',
+  '> **🛡️ Videur** : **administrateur**. Ce sont les admins du serveur (LeCasiNoze, Ricou) ; Belva est propriétaire.',
   '> **🎟️ Invité** et tous les autres rôles : **aucune permission propre**, ils héritent de @everyone. Retire à l’Invité la création d’emojis et d’événements qu’il avait.',
-  '> **👑 Patron** et le rôle de ricou_ (« nouveau rôle », administrateur) sont au-dessus du bot : à régler à la main, ou remonte le rôle « Bot » tout en haut.',
+  '> **👑 Patron** et « nouveau rôle » sont au-dessus du bot : à régler à la main. « nouveau rôle » fait doublon avec Videur et peut être supprimé.',
   `### 🧹 Anciens rôles MEE6\n> ${RETIRED.map(r=>`${r.name} → ${r.to?ROLE_SPEC.find(s=>s.key===r.to)!.name:'supprimé (0 membre)'}`).join(' · ')}`,
   '-# ✅ Valider applique tout automatiquement (noms, couleurs, ordre, permissions, migration) et poste le compte rendu ici.',
 ].join('\n');
