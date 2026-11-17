@@ -12,13 +12,18 @@ const SLOTS={matin:'🌅 10 h',soir:'🌙 19 h 30'} as const;
 // Qui stream : le matin LeCasiNoze, le soir Belva (comptes Discord).
 export const HOSTS={matin:'682472610868887567',soir:'506048442813120513'} as const;
 type Slot=keyof typeof SLOTS;
-// Programme type ; à ajuster ici quand le planning change.
-export const WEEK:{[d in typeof DAYS[number]]?:{event:string;matin?:string;soir?:string}}={
-  mercredi:{event:'🎯 Hunt des viewers',matin:'farm du hunt (calls avec /hunt)',soir:'ouverture du hunt'},
-  samedi:{event:'⚔️ Tournoi',soir:'duels du tournoi (tirage du bracket à 18 h)'},
-  dimanche:{event:'🎉 Giveaways'},
+// Programme type (validé avec Belva le 18/11/2026) ; null = pas de stream sur ce créneau.
+export const WEEK:{[d in typeof DAYS[number]]:{event?:string;matin:string|null;soir:string|null}}={
+  lundi:{matin:null,soir:'stream raw Rainbet'},
+  mardi:{matin:'stream raw Rainbet',soir:'start 2K'},
+  mercredi:{event:'🎯 Hunt des viewers',matin:'farm du hunt (fais ton call dans 🎯 hunt)',soir:'ouverture du hunt'},
+  jeudi:{matin:'stream',soir:'stream raw Rainbet'},
+  vendredi:{matin:'stream raw Rainbet',soir:'start 2K'},
+  samedi:{event:'⚔️ Tournoi',matin:'stream',soir:'duels du tournoi (tirage du bracket à 18 h)'},
+  dimanche:{matin:'stream raw Rainbet',soir:null},
 };
 const T=(content:string)=>({type:10,content});
+const channelUrl=(id?:string)=>`https://discord.com/channels/${GUILD_ID()}${id?'/'+id:''}`;
 const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
 
 let ready:Promise<unknown>|null=null;
@@ -42,24 +47,26 @@ const label=(iso:string)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'UTC',day:'n
 
 type Note={day:string;slot:string;kind:'absent'|'note';who:string|null;text:string|null};
 const parisDay=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())===monday?parisDay():null){
+export function agendaCard(monday:string,notes:Note[],today=mondayOf(new Date())===monday?parisDay():null,ch:{hunt?:string;tournament?:string}={}){
   const lines=DAYS.map((d,i)=>{
     const iso=addDays(monday,i),w=WEEK[d],ns=notes.filter(n=>n.day===iso);
     const slot=(s:Slot)=>{
       const abs=ns.filter(n=>n.kind==='absent'&&(n.slot===s||n.slot==='journee'));
-      const what=w?.[s]??'stream';
+      const what=w[s];
+      if(what===null)return `> ${SLOTS[s]} · *pas de stream*`;
       return `> ${SLOTS[s]} · <@${HOSTS[s]}> · ${what}${abs.length?` · ⚠️ ${abs.map(a=>`${a.who} absent`).join(', ')}`:''}`;
     };
     const extra=ns.filter(n=>n.kind==='note').map(n=>`> 📝 ${n.text}`);
-    const head=`**${iso===today?'▶️ ':''}${d[0]!.toUpperCase()+d.slice(1)} ${label(iso)}**${w?` · ${w.event}`:''}`;
+    const head=`**${iso===today?'▶️ ':''}${d[0]!.toUpperCase()+d.slice(1)} ${label(iso)}**${w.event?` · ${w.event}`:''}`;
     return [head,slot('matin'),slot('soir'),...extra].join('\n');
   });
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:0x19D3D3,components:[
     T(`# 📅 Agenda · semaine du ${label(monday)}`),
-    T(`Deux streams par jour : **10 h** avec <@${HOSTS.matin}> et **19 h 30** avec <@${HOSTS.soir}>. Les events sont indiqués à côté du jour.`),
+    T(`Le matin à **10 h** avec <@${HOSTS.matin}>, le soir à **19 h 30** avec <@${HOSTS.soir}>. Les events sont indiqués à côté du jour. Le dimanche soir, Belva se repose.`),
     SEP(),
     T(lines.slice(0,4).join('\n\n')),SEP(1,false),T(lines.slice(4).join('\n\n')),
     SEP(),
+    {type:1,components:[{type:2,style:5,label:'Faire mon call (hunt)',emoji:{name:'🎯'},url:channelUrl(ch.hunt)},{type:2,style:5,label:'M’inscrire au tournoi',emoji:{name:'⚔️'},url:channelUrl(ch.tournament)}]},
     T('-# Le staff met l’agenda à jour avec /agenda. Les horaires peuvent bouger : suivez 🔔 les notifications live.'),
   ]}] as never[]};
 }
@@ -91,7 +98,8 @@ export async function refreshAgenda(client:Client,pool:Pool){
   let channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name===CHANNEL_NAME) as TextChannel|undefined;
   channel??=await guild.channels.create({name:CHANNEL_NAME,type:ChannelType.GuildText,parent:INFOS_CATEGORY,topic:'Le programme de la semaine : streams, hunt, tournoi, giveaways.'});
   const monday=mondayOf(new Date());
-  const card=agendaCard(monday,await weekNotes(pool,monday));
+  const find=(n:string)=>all.find(c=>c?.type===ChannelType.GuildText&&c.name===n)?.id;
+  const card=agendaCard(monday,await weekNotes(pool,monday),undefined,{hunt:find('🎯︱hunt'),tournament:find('⚔️︱tournoi')});
   const row=(await pool.query(`SELECT * FROM belva_agenda_weeks WHERE week=$1`,[monday])).rows[0];
   const msg=row?await channel.messages.fetch(row.message_id).catch(()=>null):null;
   if(msg)await msg.edit(card);

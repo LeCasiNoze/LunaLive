@@ -1,5 +1,5 @@
 import {
-  ButtonBuilder,ButtonStyle,ChannelType,MessageFlags,PermissionFlagsBits,SlashCommandBuilder,StringSelectMenuBuilder,type Client,type Guild,type Interaction,type TextChannel,
+  ButtonBuilder,ButtonStyle,ChannelType,LabelBuilder,MessageFlags,ModalBuilder,TextInputBuilder,TextInputStyle,PermissionFlagsBits,SlashCommandBuilder,StringSelectMenuBuilder,type Client,type Guild,type Interaction,type TextChannel,
 } from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
@@ -85,7 +85,7 @@ const entriesOf=async(pool:Pool,id:number)=>(await pool.query(`SELECT * FROM bel
 
 // Carte des inscriptions : une ligne illustrée par machine (Discord limite un message à 40 composants).
 export function registrationCard(t:{title:string;status:string;buy_cents:number},entries:Entry[]){
-  const head=t.status==='open'?`🟢 **Inscriptions ouvertes** · tape **/tournoi** puis le nom de ta machine`
+  const head=t.status==='open'?`🟢 **Inscriptions ouvertes** · clique sur **S’inscrire** (ou tape **/tournoi**) puis donne ta machine`
     :t.status==='closed'?'🔒 **Inscriptions fermées** · bonne chance à tous !':'🏁 **Tournoi terminé** · résultats ci-dessous';
   const line=(e:Entry,i:number)=>`**${e.place?(e.place===1?'🥇':e.place===2?'🥈':e.place===3?'🥉':`${e.place}ᵉ`):`${i+1} ·`} ${e.slot_name}** · ${e.bonus_label}\n-# ${e.multiplier?`${Number(e.multiplier)}x · mise ${eur(e.bet_cents!)} · `:''}<@${e.discord_id}>`;
   // 10 lignes illustrées (40 composants max par message), puis une liste texte plafonnée.
@@ -97,7 +97,7 @@ export function registrationCard(t:{title:string;status:string;buy_cents:number}
       :[T('Aucun inscrit pour l’instant : sois le premier !')]),
     ...(rest.length?[SEP(1,false),T(`${rest.map((e,i)=>line(e,i+10)).join('\n')}${more>0?`\n-# … et ${more} autres inscrits`:''}`.slice(0,3000))]:[]),
     SEP(),
-    {type:1,components:[{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
+    {type:1,components:[...(t.status==='open'?[{type:2,style:3,label:'S’inscrire',emoji:{name:'✍️'},custom_id:`${P}join`}]:[]),{type:2,style:5,label:'Voir le tournoi',emoji:{name:'📺'},url:BRACKET_URL}]},
     T(`-# ${entries.length} inscrit${entries.length>1?'s':''} · 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.`),
   ]}] as never[]};
 }
@@ -168,6 +168,9 @@ export async function refreshSeason(client:Client,pool:Pool){
   else if(ch){const m=await ch.send(card);await pool.query(`INSERT INTO belva_seasons(month,label,channel_id,message_id) VALUES($1,$2,$3,$4) ON CONFLICT(month) DO UPDATE SET channel_id=$3,message_id=$4`,[month,monthLabel(now),ch.id,m.id]);}
 }
 
+const linkedRumble=async(pool:Pool,discordId:string)=>!!(await pool.query(`SELECT 1 FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[discordId]).catch(()=>({rowCount:0}))).rowCount;
+const linkReply=async(pool:Pool)=>await isApproved(pool,'link-prompt')?{ephemeral:true,...linkPrompt('Le tournoi est réservé aux comptes Rumble reliés : c’est ton pseudo Rumble qui s’affiche dans le bracket et dans le chat.')}
+  :{ephemeral:true,content:'Pour t’inscrire, relie d’abord ton compte Rumble avec **/lier** (ou dans 🔗︱lier-mon-compte).'};
 export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<boolean>{
   if(i.guildId!==GUILD_ID())return false;
   const id=(i.isButton()||i.isStringSelectMenu()||i.isModalSubmit())?i.customId:'';
@@ -182,13 +185,20 @@ export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<bo
   }
   if(!await isApproved(pool,'tournament')){if(i.isRepliable())await i.reply({ephemeral:true,content:'Le tournoi arrive très bientôt ⚔️'});return true;}
   if(i.isChatInputCommand()&&i.commandName==='tournoi-staff')return staff(i,pool);
-  if(i.isChatInputCommand()){
+  if(i.isButton()&&id===`${P}join`){
     const t=await current(pool);
     if(!t||t.status!=='open'){await i.reply({ephemeral:true,content:'Aucune inscription ouverte pour l’instant. Les inscriptions ouvrent avant chaque tournoi du samedi.'});return true;}
-    const linked=(await pool.query(`SELECT 1 FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[i.user.id]).catch(()=>({rowCount:0}))).rowCount;
-    if(!linked){await i.reply(await isApproved(pool,'link-prompt')?{ephemeral:true,...linkPrompt('Le tournoi est réservé aux comptes Rumble reliés : c’est ton pseudo Rumble qui s’affiche dans le bracket et dans le chat.')}
-      :{ephemeral:true,content:'Pour t’inscrire, relie d’abord ton compte Rumble avec **/lier** (ou dans 🔗︱lier-mon-compte).'});return true;}
-    const q=i.options.getString('machine',true);
+    if(!await linkedRumble(pool,i.user.id)){await i.reply(await linkReply(pool));return true;}
+    await i.showModal(new ModalBuilder().setCustomId(`${P}joinmodal`).setTitle('Inscription au tournoi').addLabelComponents(
+      new LabelBuilder().setLabel('Ta machine').setDescription('Le nom de la slot (ex. Gates of Olympus)').setTextInputComponent(
+        new TextInputBuilder().setCustomId('machine').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(80).setRequired(true))));
+    return true;
+  }
+  if(i.isChatInputCommand()||(i.isModalSubmit()&&id===`${P}joinmodal`)){
+    const t=await current(pool);
+    if(!t||t.status!=='open'){await i.reply({ephemeral:true,content:'Aucune inscription ouverte pour l’instant. Les inscriptions ouvrent avant chaque tournoi du samedi.'});return true;}
+    if(!await linkedRumble(pool,i.user.id)){await i.reply(await linkReply(pool));return true;}
+    const q=i.isChatInputCommand()?i.options.getString('machine',true):i.fields.getTextInputValue('machine');
     const slot=(await searchSlots(pool,q,1))[0];
     if(!slot){await i.reply({ephemeral:true,content:`Je ne trouve pas « ${q.slice(0,60)} ». Tape le début du nom et choisis dans la liste.`});return true;}
     const taken=(await pool.query(`SELECT discord_id FROM belva_tournament_entries WHERE tournament_id=$1 AND slot_key=$2`,[t.id,slot.key])).rows[0]?.discord_id as string|undefined;
@@ -228,8 +238,10 @@ export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<bo
 }
 
 // Tirage automatique le samedi 18 h (heure de Paris) par l'API ; ici : ouverture et réglages.
-const NEXT_SATURDAY=`((date_trunc('week',NOW() AT TIME ZONE 'Europe/Paris')+interval '5 days 18 hours')
-  +CASE WHEN (NOW() AT TIME ZONE 'Europe/Paris')>=date_trunc('week',NOW() AT TIME ZONE 'Europe/Paris')+interval '5 days 18 hours' THEN interval '7 days' ELSE interval '0' END) AT TIME ZONE 'Europe/Paris'`;
+// Premier tournoi le samedi 28 novembre 2026 : pas de tirage avant.
+export const FIRST_DRAW=()=>process.env.BELVA_TOURNAMENT_FIRST_DRAW?.trim()||'2026-11-28T18:00:00+01:00';
+const NEXT_SATURDAY=`GREATEST(((date_trunc('week',NOW() AT TIME ZONE 'Europe/Paris')+interval '5 days 18 hours')
+  +CASE WHEN (NOW() AT TIME ZONE 'Europe/Paris')>=date_trunc('week',NOW() AT TIME ZONE 'Europe/Paris')+interval '5 days 18 hours' THEN interval '7 days' ELSE interval '0' END) AT TIME ZONE 'Europe/Paris','${FIRST_DRAW()}'::timestamptz)`;
 const titleFor=async(pool:Pool)=>{const d=(await pool.query(`SELECT ${NEXT_SATURDAY} AS d`)).rows[0].d as Date;
   return `Tournoi du ${new Intl.DateTimeFormat('fr-FR',{timeZone:'Europe/Paris',weekday:'long',day:'numeric',month:'long'}).format(d)}`;};
 async function openTournament(client:Client,pool:Pool,buyCents:number,by:string,title?:string){
@@ -335,7 +347,9 @@ async function followBracket(client:Client,pool:Pool,config:LunaLiveApiConfig,se
 export function startBelvaTournament(client:Client,pool:Pool|undefined,config:LunaLiveApiConfig){
   if(!pool)return;
   const seen=new Map<number,number>();let busy=false;
-  setInterval(()=>{if(busy)return;busy=true;void schema(pool).then(()=>followBracket(client,pool,config,seen)).catch(e=>console.error('[nozebot] bracket tournoi',e)).finally(()=>{busy=false;});},15_000).unref();
+  // Tout premier tournoi : inscriptions ouvertes d'office dès la validation (tirage au plus tôt le FIRST_DRAW).
+  const ensureFirst=async()=>{if(!(await pool.query(`SELECT 1 FROM belva_tournaments LIMIT 1`)).rowCount&&await isApproved(pool,'tournament'))await openTournament(client,pool,BUY_CENTS(),client.user!.id);};
+  setInterval(()=>{if(busy)return;busy=true;void schema(pool).then(ensureFirst).then(()=>followBracket(client,pool,config,seen)).catch(e=>console.error('[nozebot] bracket tournoi',e)).finally(()=>{busy=false;});},15_000).unref();
   // Fige la saison du mois écoulé même sans nouveau tournoi.
   setInterval(()=>void schema(pool).then(()=>refreshSeason(client,pool)).catch(e=>console.error('[nozebot] saison tournoi',e)),60*60_000).unref();
 }

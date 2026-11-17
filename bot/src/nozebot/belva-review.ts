@@ -15,7 +15,9 @@ import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,seasonCard,ti
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
-import {huntCard} from './belva-hunt.js';
+import {huntCard,huntInfoCard,notEligibleCard} from './belva-hunt.js';
+import {huntReminder,tournamentReminder} from './belva-reminders.js';
+import {belvaRaceCard} from './belva-race.js';
 import {rankText,topCard} from './belva-xp.js';
 import {questJournal} from './belva-quests.js';
 import {tipDm} from './belva-tips.js';
@@ -147,9 +149,9 @@ export const DESIGNS:Design[]=[
       text('**Fin du tournoi :**\n'+championText(c.botId,players[a]!.slot)),
     ];}},
   {key:'agenda',title:'Agenda de la semaine',where:'📅︱agenda (nouveau salon dans Infos) · /agenda absent, note, effacer pour le staff',
-    note:'Exemple avec une absence et une note. Le programme type (hunt mercredi, tournoi samedi, giveaways dimanche) se règle dans belva-agenda.ts.',
-    previews:async()=>{const m=mondayOf(new Date(Date.UTC(2026,11,1,12)));
-      return [v2(agendaCard(m,[{day:'2026-12-02',slot:'matin',kind:'absent',who:'LeCasiNoze',text:null},{day:'2026-12-06',slot:'journee',kind:'note',who:null,text:'Giveaway 50 € à 21 h'}],null))];}},
+    note:'Exemple avec une absence et une note. Programme validé avec Belva le 18/11 : pas de stream lundi matin ni dimanche soir, hunt le mercredi, tournoi le samedi.',
+    previews:async c=>{const m=mondayOf(new Date(Date.UTC(2026,11,1,12)));
+      return [v2(agendaCard(m,[{day:'2026-12-02',slot:'matin',kind:'absent',who:'LeCasiNoze',text:null},{day:'2026-12-06',slot:'journee',kind:'note',who:null,text:'Giveaway 50 € à 21 h'}],null,{hunt:c.channel('hunt'),tournament:c.channel('tournoi')}))];}},
   {key:'hunt',title:'Hunt des viewers du mercredi',where:'🎯︱hunt (nouveau salon dans Récompenses) + /hunt sur Discord + chat LunaLive de LeCasiNoze + chat Rumble de Belva',
     note:'Exemple fictif. Tant que cette fiche n’est pas validée : /hunt répond « bientôt », /hunt (LunaLive), !open et !bonus ne font rien.',previews:async c=>{
     const img=async(q:string)=>exSlot(q)?.image??null;
@@ -190,6 +192,17 @@ export const DESIGNS:Design[]=[
     note:'À la validation : rôle technique 🔓 Accès donné à tous les membres actuels (personne ne perd l’accès), catégories fermées aux non-acceptés, ancien règlement remplacé par la carte ci-dessous. 🌙 Habitué = règlement accepté + Rumble lié (après validation de la fiche Rôles).',
     previews:async c=>[text('**Le règlement (un seul message) :**'),v2(rulesCard()),text('**Après le clic, en privé :**'),v2(notifStep()),v2(linkStep()),
       v2(doneStep({offers:c.channel('toutes-les-offres'),rewards:c.channel('récompenses'),games:c.channel('mini-jeux'),general:c.channel('général')}))]},
+  {key:'hunt-week',title:'Section hunt : calls à l’avance, règles, rappels',where:'🎯︱hunt (carte permanente) + réponse privée + 📢︱annonces (@everyone au lancement, à mi-parcours et 24 h avant)',
+    note:'Premier hunt le mercredi 25 novembre ; les calls sont réservés dès maintenant et entrent dans la file à l’ouverture du farm. Réservé aux 🍾 Carré Or ; les autres reçoivent le message « réservé aux joueurs qui ont déposé ».',
+    previews:async c=>[text('**Carte du salon 🎯︱hunt :**'),v2(huntInfoCard('2026-11-25',[{slot:'Sweet Bonanza',who:'Mise_Max'},{slot:'Wanted Dead or a Wild',who:'Spin_Sam'}],c.channel('toutes-les-offres'))),
+      text('**Si le membre n’est pas Carré Or (en privé) :**'),v2(notEligibleCard(c.channel('toutes-les-offres'))),
+      text('**Rappel dans 📢︱annonces (exemple : la veille) :**'),v2(huntReminder('h24','2026-11-25',new Date(Date.UTC(2026,10,25,18,30)),7,{hunt:c.channel('hunt'),offers:c.channel('toutes-les-offres')}))]},
+  {key:'tournament-reminder',title:'Rappels du tournoi du samedi',where:'📢︱annonces (@everyone au lancement, à mi-parcours et 24 h avant)',
+    note:'Premier tournoi le samedi 28 novembre (tirage à 18 h). Inscriptions ouvertes dès la validation de la fiche Tournoi, qui a maintenant un bouton S’inscrire.',
+    previews:async c=>[v2(tournamentReminder('launch','Tournoi du samedi 28 novembre',new Date(Date.UTC(2026,10,28,17)),3,120,{tournament:c.channel('tournoi')}))]},
+  {key:'race',title:'Wager race Rainbet (nouvelle carte)',where:'🏆︱wager-race · ⚠️ Valider vide le salon et n’y laisse que cette carte',
+    note:'Exemple avec des mises fictives. Le classement réel vient de l’API Rainbet et se met à jour toutes les 5 minutes.',
+    previews:async()=>[v2(await belvaRaceCard([{username:'BelvaaaTV',wagered:12450},{username:'PIAILLE',wagered:8120},{username:'MiseMax',wagered:2310},{username:'SpinSam',wagered:940},{username:'Lucky77',wagered:410}],[],new Date(Date.UTC(2026,10,20,12))))]},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){

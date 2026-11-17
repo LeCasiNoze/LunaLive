@@ -51,13 +51,19 @@ async function finish(c:PoolClient,sid:number,uid:string,row:Row,g:BJGame):Promi
  return {...row,status:'finished',game:g,result};
 }
 
-export async function startCoinBlackjack(pool:Pool,sid:number,uid:string,name:string,discordId:string){
+export class BlackjackCooldown extends Error{constructor(public nextAt:string){super('cooldown');}}
+// cooldownMs : délai minimum entre deux parties (BCoins de Belva) ; 0 = aucun.
+export async function startCoinBlackjack(pool:Pool,sid:number,uid:string,name:string,discordId:string,cooldownMs=0){
  await schema(pool);
  return inTransaction(pool,async c=>{
   await c.query(`INSERT INTO nozecoin_accounts(streamer_id,rumble_user_id,username) VALUES($1,$2,$3) ON CONFLICT(streamer_id,rumble_user_id) DO UPDATE SET username=EXCLUDED.username`,[sid,uid,name.slice(0,80)]);
   await c.query('SELECT 1 FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid]);
   const open=(await c.query(`SELECT * FROM nozecoin_blackjack_sessions WHERE streamer_id=$1 AND discord_user_id=$2 AND status='active' FOR UPDATE`,[sid,discordId])).rows[0] as Row|undefined;
   if(open)return view(open,await balanceOf(c,sid,uid));
+  if(cooldownMs){
+   const last=(await c.query(`SELECT created_at FROM nozecoin_blackjack_sessions WHERE streamer_id=$1 AND discord_user_id=$2 ORDER BY created_at DESC LIMIT 1`,[sid,discordId])).rows[0]?.created_at as Date|undefined;
+   if(last&&Date.now()-new Date(last).getTime()<cooldownMs)throw new BlackjackCooldown(new Date(new Date(last).getTime()+cooldownMs).toISOString());
+  }
   const id=randomUUID();
   await move(c,sid,uid,-COIN_BJ_BET,`bj:${id}:bet`,'blackjack');
   const game=startGame({mainBet:COIN_BJ_BET,pairsBet:0,plus3Bet:0},rng);

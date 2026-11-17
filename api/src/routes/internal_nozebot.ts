@@ -4,7 +4,9 @@ import {linkByComment,linkTargets} from '../belva_link_comment.js';
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
 import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
-import {actCoinBlackjack,startCoinBlackjack,type CoinBjAction} from '../nozecoins/blackjack.js';
+import {BlackjackCooldown,actCoinBlackjack,startCoinBlackjack,type CoinBjAction} from '../nozecoins/blackjack.js';
+// Une partie de blackjack BCoins toutes les 5 minutes par joueur.
+const BELVA_BJ_COOLDOWN_MS=Number(process.env.BELVA_BJ_COOLDOWN_MS)||5*60_000;
 import {UPGRADES,type Upgrade} from '../nozecoins/rules.js';
 import {requestAutomodDiscordLink,automodDiscordProfile,discordProfileSchema} from '../automod-shop/discord-profile.js';
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -67,7 +69,7 @@ internalNozeBotRouter.post('/internal/bot/nozebot/bcoins/:action',requireNozeBot
   const link=await linkedCoins(pool,sid,identity.discordUserId);
   const action=req.params.action;
   if(action==='profile')return res.json({ok:true,profile:await coinsProfile(pool,sid,link.rumble_user_id,link.username)});
-  if(action==='bj-start')return res.json({ok:true,game:await startCoinBlackjack(pool,sid,link.rumble_user_id,link.username,identity.discordUserId)});
+  if(action==='bj-start')return res.json({ok:true,game:await startCoinBlackjack(pool,sid,link.rumble_user_id,link.username,identity.discordUserId,BELVA_BJ_COOLDOWN_MS)});
   if(action==='bj-act'){
    const move=String(req.body?.move||''),session=String(req.body?.sessionId||'');
    if(!['hit','stand','double','split'].includes(move)||!/^[0-9a-f-]{36}$/.test(session))return res.status(400).json({ok:false,error:'bad_action'});
@@ -89,6 +91,7 @@ internalNozeBotRouter.post('/internal/bot/nozebot/bcoins/:action',requireNozeBot
   }
   return res.json(r);
  }catch(e){const code=e instanceof Error?e.message:'';
+  if(e instanceof BlackjackCooldown)return res.status(429).json({ok:false,error:'cooldown',nextAt:e.nextAt});
   if(e instanceof InsufficientCoins)return res.status(409).json({ok:false,error:e.message,balance:e.balance,cost:e.cost,missing:e.cost-e.balance});
   if(['rumble_not_linked','insufficient_coins','session_not_found','session_forbidden','invalid_action'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
  }

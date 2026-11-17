@@ -40,6 +40,7 @@ import { handleBetportalMatch } from './belva-betportal-match.js';
 import { startBelvaTips } from './belva-tips.js';
 import { handleBelvaOnboarding } from './belva-onboarding.js';
 import { startBelvaModeration } from './belva-moderation.js';
+import { startBelvaReminders } from './belva-reminders.js';
 import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './belva-agenda.js';
 import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { handleBelvaHunt, registerHuntCommand, startBelvaHunt } from './belva-hunt.js';
@@ -662,9 +663,10 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     void registerAgendaCommand(readyClient).then(() => startBelvaAgenda(readyClient, pool)).catch((error) => console.error("[nozebot] agenda Belva", error));
     startBelvaRainbetWatch(readyClient, pool);
     startBelvaTips(readyClient, pool);
+    startBelvaReminders(readyClient, pool);
     void registerQuestCommand(readyClient).then(() => startBelvaQuests(readyClient, pool)).catch((error) => console.error("[nozebot] quêtes Belva", error));
     void registerXpCommands(readyClient).then(() => startBelvaXp(readyClient, pool)).catch((error) => console.error("[nozebot] xp Belva", error));
-    void registerHuntCommand(readyClient).then(() => startBelvaHunt(readyClient, pool)).catch((error) => console.error("[nozebot] hunt Belva", error));
+    void registerHuntCommand(readyClient).then(() => startBelvaHunt(readyClient, pool, config.commands.lunaLive)).catch((error) => console.error("[nozebot] hunt Belva", error));
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
     void registerTournamentCommands(readyClient).then(() => startBelvaTournament(readyClient, pool, config.commands.lunaLive)).catch((error) => console.error("[nozebot] tournoi Belva", error));
   });
@@ -755,7 +757,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     catch{console.warn('[nozebot][publications] startup unavailable; retry in 60s');}finally{publicationStarting=false;}};
   const publicationStartup=setInterval(()=>void ensurePublications(),60000);
   void ensurePublications();
-  const stopRainbetRace = startRainbetRace(client);
+  const stopRainbetRace = startRainbetRace(client, pool);
   const gatewayWatchdog = setInterval(() => {
     if (stopped || client.isReady()) {
       gatewayUnavailableSince = 0;

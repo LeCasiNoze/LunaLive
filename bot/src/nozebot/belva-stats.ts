@@ -28,6 +28,21 @@ async function rainbetSignups(since:Date){
   rainbetCache={at:Date.now(),count};return count;
 }
 
+// Postbacks Betportal reçus par NivoraNet (lien partenaire partagé avec LeCasiNoze : tous les joueurs du lien).
+let betportalCache:{at:number;since:number;v:{reg:number;ftd:number}|null}={at:0,since:0,v:null};
+async function betportalPostbacks(since:Date){
+  if(Date.now()-betportalCache.at<10*60_000&&betportalCache.since===since.getTime())return betportalCache.v;
+  const url=process.env.NIVORA_SUPABASE_URL,key=process.env.NIVORA_SUPABASE_KEY;
+  let v:{reg:number;ftd:number}|null=null;
+  if(url&&key){
+    const r=await fetch(`${url}/rest/v1/betportal_deliveries?select=event&event=in.(registration,ftd)&received_at=gte.${encodeURIComponent(since.toISOString())}`,
+      {headers:{apikey:key,Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(15_000)}).catch(()=>null);
+    const rows=r?.ok?await r.json().catch(()=>null) as {event:string}[]|null:null;
+    if(Array.isArray(rows))v={reg:rows.filter(x=>x.event==='registration').length,ftd:rows.filter(x=>x.event==='ftd').length};
+  }
+  betportalCache={at:Date.now(),since:since.getTime(),v};return v;
+}
+
 async function statsChannel(guild:Guild):Promise<TextChannel>{
   const all=await guild.channels.fetch();
   const found=all.find(ch=>ch?.type===ChannelType.GuildText&&ch.name===CHANNEL_NAME);
@@ -60,11 +75,13 @@ export async function buildStats(pool:Pool,guild:Guild,month:{followers_start:nu
   const followers=(await pool.query(`SELECT i.followers_count FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id WHERE lower(s.slug)=$1`,[RUMBLE_SLUG]).catch(()=>({rows:[]}))).rows[0]?.followers_count as number|null|undefined;
   const since=new Date((await pool.query(`SELECT ${MONTH_START} t`)).rows[0].t);
   const rainbet=await rainbetSignups(since);
+  const bp=await betportalPostbacks(since);
   const sum=(m:Map<string,{n:number;eur:number}>)=>[...m.values()].reduce((a,v)=>({n:a.n+v.n,eur:a.eur+v.eur}),{n:0,eur:0});
   const lines=brands().map(b=>{
     if(b.api)return `${b.emoji} **${b.name}** · inscrits ce mois : **${rainbet??'?'}** · comptes vérifiés : **${verified.get(b.id)?.n??0}**`;
     const f=ftd.get(b.id),p=paid.get(b.id),o=offers.get(b.id);
-    return `${b.emoji} **${b.name}** · FTD : **${f?.n??0}** · dépôts : **${f?.eur??0} €** · vérifiés : **${verified.get(b.id)?.n??0}** · offerts : **${o?.n??0}** · versé : **${p?.eur??0} €**`;
+    const pb=b.id==='betportal'&&bp?`\n-# Postbacks Betportal (lien partagé avec LeCasiNoze) : **${bp.reg}** inscrits · **${bp.ftd}** FTD`:'';
+    return `${b.emoji} **${b.name}** · FTD : **${f?.n??0}** · dépôts : **${f?.eur??0} €** · vérifiés : **${verified.get(b.id)?.n??0}** · offerts : **${o?.n??0}** · versé : **${p?.eur??0} €**${pb}`;
   });
   const t=sum(ftd),out=sum(paid);
   const label=new Intl.DateTimeFormat('fr-FR',{month:'long',year:'numeric',timeZone:'Europe/Paris'}).format(new Date());

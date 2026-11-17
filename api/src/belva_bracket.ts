@@ -55,7 +55,8 @@ const NEXT_SATURDAY=(col:string)=>`((date_trunc('week',${col} AT TIME ZONE 'Euro
 export async function drawDue(pool:Pool,announce:(text:string)=>Promise<unknown>){
   await bracketSchema(pool);
   if(!await approved(pool))return;
-  await pool.query(`UPDATE belva_tournaments SET draw_at=${NEXT_SATURDAY('created_at')} WHERE status='open' AND draw_at IS NULL`);
+  const first=process.env.BELVA_TOURNAMENT_FIRST_DRAW?.trim()||'2026-11-28T18:00:00+01:00';
+  await pool.query(`UPDATE belva_tournaments SET draw_at=GREATEST(${NEXT_SATURDAY('created_at')},$1::timestamptz) WHERE status='open' AND draw_at IS NULL`,[first]);
   const due=(await pool.query(`SELECT * FROM belva_tournaments WHERE status='open' AND draw_at<=NOW() ORDER BY id LIMIT 1`)).rows[0] as Row|undefined;
   if(!due)return;
   const ids=(await pool.query(`SELECT discord_id FROM belva_tournament_entries WHERE tournament_id=$1`,[due.id])).rows.map(r=>String(r.discord_id));

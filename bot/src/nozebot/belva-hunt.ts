@@ -1,4 +1,4 @@
-import {ChannelType,MessageFlags,SlashCommandBuilder,type Client,type Interaction,type TextChannel} from 'discord.js';
+import {ChannelType,LabelBuilder,MessageFlags,ModalBuilder,SlashCommandBuilder,StringSelectMenuBuilder,TextInputBuilder,TextInputStyle,type Client,type Interaction,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {BELVA_ROLES} from './belva-roles.js';
@@ -30,7 +30,138 @@ const ERRORS:Record<string,string>={
   already_called:'Tu as déjà utilisé tes calls pour ce hunt (1 machine, 2 à partir du grade 💠 Saphir).',
 };
 
+const P='belva:hunt:';
+const channelUrl=(id?:string)=>`https://discord.com/channels/${GUILD_ID()}${id?'/'+id:''}`;
+// Premier hunt des viewers : le mercredi 25 novembre 2026. D'ici là, les calls sont réservés d'avance.
+const FIRST_HUNT=()=>process.env.BELVA_HUNT_FIRST?.trim()||'2026-11-25';
+export function nextHuntDay(now=new Date()){
+  const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit',weekday:'short'}).formatToParts(now);
+  const g=(t:string)=>p.find(x=>x.type===t)!.value;
+  const wd=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].indexOf(g('weekday'));
+  const today=Date.UTC(Number(g('year')),Number(g('month'))-1,Number(g('day')));
+  const wed=new Date(today+((2-wd+7)%7)*86400e3).toISOString().slice(0,10);
+  return wed<FIRST_HUNT()?FIRST_HUNT():wed;
+}
+export const dayLabel=(iso:string)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'UTC',weekday:'long',day:'numeric',month:'long'}).format(new Date(iso+'T12:00:00Z'));
+export const HUNT_RULES=['**1 ·** Une machine par joueur (deux à partir du grade 💠 Saphir).','**2 ·** Jamais deux fois la même machine dans un hunt : premier arrivé, premier servi.',
+  '**3 ·** Le matin, LeCasiNoze farme les bonus sur vos machines. Le soir, Belva les ouvre en live.','**4 ·** Ton call rapporte **1 XP par tranche de 5x** (max 500), et le staff tippe les gros hits.'];
+
+// Carte permanente du salon 🎯︱hunt : prochain hunt, règles, calls déjà réservés, bouton pour caller.
+export function huntInfoCard(day:string,calls:{slot:string;who:string}[],offers?:string){
+  return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:ACCENT,components:[
+    T('# 🎯 Hunt des viewers'),T(`Prochain hunt : **${dayLabel(day)}**\n🌅 **10 h** farm des bonus · 🌙 **19 h 30** ouverture en live`),
+    SEP(),
+    {type:9,components:[T('### 🎰 Fais ton call\nChoisis la machine que tu veux voir dans le hunt. Les calls sont ouverts dès maintenant.')],
+      accessory:{type:2,style:3,label:'Faire mon call',emoji:{name:'🎯'},custom_id:`${P}call`}},
+    SEP(1,false),
+    T(`### 📜 Les règles\n${HUNT_RULES.join('\n')}`),
+    SEP(1,false),
+    T('### 🔑 Qui peut caller ?\nLes membres 🍾 **Carré Or** : un compte casino vérifié avec un dépôt passé par le lien de Belva.'),
+    {type:1,components:[{type:2,style:5,label:'Voir les offres casino',emoji:{name:'🎁'},url:channelUrl(offers)},{type:2,style:2,label:'Retirer mon call',emoji:{name:'↩️'},custom_id:`${P}clear`}]},
+    SEP(),
+    T(calls.length?`### 📝 Calls réservés (${calls.length})\n${calls.map(c=>`${c.slot} (${c.who})`).join(' · ')}`.slice(0,1500):'### 📝 Calls réservés\nAucun call pour l’instant : sois le premier !'),
+    T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+  ]}] as never[]};
+}
+
+// Pas encore Carré Or : on explique ce qu'il faut faire et on envoie vers les offres.
+export function notEligibleCard(offers?:string){
+  return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:ACCENT,components:[
+    T('### 🔒 Le hunt est réservé aux joueurs qui ont déposé'),
+    T('Pour caller une machine, il te faut le rôle 🍾 **Carré Or** :\n**1 ·** Crée ton compte sur un de nos casinos avec le lien de Belva.\n**2 ·** Fais ton premier dépôt.\n**3 ·** Demande ton remboursement : une fois validé, tu as le rôle et tu peux caller.'),
+    {type:1,components:[{type:2,style:5,label:'Voir les offres casino',emoji:{name:'🎁'},url:channelUrl(offers)}]},
+  ]}] as never[]};
+}
+
+let preReady:Promise<unknown>|null=null;
+const preSchema=(pool:Pool)=>preReady??=pool.query(`CREATE TABLE IF NOT EXISTS belva_hunt_precalls(id serial PRIMARY KEY,discord_id text NOT NULL,name text NOT NULL,slot text NOT NULL,slot_key text NOT NULL,provider text,
+  created_at timestamptz NOT NULL DEFAULT NOW(),hunt_id int,result text);
+  CREATE UNIQUE INDEX IF NOT EXISTS belva_hunt_precalls_slot ON belva_hunt_precalls(slot_key) WHERE hunt_id IS NULL`).catch(e=>{preReady=null;throw e;});
+const pendingCalls=async(pool:Pool)=>(await pool.query(`SELECT * FROM belva_hunt_precalls WHERE hunt_id IS NULL ORDER BY id`)).rows as {id:number;discord_id:string;name:string;slot:string;slot_key:string;provider:string|null}[];
+const callLimit=async(pool:Pool,discordId:string)=>['saphir','diamant','obsidienne'].includes((await pool.query(`SELECT grade FROM belva_xp_levels WHERE discord_id=$1`,[discordId]).catch(()=>({rows:[]}))).rows[0]?.grade??'')?2:1;
+const activeHunt=async(pool:Pool)=>(await pool.query(`SELECT id FROM belva_hunts WHERE status='farm' ORDER BY id DESC LIMIT 1`).catch(()=>({rows:[]}))).rows[0]?.id as number|undefined;
+const offersChannelOf=async(client:Client)=>{const g=await client.guilds.fetch(GUILD_ID()).catch(()=>null);
+  return g?(await g.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('toutes-les-offres'))?.id:undefined;};
+const rumbleName=async(pool:Pool,discordId:string)=>(await pool.query(`SELECT l.username FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[discordId]).catch(()=>({rows:[]}))).rows[0]?.username as string|undefined;
+
+async function handleCallButton(i:Interaction,pool:Pool,config:LunaLiveApiConfig):Promise<boolean>{
+  if(!(i.isButton()||i.isStringSelectMenu()||i.isModalSubmit())||!i.customId.startsWith(P))return false;
+  const id=i.customId;
+  if(!await isApproved(pool,'hunt-week')){await i.reply({ephemeral:true,content:'Le hunt des viewers arrive très bientôt 🎯'});return true;}
+  await preSchema(pool);
+  if(id===`${P}clear`){
+    const n=(await pool.query(`DELETE FROM belva_hunt_precalls WHERE discord_id=$1 AND hunt_id IS NULL`,[i.user.id])).rowCount;
+    await i.reply({ephemeral:true,content:n?'↩️ Ton call est retiré : la machine est libérée.':'Tu n’as pas de call réservé pour le prochain hunt.'});
+    if(n)void refreshInfo(i.client,pool).catch(()=>undefined);
+    return true;
+  }
+  const member=await i.guild!.members.fetch(i.user.id).catch(()=>null);
+  if(!member?.roles.cache.has(BELVA_ROLES.carreOr)){await i.reply({...notEligibleCard(await offersChannelOf(i.client)),flags:MessageFlags.IsComponentsV2|MessageFlags.Ephemeral});return true;}
+  if(id===`${P}call`&&i.isButton()){
+    await i.showModal(new ModalBuilder().setCustomId(`${P}modal`).setTitle('Mon call pour le hunt').addLabelComponents(
+      new LabelBuilder().setLabel('Ta machine').setDescription('Le nom de la slot (ex. Sweet Bonanza)').setTextInputComponent(
+        new TextInputBuilder().setCustomId('machine').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(80).setRequired(true))));
+    return true;
+  }
+  if(id===`${P}modal`&&i.isModalSubmit()){
+    const found=await searchSlots(pool,i.fields.getTextInputValue('machine'),10);
+    if(!found.length){await i.reply({ephemeral:true,content:'Machine introuvable : réessaie avec le début du nom.'});return true;}
+    await i.reply({ephemeral:true,content:'Quelle machine exactement ?',components:[{type:1,components:[new StringSelectMenuBuilder().setCustomId(`${P}pick`).setPlaceholder('Choisis ta machine')
+      .addOptions(found.map(s=>({label:s.name.slice(0,100),value:s.key.slice(0,100),...(s.provider?{description:s.provider.slice(0,100)}:{})}))).toJSON()]}] as never[]});
+    return true;
+  }
+  if(id===`${P}pick`&&i.isStringSelectMenu()){
+    const slot=(await searchSlots(pool,i.values[0]!,1))[0];
+    if(!slot){await i.update({content:'Machine introuvable, recommence.',components:[]});return true;}
+    const name=await rumbleName(pool,i.user.id)??member.displayName;
+    // Farm en cours : le call part directement dans la file. Sinon il est réservé pour le prochain hunt.
+    if(await activeHunt(pool)){
+      try{const r=await belvaHuntCall(config,i.user.id,{name,slot:slot.name,provider:slot.provider});
+        await i.update({content:`🎯 **Call enregistré !** ${slot.name} (${r.position}ᵉ dans la file).`,components:[]});}
+      catch(e){await i.update({content:e instanceof LunaLiveApiError?ERRORS[e.code]??'Call refusé, réessaie.':'Call indisponible pour le moment.',components:[]});}
+      return true;
+    }
+    const mine=(await pool.query(`SELECT slot FROM belva_hunt_precalls WHERE discord_id=$1 AND hunt_id IS NULL`,[i.user.id])).rows.map(r=>r.slot as string);
+    const limit=await callLimit(pool,i.user.id);
+    if(mine.length>=limit){await i.update({content:`Tu as déjà ${limit>1?'tes calls':'ton call'} : **${mine.join('**, **')}**. Clique sur **Retirer mon call** pour en changer.`,components:[]});return true;}
+    try{await pool.query(`INSERT INTO belva_hunt_precalls(discord_id,name,slot,slot_key,provider) VALUES($1,$2,$3,$4,$5)`,[i.user.id,name.slice(0,80),slot.name,slot.key,slot.provider]);}
+    catch(e){if((e as {code?:string}).code==='23505'){await i.update({content:`**${slot.name}** est déjà callée par quelqu’un d’autre : choisis-en une autre.`,components:[]});return true;}throw e;}
+    await i.update({content:`🎯 **Call réservé !** ${slot.name} pour le hunt du **${dayLabel(nextHuntDay())}**. Il entre dans la file dès l’ouverture du farm.`,components:[]});
+    void refreshInfo(i.client,pool).catch(()=>undefined);
+    return true;
+  }
+  return true;
+}
+
+// Au lancement du farm, les calls réservés entrent dans la file, dans l'ordre où ils ont été faits.
+async function submitPrecalls(pool:Pool,config:LunaLiveApiConfig){
+  const hunt=await activeHunt(pool);if(!hunt)return false;
+  const list=await pendingCalls(pool);
+  for(const c of list){
+    const res=await belvaHuntCall(config,c.discord_id,{name:c.name,slot:c.slot,provider:c.provider}).then(()=>'ok',(e:unknown)=>e instanceof LunaLiveApiError?e.code:'error');
+    await pool.query(`UPDATE belva_hunt_precalls SET hunt_id=$2,result=$3 WHERE id=$1`,[c.id,hunt,res]);
+  }
+  return list.length>0;
+}
+
+let infoSig='';
+async function refreshInfo(client:Client,pool:Pool){
+  if(!await isApproved(pool,'hunt-week'))return;
+  await preSchema(pool);
+  const channel=await huntChannel(client);if(!channel)return;
+  const calls=(await pendingCalls(pool)).map(c=>({slot:c.slot,who:c.name}));
+  const card=huntInfoCard(nextHuntDay(),calls,await offersChannelOf(client));const sig=JSON.stringify(card.components);
+  if(sig===infoSig)return;
+  await pool.query(`CREATE TABLE IF NOT EXISTS belva_hunt_info(id int PRIMARY KEY DEFAULT 1,channel_id text NOT NULL,message_id text NOT NULL)`);
+  const row=(await pool.query(`SELECT * FROM belva_hunt_info WHERE id=1`)).rows[0];
+  const msg=row?.channel_id===channel.id?await channel.messages.fetch(row.message_id).catch(()=>null):null;
+  if(msg)await msg.edit(card);
+  else{const m=await channel.send(card);await pool.query(`INSERT INTO belva_hunt_info(id,channel_id,message_id) VALUES(1,$1,$2) ON CONFLICT(id) DO UPDATE SET channel_id=$1,message_id=$2`,[channel.id,m.id]);}
+  infoSig=sig;
+}
+
 export async function handleBelvaHunt(i:Interaction,pool:Pool|undefined,config:LunaLiveApiConfig):Promise<boolean>{
+  if(pool&&i.guildId===GUILD_ID()&&await handleCallButton(i,pool,config))return true;
   if(i.guildId!==GUILD_ID()||!(i.isChatInputCommand()||i.isAutocomplete())||i.commandName!=='hunt')return false;
   if(!pool)return true;
   if(i.isAutocomplete()){
@@ -116,7 +247,10 @@ async function follow(client:Client,pool:Pool){
   lastSig=sig;
 }
 
-export function startBelvaHunt(client:Client,pool?:Pool){
+export function startBelvaHunt(client:Client,pool?:Pool,config?:LunaLiveApiConfig){
   if(!pool)return;let busy=false;
-  setInterval(()=>{if(busy)return;busy=true;void follow(client,pool).catch(e=>console.error('[nozebot] hunt Belva',e)).finally(()=>{busy=false;});},15_000).unref();
+  setInterval(()=>{if(busy)return;busy=true;void (async()=>{
+    if(config&&await isApproved(pool,'hunt-week')){await preSchema(pool);if(await submitPrecalls(pool,config))infoSig='';}
+    await follow(client,pool);await refreshInfo(client,pool);
+  })().catch(e=>console.error('[nozebot] hunt Belva',e)).finally(()=>{busy=false;});},15_000).unref();
 }
