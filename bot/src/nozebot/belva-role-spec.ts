@@ -10,6 +10,7 @@ const MOD=P.ViewAuditLog|P.KickMembers|P.BanMembers|P.ModerateMembers|P.ManageMe
 
 export const ROLE_SPEC:RoleSpec[]=[
   {key:'videur',id:'1483165106140352632',name:'🛡️ Videur',color:0xE8475F,shade:'Cordon de velours',hoist:true,perms:MOD,group:'Staff',auto:'À la main (modération)'},
+  {key:'blva',id:'1483154059534794883',name:'🔱 BLVA',color:0xF9F871,shade:'Néon citron',hoist:true,perms:0n,group:'Team BLVA',auto:'Automatique · pseudo Rumble « BLVA… » + compte lié'},
   {key:'obsidienne',name:'🖤 Obsidienne',color:0x9B7BD4,shade:'Reflet d’obsidienne',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (dépôt vérifié requis)'},
   {key:'diamant',name:'💎 Diamant',color:0xBFF4FF,shade:'Éclat de diamant',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (dépôt vérifié requis)'},
   {key:'saphir',name:'💠 Saphir',color:0x4C7DFF,shade:'Saphir de Ceylan',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (dépôt vérifié requis)'},
@@ -19,7 +20,6 @@ export const ROLE_SPEC:RoleSpec[]=[
   {key:'bronze',name:'🥉 Bronze',color:0xD08B5B,shade:'Bronze patiné',hoist:true,perms:0n,group:'Grades',auto:'Automatique · XP (les 🥂 Habitué y passent)'},
   {key:'carreOr',id:'1571169943981133894',name:'🍾 Carré Or',color:0xF6E3B4,shade:'Champagne brut',hoist:true,perms:0n,group:'Paliers',auto:'Automatique · dépôt remboursé ou offert payé'},
   {key:'membre',id:'1571169945687949472',name:'🃏 Membre du Club',color:0x2FBF71,shade:'Feutre de table',hoist:true,perms:0n,group:'Paliers',auto:'Automatique · compte casino vérifié'},
-  {key:'sub',id:'1483154059534794883',name:'⭐ Sub',color:0xF9F871,shade:'Néon citron',hoist:false,perms:0n,group:'Soutiens',auto:'À la main (abonnés Kick / Twitch)'},
   {key:'booster',id:'1483117845851410452',name:'🚀 Booster',color:0xFF73FA,shade:'Rose turbo',hoist:false,perms:0n,group:'Soutiens',auto:'À la main (boost du serveur)'},
   {key:'hazcasino',id:'1571169951102931038',name:'💜 HazCasino',color:0xB57BFF,shade:'Améthyste Haz',hoist:false,perms:0n,group:'Casinos',auto:'Automatique · compte Haz vérifié'},
   {key:'velobet',id:'1571169952436715631',name:'💚 VeloBet',color:0x8BE800,shade:'Trèfle VeloBet',hoist:false,perms:0n,group:'Casinos',auto:'Automatique · compte VeloBet vérifié'},
