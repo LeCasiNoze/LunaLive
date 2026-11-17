@@ -74,7 +74,7 @@ export function linkPrompt(reason:string){
       reason,'',
       '**30 secondes, une seule fois :** clique sur **Lier mon Rumble**. Le bot t’envoie une commande en message privé :',
       '> 🟢 Belva en live → colle-la dans son chat Rumble',
-      '> ⚫ Hors live → poste-la en commentaire sous sa dernière vidéo, puis clique sur **Vérifier**',
+      '> ⚫ Hors live → poste-la en commentaire sous sa dernière vidéo, puis clique sur le bouton **Vérifier** qui arrive avec la commande en MP',
     ].join('\n')).setFooter({text:'Belva • tes BCoins, ton XP et tes tickets sont attachés à ton pseudo Rumble'})],
     components:[new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(LINK_BUTTON).setStyle(ButtonStyle.Primary).setLabel('Lier mon Rumble').setEmoji('🔗'),

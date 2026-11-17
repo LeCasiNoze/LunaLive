@@ -45,7 +45,7 @@ export function questJournal(week:number,p:Record<string,number>,xp:number,chann
     link:{type:2,style:5,label:'Lier mon Rumble',emoji:{name:'🔗'},url:url(channels.link)},
     lives:{type:2,style:5,label:'Voir le live',emoji:{name:'🟢'},url:'https://rumble.com/user/Belvaa/live'},
     tournament:{type:2,style:5,label:'Le tournoi',emoji:{name:'⚔️'},url:url(channels.tournament)},
-    blackjack:{type:2,style:5,label:'Mini-jeux',emoji:{name:'🃏'},url:url(channels.games)},
+    blackjack:{type:2,style:5,label:'Jouer au blackjack',emoji:{name:'🃏'},url:url(channels.games)},
     casino:{type:2,style:5,label:'Les offres',emoji:{name:'🎁'},url:url(channels.offers)},
   };
   return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:l?spec(l.grade.key).color:0x19D3D3,components:[
