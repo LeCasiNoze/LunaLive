@@ -11,12 +11,13 @@ import {CHECK_TEXT,linkDm} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
 import {BRACKET_URL,BUY_CENTS,bracketCard,championText,confirmCard,eliminationText,priceOption,registrationCard,type BonusOption,type LiveState,type Slot} from './belva-tournament.js';
-import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalCard,seasonCard,tierUpLine} from './belva-progress-designs.js';
+import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,seasonCard,tierUpLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
 import {huntCard} from './belva-hunt.js';
 import {rankText,topCard} from './belva-xp.js';
+import {questJournal} from './belva-quests.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -104,7 +105,7 @@ export const DESIGNS:Design[]=[
       '### ⚡ Gagner de l’XP',...XP_RULES.map(([a,b])=>`> ${a} · **${b}**`)].join('\n')),
     text('**Nouveau grade (Bronze → Fer, Fer → Or…) :**'),v2(gradeUpCard(demo(c),9_000)),
     text('**Simple sous-niveau (Or I → Or II…) :**'),{...tierUpLine(c.botId,11_640),allowedMentions:{parse:[]}}]},
-  {key:'quests',title:'Journal de quêtes',where:'Réponse privée à /quetes',note:'Maquette avec un exemple : rien n’est actif.',previews:async()=>[v2(questJournalCard(49))]},
+  {key:'quests',title:'Journal de quêtes',where:'Réponse privée à /quetes + MP du lundi',note:'Exemple : chaque quête non terminée a son bouton d’action. Le journal arrive aussi en MP le lundi à 10 h aux membres qui ont relié leur Rumble.',previews:async c=>[v2(questJournal(49,{link:1,lives:1,tournament:0,blackjack:3,casino:0},11_640,{link:c.channel('lier-mon-compte'),games:c.channel('mini-jeux'),offers:c.channel('toutes-les-offres')}))]},
   {key:'season',title:'Classement de la saison du tournoi',where:'🏅︱classements · réécrit après chaque tournoi, figé à la fin du mois (historique)',note:'Pseudos fictifs. Le détail montre chaque place obtenue ; un absent compte juste dans le « 3/4 ».',previews:async()=>[v2(seasonCard(SEASON_EXAMPLE))]},
   {key:'offer-rainbet',title:'Carte Rainbet (partenaire principal)',where:'🌧️︱rainbet · remplace l’ancien message, Rainbet passe en tête des offres',previews:async()=>[{...rainbetCard(),allowedMentions:{parse:[]}} as Preview]},
   {key:'tournament',title:'Tournoi : inscriptions /tournoi et choix du bonus',where:'⚔️︱tournoi · /tournoi + nom de la machine (autocomplétion), puis confirmation privée',

@@ -29,10 +29,11 @@ export function levelFor(xp:number):Level|null{
 
 export const XP_RULES=[
   ['Message dans le chat Rumble pendant le live','+5 XP (max 1 toutes les 5 min)'],
-  ['Participation au tournoi du samedi','+50 XP'],
-  ['Quête de la semaine terminée','+40 à +150 XP'],
-  ['Compte casino vérifié','+300 XP'],
-  ['Dépôt remboursé ou offert payé','+500 XP'],
+  ['Tournoi du samedi','+25 XP + 20 par duel gagné'],
+  ['Quête de la semaine terminée','+40 à +300 XP'],
+  ['Compte casino vérifié','+300 XP par casino'],
+  ['Dépôt remboursé (pas les dépôts offerts)','+1 XP par € déposé'],
+  ['Wager Rainbet','+1 XP par 10 $ misés'],
 ] as const;
 export const SEASON_POINTS={presence:10,place:[15,10,7,4,4],fullAttendance:10,prizes:['50 €','30 €','20 €']};
 
@@ -63,25 +64,6 @@ export function gradeUpCard(user:{id:string;avatarUrl:string},xp:number){
 }
 export function tierUpLine(userId:string,xp:number){
   const l=levelFor(xp)!;return {content:`${l.label.split(' ')[0]} <@${userId}> passe **${l.label}** · ${fr(xp)} XP`,allowedMentions:{users:[userId]}};
-}
-
-export function questJournalCard(week:number){
-  const q=[
-    {done:true,label:'Relier ton compte Rumble',reward:'+150 XP · une seule fois'},
-    {done:false,label:'Être présent à 3 lives (au moins un message)',progress:'1/3',reward:'+90 XP'},
-    {done:false,label:'Participer au tournoi du samedi',reward:'+80 XP'},
-    {done:true,label:'Jouer 3 mains de blackjack',progress:'3/3',reward:'+40 XP'},
-    {done:false,label:'Vérifier un compte casino partenaire',reward:'+300 XP · rôle 🃏 Membre du Club'},
-  ];
-  const doneN=q.filter(x=>x.done).length;const l=levelFor(11_640)!;
-  return v2(spec('or').color,[
-    T(`# 📜 Journal de quêtes · semaine ${week}`),
-    T(`${l.label} · **${fr(11_640)} XP** · ${doneN}/${q.length} quêtes terminées\n\`${bar(Math.round(doneN/q.length*100))}\``),
-    SEP(),
-    T(q.map(x=>`${x.done?'✅':'⬜'} **${x.label}**${x.progress?` · ${x.progress}`:''}\n-# ${x.reward}`).join('\n')),
-    SEP(1,false),
-    T('-# Nouvelles quêtes chaque lundi à 0 h. Les quêtes « une seule fois » ne reviennent pas.'),
-  ]);
 }
 
 export type SeasonRow={name:string;id?:string;places:(number|null)[]};

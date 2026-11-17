@@ -39,6 +39,7 @@ import { handleBelvaAgenda, registerAgendaCommand, startBelvaAgenda } from './be
 import { startBelvaRainbetWatch } from './belva-rainbet-watch.js';
 import { handleBelvaHunt, registerHuntCommand, startBelvaHunt } from './belva-hunt.js';
 import { handleBelvaXp, registerXpCommands, startBelvaXp } from './belva-xp.js';
+import { handleBelvaQuests, registerQuestCommand, startBelvaQuests } from './belva-quests.js';
 import { ensureReviews, handleBelvaReview } from './belva-review.js';
 import { startBelvaLinkSync } from './belva-link-sync.js';
 import { belvaLiveConfig } from './belva-live.js';
@@ -503,6 +504,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaAgenda(interaction, pool)) return;
     if (await handleBelvaHunt(interaction, pool, config.commands.lunaLive)) return;
     if (await handleBelvaXp(interaction, pool)) return;
+    if (await handleBelvaQuests(interaction, pool)) return;
     if (await handleBelvaReview(interaction, pool)) return;
     if (await handleBelvaTickets(interaction, pool)) return;
     if (await handleBelvaNotifs(interaction)) return;
@@ -651,6 +653,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
     startBelvaLinkSync(readyClient, pool);
     void registerAgendaCommand(readyClient).then(() => startBelvaAgenda(readyClient, pool)).catch((error) => console.error("[nozebot] agenda Belva", error));
     startBelvaRainbetWatch(readyClient, pool);
+    void registerQuestCommand(readyClient).then(() => startBelvaQuests(readyClient, pool)).catch((error) => console.error("[nozebot] quêtes Belva", error));
     void registerXpCommands(readyClient).then(() => startBelvaXp(readyClient, pool)).catch((error) => console.error("[nozebot] xp Belva", error));
     void registerHuntCommand(readyClient).then(() => startBelvaHunt(readyClient, pool)).catch((error) => console.error("[nozebot] hunt Belva", error));
     void ensureReviews(readyClient, pool).catch((error) => console.error("[nozebot] validation Belva", error));
