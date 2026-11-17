@@ -1,0 +1,12 @@
+[Unit]
+Description=LunaLive slots catalog crawl from Rainbet
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=lunalive-worker
+WorkingDirectory=/opt/lunalive-worker/slots-rainbet
+EnvironmentFile=/opt/lunalive-worker/.env
+ExecStart=/usr/bin/node /opt/lunalive-worker/slots-rainbet/run.mjs
+TimeoutStartSec=20min

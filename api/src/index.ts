@@ -128,8 +128,9 @@ async function bootstrapBackground() {
     await ensureCallsSchema(pool);
     console.log("[boot] ensureCallsSchema ok");
 
-    // Si tu veux que le updater slots ne démarre qu'après DB ready :
-    startSlotsCatalogUpdater(12);
+    // Catalogue Rainbet : Cloudflare refuse les IP Render (403 même via curl),
+    // le crawl tourne sur le VPS (scripts/slots-rainbet-vps). Opt-in ici.
+    if (process.env.SLOTS_UPDATER_ON_API === "1") startSlotsCatalogUpdater(12);
     refreshAllAffiPageSnapshots().catch((e) => {
       console.warn("[boot] affi snapshots refresh failed", e?.message || e);
     });

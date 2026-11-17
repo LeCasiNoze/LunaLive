@@ -1,0 +1,10 @@
+[Unit]
+Description=LunaLive slots catalog crawl from Rainbet (every 12h)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=12h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
