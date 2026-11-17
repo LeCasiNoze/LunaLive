@@ -121,6 +121,10 @@ export function checkBelvaCommentLink(config:LunaLiveApiConfig,discordUserId:str
  return post<{ok:true;status:'no_code'|'not_found'|'unavailable'|'conflict'|'linked'|'pending';username?:string}>(config,'/internal/bot/nozebot/automod/link-check',discordUserId,{streamer:'belvaa'});
 }
 
+export function belvaHuntCall(config:LunaLiveApiConfig,discordUserId:string,body:{name:string;slot:string;provider:string|null}){
+ return post<{ok:true;position:number}>(config,'/internal/bot/nozebot/belva-hunt/call',discordUserId,body);
+}
+
 export type CoinProfile={username:string;balance:number;automod:number;nextClaimAt:string|null;journal?:Array<{id:string;label:string;complete:boolean}>;
  rules:{claim:number;claimMs:number;rain:number;bet:number};tiers:Record<string,number>};
 export function coinRequest(config:LunaLiveApiConfig,discordUserId:string,action:'profile'|'claim'|'slot'|'upgrade',receipt?:string,upgrade?:string,expectedTier?:number){

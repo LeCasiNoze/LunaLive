@@ -1,3 +1,4 @@
+import {addViewerCall} from '../belva_hunt.js';
 import {linkByComment,linkTargets} from '../belva_link_comment.js';
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
@@ -123,6 +124,15 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
   if(e instanceof SoundboardError)return res.status(409).json({ok:false,error:e.message});
   if(['rumble_not_linked','insufficient_coins','max_tier','bad_upgrade','stale_shop'].includes(code))return res.status(409).json({ok:false,error:code});throw e;
  }
+}));
+
+// Call du hunt des viewers depuis le Discord de Belva (/hunt) : il entre dans la file de calls de LeCasiNoze.
+internalNozeBotRouter.post('/internal/bot/nozebot/belva-hunt/call',requireNozeBot,a(async(req,res)=>{
+ const identity=readIdentity(req,res);if(!identity)return;
+ const slot=String(req.body?.slot||'').slice(0,120),name=String(req.body?.name||'').slice(0,40);
+ if(!slot||!name)return res.status(400).json({ok:false,error:'bad_request'});
+ const r=await addViewerCall(pool,{discordId:identity.discordUserId,name,slot,provider:req.body?.provider?String(req.body.provider).slice(0,60):null});
+ return r.ok?res.json(r):res.status(409).json(r);
 }));
 
 // La liaison Rumble ↔ Discord est propre à chaque chaîne : seules celles dont le chat lit !lier sont acceptées.

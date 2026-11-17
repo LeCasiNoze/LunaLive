@@ -24,6 +24,7 @@ const BELVA_COINS={coin:'BCoins',automod:false};
 import {tickBelvaTombola} from './belva_tombola.js';
 import {finishPendingLink} from './belva_link_comment.js';
 import {parseGain,recordGain,tournamentState} from './belva_bracket.js';
+import {huntChat} from './belva_hunt.js';
 import {observeCoinName} from './nozecoins/wallet.js';
 import {observeAutomodChat} from './automod-shop/engagement.js';
 import { shopReplyChunks } from "./automod-shop/rules.js";
@@ -497,6 +498,12 @@ export function ensureRumbleBridge(opts: {
       if(coinReply){for(const chunk of shopReplyChunks(coinReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
       if(process.env.NOZECOINS_ENABLED==='true'&&/^!(?:claim|slot)\s*$/i.test(m.text.trim()))return;
     }
+    if(opts.slug==='belvaa'&&/^!(?:open|bonus)(?:\s|$)/i.test(m.text.trim())&&isBelvaStaff(m.userId,m.username)){
+      const b=/^!bonus\s+(\d{1,7}(?:[.,]\d{1,2})?)\s*€?$/i.exec(m.text.trim());
+      const reply=await huntChat(opts.pool,/^!open/i.test(m.text.trim())?'open':'bonus',b?Number(b[1]!.replace(',','.')):null).catch(e=>{console.warn('[belva-hunt]',e?.message||e);return null;});
+      if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
+      return;
+    }
     if(opts.slug==='belvaa'&&/^!tournoi(?:\s|$)/i.test(m.text.trim())){
       const reply=await belvaTournamentChat(opts.pool,m.userId,m.username,m.text).catch(e=>{console.warn('[belva-tournoi]',e?.message||e);return null;});
       for(const line of [reply??[]].flat())await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',line);
@@ -724,10 +731,14 @@ async function belvaTournamentChat(pool:Pool,userId:string,username:string,text:
     if(!st||st.tournament.status!=='live'||!cur)return st?.tournament.status==='open'?`@${username} — Inscriptions ouvertes sur le Discord : /tournoi + ta machine.`:null;
     const p=st.players,w=(id:string)=>`${p[id]?.rumble??p[id]?.name} (${p[id]?.slot})`;return `En cours : ${w(cur.player)} vs ${w(cur.opponent)} · à jouer : ${w(cur.player)}`;
   }
-  const admins=(process.env.BELVA_TOURNAMENT_ADMINS||'belvaa,lecasinoze').toLowerCase().split(',').map(s=>s.trim());
-  const badges=rumbleBadges.get(userId)??[];
-  if(!admins.includes(username.toLowerCase())&&!badges.some(b=>/moderator|admin|owner|broadcaster/i.test(b)))return null;
+  if(!isBelvaStaff(userId,username))return null;
   const cents=parseGain(arg);
   if(cents===null)return `@${username} — Format : !tournoi 245 (gain du bonus en euros).`;
   return recordGain(pool,cents);
+}
+
+// Belva, ses modérateurs Rumble et les comptes de BELVA_TOURNAMENT_ADMINS : commandes du tournoi et du hunt.
+function isBelvaStaff(userId:string,username:string){
+  const admins=(process.env.BELVA_TOURNAMENT_ADMINS||'belvaa,lecasinoze').toLowerCase().split(',').map(s=>s.trim());
+  return admins.includes(username.toLowerCase())||(rumbleBadges.get(userId)??[]).some(b=>/moderator|admin|owner|broadcaster/i.test(b));
 }

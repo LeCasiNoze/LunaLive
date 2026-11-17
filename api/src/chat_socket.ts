@@ -1,4 +1,5 @@
 // api/src/chat_socket.ts
+import { startViewersHunt } from "./belva_hunt.js";
 import type { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
@@ -1042,6 +1043,12 @@ export function attachChat(io: Server) {
         if (settings.subOnly) {
           const ok = await isActiveSub(meta.id, u.id);
           if (!ok) return cb?.({ ok: false, error: "sub_only" });
+        }
+
+        // « /hunt » de LeCasiNoze sur sa chaîne : lance le hunt des viewers (calls venus du Discord de Belva).
+        if (/^\/hunt\s*$/i.test(text) && meta.slug.toLowerCase() === (process.env.BELVA_HUNT_STREAMER || "lecasinoze")) {
+          const reply = await startViewersHunt(pool, { id: u.id, role: String(u.role || "") }).catch((e) => { console.warn("[belva-hunt]", e?.message || e); return "Lancement du hunt impossible."; });
+          if (reply) { await sendBotChat(io, meta, reply); return cb?.({ ok: true }); }
         }
 
         const bang = parseBangCommand(text);

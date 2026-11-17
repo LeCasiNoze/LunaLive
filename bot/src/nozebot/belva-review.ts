@@ -15,6 +15,7 @@ import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,questJournalC
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
+import {huntCard} from './belva-hunt.js';
 
 // Salon staff de validation : chaque message public est d'abord posté ici tel quel. Un design n'est utilisé
 // en public qu'une fois validé ; s'il change dans le code, il est reposté et repasse « en attente ».
@@ -132,6 +133,26 @@ export const DESIGNS:Design[]=[
     note:'Exemple avec une absence et une note. Le programme type (hunt mercredi, tournoi samedi, giveaways dimanche) se règle dans belva-agenda.ts.',
     previews:async()=>{const m=mondayOf(new Date(Date.UTC(2026,11,1,12)));
       return [v2(agendaCard(m,[{day:'2026-12-02',slot:'matin',kind:'absent',who:'LeCasiNoze',text:null},{day:'2026-12-06',slot:'journee',kind:'note',who:null,text:'Giveaway 50 € à 21 h'}],null))];}},
+  {key:'hunt',title:'Hunt des viewers du mercredi',where:'🎯︱hunt (nouveau salon dans Récompenses) + /hunt sur Discord + chat LunaLive de LeCasiNoze + chat Rumble de Belva',
+    note:'Exemple fictif. Tant que cette fiche n’est pas validée : /hunt répond « bientôt », /hunt (LunaLive), !open et !bonus ne font rien.',previews:async c=>{
+    const img=async(q:string)=>(await searchSlots(c.pool,q,1))[0]?.image??null;
+    const it=async(slot:string,caller:string,bet:number,pay:number|null,bonus=true)=>({slot,caller,bet,pay,bonus,image:await img(slot)});
+    const items=[await it('Wanted Dead or a Wild','Mise_Max',1.2,245),await it('Fruit Party','Lucky_Léo',1.2,18),await it('Le Bandit','Spin_Sam',1.2,null),
+      await it('Sugar Rush 1000','Tilt_Zéro',1,null),await it('Gates of Olympus','Bonus_Hunter',0,null,false)];
+    const base={id:0,startedAt:new Date(Date.UTC(2026,11,2,9)),start:600};
+    return [
+      text(['**Le parcours :**','> 1 · Mercredi matin, LeCasiNoze tape **/hunt** dans son chat LunaLive : son hunt est archivé puis vidé, les calls du Discord arrivent dans sa file.',
+        '> 2 · Les membres 🍾 Carré Or proposent leur machine avec **/hunt** sur le Discord (une par personne, jamais deux fois la même).',
+        '> 3 · LeCasiNoze farme comme d’habitude dans l’outil Hunt : chaque bonus garde le pseudo de celui qui l’a callé.',
+        '> 4 · Le soir, Belva (ou un modo) tape **!open** puis **!bonus <gain>** après chaque bonus.'].join('\n')),
+      text('**Carte pendant le farm :**'),v2(huntCard({...base,status:'farm',items:items.map(i=>i.slot==='Wanted Dead or a Wild'||i.slot==='Fruit Party'?{...i,pay:null}:i)})),
+      text('**Carte pendant l’ouverture :**'),v2(huntCard({...base,status:'open',items})),
+      text(['**Chat Rumble de Belva (court) :**',
+        '> 🎯 Ouverture du hunt : 4 bonus · start 600 € · BE x130 · 1er : Wanted Dead or a Wild (Mise_Max) bet 1,20 €',
+        '> Wanted Dead or a Wild (Mise_Max) : 245 € (x204) · BE x104 · 3 restants · Suivant : Fruit Party (Lucky_Léo) bet 1,20 €',
+        '> Sugar Rush 1000 (Tilt_Zéro) : 40 € (x40) · 🏁 Hunt terminé : 615 € pour 600 € (+15 €) · Meilleur call : Wanted Dead or a Wild x204 (Mise_Max)'].join('\n')),
+      text('**Réponse à /hunt (visible par lui seul) :**\n> 🎯 **Call enregistré !** Le Bandit (3ᵉ dans la file). Suis le hunt en direct dans #🎯︱hunt.'),
+    ];}},
 ];
 
 function wrap(card:{files:{attachment:Buffer;name:string}[];components:object[]}){
