@@ -26,9 +26,11 @@ type Row={id:number;title:string;status:string;buy_cents:number;draw:string[]|nu
 export type Player={discordId:string;name:string;rumble:string|null;slot:string;image:string|null;bonus:string;multiplier:number|null;betCents:number|null};
 
 async function players(pool:Pool,id:number){
-  const rows=(await pool.query(`SELECT e.*,(SELECT l.username FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id
-    WHERE lower(s.slug)='belvaa' AND l.discord_user_id=e.discord_id LIMIT 1) AS rumble FROM belva_tournament_entries e WHERE tournament_id=$1 ORDER BY created_at`,[id]).catch(()=>({rows:[]}))).rows;
-  return new Map<string,Player>(rows.map(r=>[r.discord_id,{discordId:r.discord_id,name:r.display_name,rumble:r.rumble??null,slot:r.slot_name,image:r.image_url,
+  const rows=(await pool.query(`SELECT * FROM belva_tournament_entries WHERE tournament_id=$1 ORDER BY created_at`,[id])).rows;
+  // Pseudo Rumble lié (affiché dans le chat) ; s'il manque, le pseudo du serveur Discord.
+  const rumble=new Map<string,string>((await pool.query(`SELECT l.discord_user_id,l.username FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id
+    WHERE lower(s.slug)='belvaa' AND l.discord_user_id=ANY($1::text[])`,[rows.map(r=>String(r.discord_id))]).catch(()=>({rows:[]}))).rows.map(r=>[String(r.discord_user_id),String(r.username)]));
+  return new Map<string,Player>(rows.map(r=>[r.discord_id,{discordId:r.discord_id,name:r.display_name,rumble:rumble.get(String(r.discord_id))??null,slot:r.slot_name,image:r.image_url,
     bonus:r.bonus_label,multiplier:r.multiplier===null?null:Number(r.multiplier),betCents:r.bet_cents}]));
 }
 
@@ -65,7 +67,7 @@ export async function drawDue(pool:Pool,announce:(text:string)=>Promise<unknown>
 
 const nm=(ps:Record<string,Player>,id:string)=>ps[id]?.rumble??ps[id]?.name??'?';
 const slotOf=(ps:Record<string,Player>,id:string)=>ps[id]?.slot??'?';
-const duelText=(ps:Record<string,Player>,a:string,b:string)=>`${slotOf(ps,a)} (${nm(ps,a)}) contre ${slotOf(ps,b)} (${nm(ps,b)})`;
+const duelText=(ps:Record<string,Player>,a:string,b:string)=>`${nm(ps,a)} (${slotOf(ps,a)}) vs ${nm(ps,b)} (${slotOf(ps,b)})`;
 const eur=(c:number)=>(c/100).toLocaleString('fr-FR',{maximumFractionDigits:2})+' €';
 export const parseGain=(s:string)=>{const m=/^(\d{1,7})(?:[.,](\d{1,2}))?\s*€?$/.exec(s.trim());return m?Number(m[1])*100+Number((m[2]??'0').padEnd(2,'0')):null;};
 
@@ -75,23 +77,29 @@ async function finish(pool:Pool,t:Row,b:Bracket){
 }
 
 // Saisie d'un gain (chat ou page staff) : renvoie le message à annoncer dans le chat.
-export async function recordGain(pool:Pool,cents:number):Promise<string>{
+// XP du tournoi : 25 de participation + 20 par duel gagné (un passage d'office n'est pas une victoire).
+export const tournamentPoints=(duelsWon:number)=>25+20*duelsWon;
+
+// Saisie d'un gain (chat ou page staff) : renvoie les messages courts à poster dans le chat Rumble (pas de mise en page).
+export async function recordGain(pool:Pool,cents:number):Promise<string[]>{
   await bracketSchema(pool);
   const t=(await pool.query(`SELECT * FROM belva_tournaments WHERE status='live' ORDER BY id DESC LIMIT 1`)).rows[0] as Row|undefined;
-  if(!t?.draw)return 'Aucun tournoi en cours.';
-  const r=applyGain(t.draw,t.legs??{},cents);if(!r)return 'Le tournoi est déjà terminé.';
+  if(!t?.draw)return ['Aucun tournoi en cours.'];
+  const r=applyGain(t.draw,t.legs??{},cents);if(!r)return ['Le tournoi est déjà terminé.'];
   const upd=(await pool.query(`UPDATE belva_tournaments SET legs=$2::jsonb,version=version+1 WHERE id=$1 AND version=$3 RETURNING id`,[t.id,JSON.stringify(r.legs),t.version])).rowCount;
-  if(!upd)return 'Saisie simultanée : renvoie le gain.';
+  if(!upd)return ['Saisie simultanée : renvoie le gain.'];
   const ps=Object.fromEntries(await players(pool,t.id));
   const b=computeBracket(t.draw,r.legs),m=b.matches.find(x=>x.key===r.played.key)!;
   const leg=m.legs[r.played.leg]!;
-  const head=`🎰 ${slotOf(ps,r.played.player)} (${nm(ps,r.played.player)}) : ${eur(cents)}`;
-  if(leg.a===null||leg.b===null)return `${head} · au tour de ${slotOf(ps,r.played.opponent)} (${nm(ps,r.played.opponent)})`;
-  if(leg.a===leg.b)return `${head} · 🤝 égalité, on rachète les deux bonus ! ${b.current?`Au tour de ${slotOf(ps,b.current.player)} (${nm(ps,b.current.player)})`:''}`;
-  if(b.champion){await finish(pool,t,b);return `${head} · 🏆 ${nm(ps,b.champion)} remporte le tournoi avec ${slotOf(ps,b.champion)} ! Classement : ${BRACKET_URL}`;}
-  const next=b.current?` · Au suivant : ${duelText(ps,b.current.player,b.current.opponent)}`:'';
-  if(!m.winner)return `${head} · ${roundName(m.round,b.rounds)} : ${nm(ps,m.a!)} ${m.winsA}-${m.winsB} ${nm(ps,m.b!)}${next}`;
-  return `${head} · ⚔️ ${nm(ps,m.winner)} passe, ${nm(ps,m.loser!)} est éliminé (${b.places[m.loser!]}ᵉ)${next}`;
+  const who=(id:string)=>`${nm(ps,id)} (${slotOf(ps,id)})`;
+  if(leg.a===null||leg.b===null)return [`${who(r.played.player)} : ${eur(cents)} · au tour de ${who(r.played.opponent)}`];
+  const duel=`${who(m.a!)} vs ${who(m.b!)} [${eur(leg.a)} - ${eur(leg.b)}]`;
+  const next=b.current?[`Suivant : ${who(b.current.player)} vs ${who(b.current.opponent)}`]:[];
+  if(leg.a===leg.b)return [`${duel} [Égalité : on rachète]`,...next];
+  if(!m.winner)return [`${duel} [${roundName(m.round,b.rounds)} ${m.winsA}-${m.winsB}]`,...next];
+  const lost=`[Perdant : ${nm(ps,m.loser!)} +${tournamentPoints(b.wins[m.loser!]??0)} pts]`;
+  if(b.champion){await finish(pool,t,b);return [`${duel} [Champion : ${who(b.champion)} +${tournamentPoints(b.wins[b.champion]??0)} pts] ${lost}`];}
+  return [`${duel} [Gagnant : ${who(m.winner)}] ${lost}`,...next];
 }
 
 // Correction depuis la page staff : remplace les gains d'un duel, le reste du bracket se recalcule.

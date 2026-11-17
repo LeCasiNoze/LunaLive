@@ -499,7 +499,7 @@ export function ensureRumbleBridge(opts: {
     }
     if(opts.slug==='belvaa'&&/^!tournoi(?:\s|$)/i.test(m.text.trim())){
       const reply=await belvaTournamentChat(opts.pool,m.userId,m.username,m.text).catch(e=>{console.warn('[belva-tournoi]',e?.message||e);return null;});
-      if(reply)await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',reply);
+      for(const line of [reply??[]].flat())await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',line);
       return;
     }
     if(opts.slug==='belvaa'){
@@ -722,7 +722,7 @@ async function belvaTournamentChat(pool:Pool,userId:string,username:string,text:
   if(!arg){
     const st=await tournamentState(pool);const cur=st?.bracket?.current;
     if(!st||st.tournament.status!=='live'||!cur)return st?.tournament.status==='open'?`@${username} — Inscriptions ouvertes sur le Discord : /tournoi + ta machine.`:null;
-    const p=st.players;return `⚔️ En cours : ${p[cur.player]?.slot} (${p[cur.player]?.rumble??p[cur.player]?.name}) contre ${p[cur.opponent]?.slot} (${p[cur.opponent]?.rumble??p[cur.opponent]?.name}) · à jouer : ${p[cur.player]?.slot}`;
+    const p=st.players,w=(id:string)=>`${p[id]?.rumble??p[id]?.name} (${p[id]?.slot})`;return `En cours : ${w(cur.player)} vs ${w(cur.opponent)} · à jouer : ${w(cur.player)}`;
   }
   const admins=(process.env.BELVA_TOURNAMENT_ADMINS||'belvaa,lecasinoze').toLowerCase().split(',').map(s=>s.trim());
   const badges=rumbleBadges.get(userId)??[];
