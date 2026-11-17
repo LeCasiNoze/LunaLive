@@ -1,5 +1,5 @@
 import {ChannelType,Events,MessageFlags,type Client,type GuildMember} from 'discord.js';
-import {BELVA_ROLES} from './belva-roles.js';
+import {BELVA_ROLES,offerOn} from './belva-roles.js';
 import {LINK_BUTTON} from './belva-info.js';
 import {isApproved} from './belva-approval.js';
 import type {Pool} from 'pg';
@@ -23,7 +23,7 @@ export function welcomeCard(member:{id:string;avatarUrl:string},count:number,cha
     T('**Pour bien démarrer :**'),
     GAP,
     ...(channels.rules?[step('📜 D’abord, le règlement','Un clic sur **J’accepte** et tout le serveur s’ouvre.',go('Le règlement','📜',channels.rules)),GAP]:[]),
-    step('🎁 1 · Ton bonus','Jusqu’à **30 € remboursés** ou **20 € offerts** sur ton 1er dépôt.',go('Les offres','🎁',channels.offers)),
+    step('🎁 1 · Ton bonus',offerOn()?'Jusqu’à **30 € remboursés** ou **20 € offerts** sur ton 1er dépôt.':'Jusqu’à **30 € remboursés** sur ton 1er dépôt avec le lien de Belva.',go('Les offres','🎁',channels.offers)),
     GAP,
     step('🔗 2 · Relie ton Rumble','Gagne des **BCoins** et de l’**XP** pour monter en grade.',{type:2,style:1,label:'Lier',emoji:{name:'🔗'},custom_id:LINK_BUTTON}),
     GAP,

@@ -1,6 +1,8 @@
 import {ChannelType,type Guild,type GuildMember} from 'discord.js';
 
 // Belva's server roles. Tiers: Invité (no casino linked) → Membre du Club (verified on a casino) → Carré Or (has deposited).
+// Dépôt offert : retiré pour le moment, réactivé avec BELVA_OFFER=on (cartes, tickets, annonces).
+export const offerOn=()=>process.env.BELVA_OFFER==='on';
 export const BELVA_ROLES={
   invite:'1482854045210120343',
   membre:'1571169945687949472',

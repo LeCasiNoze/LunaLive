@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {ChannelType,MessageFlags,type Client,type Message} from 'discord.js';
-import {brands,refreshBrands} from './belva-roles.js';
+import {brands,offerOn,refreshBrands} from './belva-roles.js';
 import {OFFERS} from './belva-offers.js';
 import {isApproved} from './belva-approval.js';
 import type {Pool} from 'pg';
@@ -27,10 +27,10 @@ export function hubCard(){
     SEP(),
     ...(rainbet?[{type:9,components:[T('## ⭐ 🌧️ Rainbet · partenaire principal\n**+20 % de rakeback** pendant 7 jours avec le code **NIVORANET**\n🏁 Race du mois : **200 $** pour le top 3 (100 / 60 / 40)')],accessory:link('Voir l’offre','👉',channel(rainbet.channelId!))},SEP(2)]:[]),
     T('### 🎰 Nos autres casinos'),
-    ...casinos.flatMap((b,i)=>[...(i?[SEP(1,false)]:[]),{type:9,components:[T(`**${OFFERS[b.id].title}**\nJusqu’à **${b.bonus} €** remboursés · 1er dépôt de **20 €** offert\n-# ${OFFERS[b.id].tagline}`)],
+    ...casinos.flatMap((b,i)=>[...(i?[SEP(1,false)]:[]),{type:9,components:[T(`**${OFFERS[b.id].title}**\nJusqu’à **${b.bonus} €** remboursés${offerOn()?' · 1er dépôt de **20 €** offert':''}\n-# ${OFFERS[b.id].tagline}`)],
       accessory:link('Voir l’offre','👉',channel(b.channelId!))}]),
     SEP(),
-    T('### 📋 En bref\n**Remboursement** · tu déposes avec notre lien, on te rembourse ton dépôt (jusqu’au plafond du casino).\n**Dépôt offert** · nouveau sur un casino ? On t’envoie 20 € pour ton premier dépôt.\n-# Un remboursement et un dépôt offert par casino. L’argent part directement sur ton adresse de dépôt, en priorité sur un casino où tu n’as pas encore de compte.'),
+    T('### 📋 En bref\n**Remboursement** · tu déposes avec notre lien, on te rembourse ton dépôt (jusqu’au plafond du casino).\n'+(offerOn()?'**Dépôt offert** · nouveau sur un casino ? On t’envoie 20 € pour ton premier dépôt.\n-# Un remboursement et un dépôt offert par casino.':'-# Un remboursement par casino.')+' L’argent part directement sur ton adresse de dépôt, en priorité sur un casino où tu n’as pas encore de compte.'),
     SEP(1),FOOTER]};
 }
 
@@ -49,7 +49,7 @@ export function rewardsCard(){
     {type:9,components:[T('# 🏆 Les récompenses Belva'),T('Tout ce qu’il y a à gagner sur la chaîne et le Discord.\n-# Les gains en argent sont réservés aux membres avec un compte casino vérifié.')],
       accessory:{type:11,media:{url:'attachment://logo-belva.png'},description:'Belva'}},
     SEP(),
-    T('### 🎁 Tout de suite\n> 💸 **Dépôt remboursé** · jusqu’à 30 € (35 € sur Celsius) sur ton 1er dépôt\n> 🎁 **Dépôt offert** · 20 € pour ton 1er dépôt sur un nouveau casino\n> 🏁 **Race Rainbet** · 200 $ chaque mois pour le top 3 (100 / 60 / 40), du 16 au 15\n> 🎉 **Giveaways** · annoncés dans les salons giveaways et live'),
+    T('### 🎁 Tout de suite\n> 💸 **Dépôt remboursé** · jusqu’à 30 € (35 € sur Celsius) sur ton 1er dépôt'+(offerOn()?'\n> 🎁 **Dépôt offert** · 20 € pour ton 1er dépôt sur un nouveau casino':'')+'\n> 🏁 **Race Rainbet** · 200 $ chaque mois pour le top 3 (100 / 60 / 40), du 16 au 15\n> 🎉 **Giveaways** · annoncés dans les salons giveaways et live'),
     SEP(1,false),
     T('### 📅 À partir du 1er décembre\n> ⚔️ **Saison du tournoi** · un tournoi chaque samedi, inscription avec **/tournoi**, le top 3 du mois gagne 50 · 30 · 20 €\n> 📱 **Giveaways réseaux** · plus de giveaways grâce à tes commentaires sur nos vidéos YouTube, Instagram et TikTok'),
     SEP(),

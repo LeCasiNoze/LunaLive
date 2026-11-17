@@ -51,7 +51,9 @@ test('every offer card has its visuals and two copies of each action button',()=
     const {payload,version}=offerCard({id,bonus:id==='celsius'?35:30},o);
     assert.equal(payload.files.length,2);assert.match(version,/^[0-9a-f]{10}$/);
     const json=JSON.stringify(payload.components);
-    for(const a of ['qrefund','qoffer','quick'])assert.ok(json.includes(`belva:t:${a}:${id}`)&&json.includes(`belva:t:${a}2:${id}`));
+    // Dépôt offert retiré par défaut (BELVA_OFFER) : ses boutons n'apparaissent pas.
+    assert.ok(!json.includes('qoffer'));
+    for(const a of ['qrefund','quick'])assert.ok(json.includes(`belva:t:${a}:${id}`)&&json.includes(`belva:t:${a}2:${id}`));
     assert.ok(json.includes(id==='celsius'?'jusqu’à 35 €':'jusqu’à 30 €'));
   }
 });

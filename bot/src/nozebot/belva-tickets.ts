@@ -5,7 +5,7 @@ import {
 } from 'discord.js';
 import {matchBetportalDeposit} from './belva-betportal-match.js';
 import type {Pool} from 'pg';
-import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand} from './belva-roles.js';
+import {BELVA_ROLES,brand,brands,grantCasinoRoles,refreshBrands,type Brand,offerOn} from './belva-roles.js';
 import {OFFERS,ensureOfferCards} from './belva-offers.js';
 import {ensureInfoCards} from './belva-info.js';
 
@@ -98,7 +98,7 @@ export function belvaTicketPanel(){
       .setDescription([
         'Choisis ta demande dans le menu ci-dessous, un salon privé s’ouvrira avec le staff.',
         '',
-        '🎁 **Dépôt offert** · pas encore de compte sur un de nos casinos ? Inscris-toi avec le lien de Belva : on t’offre ton 1er dépôt de 20 €.',
+        ...(offerOn()?['🎁 **Dépôt offert** · pas encore de compte sur un de nos casinos ? Inscris-toi avec le lien de Belva : on t’offre ton 1er dépôt de 20 €.']:[]),
         '💸 **Remboursement de dépôt** · tes 30 € offerts (35 € sur Celsius) après ton dépôt via le lien de Belva, versés de préférence sur un casino où tu n’as pas encore de compte.',
         '🔎 **Vérification de compte** · faire vérifier ton compte sur un casino partenaire.',
         '🛟 **Aide**, 🤝 **Partenariat** ou 📝 **Autre** pour le reste.',
@@ -108,7 +108,7 @@ export function belvaTicketPanel(){
       .setFooter({text:'Belva • Support privé · 18+ · Joue de façon responsable'})],
     components:[new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(new StringSelectMenuBuilder().setCustomId(ID.panel)
       .setPlaceholder('Choisis le type de demande…')
-      .addOptions((Object.keys(KINDS) as Kind[]).map(k=>({value:k,label:KINDS[k].label,emoji:KINDS[k].emoji,description:KINDS[k].description}))))],
+      .addOptions((Object.keys(KINDS) as Kind[]).filter(k=>k!=='offer'||offerOn()).map(k=>({value:k,label:KINDS[k].label,emoji:KINDS[k].emoji,description:KINDS[k].description}))))],
   };
 }
 
@@ -316,10 +316,9 @@ function listEntry(r:Refund,image?:string){
 
 async function memberOf(i:Interaction){return i.guild!.members.fetch(i.user.id);}
 
-// Les dépôts offerts démarrent avec le lancement du duo ; avant, le remboursement reste ouvert.
-const OFFER_START=()=>Date.parse(process.env.BELVA_OFFER_START?.trim()||'2026-12-01T00:00:00+01:00');
-export const offerOpen=(now=Date.now())=>now>=OFFER_START();
-const OFFER_SOON='🎁 Le **dépôt offert** démarre le **1er décembre**. Le remboursement de dépôt, lui, est déjà disponible.';
+// Anciens boutons « Dépôt offert » encore affichés quelque part : réponse polie tant que l'offre est retirée.
+const offerOpen=offerOn;
+const OFFER_SOON='🎁 Le **dépôt offert** n’est pas disponible pour le moment. Le remboursement de dépôt, lui, est ouvert.';
 
 export async function handleBelvaTickets(interaction:Interaction,pool?:Pool):Promise<boolean>{
   const cid='customId' in interaction?String(interaction.customId):'';

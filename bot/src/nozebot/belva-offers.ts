@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {ChannelType,MessageFlags,type Client,type Message} from 'discord.js';
-import {refreshBrands,type Brand} from './belva-roles.js';
+import {refreshBrands,type Brand,offerOn} from './belva-roles.js';
 
 // Cartes d'offres des salons « Offres Casino » de Belva (composants Discord v2). Les visuels sont dans bot/assets/belva.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -32,22 +32,22 @@ const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:
 export function offerCard(b:Pick<Brand,'id'|'bonus'>,o:Offer){
   const cap=b.bonus??30;
   const container={type:17,accent_color:o.accent,components:[
-    {type:12,items:[{media:{url:`attachment://banner-${b.id}.png`},description:`${o.name} × Belva : jusqu’à ${cap} € de dépôt remboursé et 1er dépôt de ${OFFER_EUR} € offert`}]},
+    {type:12,items:[{media:{url:`attachment://banner-${b.id}.png`},description:`${o.name} × Belva : jusqu’à ${cap} € de dépôt remboursé${offerOn()?` et 1er dépôt de ${OFFER_EUR} € offert`:''}`}]},
     SEP(2,false),
     {type:9,components:[T(`# ${o.title} × Belva`),T(`L’offre de bienvenue réservée à la commu Belva.\n-# ${o.tagline} · 18+`)],
       accessory:{type:11,media:{url:`attachment://logo-${b.id}.png`},description:`Logo ${o.name}`}},
     SEP(),
     {type:9,components:[T(`### 💸 Ton dépôt remboursé\nFais ton premier dépôt avec le lien de Belva : on te rembourse **jusqu’à ${cap} €**.\n-# ${OFFER_EUR} € déposés → ${OFFER_EUR} € remboursés · ${cap} € ou plus → ${cap} €`)],accessory:btn('Remboursement','💸',3,`belva:t:qrefund:${b.id}`)},
     SEP(1,false),
-    {type:9,components:[T(`### 🎁 Premier dépôt offert\nNouveau sur ${o.name} ? On t’envoie **${OFFER_EUR} €** pour faire ton premier dépôt.\n-# Comptes créés avec le lien de Belva · un seul par casino`)],accessory:btn('Dépôt offert','🎁',1,`belva:t:qoffer:${b.id}`)},
-    SEP(1,false),
+    ...(offerOn()?[{type:9,components:[T(`### 🎁 Premier dépôt offert\nNouveau sur ${o.name} ? On t’envoie **${OFFER_EUR} €** pour faire ton premier dépôt.\n-# Comptes créés avec le lien de Belva · un seul par casino`)],accessory:btn('Dépôt offert','🎁',1,`belva:t:qoffer:${b.id}`)},
+    SEP(1,false)]:[]),
     {type:9,components:[T(`### ✅ Déjà inscrit ?\nFais vérifier ton compte : tu reçois le rôle ${o.name} et l’accès aux giveaways membres.`)],accessory:btn('Vérifier','✅',2,`belva:t:quick:${b.id}`)},
     SEP(),
-    T('### 📋 Comment ça marche\n**1 ·** Crée ton compte avec le bouton **S’inscrire** en bas.\n**2 ·** Clique sur **Dépôt offert** si tu n’as pas encore déposé, ou sur **Remboursement** après ton dépôt.\n**3 ·** Le staff vérifie ton compte dans notre espace partenaire, puis l’argent part **directement sur ton adresse de dépôt**.\n-# Le remboursement est versé en priorité sur un autre de nos casinos où tu n’as pas encore de compte.'),
+    T(`### 📋 Comment ça marche\n**1 ·** Crée ton compte avec le bouton **S’inscrire** en bas.\n${offerOn()?'**2 ·** Clique sur **Dépôt offert** si tu n’as pas encore déposé, ou sur **Remboursement** après ton dépôt.':'**2 ·** Fais ton premier dépôt, puis clique sur **Remboursement**.'}\n**3 ·** Le staff vérifie ton compte dans notre espace partenaire, puis l’argent part **directement sur ton adresse de dépôt**.\n-# Le remboursement est versé en priorité sur un autre de nos casinos où tu n’as pas encore de compte.`),
     ...(o.welcome||o.why?[SEP(),T((o.welcome??o.why)!)]:[]),
     SEP(),
     {type:1,components:[link(`S’inscrire sur ${o.name}`,'🎰',o.link),...(o.terms?[link('Conditions officielles','📄',o.terms)]:[])]},
-    {type:1,components:[btn('Remboursement','💸',3,`belva:t:qrefund2:${b.id}`),btn('Dépôt offert','🎁',1,`belva:t:qoffer2:${b.id}`),btn('Vérifier mon compte','✅',2,`belva:t:quick2:${b.id}`)]},
+    {type:1,components:[btn('Remboursement','💸',3,`belva:t:qrefund2:${b.id}`),...(offerOn()?[btn('Dépôt offert','🎁',1,`belva:t:qoffer2:${b.id}`)]:[]),btn('Vérifier mon compte','✅',2,`belva:t:quick2:${b.id}`)]},
     SEP(1),
     T('-# 💡 En crypto, l’adresse de dépôt peut changer d’un dépôt à l’autre : vérifie-la à chaque fois.\n-# 🔞 Les jeux d’argent comportent des risques : endettement, isolement, dépendance. Joueurs Info Service : 09 74 75 13 13.'),
   ]};

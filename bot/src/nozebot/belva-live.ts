@@ -1,6 +1,6 @@
 import {MessageFlags} from 'discord.js';
 import type {LiveAlertConfig,LiveSnapshot} from './live-alerts.js';
-import {brands} from './belva-roles.js';
+import {brands,offerOn} from './belva-roles.js';
 
 // Alerte live automatique du Discord de Belva (remplace les annonces manuelles dans 🎥︱live).
 const GUILD_ID=process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
@@ -30,7 +30,7 @@ export function buildBelvaLiveMessage(s:LiveSnapshot,ping:boolean){
     ...(s.avatarUrl?[{type:9,components:header,accessory:{type:11,media:{url:s.avatarUrl},description:'Belva'}}]:header),
     ...(s.thumbnailUrl?[{type:12,items:[{media:{url:s.thumbnailUrl},description:`Aperçu du live : ${s.title}`}]}]:[]),
     {type:14,divider:true,spacing:2},
-    T('### 🎰 Pendant le live\n> 💸 **Jusqu’à 30 € remboursés** sur ton premier dépôt avec nos liens\n> 🎁 **20 € offerts** pour ton premier dépôt sur un nouveau casino\n> 💬 Tape **!bonus** dans le chat · **/lier** ici pour relier ton compte Rumble'),
+    T('### 🎰 Pendant le live\n> 💸 **Jusqu’à 30 € remboursés** sur ton premier dépôt avec nos liens'+(offerOn()?'\n> 🎁 **20 € offerts** pour ton premier dépôt sur un nouveau casino':'')+'\n> 💬 Tape **!bonus** dans le chat · **/lier** ici pour relier ton compte Rumble'),
     {type:1,components:watch.slice(0,5)},
     ...(offers?[{type:1,components:[link('Voir les offres casino','🎁',`https://discord.com/channels/${GUILD_ID}/${offers}`)]}]:[]),
     {type:14,divider:false,spacing:1},

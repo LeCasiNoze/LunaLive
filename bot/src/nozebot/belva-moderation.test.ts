@@ -25,8 +25,14 @@ test('spam, invitations et mentions de masse', ()=>{
   assert.equal(verdict('@everyone live','💬︱général'),'mention @everyone/@here');
 });
 
-test('dépôt offert fermé avant le 1er décembre (heure de Paris)', async ()=>{
-  const {offerOpen}=await import('./belva-tickets.js');
-  assert.equal(offerOpen(Date.parse('2026-11-30T23:59:00+01:00')),false);
-  assert.equal(offerOpen(Date.parse('2026-12-01T00:00:00+01:00')),true);
+test('dépôt offert retiré tant que BELVA_OFFER n’est pas à on', async ()=>{
+  const {offerOn}=await import('./belva-roles.js');
+  const {offerCard,OFFERS}=await import('./belva-offers.js');
+  const id=Object.keys(OFFERS)[0]!;
+  delete process.env.BELVA_OFFER;
+  assert.equal(offerOn(),false);
+  assert.ok(!JSON.stringify(offerCard({id,bonus:30} as never,OFFERS[id]!)).includes('qoffer'));
+  process.env.BELVA_OFFER='on';
+  assert.ok(JSON.stringify(offerCard({id,bonus:30} as never,OFFERS[id]!)).includes('qoffer'));
+  delete process.env.BELVA_OFFER;
 });
