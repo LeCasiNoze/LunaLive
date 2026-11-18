@@ -1,9 +1,10 @@
-import {ChannelType,MessageFlags,SlashCommandBuilder,type Client,type Guild,type Interaction,type TextChannel} from 'discord.js';
+import {ChannelType,MessageFlags,SlashCommandBuilder,type Client,type Guild,type GuildMember,type Interaction,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {BELVA_ROLES} from './belva-roles.js';
 import {GRADE_KEYS,ROLE_SPEC} from './belva-role-spec.js';
-import {LINK_SLUGS} from './belva-guilds.js';
+import {LCN_GUILD,LINK_SLUGS,findChannel} from './belva-guilds.js';
+import {lcnRole} from './lcn-role-spec.js';
 import {GRADES,gradeUpCard,levelFor,tierUpLine} from './belva-progress-designs.js';
 
 // XP du Discord de Belva : chaque gain est un événement unique (source + référence), rejouer le calcul ne double rien.
@@ -89,26 +90,42 @@ async function diamondReward(client:Client,pool:Pool,guild:Guild,discordId:strin
 }
 
 async function applyGrades(client:Client,pool:Pool,guild:Guild,announce:boolean){
-  const roles=await guild.roles.fetch();
-  const gradeRole=Object.fromEntries(GRADE_KEYS.map(k=>[k,roles.find(r=>r.name===ROLE_SPEC.find(s=>s.key===k)!.name)?.id]));
+  // Mêmes grades sur les deux Discord : noms de Belva chez Belva, noms LunaLive chez LeCasiNoze.
+  const lcn=await client.guilds.fetch(LCN_GUILD()).catch(()=>null);
+  const roleMap=async(g:Guild,nameOf:(k:string)=>string)=>{const roles=await g.roles.fetch();
+    return Object.fromEntries(GRADE_KEYS.map(k=>[k,roles.find(r=>r.name===nameOf(k))?.id])) as Record<string,string|undefined>;};
+  const belvaRoles=await roleMap(guild,k=>ROLE_SPEC.find(s=>s.key===k)!.name);
+  const lcnRoles=lcn?await roleMap(lcn,k=>lcnRole(k).name):{};
+  const lcnVip=lcn?(await lcn.roles.fetch()).find(r=>r.name===lcnRole('carreOr').name)?.id:undefined;
+  const paid=new Set((await pool.query(`SELECT DISTINCT discord_id FROM belva_refunds WHERE status='paid'`).catch(()=>({rows:[]}))).rows.map(r=>String(r.discord_id)));
   const known=new Map((await pool.query(`SELECT discord_id,label,grade FROM belva_xp_levels`)).rows.map(r=>[r.discord_id,r]));
   const general=announce?await client.channels.fetch(GENERAL_CHANNEL).catch(()=>null) as TextChannel|null:null;
-  for(const t of await totals(pool)){
-    const m=await guild.members.fetch(t.discord_id).catch(()=>null);if(!m)continue;
-    const l=cappedLevel(t.xp,m.roles.cache.has(BELVA_ROLES.carreOr));if(!l)continue;
-    const want=gradeRole[l.grade.key];
-    const extra=Object.values(gradeRole).filter((id):id is string=>!!id&&id!==want&&m.roles.cache.has(id));
+  const lcnGeneral=announce&&lcn?await findChannel(lcn,'general')??null:null;
+  const setGrade=async(m:GuildMember,map:Record<string,string|undefined>,want:string|undefined,label:string)=>{
+    const extra=Object.values(map).filter((id):id is string=>!!id&&id!==want&&m.roles.cache.has(id));
     if(extra.length)await m.roles.remove(extra,'Nouveau grade').catch(()=>undefined);
-    if(want&&!m.roles.cache.has(want))await m.roles.add(want,`Grade ${l.label}`).catch(()=>undefined);
+    if(want&&!m.roles.cache.has(want))await m.roles.add(want,`Grade ${label}`).catch(()=>undefined);
+  };
+  for(const t of await totals(pool)){
+    const mb=await guild.members.fetch(t.discord_id).catch(()=>null);
+    const ml=lcn?await lcn.members.fetch(t.discord_id).catch(()=>null):null;
+    if(!mb&&!ml)continue;
+    // Dépôt vérifié (remboursement payé) : rôle Carré Or / Table VIP sur l'un des deux Discord, ou paiement en base.
+    const deposit=!!mb?.roles.cache.has(BELVA_ROLES.carreOr)||!!(lcnVip&&ml?.roles.cache.has(lcnVip))||paid.has(t.discord_id);
+    const l=cappedLevel(t.xp,deposit);if(!l)continue;
+    if(mb)await setGrade(mb,belvaRoles,belvaRoles[l.grade.key],l.label);
+    if(ml)await setGrade(ml,lcnRoles,lcnRoles[l.grade.key],l.label);
     const before=known.get(t.discord_id);
     if(before?.label===l.label)continue;
     await pool.query(`INSERT INTO belva_xp_levels(discord_id,label,grade) VALUES($1,$2,$3) ON CONFLICT(discord_id) DO UPDATE SET label=$2,grade=$3,updated_at=NOW()`,[t.discord_id,l.label,l.grade.key]);
     // Changement de grade : grande carte ; simple sous-niveau : une ligne. Premier calcul : rien n'est annoncé.
     // Diamant : cash prize de 100 € une seule fois, le staff le verse comme un remboursement.
-    if(l.grade.key==='diamant'||l.grade.key==='obsidienne')await diamondReward(client,pool,guild,m.id);
-    if(!general||!before)continue;
-    if(before.grade!==l.grade.key)await general.send(gradeUpCard({id:m.id,avatarUrl:m.displayAvatarURL({size:256,extension:'png'})},t.xp)).catch(()=>undefined);
-    else await general.send(tierUpLine(m.id,t.xp)).catch(()=>undefined);
+    if(l.grade.key==='diamant'||l.grade.key==='obsidienne')await diamondReward(client,pool,guild,t.discord_id);
+    if(!before)continue;
+    const who=(mb??ml)!;
+    const msg=before.grade!==l.grade.key?gradeUpCard({id:who.id,avatarUrl:who.displayAvatarURL({size:256,extension:'png'})},t.xp):tierUpLine(who.id,t.xp);
+    if(mb&&general)await general.send(msg).catch(()=>undefined);
+    if(ml&&lcnGeneral)await lcnGeneral.send(msg).catch(()=>undefined);
   }
 }
 
