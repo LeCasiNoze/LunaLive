@@ -24,11 +24,12 @@ const select=(custom_id:string,placeholder:string,min:number,max:number,options:
 
 export function rulesCard(){
   return card([
-    L.T('# 📜 Le règlement'),L.T('Simple et clair : cinq règles pour que tout le monde passe un bon moment.'),
+    L.T('# 📜 Le règlement'),L.T('Simple et clair : six règles pour que tout le monde passe un bon moment.'),
     L.LINE,
     L.T(['**1 ·** Respecte les autres membres, même en cas de désaccord.','**2 ·** Pas de spam, de démarchage sauvage ni de lien douteux.',
-      '**3 ·** Ne partage pas d’information personnelle dans les salons publics.','**4 ·** Utilise les salons pour leur sujet et écoute l’équipe de modération.',
-      '**5 ·** Garde une ambiance adulte, détendue et agréable.'].join('\n')),
+      '**3 ·** Ne partage pas d’information personnelle dans les salons publics.','**4 ·** Un seul compte par personne : pas de double compte (multi-comptes et triche aux giveaways = sanction).',
+      '**5 ·** Utilise les salons pour leur sujet et écoute l’équipe de modération.',
+      '**6 ·** Garde une ambiance adulte, détendue et agréable.'].join('\n')),
     L.LINE,
     ...L.step('✅ Pour ouvrir le serveur','Accepte le règlement, puis choisis tes notifications (ou continue sans). Le reste du serveur se dévoile tout seul.',
       [L.btn('J’accepte le règlement','✅',3,'nozebot:rules:accept')]),
@@ -80,15 +81,18 @@ export function notifCard(){
 export function ticketCard(){
   const options=ticketCtx.run(LCN_TICKETS,()=>ticketKindOptions());
   return card([
-    L.T('# 🎫 Ouvrir un ticket'),L.T('Un salon privé s’ouvre, visible seulement par toi et l’équipe.'),
+    L.T('# 🎫 Support LeCasiNoze'),L.T('Choisis ta demande dans le menu en bas : un salon privé s’ouvre avec l’équipe, visible seulement par toi et le staff.'),
     L.LINE,
-    L.T(['💸 **Remboursement de dépôt** · jusqu’à 30 € (35 € sur Celsius) sur ton 1er dépôt avec notre lien, versés de préférence sur un casino où tu n’as pas encore de compte.',
-      '🔎 **Vérification de compte** · faire vérifier ton compte sur un casino partenaire.','💎 **VIP host** · gros joueur : une mise en relation personnalisée.',
-      '🛟 **Aide**, 🤝 **Partenariat** ou 📝 **Autre** pour le reste.'].join('\n')),
-    L.T('-# 📸 Prépare une capture de ton dépôt pour un remboursement.'),
+    L.T('### 💸 Remboursement de dépôt\nTu as fait ton **1er dépôt** avec notre lien ? On te rembourse **jusqu’à 30 €**, versés de préférence sur un de nos casinos où tu n’as pas encore de compte.\n-# 📸 Prépare la capture de ton dépôt.'),
     L.GAP,
-    select(TICKET_PANEL_ID,'Choisis le type de demande…',1,1,options),
-    L.T('-# 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
+    L.T('### 🔎 Vérification de compte\nInscrit avec notre lien ? Le staff vérifie ton compte : tu reçois **✅ Joueur Vérifié** et le rôle du casino.'),
+    L.GAP,
+    L.T('### 💎 VIP host\nGros joueur ? Une personne dédiée t’accompagne.'),
+    L.GAP,
+    L.T('### 🛟 Aide · 🤝 Partenariat · 📝 Autre\nUn souci, une proposition ou une question : on te répond dans ton salon.'),
+    L.LINE,
+    select(TICKET_PANEL_ID,'👉 Choisis le type de demande…',1,1,options),
+    L.T('-# Une demande à la fois · 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
   ]);
 }
 
@@ -96,7 +100,7 @@ export function rainbetCard(){
   return card([
     L.T(`# ${L.logo('rainbet')} Rainbet · partenaire principal`),L.T('Inscris-toi avec notre lien et le code **NIVORANET** : tu soutiens la chaîne et tu entres dans la wager race.'),
     L.LINE,
-    ...L.signup('rainbet','S’inscrire sur Rainbet','https://rainbet.com/?r=nivoranet','**Étape 1** · crée ton compte avec notre lien (code **NIVORANET** déjà inclus).'),
+    ...L.signup('rainbet','S’inscrire sur Rainbet','**Étape 1** · crée ton compte avec notre lien (code **NIVORANET** déjà inclus).'),
     L.GAP,
     ...L.step('2 · Vérifie ton compte','Entre ton pseudo Rainbet exact : tu reçois le rôle 🌧️ Rainbet et ✅ Joueur Vérifié.',[L.btn('Vérifier mon compte','✅',3,'nozebot:rainbet:verify')]),
     L.LINE,
@@ -112,7 +116,10 @@ export function betportalCard(){
   return card([
     L.T(`# ${L.logo('betportal')} Betportal`),L.T('Le package de bienvenue est réparti sur les **trois premiers dépôts** : jusqu’à **1 000 € de bonus + 250 free spins**. Les 300 % cumulés ne s’appliquent pas à un seul dépôt.'),
     L.LINE,
-    ...L.signup('betportal','S’inscrire sur Betportal','https://affiliate.betportal.com/visit/?bta=35392&brand=betportal','**Étape 1** · crée ton compte avec notre lien partenaire.'),
+    ...L.signup('betportal','S’inscrire sur Betportal','**Étape 1** · crée ton compte avec notre lien partenaire.'),
+    L.GAP,
+    ...L.step('2 · Déjà inscrit ?','Fais vérifier ton compte : tu reçois ✅ Joueur Vérifié et le rôle du casino. Après ton 1er dépôt, demande ton remboursement (jusqu’à **30 €**).',
+      [L.btn('Vérifier mon compte','✅',3,'belva:t:quick:betportal'),L.btn('Remboursement','💸',1,'belva:t:qrefund:betportal')]),
     L.LINE,
     L.T('### 🎁 Les trois dépôts\n> **1er dépôt** · 150 % jusqu’à 500 € et jusqu’à 200 FS selon le dépôt\n> **2e dépôt** · 100 % jusqu’à 300 € et 50 FS\n> **3e dépôt** · 50 % jusqu’à 200 €'),
     L.T('### 🎰 Free spins du 1er dépôt\n20–50 € : **20 FS** · 51–100 € : **50 FS** · 101–200 € : **100 FS** · dès 201 € : **200 FS**. Valeur 0,10 €/spin, gains des FS annoncés au solde réel.'),
@@ -127,7 +134,10 @@ export function celsiusCard(){
   return card([
     L.T(`# ${L.logo('celsius')} Celsius`),L.T('Le package de bienvenue affiché par Celsius est réparti sur les deux premiers dépôts.'),
     L.LINE,
-    ...L.signup('celsius','S’inscrire sur Celsius','https://nivoranet.onrender.com/r/lecasinoze-celsius','**Étape 1** · crée ton compte avec notre lien partenaire.'),
+    ...L.signup('celsius','S’inscrire sur Celsius','**Étape 1** · crée ton compte avec notre lien partenaire.'),
+    L.GAP,
+    ...L.step('2 · Déjà inscrit ?','Fais vérifier ton compte : tu reçois ✅ Joueur Vérifié et le rôle du casino. Après ton 1er dépôt, demande ton remboursement (jusqu’à **30 €**).',
+      [L.btn('Vérifier mon compte','✅',3,'belva:t:quick:celsius'),L.btn('Remboursement','💸',1,'belva:t:qrefund:celsius')]),
     L.LINE,
     L.T('### 🎁 Le package\n> **1er dépôt** · 100 % de bonus\n> **2e dépôt** · 200 % de bonus\n> **Total** · 300 % cumulés'),
     L.GAP,

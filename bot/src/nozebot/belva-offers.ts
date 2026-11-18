@@ -39,7 +39,7 @@ export function offerCard(b:Pick<Brand,'id'|'bonus'>,o:Offer){
       accessory:{type:11,media:{url:`attachment://logo-${b.id}.png`},description:`Logo ${o.name}`}},
     SEP(),
     // Première chose visible : l'inscription (Discord ne permet ni de grossir ni de centrer un bouton, il est donc seul sur sa ligne).
-    ...signup(b.id,`S’inscrire sur ${o.name}`,o.link,`**Étape 1** · crée ton compte sur **${o.name}** avec le lien de Belva : c’est ce lien qui te donne droit aux offres ci-dessous.`),
+    ...signup(b.id,`S’inscrire sur ${o.name}`,`**Étape 1** · crée ton compte sur **${o.name}** avec le lien de Belva : c’est ce lien qui te donne droit aux offres ci-dessous.`),
     SEP(),
     {type:9,components:[T(`### 💸 Ton dépôt remboursé\nFais ton premier dépôt avec le lien de Belva : on te rembourse **jusqu’à ${cap} €**.\n-# ${OFFER_EUR} € déposés → ${OFFER_EUR} € remboursés · ${cap} € ou plus → ${cap} €`)],accessory:btn('Remboursement','💸',3,`belva:t:qrefund:${b.id}`)},
     SEP(1,false),

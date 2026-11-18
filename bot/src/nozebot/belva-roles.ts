@@ -9,7 +9,7 @@ export const ticketCtx=new AsyncLocalStorage<TicketGuild>();
 const LCN_CASINOS:Brand[]=[
   {id:'rainbet',name:'Rainbet',emoji:'🌧️',role:'',channelId:'1569126449670004776',api:true},
   {id:'betportal',name:'Betportal',emoji:'🟢',role:'',bonus:30,channelId:'1562493112327348276'},
-  {id:'celsius',name:'Celsius',emoji:'🧡',role:'',bonus:35,channelId:'1544405889455362158'},
+  {id:'celsius',name:'Celsius',emoji:'🧡',role:'',bonus:30,channelId:'1544405889455362158'},
 ];
 export const LCN_TICKETS:TicketGuild={id:process.env.LECASINOZE_GUILD_ID?.trim()||'1188913226990235800',brand:'LeCasiNoze',
   staff:['1188940226358415443','1188939890344329379'],panel:'1544429389415063604',openCat:'1544429387754246185',closedCat:null,

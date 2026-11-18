@@ -14,14 +14,19 @@ export const step=(title:string,body:string,list:(object|null)[]=[])=>{const but
   return [T(`### ${title}\n${body}`),...(buttons.length?[{type:1,components:buttons}]:[])];};
 export const FOOT=T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.');
 
-// Emojis de l'application (utilisables sur tous les serveurs du bot) : logos des casinos et flèches animées.
-export const EMO={rainbet:'1572662103540502700',betportal:'1572662104836542626',celsius:'1572662106359205950',hazcasino:'1572662107269365821',velobet:'1572662108330659850'} as Record<string,string>;
-export const ARROW_DOWN='<a:arrow_down:1572662115951714474>';
+// Emojis de l'application (utilisables sur tous les serveurs du bot) : logos des casinos et chevrons animés.
+export const EMO={rainbet:'1572662103540502700',betportal:'1572665147464482976',celsius:'1572662106359205950',hazcasino:'1572662107269365821',velobet:'1572662108330659850'} as Record<string,string>;
+const CHEV_RIGHT={id:'1572665148722909334',name:'chev_right',animated:true},CHEV_LEFT={id:'1572665150018949270',name:'chev_left',animated:true};
 export const logo=(casino:string)=>EMO[casino]?`<:${casino}:${EMO[casino]}>`:'🎰';
 export const logoEmoji=(casino:string)=>EMO[casino]?{id:EMO[casino],name:casino}:{name:'🎰'};
-// Inscription mise en avant : gros titre encadré de flèches animées qui pointent vers le bouton juste en dessous
-// (Discord ne permet ni de colorer ni d'agrandir un bouton lien).
-export const signup=(casino:string,label:string,href:string,body:string)=>[
-  T(`## ${ARROW_DOWN} Inscris-toi ici ${ARROW_DOWN}`),T(body),
-  {type:1,components:[{type:2,style:5,label,emoji:logoEmoji(casino),url:href}]},
+// Couleur du bouton d'inscription par casino (Discord : bleu, vert ou rouge).
+const COLOR:Record<string,1|3|4>={rainbet:1,betportal:3,celsius:4,hazcasino:1,velobet:3};
+export const SIGNUP_PREFIX='belva:go:';
+// Inscription mise en avant : titre, puis le bouton en couleur entre deux chevrons animés qui pointent vers lui.
+// Un bouton lien ne peut pas être coloré : le bouton coloré répond en privé avec le lien (belva-signup.ts).
+export const signup=(casino:string,label:string,body:string)=>[
+  T(`## ${logo(casino)} Inscris-toi ici`),T(body),
+  {type:1,components:[{type:2,style:2,emoji:CHEV_RIGHT,custom_id:'belva:deco:1',disabled:true},
+    {type:2,style:COLOR[casino]??3,label,emoji:logoEmoji(casino),custom_id:SIGNUP_PREFIX+casino},
+    {type:2,style:2,emoji:CHEV_LEFT,custom_id:'belva:deco:2',disabled:true}]},
 ];

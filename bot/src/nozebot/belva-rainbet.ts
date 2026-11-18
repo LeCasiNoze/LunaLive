@@ -32,7 +32,7 @@ export function rainbetCard(){
     {type:9,components:[T(`# ${logo('rainbet')} Rainbet × Belva`),T('⭐ **Notre partenaire principal.** L’offre de bienvenue exclusive au lien de Belva.\n-# Casino et sport crypto · 18+')],
       accessory:{type:11,media:{url:'attachment://logo-rainbet.png'},description:'Logo Rainbet'}},
     SEP(),
-    ...signup('rainbet','S’inscrire sur Rainbet',LINK,'**Étape 1** · crée ton compte avec le lien de Belva (code **NIVORANET** déjà inclus).'),
+    ...signup('rainbet','S’inscrire sur Rainbet','**Étape 1** · crée ton compte avec le lien de Belva (code **NIVORANET** déjà inclus).'),
     SEP(),
     T('### 🎁 +20 % de rakeback pendant 7 jours\nInscris-toi avec le lien de Belva, code **NIVORANET** : ton rakeback est boosté de **20 %** pendant ta première semaine.'),
     SEP(1,false),
