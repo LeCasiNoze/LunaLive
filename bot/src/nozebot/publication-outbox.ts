@@ -44,7 +44,7 @@ export interface PublicationEvent {
 export function eligiblePublication(e:PublicationEvent) {
  if(!e||typeof e.account!=='string'||typeof e.mediaId!=='string'||typeof e.title!=='string'||typeof e.url!=='string'||typeof e.publishedAt!=='string')return false;
  if(e.visibility!=='public'||!e.title?.trim()||!Number.isFinite(Date.parse(e.publishedAt)))return false;
- if(e.platform==='instagram')return e.account.toLowerCase()==='lecasinoze_off'&&/^\d+$/.test(e.mediaId)&&/^https:\/\/www\.instagram\.com\/reel\/[A-Za-z0-9_-]+\/$/.test(e.url);
+ if(e.platform==='instagram')return ['lecasinoze_off','lecasinoze'].includes(e.account.toLowerCase())&&/^\d+$/.test(e.mediaId)&&/^https:\/\/www\.instagram\.com\/reel\/[A-Za-z0-9_-]+\/$/.test(e.url);
  return e.platform==='youtube'&&e.account===YOUTUBE_CHANNEL&&Number.isFinite(e.durationSeconds)&&((e.kind==='vod'&&e.isShort===false&&e.durationSeconds!>180)||(e.kind==='short'&&e.isShort===true&&e.durationSeconds!>0&&e.durationSeconds!<=180))&&/^[A-Za-z0-9_-]{11}$/.test(e.mediaId)&&e.url===`https://www.youtube.com/watch?v=${e.mediaId}`;
 }
 function publicThumbnail(value?:string){

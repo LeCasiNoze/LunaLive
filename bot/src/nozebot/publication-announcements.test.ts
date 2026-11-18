@@ -5,7 +5,7 @@ const ig:PublicationEvent={platform:'instagram',mediaId:'123456789',account:'lec
 const yt:PublicationEvent={...ig,platform:'youtube',mediaId:'12345678_Ab',account:YOUTUBE_CHANNEL,url:'https://www.youtube.com/watch?v=12345678_Ab',durationSeconds:181,isShort:false,kind:'vod'};
 // YouTube IDs have exactly eleven characters.
 yt.mediaId='123456789Ab';yt.url=`https://www.youtube.com/watch?v=${yt.mediaId}`;
-test('only the official personal Instagram account',()=>{assert(eligiblePublication(ig));for(const account of ['lecasinoze','lunalive','lunalive_tv','another'])assert(!eligiblePublication({...ig,account}));});
+test('only LeCasiNoze Instagram accounts (lecasinoze_off and lecasinoze)',()=>{assert(eligiblePublication(ig));assert(eligiblePublication({...ig,account:'lecasinoze'}));for(const account of ['lunalive','lunalive_tv','another'])assert(!eligiblePublication({...ig,account}));});
 test('YouTube 180 excluded, 181 included',()=>{assert(!eligiblePublication({...yt,durationSeconds:180}));assert(eligiblePublication(yt));});
 test('Shorts and unknown formats excluded even above 180',()=>{assert(!eligiblePublication({...yt,isShort:true}));assert(!eligiblePublication({...yt,isShort:undefined}));assert(!eligiblePublication({...yt,kind:'short'}));});
 test('private, unlisted, scheduled and wrong channels excluded',()=>{for(const visibility of ['private','unlisted','scheduled']){assert(!eligiblePublication({...yt,visibility}));assert(!eligiblePublication({...ig,visibility}));}assert(!eligiblePublication({...yt,account:'another'}));});
