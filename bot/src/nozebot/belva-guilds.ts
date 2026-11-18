@@ -23,7 +23,8 @@ export const lcnName=(emoji:string,name:string)=>`〈${emoji}〉┃${boldSans(na
 const plain=(s:string)=>[...s.normalize('NFKD')].filter(c=>/[a-z0-9-]/i.test(c)).join('').toLowerCase();
 export async function findChannel(guild:Guild,name:string){
   const all=await guild.channels.fetch();
-  return all.find(c=>c?.type===ChannelType.GuildText&&plain(c.name).endsWith(plain(name))) as TextChannel|undefined;
+  // Salons texte et salons d'annonces (NEWS-OFFICIELLES).
+  return all.find(c=>(c?.type===ChannelType.GuildText||c?.type===ChannelType.GuildAnnouncement)&&plain(c.name).endsWith(plain(name))) as TextChannel|undefined;
 }
 const COMMUNITY_CATEGORY=(guild:Guild)=>guild.channels.cache.find(c=>c.type===ChannelType.GuildCategory&&plain(c.name).includes('communaute'))?.id;
 
