@@ -5,6 +5,7 @@ import {BELVA_ROLES} from './belva-roles.js';
 import {GRADE_KEYS,ROLE_SPEC} from './belva-role-spec.js';
 import {LCN_GUILD,LINK_SLUGS,findChannel} from './belva-guilds.js';
 import {lcnRole} from './lcn-role-spec.js';
+import {fetchWagers} from './rainbet-race.js';
 import {GRADES,gradeUpCard,levelFor,tierUpLine} from './belva-progress-designs.js';
 
 // XP du Discord de Belva : chaque gain est un événement unique (source + référence), rejouer le calcul ne double rien.
@@ -171,11 +172,25 @@ async function refreshTop(client:Client,pool:Pool,guild:Guild){
   else{const m=await channel.send(card);await pool.query(`INSERT INTO belva_xp_top(channel_id,message_id) VALUES($1,$2) ON CONFLICT(channel_id) DO UPDATE SET message_id=$2`,[channel.id,m.id]);}
 }
 
+// Wager Rainbet avant le premier relevé (17/11) : XP rétroactive depuis XP_START, une seule fois par compte.
+async function wagerBase(pool:Pool){
+  const first=(await pool.query(`SELECT min(at) t FROM belva_rainbet_wager_snapshots`).catch(()=>({rows:[]}))).rows[0]?.t as Date|undefined;if(!first)return;
+  const start=XP_START().slice(0,10),end=new Date(new Date(first).getTime()-86_400_000).toISOString().slice(0,10);
+  if(end<start)return;
+  const list=await fetchWagers({start,end,endsAt:new Date(first),label:''}).catch(()=>[]);
+  for(const w of list){
+    const xp=Math.floor(w.wagered/10);if(xp<=0)continue;
+    await pool.query(`INSERT INTO belva_xp_events(discord_id,source,ref,xp) SELECT a.discord_id,'wager',$2,$3 FROM belva_casino_accounts a
+      WHERE a.casino='rainbet' AND a.verified_at IS NOT NULL AND lower(a.casino_username)=lower($1) LIMIT 1 ON CONFLICT DO NOTHING`,[w.username,`base:${w.username.toLowerCase()}:${start}`,xp]);
+  }
+}
+
 async function tick(client:Client,pool:Pool){
   if(!await isApproved(pool,'grades'))return;
   if(Date.now()<Date.parse(XP_START()))return;
   await schema(pool);
   await collect(pool);
+  await wagerBase(pool).catch(e=>console.error('[nozebot] xp wager rétroactive',e?.message||e));
   const guild=await client.guilds.fetch(GUILD_ID());
   await ensureVipAccess(guild).catch(e=>console.error('[nozebot] accès VIP',e?.message||e));
   await applyGrades(client,pool,guild,true);

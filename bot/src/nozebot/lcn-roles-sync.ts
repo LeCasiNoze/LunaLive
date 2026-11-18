@@ -26,6 +26,8 @@ async function sync(client:Client,pool:Pool){
   for(const a of (await pool.query(`SELECT DISTINCT discord_id,casino FROM belva_casino_accounts WHERE verified_at IS NOT NULL`)).rows){
     add(a.discord_id,'membre');if((CASINOS as readonly string[]).includes(a.casino))add(a.discord_id,a.casino);}
   for(const r of (await pool.query(`SELECT DISTINCT discord_id FROM belva_refunds WHERE status='paid'`).catch(()=>({rows:[]}))).rows)add(r.discord_id,'carreOr');
+  // Comme chez Belva : un compte Rainbet vérifié qui a misé = a déposé.
+  for(const r of (await pool.query(`SELECT DISTINCT a.discord_id FROM belva_casino_accounts a JOIN belva_rainbet_wager_snapshots s ON lower(s.username)=lower(a.casino_username) AND s.wagered>0 WHERE a.casino='rainbet' AND a.verified_at IS NOT NULL`).catch(()=>({rows:[]}))).rows)add(r.discord_id,'carreOr');
   for(const l of (await pool.query(`SELECT DISTINCT l.discord_user_id FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug) IN ${LINK_SLUGS}`)).rows)add(l.discord_user_id,'habitue');
   const ids=[...want.keys()];
   for(let k=0;k<ids.length;k+=100){
