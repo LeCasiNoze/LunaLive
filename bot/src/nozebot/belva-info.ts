@@ -4,6 +4,7 @@ import {ChannelType,MessageFlags,type Client,type Message} from 'discord.js';
 import {brands,offerOn,refreshBrands} from './belva-roles.js';
 import {OFFERS} from './belva-offers.js';
 import {isApproved} from './belva-approval.js';
+import {logo} from './belva-layout.js';
 import type {Pool} from 'pg';
 
 // Cartes d'information des salons fixes du Discord de Belva (offres, liaison Rumble, récompenses).
@@ -25,7 +26,7 @@ export function hubCard(){
     SEP(2,false),
     T('# Toutes les offres casino\nChoisis ton casino : chaque salon contient l’offre complète et les boutons pour en profiter en 2 clics.'),
     SEP(),
-    ...(rainbet?[{type:9,components:[T('## ⭐ 🌧️ Rainbet · partenaire principal\n**+20 % de rakeback** pendant 7 jours avec le code **NIVORANET**\n🏁 Race du mois : **200 $** pour le top 3 (100 / 60 / 40)')],accessory:link('Voir l’offre','👉',channel(rainbet.channelId!))},SEP(2)]:[]),
+    ...(rainbet?[{type:9,components:[T(`## ⭐ ${logo('rainbet')} Rainbet · partenaire principal\n**+20 % de rakeback** pendant 7 jours avec le code **NIVORANET**\n🏁 Race du mois : **200 $** pour le top 3 (100 / 60 / 40)`)],accessory:link('Voir l’offre','👉',channel(rainbet.channelId!))},SEP(2)]:[]),
     T('### 🎰 Nos autres casinos'),
     ...casinos.flatMap((b,i)=>[...(i?[SEP(1,false)]:[]),{type:9,components:[T(`**${OFFERS[b.id].title}**\nJusqu’à **${b.bonus} €** remboursés${offerOn()?' · 1er dépôt de **20 €** offert':''}\n-# ${OFFERS[b.id].tagline}`)],
       accessory:link('Voir l’offre','👉',channel(b.channelId!))}]),

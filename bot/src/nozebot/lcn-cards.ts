@@ -94,9 +94,9 @@ export function ticketCard(){
 
 export function rainbetCard(){
   return card([
-    L.T('# 🌧️ Rainbet · partenaire principal'),L.T('Inscris-toi avec notre lien et le code **NIVORANET** : tu soutiens la chaîne et tu entres dans la wager race.'),
+    L.T(`# ${L.logo('rainbet')} Rainbet · partenaire principal`),L.T('Inscris-toi avec notre lien et le code **NIVORANET** : tu soutiens la chaîne et tu entres dans la wager race.'),
     L.LINE,
-    ...L.step('1 · Crée ton compte','Avec le lien ci-dessous et le code **NIVORANET**.',[L.link('S’inscrire sur Rainbet','🎰','https://rainbet.com/?r=nivoranet')]),
+    ...L.signup('rainbet','S’inscrire sur Rainbet','https://rainbet.com/?r=nivoranet','**Étape 1** · crée ton compte avec notre lien (code **NIVORANET** déjà inclus).'),
     L.GAP,
     ...L.step('2 · Vérifie ton compte','Entre ton pseudo Rainbet exact : tu reçois le rôle 🌧️ Rainbet et ✅ Joueur Vérifié.',[L.btn('Vérifier mon compte','✅',3,'nozebot:rainbet:verify')]),
     L.LINE,
@@ -110,9 +110,9 @@ export function rainbetCard(){
 
 export function betportalCard(){
   return card([
-    L.T('# 🟢 Betportal'),L.T('Le package de bienvenue est réparti sur les **trois premiers dépôts** : jusqu’à **1 000 € de bonus + 250 free spins**. Les 300 % cumulés ne s’appliquent pas à un seul dépôt.'),
+    L.T(`# ${L.logo('betportal')} Betportal`),L.T('Le package de bienvenue est réparti sur les **trois premiers dépôts** : jusqu’à **1 000 € de bonus + 250 free spins**. Les 300 % cumulés ne s’appliquent pas à un seul dépôt.'),
     L.LINE,
-    ...L.step('1 · Crée ton compte','Avec notre lien partenaire.',[L.link('Découvrir l’offre','🎰','https://affiliate.betportal.com/visit/?bta=35392&brand=betportal')]),
+    ...L.signup('betportal','S’inscrire sur Betportal','https://affiliate.betportal.com/visit/?bta=35392&brand=betportal','**Étape 1** · crée ton compte avec notre lien partenaire.'),
     L.LINE,
     L.T('### 🎁 Les trois dépôts\n> **1er dépôt** · 150 % jusqu’à 500 € et jusqu’à 200 FS selon le dépôt\n> **2e dépôt** · 100 % jusqu’à 300 € et 50 FS\n> **3e dépôt** · 50 % jusqu’à 200 €'),
     L.T('### 🎰 Free spins du 1er dépôt\n20–50 € : **20 FS** · 51–100 € : **50 FS** · 101–200 € : **100 FS** · dès 201 € : **200 FS**. Valeur 0,10 €/spin, gains des FS annoncés au solde réel.'),
@@ -125,9 +125,9 @@ export function betportalCard(){
 
 export function celsiusCard(){
   return card([
-    L.T('# 🧡 Celsius'),L.T('Le package de bienvenue affiché par Celsius est réparti sur les deux premiers dépôts.'),
+    L.T(`# ${L.logo('celsius')} Celsius`),L.T('Le package de bienvenue affiché par Celsius est réparti sur les deux premiers dépôts.'),
     L.LINE,
-    ...L.step('1 · Crée ton compte','Avec notre lien partenaire.',[L.link('Découvrir l’offre','🎰','https://nivoranet.onrender.com/r/lecasinoze-celsius')]),
+    ...L.signup('celsius','S’inscrire sur Celsius','https://nivoranet.onrender.com/r/lecasinoze-celsius','**Étape 1** · crée ton compte avec notre lien partenaire.'),
     L.LINE,
     L.T('### 🎁 Le package\n> **1er dépôt** · 100 % de bonus\n> **2e dépôt** · 200 % de bonus\n> **Total** · 300 % cumulés'),
     L.GAP,

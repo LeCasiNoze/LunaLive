@@ -6,6 +6,7 @@ import type {Pool} from 'pg';
 import {findReferred,referredUsers} from './rainbet.js';
 import {fetchWagers} from './rainbet-race.js';
 import {BELVA_ROLES,brand,grantCasinoRoles} from './belva-roles.js';
+import {logo,signup} from './belva-layout.js';
 import {ensureTables} from './belva-tickets.js';
 
 // Belva's Rainbet channel: welcome offer + automatic account check against the NIVORANET affiliate list.
@@ -28,10 +29,12 @@ export function rainbetCard(){
   const container={type:17,accent_color:0x3D8BFF,components:[
     {type:12,items:[{media:{url:'attachment://banner-rainbet.png'},description:'Rainbet × Belva : +20 % de rakeback pendant 7 jours avec le code NIVORANET'}]},
     SEP(2,false),
-    {type:9,components:[T('# 🌧️ Rainbet × Belva'),T('⭐ **Notre partenaire principal.** L’offre de bienvenue exclusive au lien de Belva.\n-# Casino et sport crypto · 18+')],
+    {type:9,components:[T(`# ${logo('rainbet')} Rainbet × Belva`),T('⭐ **Notre partenaire principal.** L’offre de bienvenue exclusive au lien de Belva.\n-# Casino et sport crypto · 18+')],
       accessory:{type:11,media:{url:'attachment://logo-rainbet.png'},description:'Logo Rainbet'}},
     SEP(),
-    {type:9,components:[T('### 🎁 +20 % de rakeback pendant 7 jours\nInscris-toi avec le lien de Belva, code **NIVORANET** : ton rakeback est boosté de **20 %** pendant ta première semaine.')],accessory:linkBtn('S’inscrire','🌧️',LINK)},
+    ...signup('rainbet','S’inscrire sur Rainbet',LINK,'**Étape 1** · crée ton compte avec le lien de Belva (code **NIVORANET** déjà inclus).'),
+    SEP(),
+    T('### 🎁 +20 % de rakeback pendant 7 jours\nInscris-toi avec le lien de Belva, code **NIVORANET** : ton rakeback est boosté de **20 %** pendant ta première semaine.'),
     SEP(1,false),
     {type:9,components:[T('### 🏁 Race du mois : 200 $\nChaque mois, du 16 au 15, le top 3 des joueurs Rainbet de la commu gagne **100 $ · 60 $ · 40 $**.\n-# Classement en direct dans le salon de la race')],accessory:linkBtn('Voir la race','🏁',race)},
     SEP(1,false),

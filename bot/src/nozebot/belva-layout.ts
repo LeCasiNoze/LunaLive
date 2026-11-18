@@ -13,3 +13,15 @@ export const chLink=(label:string,emoji:string,id?:string,guild?:string)=>id?lin
 export const step=(title:string,body:string,list:(object|null)[]=[])=>{const buttons=list.filter(Boolean);
   return [T(`### ${title}\n${body}`),...(buttons.length?[{type:1,components:buttons}]:[])];};
 export const FOOT=T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.');
+
+// Emojis de l'application (utilisables sur tous les serveurs du bot) : logos des casinos et flèches animées.
+export const EMO={rainbet:'1572662103540502700',betportal:'1572662104836542626',celsius:'1572662106359205950',hazcasino:'1572662107269365821',velobet:'1572662108330659850'} as Record<string,string>;
+export const ARROW_DOWN='<a:arrow_down:1572662115951714474>';
+export const logo=(casino:string)=>EMO[casino]?`<:${casino}:${EMO[casino]}>`:'🎰';
+export const logoEmoji=(casino:string)=>EMO[casino]?{id:EMO[casino],name:casino}:{name:'🎰'};
+// Inscription mise en avant : gros titre encadré de flèches animées qui pointent vers le bouton juste en dessous
+// (Discord ne permet ni de colorer ni d'agrandir un bouton lien).
+export const signup=(casino:string,label:string,href:string,body:string)=>[
+  T(`## ${ARROW_DOWN} Inscris-toi ici ${ARROW_DOWN}`),T(body),
+  {type:1,components:[{type:2,style:5,label,emoji:logoEmoji(casino),url:href}]},
+];
