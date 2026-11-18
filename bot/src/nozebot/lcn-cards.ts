@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {MessageFlags,type Client,type Message,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
@@ -19,7 +20,10 @@ const C={rules:'1188914844909441204',start:'1188914815561891990',roles:'12178764
   youtube:'1544405933428314254',site:'1544405935777120266'};
 const url=(id:string)=>L.chUrl(id,LCN_GUILD());
 const go=(label:string,emoji:string,id:string)=>L.link(label,emoji,url(id));
-const card=(components:object[],accent=ACCENT)=>({flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:accent,components}] as never[]});
+const card=(components:object[],accent=ACCENT,files:{attachment:Buffer;name:string}[]=[])=>({flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:accent,components}] as never[],files});
+// Bannière en haut des cartes casino (bot/assets/lecasinoze), comme chez Belva.
+const ASSETS=new URL('../../assets/lecasinoze/',import.meta.url);
+const banner=(casino:string,alt:string)=>({gallery:{type:12,items:[{media:{url:`attachment://banner-${casino}.png`},description:alt}]},file:{attachment:readFileSync(new URL(`banner-${casino}.png`,ASSETS)),name:`banner-${casino}.png`}});
 const select=(custom_id:string,placeholder:string,min:number,max:number,options:object[])=>({type:1,components:[{type:3,custom_id,placeholder,min_values:min,max_values:max,options}]});
 
 export function rulesCard(){
@@ -97,7 +101,9 @@ export function ticketCard(){
 }
 
 export function rainbetCard(){
+  const bn=banner('rainbet','Rainbet × LeCasiNoze : +20 % de rakeback avec le code NIVORANET');
   return card([
+    bn.gallery,
     L.T(`# ${L.logo('rainbet')} Rainbet · partenaire principal`),L.T('Inscris-toi avec notre lien et le code **NIVORANET** : tu soutiens la chaîne et tu entres dans la wager race.'),
     L.LINE,
     ...L.signup('rainbet','S’inscrire sur Rainbet','**Étape 1** · crée ton compte avec notre lien (code **NIVORANET** déjà inclus).'),
@@ -109,11 +115,13 @@ export function rainbetCard(){
     L.T('### 🎁 Chez Rainbet\nRakeback réclamable toutes les 15 min, reloads quotidiens, bonus hebdomadaires et mensuels, rangs VIP de Bronze à Diamond.'),
     {type:1,components:[L.link('Conditions générales','📄','https://rainbet.com/terms'),L.link('Programme VIP','💎','https://rainbet.com/vip'),go('Ouvrir un ticket','🎫',C.ticket)]},
     L.T('-# 18+ · Partenaire, lien affilié · Selon pays et éligibilité · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
-  ],0x3D8BFF);
+  ],0x3D8BFF,[bn.file]);
 }
 
 export function betportalCard(){
+  const bn=banner('betportal','Betportal × LeCasiNoze : jusqu’à 30 € de dépôt remboursé');
   return card([
+    bn.gallery,
     L.T(`# ${L.logo('betportal')} Betportal`),L.T('Le package de bienvenue est réparti sur les **trois premiers dépôts** : jusqu’à **1 000 € de bonus + 250 free spins**. Les 300 % cumulés ne s’appliquent pas à un seul dépôt.'),
     L.LINE,
     ...L.signup('betportal','S’inscrire sur Betportal','**Étape 1** · crée ton compte avec notre lien partenaire.'),
@@ -127,11 +135,13 @@ export function betportalCard(){
     L.T('### ✅ Activation\nAprès le dépôt concerné : **Mon profil → Bonus → Offres disponibles**, avant de jouer. Si le bonus manque, contacte le support du casino avant toute mise.'),
     {type:1,components:[L.link('1er dépôt','📄','https://betportal.com/en/promotions/38'),L.link('2e dépôt','📄','https://betportal.com/en/promotions/37'),L.link('3e dépôt','📄','https://betportal.com/en/promotions/36'),go('Ouvrir un ticket','🎫',C.ticket)]},
     L.T('-# 💡 En crypto, l’adresse de dépôt peut changer d’un dépôt à l’autre : vérifie-la à chaque fois.\n-# 18+ · Offre partenaire, lien affilié · Selon pays et éligibilité · Fiches consultées le 21/10/2026. Joueurs Info Service : 09 74 75 13 13.'),
-  ],0x1FF25E);
+  ],0x1FF25E,[bn.file]);
 }
 
 export function celsiusCard(){
+  const bn=banner('celsius','Celsius × LeCasiNoze : jusqu’à 30 € de dépôt remboursé');
   return card([
+    bn.gallery,
     L.T(`# ${L.logo('celsius')} Celsius`),L.T('Le package de bienvenue affiché par Celsius est réparti sur les deux premiers dépôts.'),
     L.LINE,
     ...L.signup('celsius','S’inscrire sur Celsius','**Étape 1** · crée ton compte avec notre lien partenaire.'),
@@ -143,7 +153,7 @@ export function celsiusCard(){
     L.GAP,
     ...L.step('💎 Gros joueur ?','Un VIP host peut t’accompagner personnellement : ouvre un ticket et choisis **Demande VIP host**.',[go('Demander un VIP host','💎',C.ticket)]),
     L.T('-# Offre partenaire · consulte les conditions affichées à l’inscription · 18+ · Joueurs Info Service : 09 74 75 13 13.'),
-  ],0xFF6A3D);
+  ],0xFF6A3D,[bn.file]);
 }
 
 export function nozebotCard(){
@@ -205,7 +215,7 @@ async function place(client:Client,channelId:string,payload:ReturnType<typeof ca
   const me=client.user!.id;
   const mine=[...(await channel.messages.fetch({limit:50})).values()].filter((m:Message)=>m.author.id===me);
   const current=mine.find(m=>m.flags.has(MessageFlags.IsComponentsV2));
-  if(current&&current.components[0]?.id!==id)await current.edit(withId);
+  if(current&&current.components[0]?.id!==id)await current.edit({...withId,attachments:[]} as never);
   if(!current){const sent=await channel.send(withId);await sent.pin('Carte du salon').catch(()=>undefined);}
   // Ancien règlement écrit à la main (avec « !linkme ») : remplacé par la carte, à la demande de Lucas (18/11).
   if(channelId===C.rules)await channel.messages.delete(OLD_RULES).catch(()=>undefined);
