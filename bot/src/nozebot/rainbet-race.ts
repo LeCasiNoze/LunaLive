@@ -3,6 +3,7 @@ import type {Pool} from 'pg';
 import {renderRace} from './race-renderer.js';
 import {isApproved} from './belva-approval.js';
 import {BELVA_GUILD,belvaRaceCard,upsertBelvaRace} from './belva-race.js';
+import {LCN_GUILD} from './belva-guilds.js';
 
 export const RACE_TITLE='🏁 Wager Race RainBet';
 // Monthly prizes in dollars, funded by Rainbet's 200 $ leaderboard budget. Weekly races (until 15 Nov) paid in euros.
@@ -128,11 +129,12 @@ export function startRainbetRace(client:Client,pool?:Pool):()=>void{
       const [current,previous]=await Promise.all([fetchWagers(raceRange(now)),fetchWagers(raceRange(now,-1))]);
       const payload=await racePanel(current,previous,now);
       // Discord de Belva : nouvelle carte (validée dans 🎨︱validation-design), sinon l'ancien panneau.
-      const belvaOn=await isApproved(pool,'race');
-      const belva=belvaOn?await belvaRaceCard(current,previous,now):null;
+      const belva=await isApproved(pool,'race')?await belvaRaceCard(current,previous,now):null;
+      // Discord LeCasiNoze : même carte, à sa marque (fiche lcn-race).
+      const lcn=await isApproved(pool,'lcn-race')?await belvaRaceCard(current,previous,now,'LECASINOZE'):null;
       // discord.js ajoute les fichiers dans payload.attachments à chaque envoi : un tableau neuf par salon.
       for(const channel of await raceChannels(client))
-        await (belva&&channel.guild.id===BELVA_GUILD()?upsertBelvaRace(channel,belva,messages.get(channel.id)).then(id=>{messages.set(channel.id,id);}):upsert(channel,{...payload,attachments:[]})).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));
+        await ((belva&&channel.guild.id===BELVA_GUILD())||(lcn&&channel.guild.id===LCN_GUILD())?upsertBelvaRace(channel,(channel.guild.id===BELVA_GUILD()?belva:lcn)!,messages.get(channel.id)).then(id=>{messages.set(channel.id,id);}):upsert(channel,{...payload,attachments:[]})).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));
     }catch(error){console.error('[nozebot][race] rafraîchissement impossible',(error as Error)?.message??error);}
     finally{running=false;}
   }

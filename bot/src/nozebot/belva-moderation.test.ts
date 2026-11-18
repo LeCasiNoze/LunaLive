@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {verdict} from './belva-moderation.js';
 
 test('général : aucun lien, sauf les GIF', ()=>{
-  assert.equal(verdict('regarde https://exemple.com','💬︱général'),'lien hors 💰 big-win');
-  assert.equal(verdict('www.site-random.fr','💬︱général'),'lien hors 💰 big-win');
+  assert.equal(verdict('regarde https://exemple.com','💬︱général'),'lien hors du salon des wins');
+  assert.equal(verdict('www.site-random.fr','💬︱général'),'lien hors du salon des wins');
   assert.equal(verdict('https://tenor.com/view/gif-123','💬︱général'),null);
   assert.equal(verdict('gg belva quel bonus','💬︱général'),null);
 });
@@ -41,4 +41,9 @@ test('noms de salons au style LeCasiNoze', async ()=>{
   const {boldSans,lcnName}=await import('./belva-guilds.js');
   assert.equal(boldSans('HUNT'),'𝗛𝗨𝗡𝗧');
   assert.equal(lcnName('⚔️','tournoi'),'〈⚔️〉┃𝗧𝗢𝗨𝗥𝗡𝗢𝗜');
+});
+
+test('LeCasiNoze : liens seulement dans WIN-VIEWER', ()=>{
+  assert.equal(verdict('https://rumble.com/v78mwa8-clip.html','〈🏆〉┃𝗪𝗜𝗡-𝗩𝗜𝗘𝗪𝗘𝗥','win-viewer'),null);
+  assert.equal(verdict('https://rumble.com/v78mwa8-clip.html','〈💬〉┃𝗚𝗘́𝗡𝗘́𝗥𝗔𝗟','win-viewer'),'lien hors du salon des wins');
 });

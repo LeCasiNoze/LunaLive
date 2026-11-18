@@ -14,7 +14,7 @@ const SEP=(spacing=1,divider=true)=>({type:14,divider,spacing});
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/[  ]/g,' ')} $`;
 const esc=(s:string)=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]!));
 
-export async function raceBanner(pot:number,top:{name:string;wagered:number;prize:number}[],label:string){
+export async function raceBanner(pot:number,top:{name:string;wagered:number;prize:number}[],label:string,brand='BELVA'){
   const slot=(i:number,x:number,h:number,color:string,medal:string)=>{
     const e=top[i];const y=470-h;
     return `<rect x="${x}" y="${y}" width="300" height="${h}" rx="24" fill="${color}" fill-opacity=".16" stroke="${color}" stroke-width="4"/>
@@ -27,7 +27,7 @@ export async function raceBanner(pot:number,top:{name:string;wagered:number;priz
     <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1a3a"/><stop offset="1" stop-color="#1b0f33"/></linearGradient></defs>
     <rect width="1200" height="500" rx="32" fill="url(#bg)"/>
     <text x="60" y="88" font-size="58" font-weight="800" fill="#fff">WAGER RACE</text>
-    <text x="60" y="140" font-size="34" fill="#3D8BFF" font-weight="700">RAINBET × BELVA</text>
+    <text x="60" y="140" font-size="34" fill="#3D8BFF" font-weight="700">RAINBET × ${brand}</text>
     <text x="1140" y="96" font-size="84" font-weight="900" fill="#F3C14B" text-anchor="end">${pot} $</text>
     <text x="1140" y="140" font-size="28" fill="#cfc6e6" text-anchor="end">${esc(label)}</text>
     ${slot(1,90,270,'#C0C7D6','2')}${slot(0,450,310,'#F3C14B','1')}${slot(2,810,250,'#D08B5B','3')}
@@ -35,11 +35,11 @@ export async function raceBanner(pot:number,top:{name:string;wagered:number;priz
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now:Date){
+export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now:Date,brand='BELVA'){
   const r=raceRange(now),prev=raceRange(now,-1);
   const top=ranking(current,RACE_PRIZES_USD);
   const pot=RACE_PRIZES_USD.reduce((a,b)=>a+b,0);
-  const banner=await raceBanner(pot,top.slice(0,3).map(e=>({name:maskName(e.username),wagered:e.wagered,prize:e.prize})),r.label);
+  const banner=await raceBanner(pot,top.slice(0,3).map(e=>({name:maskName(e.username),wagered:e.wagered,prize:e.prize})),r.label,brand);
   const rest=top.slice(3).map(e=>`**${e.rank}.** ${maskName(e.username)} · ${usd(e.wagered)}`);
   const winners=prev.monthly?ranking(previous,RACE_PRIZES_USD).filter(e=>e.prize):[];
   const ends=Math.floor(r.endsAt.getTime()/1000);
@@ -47,7 +47,7 @@ export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now
     {type:12,items:[{media:{url:'attachment://race-banner.png'},description:`Wager race Rainbet : ${pot} $ à gagner`}]},
     T(`# 🏁 Wager Race Rainbet\n## ${pot} $ à gagner chaque mois\n🥇 **100 $** · 🥈 **60 $** · 🥉 **40 $** · fin <t:${ends}:R>`),
     SEP(),
-    ...L.step('1 · Crée ton compte Rainbet','Avec le lien de Belva (code **NIVORANET**) : c’est ce qui t’inscrit à la race.',[L.btn('Rejoindre la race','🏁',3,JOIN_ID)]),
+    ...L.step('1 · Crée ton compte Rainbet',`Avec ${brand==='BELVA'?'le lien de Belva':'notre lien'} (code **NIVORANET**) : c’est ce qui t’inscrit à la race.`,[L.btn('Rejoindre la race','🏁',3,JOIN_ID)]),
     L.GAP,
     ...L.step('2 · Joue',`Chaque mise compte automatiquement. Mise au moins **${usd(RACE_MIN_WAGER_USD)}** sur le mois pour être payé.`),
     L.LINE,

@@ -24,15 +24,15 @@ const host=(raw:string)=>{try{return new URL(/^https?:/i.test(raw)?raw:'https://
 const inList=(h:string,list:string[])=>list.some(d=>h===d||h.endsWith('.'+d));
 
 // Raison de suppression, ou null si le message est autorisé.
-export function verdict(text:string,channelName:string):string|null{
+export function verdict(text:string,channelName:string,winChannel='big-win'):string|null{
   if(/@(everyone|here)\b/.test(text))return 'mention @everyone/@here';
   const urls=text.match(URL_RE)??[];
-  const bigWin=channelName.endsWith('big-win');
+  const bigWin=[...channelName.normalize('NFKD')].filter(c=>/[a-z0-9-]/i.test(c)).join('').toLowerCase().endsWith(winChannel);
   for(const u of urls){
     const h=host(u);
     if(inList(h,GIF_HOSTS))continue;
     if(/discord\.gg|discord\.com\/invite|t\.me\/|wa\.me\//i.test(u))return 'invitation / lien de contact';
-    if(!bigWin)return 'lien hors 💰 big-win';
+    if(!bigWin)return `lien hors du salon des wins`;
     if(REFERRAL_RE.test(u))return 'lien d’affiliation';
     if(inList(h,MEDIA_HOSTS))continue;
     if(inList(h,CASINO_HOSTS)&&REPLAY_RE.test(u))continue;
@@ -55,10 +55,12 @@ async function staffChannel(guild:Guild,name:string,topic:string):Promise<TextCh
 }
 
 const clip=(s:string,n=1000)=>s.length>n?s.slice(0,n-1)+'…':s||'*(vide ou pièce jointe)*';
-const isStaff=(m:GuildMember|null)=>!!m&&(m.permissions.has(PermissionFlagsBits.ManageMessages)||m.roles.cache.has(PATRON_ROLE)||m.roles.cache.has(VIDEUR_ROLE));
+const isStaff=(m:GuildMember|null)=>!!m&&(m.permissions.has(PermissionFlagsBits.ManageMessages)||m.roles.cache.has(PATRON_ROLE)||m.roles.cache.has(VIDEUR_ROLE)||LCN.staff.some(r=>m.roles.cache.has(r)));
+// Discord LeCasiNoze : même filtre ; journal dans LOGS-BOT (les départs sont déjà notés dans LOG-QUIT par NozeBot).
+const LCN={guild:()=>process.env.LECASINOZE_GUILD_ID?.trim()||'1188913226990235800',log:'1193268118345240669',exempt:['1193268045100105759','1544429387754246185'],staff:['1188940226358415443','1188939890344329379'],win:'win-viewer'};
 const exemptChannel=(msg:Message|PartialMessage)=>{
   const ch=msg.channel;const parent='parentId' in ch?ch.parentId??'':'';
-  return parent===STAFF_CATEGORY||TICKET_CATEGORIES.includes(parent);
+  return parent===STAFF_CATEGORY||TICKET_CATEGORIES.includes(parent)||LCN.exempt.includes(parent);
 };
 
 export function startBelvaModeration(client:Client,_pool?:Pool){
@@ -70,8 +72,11 @@ export function startBelvaModeration(client:Client,_pool?:Pool){
     log=await staffChannel(guild,LOG_NAME,'Messages supprimés par le bot (liens, spam), messages modifiés et supprimés par les membres.');
     leave=await staffChannel(guild,LEAVE_NAME,'Membres qui quittent le serveur.');
   })().catch(e=>console.error('[nozebot] modération Belva',e)).finally(done)));
-  const post=async(embed:EmbedBuilder)=>{await ready;await log?.send({embeds:[embed],allowedMentions:{parse:[]}}).catch(()=>undefined);};
-  const ours=(g?:{id:string}|null)=>g?.id===GUILD_ID();
+  let lcnLog:TextChannel|null=null;
+  const post=async(embed:EmbedBuilder,guildId?:string|null)=>{await ready;
+    if(guildId===LCN.guild()){lcnLog??=await client.channels.fetch(LCN.log).catch(()=>null) as TextChannel|null;await lcnLog?.send({embeds:[embed],allowedMentions:{parse:[]}}).catch(()=>undefined);return;}
+    await log?.send({embeds:[embed],allowedMentions:{parse:[]}}).catch(()=>undefined);};
+  const ours=(g?:{id:string}|null)=>g?.id===GUILD_ID()||(process.env.LCN_MODERATION!=='false'&&g?.id===LCN.guild());
   const author=(m:Message|PartialMessage)=>m.author?`<@${m.author.id}> (${m.author.tag})`:'inconnu';
 
   // Un message déjà supprimé par le bot ne doit pas réapparaître en « supprimé par un membre ».
@@ -81,12 +86,12 @@ export function startBelvaModeration(client:Client,_pool?:Pool){
     const member=msg.member??await msg.guild!.members.fetch(msg.author.id).catch(()=>null);
     if(isStaff(member))return;
     const name=('name' in msg.channel?msg.channel.name:'')??'';
-    const reason=verdict(msg.content,name);if(!reason)return;
+    const reason=verdict(msg.content,name,msg.guildId===LCN.guild()?LCN.win:'big-win');if(!reason)return;
     removedByBot.add(msg.id);
     await msg.delete().catch(()=>removedByBot.delete(msg.id));
     await post(new EmbedBuilder().setColor(0xE8475F).setTitle(`🗑️ Supprimé par le bot · ${reason}${edited?' (après modification)':''}`)
       .setDescription(clip(msg.content)).addFields({name:'Auteur',value:author(msg),inline:true},{name:'Salon',value:`<#${msg.channelId}>`,inline:true})
-      .setTimestamp());
+      .setTimestamp(),msg.guildId);
   }
   client.on(Events.MessageCreate,m=>void check(m,false).catch(e=>console.error('[nozebot] modération Belva',e)));
   client.on(Events.MessageUpdate,(before,after)=>void (async()=>{
@@ -96,7 +101,7 @@ export function startBelvaModeration(client:Client,_pool?:Pool){
     await post(new EmbedBuilder().setColor(0xF3C14B).setTitle('✏️ Message modifié')
       .addFields({name:'Avant',value:before.partial?'*(pas en mémoire : message antérieur au dernier redémarrage)*':clip(before.content,1000)},
         {name:'Après',value:clip(full.content,1000)},{name:'Auteur',value:author(full),inline:true},{name:'Salon',value:`${full.url}`,inline:true})
-      .setTimestamp());
+      .setTimestamp(),full.guildId);
     await check(full,true);
   })().catch(e=>console.error('[nozebot] modération Belva',e)));
   client.on(Events.MessageDelete,m=>void (async()=>{
@@ -105,10 +110,11 @@ export function startBelvaModeration(client:Client,_pool?:Pool){
     await post(new EmbedBuilder().setColor(0x7A8796).setTitle('🗑️ Message supprimé')
       .setDescription(m.partial?'*(contenu pas en mémoire : message antérieur au dernier redémarrage)*':clip(m.content??''))
       .addFields({name:'Auteur',value:author(m),inline:true},{name:'Salon',value:`<#${m.channelId}>`,inline:true})
-      .setTimestamp());
+      .setTimestamp(),m.guildId);
   })().catch(e=>console.error('[nozebot] modération Belva',e)));
   client.on(Events.GuildMemberRemove,m=>void (async()=>{
-    if(!ours(m.guild)||m.user.bot)return;
+    // Départs : Discord de Belva seulement (LeCasiNoze a déjà LOG-QUIT).
+    if(m.guild.id!==GUILD_ID()||m.user.bot)return;
     await ready;
     const roles=(m as GuildMember|PartialGuildMember).roles.cache.filter(r=>r.id!==m.guild.roles.everyone.id).map(r=>r.name).slice(0,15);
     await leave?.send({allowedMentions:{parse:[]},embeds:[new EmbedBuilder().setColor(0x7A8796).setTitle('🚪 Départ du serveur')

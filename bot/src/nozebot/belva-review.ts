@@ -242,7 +242,8 @@ export async function ensureReviews(client:Client,pool?:Pool){
   const chans=await guild.channels.fetch();
   const ctx:Ctx={botId:client.user!.id,pool,channel:suffix=>chans.find(c=>c?.type===ChannelType.GuildText&&c.name.endsWith('︱'+suffix))?.id};
   // Designs retirés du code (ex. tombola) : leurs fiches disparaissent du salon.
-  for(const old of (await pool.query(`SELECT key,message_ids FROM belva_design_reviews WHERE NOT (key=ANY($1::text[]))`,[DESIGNS.map(d=>d.key)])).rows){
+  // Les fiches du Discord LeCasiNoze (lcn-…) vivent dans leur propre salon.
+  for(const old of (await pool.query(`SELECT key,message_ids FROM belva_design_reviews WHERE NOT (key=ANY($1::text[])) AND key NOT LIKE 'lcn-%'`,[DESIGNS.map(d=>d.key)])).rows){
     for(const id of old.message_ids??[])await channel.messages.delete(id).catch(()=>undefined);
     await pool.query(`DELETE FROM belva_design_reviews WHERE key=$1`,[old.key]);forgetApproval(old.key);
   }
