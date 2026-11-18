@@ -3,7 +3,7 @@ import {tournamentState} from '../belva_bracket.js';
 import {linkByComment,linkTargets} from '../belva_link_comment.js';
 import {prepareDiscordConnections} from "../community/discord-connections.js";
 import crypto from "node:crypto";
-import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema} from '../nozecoins/wallet.js';
+import {coinsProfile,coinAction,linkedCoins,InsufficientCoins,weeklyCnz,coinNamesSchema,walletSid} from '../nozecoins/wallet.js';
 import {BlackjackCooldown,actCoinBlackjack,startCoinBlackjack,type CoinBjAction} from '../nozecoins/blackjack.js';
 // Une partie de blackjack BCoins toutes les 5 minutes par joueur.
 const BELVA_BJ_COOLDOWN_MS=Number(process.env.BELVA_BJ_COOLDOWN_MS)||5*60_000;
@@ -108,7 +108,7 @@ internalNozeBotRouter.post('/internal/bot/nozebot/coins/:action',requireNozeBot,
    if(req.params.action==='cnz')return res.json({ok:true,rewards:await weeklyCnz(pool,sid)});
    const week=String(req.body?.week||''),ids=req.body?.ids;
    if(!/^\d{4}-\d{2}-\d{2}$/.test(week)||!Array.isArray(ids)||ids.length>25||ids.some(x=>typeof x!=='string'||!/^\d+$/.test(x)))return res.status(400).json({ok:false,error:'bad_ack'});
-   await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW() WHERE streamer_id=$1 AND week=$2 AND rumble_user_id=ANY($3::text[])',[sid,week,ids]);return res.json({ok:true});
+   await pool.query('UPDATE nozecoin_cnz_announcements SET announced_at=NOW() WHERE streamer_id=$1 AND week=$2 AND rumble_user_id=ANY($3::text[])',[await walletSid(pool,sid),week,ids]);return res.json({ok:true});
   }
   if(req.params.action==='links'){
    await discordProfileSchema(pool);const cursor=String(req.body?.cursor||'');

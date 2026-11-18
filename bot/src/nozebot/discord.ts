@@ -582,16 +582,16 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
        if(purchase){
         if(message.channelId!==config.commands.commandsChannelId){await message.reply({content:`Colle cette commande dans <#${config.commands.commandsChannelId}>.`,allowedMentions:{parse:[],repliedUser:false}});return;}
         try{const r=await coinRequest(config.commands.lunaLive,message.author.id,'upgrade',message.id,purchase[1],Number(purchase[2])-1);
-         await message.reply({content:`Amélioration achetée · Solde : ${r.balance} NozeCoins.`,allowedMentions:{parse:[],repliedUser:false}});
+         await message.reply({content:`Amélioration achetée · Solde : ${r.balance} BCoins.`,allowedMentions:{parse:[],repliedUser:false}});
         }catch(e){const err=e as {code?:string;details?:Record<string,unknown>};const d=err.details??{};
-         await message.reply({content:err.code==='insufficient_coins'?`Solde : ${d.balance} · Prix : ${d.cost} · Il manque ${d.missing} NozeCoins. Rien n’a été débité.`:err.code==='stale_shop'?'Palier incorrect : consulte /profil et choisis le prochain palier sur le site.':err.code==='rumble_not_linked'?'Lie ton compte avec /link avant d’acheter.':'Achat non confirmé. Consulte /solde avant de réessayer.',allowedMentions:{parse:[],repliedUser:false}});
+         await message.reply({content:err.code==='insufficient_coins'?`Solde : ${d.balance} · Prix : ${d.cost} · Il manque ${d.missing} BCoins. Rien n’a été débité.`:err.code==='stale_shop'?'Palier incorrect : consulte /profil et choisis le prochain palier sur le site.':err.code==='rumble_not_linked'?'Lie ton compte avec /link avant d’acheter.':'Achat non confirmé. Consulte /solde avant de réessayer.',allowedMentions:{parse:[],repliedUser:false}});
         }return;
        }
        if(command==='!shop'){await message.reply({content:'Shop : https://lecasinoze.onrender.com/shop/',allowedMentions:{parse:[],repliedUser:false}});return;}
        const result=await coinRequest(config.commands.lunaLive,message.author.id,'profile');const p=result.profile;
-       const content=command==='!shop'?'Utilise /shop pour le menu privé des améliorations NozeCoins.'
-        :command==='!help'?'NozeCoins : /link · /claim · /solde · /profil · /slot · /shop. Rain : !rain sur Rumble uniquement.'
-        :p?`${p.username} : ${p.balance} NozeCoins · ${p.automod} points Automod disponibles.`:'Lie ton compte Rumble avec /link.';
+       const content=command==='!shop'?'Utilise /shop pour le menu privé des améliorations BCoins.'
+        :command==='!help'?'BCoins : /link · /claim · /solde · /profil · /slot · /shop. Rain : !rain sur Rumble uniquement.'
+        :p?`${p.username} : ${p.balance} BCoins · ${p.automod} points Automod disponibles.`:'Lie ton compte Rumble avec /link.';
        await message.reply({content,allowedMentions:{parse:[],repliedUser:false}});return;
       }
       const content=command==='!shop'?'Shop Automod : https://lecasinoze.onrender.com/automod-shop/'
@@ -619,7 +619,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
      const receipt=`CNZ ${week} / ${rewards.map(r=>r.rumbleId).sort().join(',')}`;
      const recent=await channel.messages.fetch({limit:100});
      if(!recent.some(m=>m.author.id===client.user!.id&&m.embeds.some(e=>e.footer?.text===receipt))){
-      await channel.send({content:rewards.map(r=>`<@${r.discordId}>`).join(' · '),embeds:[new EmbedBuilder().setColor(0xd64065).setTitle('CNZ · Merci pour votre soutien').setDescription(rewards.map(r=>`<@${r.discordId}> · **+${r.amount??25} NozeCoins**`).join('\n')+'\n\nPseudo CNZ vérifié cette semaine. Une récompense par semaine et par compte. Points gratuits, sans valeur monétaire.').setFooter({text:receipt})],allowedMentions:{parse:[],users:rewards.map(r=>r.discordId)}});
+      await channel.send({content:rewards.map(r=>`<@${r.discordId}>`).join(' · '),embeds:[new EmbedBuilder().setColor(0xd64065).setTitle('CNZ · Merci pour votre soutien').setDescription(rewards.map(r=>`<@${r.discordId}> · **+${r.amount??25} BCoins**`).join('\n')+'\n\nPseudo CNZ vérifié cette semaine. Une récompense par semaine et par compte. Points gratuits, sans valeur monétaire.').setFooter({text:receipt})],allowedMentions:{parse:[],users:rewards.map(r=>r.discordId)}});
      }
      await acknowledgeSupportRewards(config.commands.lunaLive,client.user!.id,week,rewards.map(r=>r.rumbleId));
     }

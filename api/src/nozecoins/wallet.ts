@@ -5,6 +5,15 @@ import {validRumbleIdentity} from '../automod-shop/rules.js';
 import {accountRules,COIN_RULES,slotOutcome,UPGRADES,type Upgrade} from './rules.js';
 const ready=new WeakMap<Pool,Promise<void>>();
 const namesReady=new WeakMap<Pool,Promise<void>>();
+// Portefeuille partagé : les BCoins remplacent les NozeCoins. Les comptes de la chaîne LeCasiNoze utilisent le portefeuille
+// de Belva (même compte Rumble = même solde). Les rains et l'Automod restent propres à chaque chaîne.
+const walletCache=new Map<number,number>();
+export async function walletSid(pool:Pool|PoolClient,sid:number):Promise<number>{
+ if(process.env.SHARED_COIN_WALLET==='false')return sid;
+ const hit=walletCache.get(sid);if(hit!==undefined)return hit;
+ const r=(await pool.query(`SELECT (SELECT id FROM streamers WHERE lower(slug)='lecasinoze' LIMIT 1) lcn,(SELECT id FROM streamers WHERE lower(slug)='belvaa' LIMIT 1) belva`)).rows[0];
+ const out=Number(r?.lcn)===sid&&r?.belva?Number(r.belva):sid;walletCache.set(sid,out);return out;
+}
 export class InsufficientCoins extends Error {
  constructor(public balance:number,public cost:number){super('insufficient_coins');}
 }
@@ -47,11 +56,12 @@ async function lock(c:PoolClient,sid:number,uid:string,name:string){
   ON CONFLICT(streamer_id,rumble_user_id) DO UPDATE SET username=EXCLUDED.username`,[sid,uid,name.slice(0,80)]);
  return (await c.query('SELECT *,NOW() AS now FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid])).rows[0];
 }
-export async function coinsProfile(pool:Pool,sid:number,uid:string,name:string){
+export async function coinsProfile(pool:Pool,chatSid:number,uid:string,name:string){
  await coinsSchema(pool);await discordProfileSchema(pool);
+ const sid=await walletSid(pool,chatSid);
  return inTransaction(pool,async c=>{
   const row=await lock(c,sid,uid,name);const rules=accountRules(row);
-  const automod=await readWallet(c,sid,uid);
+  const automod=await readWallet(c,chatSid,uid);
   const reasons=new Set((await c.query('SELECT DISTINCT reason FROM nozecoin_ledger WHERE streamer_id=$1 AND rumble_user_id=$2',[sid,uid])).rows.map(r=>String(r.reason)));
   const linked=(await c.query('SELECT 1 FROM automod_discord_links WHERE streamer_id=$1 AND rumble_user_id=$2 LIMIT 1',[sid,uid])).rows.length>0;
   const journal=[{id:'link',label:'Lier Rumble et Discord',complete:linked},
@@ -62,9 +72,10 @@ export async function coinsProfile(pool:Pool,sid:number,uid:string,name:string){
    tiers:{claim:row.claim_tier,cooldown:row.cooldown_tier,rain:row.rain_tier,slot:row.slot_tier}};
  });
 }
-export async function coinAction(pool:Pool,sid:number,uid:string,name:string,action:'claim'|'slot'|'rain'|'upgrade',eventKey:string,upgrade?:Upgrade,expectedTier?:number){
+export async function coinAction(pool:Pool,chatSid:number,uid:string,name:string,action:'claim'|'slot'|'rain'|'upgrade',eventKey:string,upgrade?:Upgrade,expectedTier?:number){
  if(!eventKey||eventKey.length>200)throw Error('bad_event');
  await coinsSchema(pool);
+ const sid=await walletSid(pool,chatSid);
  return inTransaction(pool,async c=>{
   const row=await lock(c,sid,uid,name);const rules=accountRules(row),now=new Date(row.now).getTime();
   let key=eventKey,delta=0,extra:Record<string,unknown>={};
@@ -74,7 +85,7 @@ export async function coinAction(pool:Pool,sid:number,uid:string,name:string,act
     LEFT JOIN automod_control a ON a.streamer_id=r.streamer_id WHERE r.streamer_id=$1 AND r.closes_at>NOW()
     AND i.is_live=TRUE AND i.live_video_id_numeric=r.session_id AND i.updated_at>NOW()-INTERVAL '2 minutes'
     AND a.desired_enabled=FALSE AND COALESCE((a.runtime_status->>'publisherActive')::boolean,FALSE)=FALSE
-    ORDER BY r.opened_at DESC LIMIT 1`,[sid])).rows[0];
+    ORDER BY r.opened_at DESC LIMIT 1`,[chatSid])).rows[0];
    if(!active)throw Error('no_rain');
    key=`rain:${active.session_id}:${active.bucket}`;delta=rules.rain;
   }
@@ -119,8 +130,9 @@ export async function linkedCoins(pool:Pool,sid:number,discordId:string){
 }
 
 // A permanent receipt per native account/week prevents relinks or restarts duplicating credits.
-export async function weeklyCnz(pool:Pool,sid:number){
+export async function weeklyCnz(pool:Pool,chatSid:number){
  await coinsSchema(pool);await discordProfileSchema(pool);
+ const sid=await walletSid(pool,chatSid);
  return inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock(8244150)');
   await c.query("ALTER TABLE automod_discord_links ADD COLUMN IF NOT EXISTS rumble_username_seen_at timestamptz NOT NULL DEFAULT '-infinity'");

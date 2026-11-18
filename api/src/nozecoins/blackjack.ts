@@ -2,7 +2,7 @@ import {randomInt,randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {inTransaction} from '../automod-shop/wallet.js';
 import {canSplit,currentHand,doDouble,doHit,doSplit,doStand,handTotal,isBlackjack,nextHandOrEnd,playDealerToEnd,settle,startGame,type BJFinish,type BJGame} from '../discord/games_blackjack.js';
-import {coinsSchema,InsufficientCoins} from './wallet.js';
+import {coinsSchema,InsufficientCoins,walletSid} from './wallet.js';
 
 // Blackjack en points de chaîne (NozeCoins / BCoins) : même moteur que le blackjack Rubis, portefeuille nozecoin_accounts.
 export const COIN_BJ_BET=20;
@@ -53,8 +53,9 @@ async function finish(c:PoolClient,sid:number,uid:string,row:Row,g:BJGame):Promi
 
 export class BlackjackCooldown extends Error{constructor(public nextAt:string){super('cooldown');}}
 // cooldownMs : délai minimum entre deux parties (BCoins de Belva) ; 0 = aucun.
-export async function startCoinBlackjack(pool:Pool,sid:number,uid:string,name:string,discordId:string,cooldownMs=0){
+export async function startCoinBlackjack(pool:Pool,chatSid:number,uid:string,name:string,discordId:string,cooldownMs=0){
  await schema(pool);
+ const sid=await walletSid(pool,chatSid);
  return inTransaction(pool,async c=>{
   await c.query(`INSERT INTO nozecoin_accounts(streamer_id,rumble_user_id,username) VALUES($1,$2,$3) ON CONFLICT(streamer_id,rumble_user_id) DO UPDATE SET username=EXCLUDED.username`,[sid,uid,name.slice(0,80)]);
   await c.query('SELECT 1 FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid]);
@@ -74,8 +75,9 @@ export async function startCoinBlackjack(pool:Pool,sid:number,uid:string,name:st
  });
 }
 
-export async function actCoinBlackjack(pool:Pool,sid:number,uid:string,discordId:string,sessionId:string,action:CoinBjAction){
+export async function actCoinBlackjack(pool:Pool,chatSid:number,uid:string,discordId:string,sessionId:string,action:CoinBjAction){
  await schema(pool);
+ const sid=await walletSid(pool,chatSid);
  return inTransaction(pool,async c=>{
   await c.query('SELECT 1 FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid]);
   let row=(await c.query(`SELECT * FROM nozecoin_blackjack_sessions WHERE id=$1 FOR UPDATE`,[sessionId])).rows[0] as (Row&{streamer_id:string;discord_user_id:string})|undefined;

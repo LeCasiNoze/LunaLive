@@ -7,7 +7,7 @@ import {COIN_RULES,formatSlotArt} from './rules.js';
 type Message={streamerId:number;userId:string;username:string;messageId:string;text:string;createdAt:Date};
 // automod=false : chaîne sans Automod (Belva), la rain BCoins tourne seule.
 export type CoinChannel={coin:string;automod:boolean};
-const NOZE:CoinChannel={coin:'NozeCoins',automod:true};
+const NOZE:CoinChannel={coin:'BCoins',automod:true};
 export async function handleCoinsChat(pool:Pool,m:Message,o:CoinChannel=NOZE){
  if(process.env.NOZECOINS_ENABLED!=='true'||!/^!(claim|slot|solde|profil|profile|rain|bcoins)\s*$/i.test(m.text.trim()))return null;
  if(!validRumbleIdentity(m.userId)||!m.messageId||Date.now()-m.createdAt.getTime()>120000||m.createdAt.getTime()>Date.now()+30000)return null;
@@ -15,7 +15,7 @@ export async function handleCoinsChat(pool:Pool,m:Message,o:CoinChannel=NOZE){
  if(['profil','profile','solde','bcoins'].includes(command)){
   const p=await coinsProfile(pool,m.streamerId,m.userId,m.username);
   if(!o.automod)return `@${m.username} — ${p.balance} ${o.coin}. Claim : ${p.rules.claim} / ${p.rules.claimMs/3600000} h. Blackjack et slot sur le Discord : !discord.`;
-  return `@${m.username} — ${p.balance} NozeCoins · ${p.automod} points Automod disponibles. Claim : ${p.rules.claim} / ${p.rules.claimMs/3600000} h. Discord : /shop.`;
+  return `@${m.username} — ${p.balance} BCoins · ${p.automod} points Automod disponibles. Claim : ${p.rules.claim} / ${p.rules.claimMs/3600000} h. Discord : /shop.`;
  }
  if(command==='rain'&&o.automod){
   const mode=(await pool.query('SELECT desired_enabled FROM automod_control WHERE streamer_id=$1',[m.streamerId])).rows[0];
@@ -50,7 +50,7 @@ export async function tickCoinsRain(pool:Pool,sid:number,o:CoinChannel=NOZE,anno
   // One announcer wins even when multiple bridges or timers run concurrently.
   return (await c.query('UPDATE nozecoin_rains SET announced_at=NOW() WHERE streamer_id=$1 AND session_id=$2 AND bucket=$3 AND closes_at>NOW() AND announced_at IS NULL RETURNING *',[sid,String(live.id),bucket])).rows[0]??null;
  });
- if(rain){const sent=await announce(o.automod?'🌧️ Rain NozeCoins ! Tape !rain dans les 2 minutes : +25 NozeCoins (bonus selon ton amélioration).':`🌧️ Rain ${o.coin} ! Tape !rain dans les 2 minutes : +25 ${o.coin} à jouer au blackjack sur le Discord (!discord).`);
+ if(rain){const sent=await announce(o.automod?'🌧️ Rain BCoins ! Tape !rain dans les 2 minutes : +25 BCoins (bonus selon ton amélioration).':`🌧️ Rain ${o.coin} ! Tape !rain dans les 2 minutes : +25 ${o.coin} à jouer au blackjack sur le Discord (!discord).`);
   if(!sent.sent)await pool.query('UPDATE nozecoin_rains SET announced_at=NULL WHERE streamer_id=$1 AND session_id=$2 AND bucket=$3',[sid,rain.session_id,rain.bucket]);
  }
 }

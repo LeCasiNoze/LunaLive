@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {inTransaction} from '../automod-shop/wallet.js';
 import {validRumbleIdentity} from '../automod-shop/rules.js';
-import {coinsSchema,InsufficientCoins} from './wallet.js';
+import {coinsSchema,InsufficientCoins,walletSid} from './wallet.js';
 
 export type SoundEntry={id:string;label:string;audioUrl:string;cost:number;durationMs:number;volume:number};
 const UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -68,13 +68,13 @@ async function personalSession(c:PoolClient,sid:number):Promise<string|null>{
 }
 async function restore(c:PoolClient,row:any){
  if(row.state==='played'||row.state==='refunded')return;
- const key=`sound-refund:${row.id}`;
- await c.query('SELECT 1 FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[row.streamer_id,row.rumble_user_id]);
+ const key=`sound-refund:${row.id}`;const w=await walletSid(c,Number(row.streamer_id));
+ await c.query('SELECT 1 FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[w,row.rumble_user_id]);
  const updated=await c.query(`UPDATE nozecoin_accounts SET balance=balance+$3 WHERE streamer_id=$1 AND rumble_user_id=$2
-  AND balance+$3<=1000000000000 RETURNING balance`,[row.streamer_id,row.rumble_user_id,row.cost]);
+  AND balance+$3<=1000000000000 RETURNING balance`,[w,row.rumble_user_id,row.cost]);
  if(!updated.rows[0])throw new SoundboardError('refund_requires_review');
  await c.query(`INSERT INTO nozecoin_ledger(streamer_id,rumble_user_id,event_key,delta,reason,result)
-  VALUES($1,$2,$3,$4,'sound_refund',$5::jsonb)`,[row.streamer_id,row.rumble_user_id,key,row.cost,JSON.stringify({requestId:row.id,amount:row.cost})]);
+  VALUES($1,$2,$3,$4,'sound_refund',$5::jsonb)`,[w,row.rumble_user_id,key,row.cost,JSON.stringify({requestId:row.id,amount:row.cost})]);
  await c.query("UPDATE nozecoin_soundboard_requests SET state='refunded',finished_at=NOW() WHERE id=$1",[row.id]);
 }
 async function cleanup(c:PoolClient,sid:number,session:string|null,all=false){
@@ -133,15 +133,17 @@ export async function enqueueSound(pool:Pool,input:{streamerId:number;rumbleId:s
   if(pending>=5)throw new SoundboardError('soundboard_queue_full');
   const recent=(await c.query("SELECT 1 FROM nozecoin_soundboard_requests WHERE streamer_id=$1 AND rumble_user_id=$2 AND state<>'refunded' AND created_at>NOW()-INTERVAL '60 seconds' LIMIT 1",[sid,uid])).rows.length;
   if(recent)throw new SoundboardError('soundboard_cooldown');
-  await c.query(`INSERT INTO nozecoin_accounts(streamer_id,rumble_user_id,username) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[sid,uid,username.slice(0,80)]);
-  const wallet=(await c.query('SELECT balance FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[sid,uid])).rows[0];
+  // La demande reste rattachée à la chaîne (clé étrangère) ; le paiement passe par le portefeuille partagé.
+  const w=await walletSid(c,sid);
+  for(const id of new Set([sid,w]))await c.query(`INSERT INTO nozecoin_accounts(streamer_id,rumble_user_id,username) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`,[id,uid,username.slice(0,80)]);
+  const wallet=(await c.query('SELECT balance FROM nozecoin_accounts WHERE streamer_id=$1 AND rumble_user_id=$2 FOR UPDATE',[w,uid])).rows[0];
   if(Number(wallet.balance)<sound.cost)throw new InsufficientCoins(Number(wallet.balance),sound.cost);
   const id=randomUUID();
-  const updated=(await c.query('UPDATE nozecoin_accounts SET balance=balance-$3 WHERE streamer_id=$1 AND rumble_user_id=$2 RETURNING balance',[sid,uid,sound.cost])).rows[0];
+  const updated=(await c.query('UPDATE nozecoin_accounts SET balance=balance-$3 WHERE streamer_id=$1 AND rumble_user_id=$2 RETURNING balance',[w,uid,sound.cost])).rows[0];
   await c.query(`INSERT INTO nozecoin_soundboard_requests(id,streamer_id,rumble_user_id,receipt,sound,cost,session_id,state,expires_at)
    VALUES($1,$2,$3,$4,$5::jsonb,$6,$7,'queued',NOW()+INTERVAL '2 minutes')`,[id,sid,uid,receipt,JSON.stringify(sound),sound.cost,session]);
   await c.query(`INSERT INTO nozecoin_ledger(streamer_id,rumble_user_id,event_key,delta,reason,result)
-   VALUES($1,$2,$3,$4,'sound',$5::jsonb)`,[sid,uid,`sound:${receipt}`,-sound.cost,JSON.stringify({requestId:id,soundId:sound.id,cost:sound.cost})]);
+   VALUES($1,$2,$3,$4,'sound',$5::jsonb)`,[w,uid,`sound:${receipt}`,-sound.cost,JSON.stringify({requestId:id,soundId:sound.id,cost:sound.cost})]);
   return {requestId:id,state:'queued',balance:Number(updated.balance),replayed:false};
  });
 }
