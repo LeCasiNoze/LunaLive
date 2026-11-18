@@ -10,9 +10,12 @@ test('YouTube 180 excluded, 181 included',()=>{assert(!eligiblePublication({...y
 test('Shorts and unknown formats excluded even above 180',()=>{assert(!eligiblePublication({...yt,isShort:true}));assert(!eligiblePublication({...yt,isShort:undefined}));assert(!eligiblePublication({...yt,kind:'short'}));});
 test('private, unlisted, scheduled and wrong channels excluded',()=>{for(const visibility of ['private','unlisted','scheduled']){assert(!eligiblePublication({...yt,visibility}));assert(!eligiblePublication({...ig,visibility}));}assert(!eligiblePublication({...yt,account:'another'}));});
 test('canonical links, media IDs and dates required',()=>{assert(!eligiblePublication({...ig,url:'https://evil.test/secret'}));assert(!eligiblePublication({...ig,publishedAt:'invalid'}));assert(!eligiblePublication({...yt,url:'https://youtu.be/'+yt.mediaId}));});
-test('thumbnail absent has a clean fallback and a real link button',()=>{const m=publicationMessage(ig);assert(!('image' in m.embeds[0]));assert.equal(m.components[0].components[0].label,'Voir le Reel');assert.equal(m.components[0].components[0].url,ig.url);assert.equal(publicationMessage(yt).components[0].components[0].label,'Voir la vidéo');});
-test('verified public thumbnail used, signed and internal URLs omitted',()=>{const thumbnail='https://i.ytimg.com/vi/123456789Ab/hqdefault.jpg';assert.equal(publicationMessage({...yt,thumbnail}).embeds[0].image?.url,thumbnail);for(const thumbnail of ['http://127.0.0.1/x','https://private.test/x','https://i.ytimg.com/x?token=secret'])assert(!sanitizedEvent({...yt,thumbnail}).thumbnail);});
-test('no pings, secrets, wallet balances or caption URLs',()=>{const m=publicationMessage({...ig,description:'@everyone <@123>\nSolde : 3000\ntoken=secret\nhttps://internal.test?key=secret\nDu vrai contenu'});assert.deepEqual(m.allowedMentions,{parse:[]});assert(!/3000|secret|internal|<@|@everyone/.test(JSON.stringify(m)));assert(m.embeds[0].description.includes('Du vrai contenu'));});
+const flat=(m:ReturnType<typeof publicationMessage>)=>JSON.stringify(m.components);
+const container=(m:ReturnType<typeof publicationMessage>)=>m.components.find((c:any)=>c.type===17) as any;
+const button=(m:ReturnType<typeof publicationMessage>)=>container(m).components.find((c:any)=>c.type===1).components[0];
+test('thumbnail absent has a clean fallback and a real link button',()=>{const m=publicationMessage(ig);assert(!flat(m).includes('"type":12'));assert.equal(button(m).label,'Voir le Reel');assert.equal(button(m).url,ig.url);assert.equal(button(publicationMessage(yt)).label,'Voir la vidéo');assert(flat(m).includes('Nouveau Reel'));});
+test('verified public thumbnail used, signed and internal URLs omitted',()=>{const thumbnail='https://i.ytimg.com/vi/123456789Ab/hqdefault.jpg';assert(flat(publicationMessage({...yt,thumbnail})).includes(thumbnail));for(const thumbnail of ['http://127.0.0.1/x','https://private.test/x','https://i.ytimg.com/x?token=secret'])assert(!sanitizedEvent({...yt,thumbnail}).thumbnail);});
+test('no pings, secrets, wallet balances or caption URLs',()=>{const m=publicationMessage({...ig,description:'@everyone <@123>\nSolde : 3000\ntoken=secret\nhttps://internal.test?key=secret\nDu vrai contenu'});assert.deepEqual(m.allowedMentions,{parse:[]});assert(!/3000|secret|internal|<@|@everyone/.test(JSON.stringify(m)));assert(flat(m).includes('Du vrai contenu'));});
 test('resolve only the existing opt-in roles, including decorated Unicode names',()=>{
  const roles=[{id:'1188926088852799578',name:'▶・𝗬𝗼𝘂𝗧𝘂𝗯𝗲',mentionable:true},{id:'1217875557631393923',name:'📷 Instagram',mentionable:true},{id:'999',name:'YouTube',mentionable:true},{id:'1188926242519523328',name:'Live',mentionable:true}];
  assert.deepEqual(resolvePublicationNotificationRoles(roles,false),{instagram:'1217875557631393923',youtube:'1188926088852799578'});
@@ -25,9 +28,9 @@ test('ambiguous or unmentionable roles do not broaden permissions or mentions',(
 });
 test('only an explicit trusted notification role can ping; caption mentions stay inert',()=>{
  const id='1188926088852799578';const m=publicationMessage({...yt,description:'@everyone <@123> <@&999> Un vrai extrait'},id);
- assert.equal(m.content,`<@&${id}>`);assert.deepEqual(m.allowedMentions,{parse:[],roles:[id]});
- assert(!m.embeds[0].description.includes('<@'));assert(!m.embeds[0].description.includes('@everyone'));
- for(const bad of ['999','@everyone','1188926088852799578><@&999']){const other=publicationMessage(yt,bad);assert(!('content' in other));assert.deepEqual(other.allowedMentions,{parse:[]});}
+ assert.equal((m.components[0] as any).content,`<@&${id}>`);assert.deepEqual(m.allowedMentions,{parse:[],roles:[id]});
+ const body=JSON.stringify(container(m));assert(!body.includes('<@&999'));assert(!body.includes('<@123'));assert(!body.includes('@everyone'));
+ for(const bad of ['999','@everyone','1188926088852799578><@&999']){const other=publicationMessage(yt,bad);assert(!flat(other).includes('<@&'));assert.deepEqual(other.allowedMentions,{parse:[]});}
 });
 test('stable nonce with enforceNonce protects short reconnect windows',()=>{assert.equal(publicationMessage(ig).nonce,publicationMessage(ig).nonce);assert(publicationMessage(ig).enforceNonce);assert.notEqual(publicationMessage(ig).nonce,publicationMessage({...ig,mediaId:'999'}).nonce);});
 test('enqueue uses activation watermark and unique media/channel key',async()=>{let calls=0;const pool={query:async(sql:string)=>{assert.match(sql,/activated_at/);assert.match(sql,/ON CONFLICT\(platform,media_id,channel_id\) DO NOTHING/);return {rowCount:++calls===1?1:0};}};assert(await enqueuePublication(pool as never,ig));assert(!await enqueuePublication(pool as never,ig));});

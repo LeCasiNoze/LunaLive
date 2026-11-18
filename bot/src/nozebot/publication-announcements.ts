@@ -1,6 +1,6 @@
 import {ChannelType,PermissionFlagsBits,type Client} from 'discord.js';
 import type {Pool} from 'pg';
-import {PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,PUBLICATION_NOTIFICATION_ROLE_IDS,resolvePublicationNotificationRoles,publicationMessage,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
+import {PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,PUBLICATION_NOTIFICATION_ROLE_IDS,resolvePublicationNotificationRoles,publicationMessage,publicationMarker,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
 
 export interface AnnouncementTransport {
  reconcile(event:PublicationEvent,startedAt:Date):Promise<string|null>;
@@ -70,7 +70,7 @@ export async function startPublicationAnnouncements(client:Client,pool:Pool){
    let before:string|undefined;
    for(let page=0;page<30;page++){
     const messages=await channel.messages.fetch({limit:100,...(before?{before}:{})});
-    const found=messages.find(m=>m.author.id===client.user!.id&&m.embeds.some(e=>e.url===event.url||e.footer?.text===`LeCasiNoze · ${event.platform}:${event.mediaId}`));if(found)return found.id;
+    const found=messages.find(m=>m.author.id===client.user!.id&&(m.embeds.some(e=>e.url===event.url||e.footer?.text===publicationMarker(event))||JSON.stringify(m.components.map(c=>c.toJSON())).includes(publicationMarker(event))));if(found)return found.id;
     const oldest=messages.last();
     if(!oldest||oldest.createdTimestamp<new Date(startedAt).getTime()-60000)return null;
     before=oldest.id;

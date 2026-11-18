@@ -47,8 +47,13 @@ const v2=(accent:number,components:object[],mention?:string|string[])=>({flags:M
   components:[{type:17,accent_color:accent,components}] as never[]});
 
 // Nouveau grade (Bronze → Fer…) : carte complète. Simple sous-niveau (Or II → Or III) : une ligne.
-export function gradeUpCard(user:{id:string;avatarUrl:string},xp:number){
-  const l=levelFor(xp)!;const s=spec(l.grade.key);const next=levelFor(l.next??xp);
+// names : noms des rôles de grade sur le serveur (Belva par défaut ; univers LunaLive chez LeCasiNoze).
+type GradeNames={nameOf:(key:string)=>string;lcn?:boolean};
+const relabel=(label:string,key:string,n?:GradeNames)=>n?label.replace(spec(key).name,n.nameOf(key)):label;
+export function gradeUpCard(user:{id:string;avatarUrl:string},xp:number,n?:GradeNames){
+  const raw=levelFor(xp)!;const s=spec(raw.grade.key);const nr=levelFor(raw.next??xp);
+  const l={...raw,label:relabel(raw.label,raw.grade.key,n)};const next=nr?{...nr,label:relabel(nr.label,nr.grade.key,n)}:nr;
+  const gname=(key:string)=>n?n.nameOf(key):spec(key).name;
   const pct=l.next?Math.min(99,Math.round((xp-l.floor)/(l.next-l.floor)*100)):100;
   const nextGrade=GRADES[l.index+1];
   return v2(s.color,[
@@ -57,13 +62,13 @@ export function gradeUpCard(user:{id:string;avatarUrl:string},xp:number){
     SEP(),
     T(`### 🎁 Ce que ça débloque\n> ${l.grade.perk}`),
     T(l.next?`### ⏭️ Prochain palier : ${next?.label}\n\`${bar(pct)}\` · ${fr(l.next)} XP`:'### 🖤 Niveau maximum atteint'),
-    ...(nextGrade?[T(`-# Prochain grade : ${spec(nextGrade.key).name} à ${fr(nextGrade.xp)} XP${'deposit' in nextGrade&&nextGrade.deposit?' · dépôt vérifié requis':''}`)]:[]),
+    ...(nextGrade?[T(`-# Prochain grade : ${gname(nextGrade.key)} à ${fr(nextGrade.xp)} XP${'deposit' in nextGrade&&nextGrade.deposit?' · dépôt vérifié requis':''}`)]:[]),
     SEP(1,false),
-    T('-# Gagne de l’XP en live, au tournoi du samedi et avec les quêtes : tape **/quetes**.'),
+    T(n?.lcn?'-# Gagne de l’XP en live, au tournoi du samedi et au hunt du mercredi.':'-# Gagne de l’XP en live, au tournoi du samedi et avec les quêtes : tape **/quetes**.'),
   ],user.id);
 }
-export function tierUpLine(userId:string,xp:number){
-  const l=levelFor(xp)!;return {content:`${l.label.split(' ')[0]} <@${userId}> passe **${l.label}** · ${fr(xp)} XP`,allowedMentions:{users:[userId]}};
+export function tierUpLine(userId:string,xp:number,n?:GradeNames){
+  const raw=levelFor(xp)!;const l={...raw,label:relabel(raw.label,raw.grade.key,n)};return {content:`${l.label.split(' ')[0]} <@${userId}> passe **${l.label}** · ${fr(xp)} XP`,allowedMentions:{users:[userId]}};
 }
 
 export type SeasonRow={name:string;id?:string;places:(number|null)[]};

@@ -124,9 +124,10 @@ async function applyGrades(client:Client,pool:Pool,guild:Guild,announce:boolean)
     if(l.grade.key==='diamant'||l.grade.key==='obsidienne')await diamondReward(client,pool,guild,t.discord_id);
     if(!before)continue;
     const who=(mb??ml)!;
-    const msg=before.grade!==l.grade.key?gradeUpCard({id:who.id,avatarUrl:who.displayAvatarURL({size:256,extension:'png'})},t.xp):tierUpLine(who.id,t.xp);
-    if(mb&&general)await general.send(msg).catch(()=>undefined);
-    if(ml&&lcnGeneral)await lcnGeneral.send(msg).catch(()=>undefined);
+    const build=(n?:{nameOf:(k:string)=>string;lcn?:boolean})=>before.grade!==l.grade.key?gradeUpCard({id:who.id,avatarUrl:who.displayAvatarURL({size:256,extension:'png'})},t.xp,n):tierUpLine(who.id,t.xp,n);
+    if(mb&&general)await general.send(build()).catch(()=>undefined);
+    // Chez LeCasiNoze : noms de grades de l'univers LunaLive (Gratteur de Tips…).
+    if(ml&&lcnGeneral)await lcnGeneral.send(build({nameOf:k=>lcnRole(k).name,lcn:true})).catch(()=>undefined);
   }
 }
 
