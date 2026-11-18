@@ -3,6 +3,7 @@ import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {BELVA_ROLES} from './belva-roles.js';
 import {GRADE_KEYS,ROLE_SPEC} from './belva-role-spec.js';
+import {LINK_SLUGS} from './belva-guilds.js';
 import {GRADES,gradeUpCard,levelFor,tierUpLine} from './belva-progress-designs.js';
 
 // XP du Discord de Belva : chaque gain est un événement unique (source + référence), rejouer le calcul ne double rien.
@@ -31,10 +32,10 @@ function schema(pool:Pool){
 async function collect(pool:Pool){
   const start=XP_START();
   const q=(sql:string,args:unknown[]=[])=>pool.query(sql,args).catch(e=>{console.error('[nozebot] xp source',e?.message||e);return {rows:[]};});
-  // Chat Rumble de Belva : un message par tranche de 5 minutes, pour les comptes reliés.
+  // Chat Rumble de Belva et de LeCasiNoze : un message par tranche de 5 minutes (tous lives confondus), pour les comptes reliés.
   await q(`INSERT INTO belva_xp_events(discord_id,source,ref,xp)
     SELECT DISTINCT l.discord_user_id,'chat',m.rumble_user_id||':'||floor(extract(epoch FROM m.created_at)/300)::bigint,${XP.chat}
-    FROM rumble_chat_messages m JOIN streamers s ON s.id=m.streamer_id AND lower(s.slug)='belvaa'
+    FROM rumble_chat_messages m JOIN streamers s ON s.id=m.streamer_id AND lower(s.slug) IN ${LINK_SLUGS}
     JOIN automod_discord_links l ON l.streamer_id=s.id AND l.rumble_user_id=m.rumble_user_id
     WHERE m.created_at>=$1::timestamptz ON CONFLICT DO NOTHING`,[start]);
   // Tournoi terminé : participation + duels gagnés.

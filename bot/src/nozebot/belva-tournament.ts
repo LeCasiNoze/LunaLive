@@ -8,6 +8,7 @@ import {belvaTournamentState,type LunaLiveApiConfig} from './lunalive-api.js';
 import {linkPrompt} from './belva-link.js';
 import {LINK_BUTTON} from './belva-info.js';
 import * as L from './belva-layout.js';
+import {BELVA_GUILD,EVENT_GUILDS,LCN_GUILD,LINK_SLUGS,isEventGuild,lcnChannel,mirror} from './belva-guilds.js';
 
 // Tournoi du samedi de Belva : chaque joueur réserve UNE machine (jamais deux fois la même dans un tournoi)
 // et choisit son bonus. Tous les bonus s'achètent au même prix ; la mise découle du multiplicateur d'achat.
@@ -76,9 +77,11 @@ const COMMANDS=[
     .addSubcommand(s=>s.setName('retirer').setDescription('Retirer un inscrit').addUserOption(o=>o.setName('joueur').setDescription('Le joueur à retirer').setRequired(true))),
 ];
 export async function registerTournamentCommands(client:Client){
-  const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
-  for(const c of COMMANDS)await guild.commands.create(c.toJSON());
+  for(const id of EVENT_GUILDS()){const guild=await client.guilds.fetch(id).catch(()=>null);if(!guild)continue;
+    for(const c of COMMANDS)await guild.commands.create(c.toJSON()).catch(()=>undefined);}
 }
+// Le tournoi est commun aux deux Discord : la carte est recopiée dans le salon tournoi de LeCasiNoze.
+const lcnTournament=(client:Client)=>lcnChannel(client,'⚔️','tournoi','Le tournoi du samedi, commun avec le Discord de Belva : inscris-toi ici.');
 
 type Tournament={id:number;title:string;status:'open'|'closed'|'done';buy_cents:number;channel_id:string|null;message_id:string|null};
 type Entry={discord_id:string;display_name:string;slot_name:string;slot_key:string;provider:string|null;image_url:string|null;bonus_label:string;multiplier:string|null;bet_cents:number|null;cost_cents:number;place:number|null};
@@ -144,6 +147,7 @@ async function refreshCard(client:Client,pool:Pool,t:Tournament){
   const msg=fresh.message_id?await channel.messages.fetch(fresh.message_id).catch(()=>null):null;
   if(msg)await msg.edit(payload);
   else{const m=await channel.send(payload);await pool.query(`UPDATE belva_tournaments SET message_id=$2 WHERE id=$1`,[fresh.id,m.id]);}
+  await mirror(client,pool,'tournament',fresh.id,await lcnTournament(client),payload);
 }
 
 // Saison = mois (heure de Paris) de fin du tournoi. Le message du mois est réécrit, puis figé quand le mois change.
@@ -177,11 +181,11 @@ export async function refreshSeason(client:Client,pool:Pool){
   else if(ch){const m=await ch.send(card);await pool.query(`INSERT INTO belva_seasons(month,label,channel_id,message_id) VALUES($1,$2,$3,$4) ON CONFLICT(month) DO UPDATE SET channel_id=$3,message_id=$4`,[month,monthLabel(now),ch.id,m.id]);}
 }
 
-const linkedRumble=async(pool:Pool,discordId:string)=>!!(await pool.query(`SELECT 1 FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa' AND l.discord_user_id=$1`,[discordId]).catch(()=>({rowCount:0}))).rowCount;
+const linkedRumble=async(pool:Pool,discordId:string)=>!!(await pool.query(`SELECT 1 FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug) IN ${LINK_SLUGS} AND l.discord_user_id=$1`,[discordId]).catch(()=>({rowCount:0}))).rowCount;
 const linkReply=async(pool:Pool)=>await isApproved(pool,'link-prompt')?{ephemeral:true,...linkPrompt('Le tournoi est réservé aux comptes Rumble reliés : c’est ton pseudo Rumble qui s’affiche dans le bracket et dans le chat.')}
   :{ephemeral:true,content:'Pour t’inscrire, relie d’abord ton compte Rumble avec **/lier** (ou dans 🔗︱lier-mon-compte).'};
 export async function handleBelvaTournament(i:Interaction,pool?:Pool):Promise<boolean>{
-  if(i.guildId!==GUILD_ID())return false;
+  if(!isEventGuild(i.guildId))return false;
   const id=(i.isButton()||i.isStringSelectMenu()||i.isModalSubmit())?i.customId:'';
   const isCmd=(i.isChatInputCommand()||i.isAutocomplete())&&(i.commandName==='tournoi'||i.commandName==='tournoi-staff');
   if(!isCmd&&!id.startsWith(P))return false;
@@ -337,15 +341,23 @@ async function followBracket(client:Client,pool:Pool,config:LunaLiveApiConfig,se
   const channel=t.channel_id?await client.channels.fetch(t.channel_id).catch(()=>null) as TextChannel|null:null;
   const msg=channel&&t.message_id?await channel.messages.fetch(t.message_id).catch(()=>null):null;
   if(msg)await msg.edit(bracketCard(t.title,s));
+  const lcn=await lcnTournament(client);
+  await mirror(client,pool,'tournament',t.id,lcn,bracketCard(t.title,s));
+  // Joueurs inscrits depuis le Discord LeCasiNoze (absents de celui de Belva) : pingés là-bas.
+  const where=async(id:string)=>{
+    if(await client.guilds.fetch(BELVA_GUILD()).then(g=>g.members.fetch(id)).then(()=>true).catch(()=>false))return channel;
+    return await client.guilds.fetch(LCN_GUILD()).then(g=>g.members.fetch(id)).then(()=>true).catch(()=>false)?lcn:channel;
+  };
   const b=s.bracket;
   for(const m of b.matches.filter(m=>m.loser)){
     const fresh=(await pool.query(`INSERT INTO belva_tournament_pings(tournament_id,discord_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING 1`,[t.id,m.loser])).rowCount;
-    if(fresh)await channel?.send({content:eliminationText(m.loser!,roundName(m.round,b.rounds),b.places[m.loser!]!),allowedMentions:{users:[m.loser!]}});
+    if(fresh)await (await where(m.loser!))?.send({content:eliminationText(m.loser!,roundName(m.round,b.rounds),b.places[m.loser!]!),allowedMentions:{users:[m.loser!]}});
   }
   if(b.champion&&s.tournament.status==='done'){
     const fresh=(await pool.query(`INSERT INTO belva_tournament_pings(tournament_id,discord_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING 1`,[t.id,'champion:'+b.champion])).rowCount;
     if(fresh){
-      await channel?.send({content:championText(b.champion,s.players[b.champion]?.slot??''),allowedMentions:{users:[b.champion]}});
+      const champ={content:championText(b.champion,s.players[b.champion]?.slot??''),allowedMentions:{users:[b.champion]}};
+      await channel?.send(champ);await lcn?.send(champ);
       await refreshSeason(client,pool);
       // Les inscriptions du tournoi suivant s'ouvrent dès qu'un vainqueur est désigné, au même prix.
       if(!await current(pool)&&await isApproved(pool,'tournament'))await openTournament(client,pool,t.buy_cents,client.user!.id);
@@ -356,6 +368,9 @@ async function followBracket(client:Client,pool:Pool,config:LunaLiveApiConfig,se
 export function startBelvaTournament(client:Client,pool:Pool|undefined,config:LunaLiveApiConfig){
   if(!pool)return;
   const seen=new Map<number,number>();let busy=false;
+  // Au démarrage : la carte du tournoi en cours est (re)publiée sur le Discord LeCasiNoze.
+  setTimeout(()=>void schema(pool).then(()=>current(pool)).then(t=>t&&isApproved(pool,'tournament').then(ok=>ok?refreshCard(client,pool,t):undefined))
+    .catch(e=>console.error('[nozebot] miroir tournoi',e)),20_000).unref();
   // Tout premier tournoi : inscriptions ouvertes d'office dès la validation (tirage au plus tôt le FIRST_DRAW).
   const ensureFirst=async()=>{if(!(await pool.query(`SELECT 1 FROM belva_tournaments LIMIT 1`)).rowCount&&await isApproved(pool,'tournament'))await openTournament(client,pool,BUY_CENTS(),client.user!.id);};
   setInterval(()=>{if(busy)return;busy=true;void schema(pool).then(ensureFirst).then(()=>followBracket(client,pool,config,seen)).catch(e=>console.error('[nozebot] bracket tournoi',e)).finally(()=>{busy=false;});},15_000).unref();

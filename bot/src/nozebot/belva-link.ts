@@ -1,5 +1,6 @@
 import {ActionRowBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,SlashCommandBuilder,type Client,type Interaction} from 'discord.js';
 import {LunaLiveApiError,checkBelvaCommentLink,requestAutomodLink,type LunaLiveApiConfig} from './lunalive-api.js';
+import {LCN_GUILD} from './belva-guilds.js';
 import {LINK_BUTTON} from './belva-info.js';
 
 // /lier sur le Discord de Belva : en live, la commande se colle dans le chat ; hors live, elle se poste en commentaire
@@ -34,7 +35,8 @@ export async function handleBelvaLink(interaction:Interaction,config:LunaLiveApi
   }
   const slash=interaction.isChatInputCommand()&&interaction.commandName==='lier';
   const button=interaction.isButton()&&interaction.customId===LINK_BUTTON;
-  if((!slash&&!button)||interaction.guildId!==GUILD_ID()||!interaction.isRepliable())return false;
+  // Le bouton marche aussi sur le Discord LeCasiNoze : la liaison vaut pour les deux chaînes.
+  if((!slash&&!button)||!(interaction.guildId===GUILD_ID()||(button&&interaction.guildId===LCN_GUILD()))||!interaction.isRepliable())return false;
   await interaction.deferReply({ephemeral:true});
   try{
     const link=await requestAutomodLink(config,interaction.user.id,STREAMER);

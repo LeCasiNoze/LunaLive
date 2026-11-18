@@ -36,3 +36,9 @@ test('dépôt offert retiré tant que BELVA_OFFER n’est pas à on', async ()=>
   assert.ok(JSON.stringify(offerCard({id,bonus:30} as never,OFFERS[id]!)).includes('qoffer'));
   delete process.env.BELVA_OFFER;
 });
+
+test('noms de salons au style LeCasiNoze', async ()=>{
+  const {boldSans,lcnName}=await import('./belva-guilds.js');
+  assert.equal(boldSans('HUNT'),'𝗛𝗨𝗡𝗧');
+  assert.equal(lcnName('⚔️','tournoi'),'〈⚔️〉┃𝗧𝗢𝗨𝗥𝗡𝗢𝗜');
+});

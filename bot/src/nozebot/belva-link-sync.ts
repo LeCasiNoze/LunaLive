@@ -2,6 +2,7 @@ import type {Client} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import {BELVA_ROLES} from './belva-roles.js';
+import {mirrorLinks} from './belva-guilds.js';
 
 // Comptes Rumble liés au Discord de Belva : le pseudo Discord du serveur devient le pseudo Rumble,
 // et ceux qui portent le tag de la team (pseudo Rumble « BLVA… », majuscules ou non) reçoivent le rôle BLVA.
@@ -10,6 +11,7 @@ const BLVA_ROLE='1483154059534794883';
 export const hasTeamTag=(rumble:string)=>/^blva/i.test(rumble.trim());
 
 async function sync(client:Client,pool:Pool){
+  await mirrorLinks(pool).catch(e=>console.error('[nozebot] liaisons croisées',e?.message||e));
   const guild=await client.guilds.fetch(GUILD_ID()).catch(()=>null);if(!guild)return;
   const links=(await pool.query(`SELECT l.discord_user_id,l.username FROM automod_discord_links l JOIN streamers s ON s.id=l.streamer_id WHERE lower(s.slug)='belvaa'`)).rows as {discord_user_id:string;username:string}[];
   if(!links.length)return;

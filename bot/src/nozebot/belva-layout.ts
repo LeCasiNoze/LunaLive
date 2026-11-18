@@ -4,9 +4,12 @@ export const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'14295255709657376
 export const T=(content:string)=>({type:10,content});
 export const GAP={type:14,divider:false,spacing:2};
 export const LINE={type:14,divider:true,spacing:2};
-export const chUrl=(id?:string)=>`https://discord.com/channels/${GUILD_ID()}${id?'/'+id:''}`;
+export const chUrl=(id?:string,guild=GUILD_ID())=>`https://discord.com/channels/${guild}${id?'/'+id:''}`;
 // style 1 bleu, 2 gris, 3 vert, 4 rouge ; les boutons lien (style 5) restent gris, Discord ne les colore pas.
 export const btn=(label:string,emoji:string,style:1|2|3|4,custom_id:string)=>({type:2,style,label,emoji:{name:emoji},custom_id});
 export const link=(label:string,emoji:string,url:string)=>({type:2,style:5,label,emoji:{name:emoji},url});
-export const step=(title:string,body:string,buttons:object[]=[])=>[T(`### ${title}\n${body}`),...(buttons.length?[{type:1,components:buttons}]:[])];
+// Bouton vers un salon ; absent si le salon n'existe pas sur ce serveur.
+export const chLink=(label:string,emoji:string,id?:string,guild?:string)=>id?link(label,emoji,chUrl(id,guild)):null;
+export const step=(title:string,body:string,list:(object|null)[]=[])=>{const buttons=list.filter(Boolean);
+  return [T(`### ${title}\n${body}`),...(buttons.length?[{type:1,components:buttons}]:[])];};
 export const FOOT=T('-# 🔞 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.');

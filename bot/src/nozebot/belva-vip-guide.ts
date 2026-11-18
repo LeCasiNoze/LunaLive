@@ -12,7 +12,7 @@ const REWARDS_CATEGORY='1481924757380272289';
 const CHANNEL_NAME='📖︱guide-vip';
 const fr=(n:number)=>n.toLocaleString('fr-FR');
 
-export function vipGuideCard(ch:{offers?:string;hunt?:string;tournament?:string}={}){
+export function vipGuideCard(ch:{offers?:string;hunt?:string;tournament?:string;guild?:string}={}){
   const grades=GRADES.map(g=>{const s=ROLE_SPEC.find(r=>r.key===g.key)!;
     return `**${s.name}** · dès **${fr(g.xp)} XP**${'deposit' in g&&g.deposit?' · dépôt vérifié requis':''}\n> ${g.perk}`;});
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:0xF3C14B,components:[
@@ -21,7 +21,7 @@ export function vipGuideCard(ch:{offers?:string;hunt?:string;tournament?:string}
     L.LINE,
     ...L.step('1 · Relie ton compte Rumble','Sans ça, ton XP ne peut pas être comptée. 30 secondes, une seule fois.',[L.btn('Lier mon Rumble','🔗',1,LINK_BUTTON)]),
     L.GAP,
-    ...L.step('2 · Vérifie un compte casino','+300 XP par casino, et c’est ce qui ouvre les grades à partir de ♦️ Rubis (avec un dépôt).',[L.link('Les offres casino','🎁',L.chUrl(ch.offers))]),
+    ...L.step('2 · Vérifie un compte casino','+300 XP par casino, et c’est ce qui ouvre les grades à partir de ♦️ Rubis (avec un dépôt).',[L.chLink('Les offres casino','🎁',ch.offers,ch.guild)]),
     L.LINE,
     L.T(`### ⭐ Comment gagner de l’XP\n${XP_RULES.map(([what,xp])=>`> **${what}** · ${xp}`).join('\n')}`),
     L.LINE,
@@ -30,9 +30,9 @@ export function vipGuideCard(ch:{offers?:string;hunt?:string;tournament?:string}
     L.T(grades.slice(4).join('\n\n')),
     L.T('-# Chaque grade a 5 sous-niveaux (I à V). Tape **/rang** pour voir ton niveau et ce qu’il te manque.'),
     L.LINE,
-    ...L.step('🎯 Au hunt du mercredi','Une machine par joueur, **deux à partir du grade 💠 Saphir**. Réservé aux 🍾 Carré Or.',[L.link('Le salon hunt','🎯',L.chUrl(ch.hunt))]),
+    ...L.step('🎯 Au hunt du mercredi','Une machine par joueur, **deux à partir du grade 💠 Saphir**. Réservé aux 🍾 Carré Or.',[L.chLink('Le salon hunt','🎯',ch.hunt,ch.guild)]),
     L.GAP,
-    ...L.step('⚔️ Au tournoi du samedi','+25 XP pour participer, +20 XP par duel gagné, et des points de saison : le top 3 du mois est récompensé.',[L.link('Le tournoi','⚔️',L.chUrl(ch.tournament))]),
+    ...L.step('⚔️ Au tournoi du samedi','+25 XP pour participer, +20 XP par duel gagné, et des points de saison : le top 3 du mois est récompensé.',[L.chLink('Le tournoi','⚔️',ch.tournament,ch.guild)]),
     L.FOOT,
   ]}] as never[]};
 }
