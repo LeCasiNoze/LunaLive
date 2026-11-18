@@ -43,6 +43,7 @@ import { startBelvaModeration } from './belva-moderation.js';
 import { startBelvaReminders } from './belva-reminders.js';
 import { handleBelvaRace } from './belva-race.js';
 import { handleSignup } from './belva-signup.js';
+import { handlePublicationWatch } from './publication-announcements.js';
 import { startBelvaVipGuide } from './belva-vip-guide.js';
 import { startLcnRolesSync } from './lcn-roles-sync.js';
 import { handleLcnReview, startLcnReviews } from './lcn-review.js';
@@ -516,6 +517,7 @@ async function routeInteraction(interaction: Interaction, config: NozeBotConfig,
     if (await handleBelvaHunt(interaction, pool, config.commands.lunaLive)) return;
     if (await handleBelvaRace(interaction)) return;
     if (await handleSignup(interaction)) return;
+    if (await handlePublicationWatch(interaction, pool)) return;
     if (await handleLcnReview(interaction, pool)) return;
     if (await handleBelvaXp(interaction, pool)) return;
     if (await handleBelvaQuests(interaction, pool)) return;

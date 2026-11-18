@@ -75,21 +75,26 @@ export function publicationNonce(e:PublicationEvent){return createHash('sha256')
 // Carte Components V2, même style que les alertes de live : titre, miniature, extrait, bouton. Le marqueur
 // « LeCasiNoze · plateforme:id » en bas sert à retrouver le message (réconciliation sans renvoi en double).
 export const publicationMarker=(e:Pick<PublicationEvent,'platform'|'mediaId'>)=>`LeCasiNoze · ${e.platform}:${e.mediaId}`;
-export function publicationMessage(event:PublicationEvent,notificationRoleId?:string){
+// banner : true quand la bannière générée (publication-banner.ts) est jointe sous le nom publication.png.
+export const PUBLICATION_WATCH='lcn:pub:';
+const SOCIAL_EMOJI={youtube:{id:'1572709086431019119',name:'youtube'},shorts:{id:'1572709087605432320',name:'shorts'},instagram:{id:'1572709088662519870',name:'instagram'}};
+export function publicationMessage(event:PublicationEvent,notificationRoleId?:string,banner=false){
  const e=sanitizedEvent(event),ig=e.platform==='instagram',short=!ig&&(e.isShort||e.kind==='short');
  const role=notificationRoleId&&PUBLICATION_NOTIFICATION_ROLE_IDS.includes(notificationRoleId)?notificationRoleId:undefined;
- const head=ig?'📸 Nouveau Reel':short?'⚡ Nouveau Short':'▶️ Nouvelle vidéo';
+ const em=ig?SOCIAL_EMOJI.instagram:short?SOCIAL_EMOJI.shorts:SOCIAL_EMOJI.youtube;
+ const head=ig?'Nouveau Reel':short?'Nouveau Short':'Nouvelle vidéo';
  const T=(content:string)=>({type:10,content});
- const desc=(e.description||'').split('\n').filter(Boolean).slice(0,3).join('\n').slice(0,300);
+ const desc=(e.description||'').split('\n').filter(Boolean).slice(0,2).join('\n').slice(0,220);
+ const media=banner?'attachment://publication.png':e.thumbnail;
  return {flags:1<<15,nonce:publicationNonce(e),enforceNonce:true,
   allowedMentions:{parse:[] as never[],...(role?{roles:[role]}:{})},
-  components:[...(role?[T(`<@&${role}>`)]:[]),{type:17,accent_color:ig?0xe4405f:0xff0033,components:[
-   T(`# ${head}`),T(`**${e.title}**`),
-   ...(e.thumbnail?[{type:12,items:[{media:{url:e.thumbnail},description:e.title.slice(0,250)}]}]:[]),
-   ...(desc?[T(desc)]:[]),
-   {type:14,divider:true,spacing:2},
-   {type:1,components:[{type:2,style:5,label:ig?'Voir le Reel':'Voir la vidéo',emoji:{name:ig?'📸':'▶️'},url:e.url},
-     {type:2,style:5,label:ig?'Instagram':'La chaîne YouTube',emoji:{name:ig?'📸':'🔔'},url:ig?'https://instagram.com/lecasinoze':'https://www.youtube.com/@LeCasiNoze'}]},
+  components:[...(role?[T(`<@&${role}>`)]:[]),{type:17,accent_color:ig?0xE1306C:0xFF0033,components:[
+   T(`## <:${em.name}:${em.id}> ${head} de LeCasiNoze`),
+   ...(media?[{type:12,items:[{media:{url:media},description:e.title.slice(0,250)}]}]:[]),
+   T(`### ${e.title}${desc?`\n${desc}`:''}`),
+   {type:14,divider:false,spacing:1},
+   {type:1,components:[{type:2,style:ig?1:4,label:ig?'Voir le Reel':short?'Voir le Short':'Regarder la vidéo',emoji:em,custom_id:`${PUBLICATION_WATCH}${e.platform}:${e.mediaId}`},
+     {type:2,style:5,label:ig?'Suivre sur Instagram':'S’abonner',emoji:{name:'🔔'},url:ig?'https://instagram.com/lecasinoze':'https://www.youtube.com/@LeCasiNoze?sub_confirmation=1'}]},
    T(`-# ${publicationMarker(e)}`),
   ]}]};
 }

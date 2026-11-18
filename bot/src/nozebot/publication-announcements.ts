@@ -1,6 +1,7 @@
 import {ChannelType,PermissionFlagsBits,type Client} from 'discord.js';
 import type {Pool} from 'pg';
-import {PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,PUBLICATION_NOTIFICATION_ROLE_IDS,resolvePublicationNotificationRoles,publicationMessage,publicationMarker,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
+import {publicationBanner} from './publication-banner.js';
+import {PUBLICATION_WATCH,sanitizedEvent,PUBLICATION_CHANNEL,PUBLICATION_GUILD,PUBLICATION_SCHEMA,PUBLICATION_NOTIFICATION_ROLE_IDS,resolvePublicationNotificationRoles,publicationMessage,publicationMarker,eligiblePublication,type PublicationEvent} from './publication-outbox.js';
 
 export interface AnnouncementTransport {
  reconcile(event:PublicationEvent,startedAt:Date):Promise<string|null>;
@@ -62,7 +63,8 @@ export async function startPublicationAnnouncements(client:Client,pool:Pool){
    const role=id?await channel.guild.roles.fetch(id):null;
    const canPing=!!role&&(role.mentionable||!!channel.permissionsFor(me)?.has(PermissionFlagsBits.MentionEveryone));
    if(!canPing)console.warn('[nozebot][publications] notification_role_unavailable',{platform:event.platform});
-   return (await channel.send(publicationMessage(event,canPing?role!.id:undefined))).id;
+   const banner=await publicationBanner(sanitizedEvent(event)).catch(()=>null);
+   return (await channel.send({...publicationMessage(event,canPing?role!.id:undefined,!!banner),...(banner?{files:[{attachment:banner,name:'publication.png'}]}:{})})).id;
   },
   async reconcile(event,startedAt){
    // Paginate down to BEFORE the original attempt. Incomplete history, permission
@@ -83,4 +85,15 @@ export async function startPublicationAnnouncements(client:Client,pool:Pool){
  const timer=setInterval(()=>void tick(),30000);void tick();
  console.log('[nozebot][publications] ready',{channelId:PUBLICATION_CHANNEL,historyBackfill:false});
  return ()=>{stopped=true;clearInterval(timer);};
+}
+
+// Bouton coloré « Regarder » : un bouton lien ne peut pas être coloré, il répond donc en privé avec le lien.
+export async function handlePublicationWatch(i:import('discord.js').Interaction,pool?:Pool):Promise<boolean>{
+ if(!i.isButton()||!i.customId.startsWith(PUBLICATION_WATCH))return false;
+ const [platform,mediaId]=i.customId.slice(PUBLICATION_WATCH.length).split(':');
+ const row=pool?(await pool.query(`SELECT payload FROM lunaclip_discord_outbox WHERE platform=$1 AND media_id=$2 LIMIT 1`,[platform,mediaId]).catch(()=>({rows:[]}))).rows[0]:null;
+ const url=row?.payload?.url as string|undefined;
+ if(!url){await i.reply({ephemeral:true,content:'Lien indisponible pour le moment.'});return true;}
+ await i.reply({ephemeral:true,components:[{type:1,components:[{type:2,style:5,label:platform==='instagram'?'Ouvrir le Reel':'Ouvrir sur YouTube',emoji:{name:'▶️'},url}]}] as never[],content:'👇 Bon visionnage !'});
+ return true;
 }
