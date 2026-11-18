@@ -64,8 +64,10 @@ export async function matchBetportalDeposit(client:Client,pool:Pool,o:{discordId
   const taken=new Set((await pool.query(`SELECT player_ref FROM belva_betportal_links`)).rows.map(r=>String(r.player_ref)));
   const ftds=(await ftdsAround(center,window).catch(e=>{console.error('[nozebot] postbacks Betportal',e?.message||e);return [] as Ftd[];}))
     .filter(f=>!taken.has(f.player_ref)).map(f=>({...f,gap:Math.abs(Date.parse(f.received_at)-center.getTime())})).sort((a,b)=>a.gap-b.gap).slice(0,4);
-  const guild=await client.guilds.fetch(GUILD_ID());
-  const list=(await guild.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&c.name===STAFF_LIST) as TextChannel|undefined;if(!list)return;
+  // Note staff sur le serveur du ticket (Belva ou LeCasiNoze) : chacun sa liste des remboursements.
+  const ticket=await client.channels.fetch(o.ticketChannelId).catch(()=>null);
+  const guild=ticket&&'guild' in ticket?ticket.guild:await client.guilds.fetch(GUILD_ID());
+  const list=(await guild.channels.fetch()).find(c=>c?.type===ChannelType.GuildText&&(c.name===STAFF_LIST||/liste-remboursements$/i.test([...c.name.normalize('NFKD')].filter(x=>/[a-z0-9-]/i.test(x)).join('')))) as TextChannel|undefined;if(!list)return;
   const lecture=!process.env.ANTHROPIC_API_KEY?'⚠️ Lecture IA désactivée (clé ANTHROPIC_API_KEY absente sur le bot)'
     :read?`💶 **${read.amount??'?'} ${read.currency??''}** · 🕒 **${read.at??'heure illisible'}**${o.declared?` · déclaré : ${o.declared} €`:''}`:'⚠️ Screen illisible par l’IA';
   const embed=new EmbedBuilder().setColor(0x1FF25E).setTitle('🔎 Rapprochement Betportal')
@@ -82,7 +84,7 @@ export async function handleBetportalMatch(i:Interaction,pool?:Pool):Promise<boo
   if(!i.isButton()||!i.customId.startsWith(P))return false;
   if(!pool||!i.inCachedGuild())return true;
   const m=i.member;
-  if(!(m.roles.cache.has(PATRON_ROLE)||m.roles.cache.has(VIDEUR_ROLE)||m.permissions.has(PermissionFlagsBits.Administrator))){await i.reply({ephemeral:true,content:'Réservé au staff.'});return true;}
+  if(!(m.roles.cache.has(PATRON_ROLE)||m.roles.cache.has(VIDEUR_ROLE)||m.roles.cache.has('1188939890344329379')||m.permissions.has(PermissionFlagsBits.Administrator))){await i.reply({ephemeral:true,content:'Réservé au staff.'});return true;}
   const [,,,ref,discordId]=i.customId.split(':');
   await schema(pool);
   const ok=(await pool.query(`INSERT INTO belva_betportal_links(player_ref,discord_id,linked_by) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING 1`,[ref,discordId,i.user.id])).rowCount;

@@ -5,11 +5,14 @@ import {isApproved} from './belva-approval.js';
 import {LINK_BUTTON} from './belva-info.js';
 import {LCN_GUILD,findChannel} from './belva-guilds.js';
 import * as L from './belva-layout.js';
+import {LCN_TICKETS,ticketCtx} from './belva-roles.js';
+import {TICKET_PANEL_ID,ticketKindOptions} from './belva-tickets.js';
 
 // Cartes du Discord LeCasiNoze, refaites dans le style des cartes de Belva (Components V2, une étape = un bouton).
 // Les boutons et menus gardent leurs identifiants d'origine : les actions existantes (règlement, notifications,
 // tickets, vérification Rainbet) continuent de fonctionner. Une carte n'est publiée qu'une fois validée (fiche lcn-…).
 const ACCENT=0xD64065;
+const OLD_RULES='1188921136902316093';
 const C={rules:'1188914844909441204',start:'1188914815561891990',roles:'1217876409406586900',ticket:'1544429389415063604',general:'1188913389125255198',
   rainbet:'1569126449670004776',race:'1569141661403971686',betportal:'1562493112327348276',celsius:'1544405889455362158',games:'1304110217419559026',
   nozebot:'1559957255288520836',shop:'1559957261466734737',rumble:'1544405891187740695',lunalive:'1544405928906989690',insta:'1544405931075305571',
@@ -29,6 +32,9 @@ export function rulesCard(){
     L.LINE,
     ...L.step('✅ Pour ouvrir le serveur','Accepte le règlement, puis choisis tes notifications (ou continue sans). Le reste du serveur se dévoile tout seul.',
       [L.btn('J’accepte le règlement','✅',3,'nozebot:rules:accept')]),
+    L.GAP,
+    ...L.step('🔗 Relie ton compte Rumble','Ça remplace l’ancien !linkme : un clic, le bot t’envoie la marche à suivre en privé. Ta liaison vaut aussi sur le Discord de Belva.',
+      [L.btn('Lier mon Rumble','🔗',1,LINK_BUTTON)]),
     L.LINE,
     L.T('### 🔞 Joue de façon responsable\n> Le jeu est un divertissement, pas un revenu : sur la durée, on perd. Ne joue que ce que tu peux perdre et fais une pause quand il le faut.\n> **Joueurs Info Service : 09 74 75 13 13** (appel non surtaxé)'),
   ]);
@@ -70,19 +76,19 @@ export function notifCard(){
   ]);
 }
 
+// Même système de tickets que chez Belva (remboursements, vérifications), avec les casinos et le staff de LeCasiNoze.
 export function ticketCard(){
+  const options=ticketCtx.run(LCN_TICKETS,()=>ticketKindOptions());
   return card([
-    L.T('# 🎫 Ouvrir un ticket'),L.T('Un salon privé s’ouvre, visible seulement par toi et l’équipe. Une seule demande ouverte à la fois.'),
+    L.T('# 🎫 Ouvrir un ticket'),L.T('Un salon privé s’ouvre, visible seulement par toi et l’équipe.'),
     L.LINE,
-    L.T(['🔎 **Vérification d’affiliation** · vérifier une inscription ou un compte partenaire.','🛟 **Aide et problème** · un souci sur le serveur, le bot ou un service.',
-      '🤝 **Partenariat** · proposition professionnelle ou prise de contact.','💎 **VIP host** · gros joueur : une mise en relation personnalisée.','📝 **Autre demande** · écris librement ton sujet.'].join('\n')),
+    L.T(['💸 **Remboursement de dépôt** · jusqu’à 30 € (35 € sur Celsius) sur ton 1er dépôt avec notre lien, versés de préférence sur un casino où tu n’as pas encore de compte.',
+      '🔎 **Vérification de compte** · faire vérifier ton compte sur un casino partenaire.','💎 **VIP host** · gros joueur : une mise en relation personnalisée.',
+      '🛟 **Aide**, 🤝 **Partenariat** ou 📝 **Autre** pour le reste.'].join('\n')),
+    L.T('-# 📸 Prépare une capture de ton dépôt pour un remboursement.'),
     L.GAP,
-    select('nozebot:tickets:new','Quel est le sujet de ta demande ?',1,1,[
-      {label:'Vérification d’affiliation',value:'affiliation',description:'Vérifier une inscription ou un compte.',emoji:{name:'🔎'}},
-      {label:'Aide et problème',value:'support',description:'Serveur, bot ou problème général.',emoji:{name:'🛟'}},
-      {label:'Partenariat',value:'partnership',description:'Proposition ou prise de contact.',emoji:{name:'🤝'}},
-      {label:'Demande VIP host',value:'vip_host',description:'Accompagnement personnalisé gros joueur.',emoji:{name:'💎'}},
-      {label:'Autre demande',value:'other',description:'Écrire librement le sujet de la demande.',emoji:{name:'📝'}}]),
+    select(TICKET_PANEL_ID,'Choisis le type de demande…',1,1,options),
+    L.T('-# 18+ · Joue de façon responsable. Joueurs Info Service : 09 74 75 13 13.'),
   ]);
 }
 
@@ -191,6 +197,8 @@ async function place(client:Client,channelId:string,payload:ReturnType<typeof ca
   const current=mine.find(m=>m.flags.has(MessageFlags.IsComponentsV2));
   if(current&&current.components[0]?.id!==id)await current.edit(withId);
   if(!current){const sent=await channel.send(withId);await sent.pin('Carte du salon').catch(()=>undefined);}
+  // Ancien règlement écrit à la main (avec « !linkme ») : remplacé par la carte, à la demande de Lucas (18/11).
+  if(channelId===C.rules)await channel.messages.delete(OLD_RULES).catch(()=>undefined);
   // Anciens panneaux du bot (embeds) : remplacés par la carte.
   for(const m of mine)if(m.id!==current?.id&&!m.flags.has(MessageFlags.IsComponentsV2))await m.delete().catch(()=>undefined);
 }
