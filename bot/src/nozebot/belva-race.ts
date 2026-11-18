@@ -62,6 +62,8 @@ export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now
 export async function upsertBelvaRace(channel:TextChannel,payload:Awaited<ReturnType<typeof belvaRaceCard>>,cachedId?:string):Promise<string>{
   const me=channel.client.user!.id;
   let msg:Message|null=cachedId?await channel.messages.fetch(cachedId).catch(()=>null):null;
+  // Un ancien panneau classique (embed) ne peut pas devenir une carte : on le remplace.
+  if(msg&&!msg.flags.has(MessageFlags.IsComponentsV2))msg=null;
   if(!msg){
     const all=await channel.messages.fetch({limit:100});
     msg=all.find(m=>m.author.id===me&&JSON.stringify(m.components.map(c=>c.toJSON())).includes(MARK))??null;
