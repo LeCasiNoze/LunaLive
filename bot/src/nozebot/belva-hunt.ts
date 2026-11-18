@@ -2,6 +2,7 @@ import {ChannelType,LabelBuilder,MessageFlags,ModalBuilder,SlashCommandBuilder,S
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
 import * as L from './belva-layout.js';
+import {lcnRole} from './lcn-role-spec.js';
 import {EVENT_GUILDS,LCN_GUILD,LINK_SLUGS,findChannel,isEventGuild,lcnChannel,mirror} from './belva-guilds.js';
 import {BELVA_ROLES} from './belva-roles.js';
 import {searchSlots} from './belva-tournament.js';
@@ -43,6 +44,10 @@ export function nextHuntDay(now=new Date()){
   return wed<FIRST_HUNT()?FIRST_HUNT():wed;
 }
 export const dayLabel=(iso:string)=>new Intl.DateTimeFormat('fr-FR',{timeZone:'UTC',weekday:'long',day:'numeric',month:'long'}).format(new Date(iso+'T12:00:00Z'));
+// Noms des rôles selon le serveur : Belva (Carré Or, Saphir) ou LeCasiNoze (Table VIP, Saigneur de Slot).
+export const roleNames=(guild?:string)=>guild===LCN_GUILD()?{carre:lcnRole('carreOr').name,carreMd:'🍾 **Table VIP**',saphir:lcnRole('saphir').name}
+  :{carre:'🍾 Carré Or',carreMd:'🍾 **Carré Or**',saphir:'💠 Saphir'};
+export const huntRules=(guild?:string)=>[`**1 ·** Une machine par joueur (deux à partir du grade ${roleNames(guild).saphir}).`,...HUNT_RULES.slice(1)];
 export const HUNT_RULES=['**1 ·** Une machine par joueur (deux à partir du grade 💠 Saphir).','**2 ·** Jamais deux fois la même machine dans un hunt : premier arrivé, premier servi.',
   '**3 ·** Le matin, LeCasiNoze farme les bonus sur vos machines. Le soir, Belva les ouvre en live.','**4 ·** Ton call rapporte **1 XP par tranche de 5x** (max 500), et le staff tippe les gros hits.'];
 
@@ -51,11 +56,11 @@ export function huntInfoCard(day:string,calls:{slot:string;who:string}[],ch:{off
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:ACCENT,components:[
     L.T('# 🎯 Hunt des viewers'),L.T(`Prochain hunt : **${dayLabel(day)}**\n🌅 **10 h** · farm des bonus\n🌙 **19 h 30** · ouverture en live`),
     L.LINE,
-    ...L.step('1 · Avoir le rôle 🍾 Carré Or','Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.chLink('Les offres casino','🎁',ch.offers,ch.guild)]),
+    ...L.step(`1 · Avoir le rôle ${roleNames(ch.guild).carre}`,'Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.chLink('Les offres casino','🎁',ch.offers,ch.guild)]),
     L.GAP,
     ...L.step('2 · Faire ton call','Choisis la machine que tu veux voir dans le hunt. Les calls sont ouverts dès maintenant.',[L.btn('Faire mon call','🎯',3,`${P}call`),L.btn('Retirer mon call','↩️',2,`${P}clear`)]),
     L.LINE,
-    ...L.step('📜 Les règles',HUNT_RULES.join('\n'),[L.chLink('Guide VIP','📖',ch.guide,ch.guild)]),
+    ...L.step('📜 Les règles',huntRules(ch.guild).join('\n'),[L.chLink('Guide VIP','📖',ch.guide,ch.guild)]),
     L.LINE,
     L.T(calls.length?`### 📝 Calls réservés (${calls.length})\n${calls.map(c=>`${c.slot} (${c.who})`).join(' · ')}`.slice(0,1500):'### 📝 Calls réservés\nAucun call pour l’instant : sois le premier !'),
     L.FOOT,
@@ -66,7 +71,7 @@ export function huntInfoCard(day:string,calls:{slot:string;who:string}[],ch:{off
 export function notEligibleCard(offers?:string,guild?:string){
   return {flags:MessageFlags.IsComponentsV2 as const,components:[{type:17,accent_color:ACCENT,components:[
     L.T('## 🔒 Le hunt est réservé aux joueurs qui ont déposé'),
-    L.T('Pour caller une machine, il te faut le rôle 🍾 **Carré Or**.'),
+    L.T(`Pour caller une machine, il te faut le rôle ${roleNames(guild).carreMd}.`),
     L.LINE,
     ...L.step('1 · Crée ton compte et fais ton premier dépôt','Sur un de nos casinos, avec le lien de Belva.',[L.chLink('Les offres casino','🎁',offers,guild)]),
     L.GAP,
@@ -91,7 +96,7 @@ async function hasCarreOr(client:Client,discordId:string){
   const belva=await client.guilds.fetch(GUILD_ID()).then(g=>g.members.fetch(discordId)).catch(()=>null);
   if(belva?.roles.cache.has(BELVA_ROLES.carreOr))return true;
   const lcn=await client.guilds.fetch(LCN_GUILD()).then(g=>g.members.fetch(discordId)).catch(()=>null);
-  return !!lcn?.roles.cache.some(r=>r.name==='🍾 Carré Or');
+  return !!lcn?.roles.cache.some(r=>r.name===lcnRole('carreOr').name);
 }
 
 async function handleCallButton(i:Interaction,pool:Pool,config:LunaLiveApiConfig):Promise<boolean>{

@@ -2,6 +2,7 @@ import {ChannelType,Events,MessageFlags,OverwriteType,PermissionFlagsBits,type C
 import type {Pool} from 'pg';
 import {brands,refreshBrands} from './belva-roles.js';
 import {ensureTables} from './belva-tickets.js';
+import {LCN_GUILD,findChannel,lcnName,mirror} from './belva-guilds.js';
 import {referredUsers} from './rainbet.js';
 
 // Salon staff « stats du mois » : un message par mois (heure de Paris), réécrit toutes les 5 minutes.
@@ -43,6 +44,14 @@ async function betportalPostbacks(since:Date){
   betportalCache={at:Date.now(),since:since.getTime(),v};return v;
 }
 
+async function lcnStatsChannel(guild:Guild):Promise<TextChannel|null>{
+  const found=await findChannel(guild,'stats-du-mois');if(found)return found;
+  const cat=guild.channels.cache.find(c=>c.type===ChannelType.GuildCategory&&/moderation/i.test(c.name.normalize('NFKD').replace(/[^a-z]/gi,'')));
+  return guild.channels.create({name:lcnName('📊','stats-du-mois'),type:ChannelType.GuildText,parent:cat?.id,topic:'Stats du mois, communes avec le Discord de Belva.',
+    permissionOverwrites:[{id:guild.id,deny:[PermissionFlagsBits.ViewChannel]},{id:'1188940226358415443',allow:[PermissionFlagsBits.ViewChannel]},{id:'1188939890344329379',allow:[PermissionFlagsBits.ViewChannel]},
+      {id:guild.client.user!.id,allow:[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages]}]}).catch(()=>null) as Promise<TextChannel|null>;
+}
+
 async function statsChannel(guild:Guild):Promise<TextChannel>{
   const all=await guild.channels.fetch();
   const found=all.find(ch=>ch?.type===ChannelType.GuildText&&ch.name===CHANNEL_NAME);
@@ -59,7 +68,7 @@ async function statsChannel(guild:Guild):Promise<TextChannel>{
 type Row={casino:string;n:string;eur:string};
 const byCasino=(rows:Row[])=>new Map(rows.map(r=>[r.casino,{n:Number(r.n),eur:Number(r.eur)}]));
 
-export async function buildStats(pool:Pool,guild:Guild,month:{followers_start:number|null;members_start:number|null}){
+export async function buildStats(pool:Pool,guild:Guild,month:{followers_start:number|null;members_start:number|null},lcn?:Guild|null){
   const q=async(sql:string)=>(await pool.query(sql,[GUILD_ID()])).rows as Row[];
   // FTD connus : dépôt remboursé validé, dépôt offert envoyé, ou remboursement envoyé sur un nouveau compte.
   const ftd=byCasino(await q(`SELECT casino,count(*) n,COALESCE(sum(eur),0) eur FROM (
@@ -72,6 +81,7 @@ export async function buildStats(pool:Pool,guild:Guild,month:{followers_start:nu
   const offers=byCasino(await q(`SELECT casino,count(*) n,sum(amount_eur) eur FROM belva_refunds WHERE guild_id=$1 AND kind='offer' AND status='paid' AND paid_at>=${MONTH_START} GROUP BY casino`));
   const pending=(await pool.query(`SELECT count(*) n,COALESCE(sum(amount_eur),0) eur FROM belva_refunds WHERE guild_id=$1 AND status IN ('pending','approved','wallet_received')`,[GUILD_ID()])).rows[0];
   const members=(await pool.query(`SELECT count(*) FILTER (WHERE kind='join') joins,count(*) FILTER (WHERE kind='leave') leaves FROM belva_member_events WHERE guild_id=$1 AND at>=${MONTH_START}`,[GUILD_ID()])).rows[0];
+  const lcnMembers=lcn?(await pool.query(`SELECT count(*) FILTER (WHERE kind='join') joins,count(*) FILTER (WHERE kind='leave') leaves FROM belva_member_events WHERE guild_id=$1 AND at>=${MONTH_START}`,[lcn.id])).rows[0]:null;
   const followers=(await pool.query(`SELECT i.followers_count FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id WHERE lower(s.slug)=$1`,[RUMBLE_SLUG]).catch(()=>({rows:[]}))).rows[0]?.followers_count as number|null|undefined;
   const since=new Date((await pool.query(`SELECT ${MONTH_START} t`)).rows[0].t);
   const rainbet=await rainbetSignups(since);
@@ -96,7 +106,7 @@ export async function buildStats(pool:Pool,guild:Guild,month:{followers_start:nu
     T(`### 💰 Conversion\nFTD connus : **${t.n}** · dépôts connus : **${t.eur} €**\nArgent versé ce mois : **${out.eur} €** (${out.n} paiements) · en attente : **${pending.n}** (${pending.eur} €)`),
     T(`### 🎰 Par casino\n${lines.join('\n')}`),
     {type:14,divider:true,spacing:2},
-    T(`### 👥 Audience\nDiscord : **${guild.memberCount}** membres · **+${members.joins}** arrivées · **−${members.leaves}** départs · net **${net>=0?'+':''}${net}**\n${followerLine}`),
+    T(`### 👥 Audience\nDiscord Belva : **${guild.memberCount}** membres · **+${members.joins}** arrivées · **−${members.leaves}** départs · net **${net>=0?'+':''}${net}**${lcn&&lcnMembers?`\nDiscord LeCasiNoze : **${lcn.memberCount}** membres · **+${lcnMembers.joins}** arrivées · **−${lcnMembers.leaves}** départs`:''}\n${followerLine}`),
     T('-# FTD connus = dépôts passés par nos tickets (remboursements validés, dépôts offerts et remboursements versés sur un nouveau compte). Les chiffres complets restent ceux des dashboards affiliés.'),
   ]}] as never[]};
 }
@@ -107,13 +117,17 @@ async function tick(client:Client,pool:Pool){
   const key=(await pool.query(`SELECT to_char(now() AT TIME ZONE 'Europe/Paris','YYYY-MM') m`)).rows[0].m as string;
   let month=(await pool.query(`SELECT * FROM belva_stats_months WHERE guild_id=$1 AND month=$2`,[GUILD_ID(),key])).rows[0];
   const channel=await statsChannel(guild);
+  const lcn=await client.guilds.fetch(LCN_GUILD()).catch(()=>null);
+  // Tableau commun : la même carte dans un salon staff du Discord LeCasiNoze.
+  const share=async(card:object)=>{if(!lcn)return;const ch=await lcnStatsChannel(lcn);await mirror(client,pool,'stats',key,ch,card);};
   if(month){
     const msg=await channel.messages.fetch(month.message_id).catch(()=>null);
-    if(msg){await msg.edit(await buildStats(pool,guild,month));return;}
+    if(msg){const card=await buildStats(pool,guild,month,lcn);await msg.edit(card);await share(card);return;}
   }
   const followers=(await pool.query(`SELECT i.followers_count FROM streamer_rumble_info i JOIN streamers s ON s.id=i.streamer_id WHERE lower(s.slug)=$1`,[RUMBLE_SLUG]).catch(()=>({rows:[]}))).rows[0]?.followers_count??null;
   month={followers_start:month?.followers_start??followers,members_start:month?.members_start??guild.memberCount};
-  const msg=await channel.send(await buildStats(pool,guild,month));
+  const card=await buildStats(pool,guild,month,lcn);
+  const msg=await channel.send(card);await share(card);
   await pool.query(`INSERT INTO belva_stats_months (guild_id,month,channel_id,message_id,followers_start,members_start) VALUES ($1,$2,$3,$4,$5,$6)
     ON CONFLICT (guild_id,month) DO UPDATE SET channel_id=EXCLUDED.channel_id,message_id=EXCLUDED.message_id`,[GUILD_ID(),key,channel.id,msg.id,month.followers_start,month.members_start]);
 }
@@ -121,7 +135,7 @@ async function tick(client:Client,pool:Pool){
 export async function startBelvaStats(client:Client,pool?:Pool){
   if(!pool||process.env.BELVA_STATS_ENABLED==='false')return;
   await ensureStatsTables(pool);
-  const log=(kind:'join'|'leave',guildId:string,userId:string)=>{if(guildId===GUILD_ID())void pool.query(`INSERT INTO belva_member_events (guild_id,discord_id,kind) VALUES ($1,$2,$3)`,[guildId,userId,kind]).catch(e=>console.error('[nozebot] stats Belva',e));};
+  const log=(kind:'join'|'leave',guildId:string,userId:string)=>{if(guildId===GUILD_ID()||guildId===LCN_GUILD())void pool.query(`INSERT INTO belva_member_events (guild_id,discord_id,kind) VALUES ($1,$2,$3)`,[guildId,userId,kind]).catch(e=>console.error('[nozebot] stats Belva',e));};
   client.on(Events.GuildMemberAdd,m=>log('join',m.guild.id,m.id));
   client.on(Events.GuildMemberRemove,m=>log('leave',m.guild.id,m.id));
   let running=false;

@@ -1,7 +1,7 @@
 import {MessageFlags,type Client,type TextChannel} from 'discord.js';
 import type {Pool} from 'pg';
 import {isApproved} from './belva-approval.js';
-import {HUNT_RULES,dayLabel,nextHuntDay} from './belva-hunt.js';
+import {dayLabel,huntRules,nextHuntDay,roleNames} from './belva-hunt.js';
 import {BRACKET_URL} from './belva-tournament.js';
 import {LINK_BUTTON} from './belva-info.js';
 import * as L from './belva-layout.js';
@@ -21,11 +21,11 @@ export function huntReminder(kind:ReminderKind,day:string,at:Date,calls:number,c
       L.T(`# 🎯 Hunt des viewers\n## ${HEAD[kind]}`),
       L.T(`**${dayLabel(day)}** · farm à **10 h**, ouverture en live à **19 h 30** (${ts(at,'R')}).\nTu choisis la machine, LeCasiNoze farme le bonus et Belva l’ouvre en live.${calls?`\n🎰 **${calls}** call${calls>1?'s':''} déjà réservé${calls>1?'s':''}.`:''}`),
       L.LINE,
-      ...L.step('1 · Avoir le rôle 🍾 Carré Or','Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.chLink('Les offres casino','🎁',ch.offers,ch.guild)]),
+      ...L.step(`1 · Avoir le rôle ${roleNames(ch.guild).carre}`,'Un compte casino vérifié et un premier dépôt avec le lien de Belva. Pas encore fait ? C’est par ici :',[L.chLink('Les offres casino','🎁',ch.offers,ch.guild)]),
       L.GAP,
       ...L.step('2 · Faire ton call','Choisis ta machine en un clic.',[L.btn('Faire mon call','🎯',3,'belva:hunt:call')]),
       L.LINE,
-      ...L.step('📜 Les règles',HUNT_RULES.join('\n'),[L.chLink('Guide VIP','📖',ch.guide,ch.guild),L.chLink('Le salon hunt','📺',ch.hunt,ch.guild)]),
+      ...L.step('📜 Les règles',huntRules(ch.guild).join('\n'),[L.chLink('Guide VIP','📖',ch.guide,ch.guild),L.chLink('Le salon hunt','📺',ch.hunt,ch.guild)]),
       L.FOOT,
     ]}] as never[]};
 }
