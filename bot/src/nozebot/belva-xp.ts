@@ -132,11 +132,14 @@ async function applyGrades(client:Client,pool:Pool,guild:Guild,announce:boolean)
 }
 
 // Top 10 de l'XP (salon 🏅︱classements) et /rang pour connaître sa place même hors du top.
-export function topCard(rows:{discord_id:string;xp:number}[]){
+// names : pseudo affiché par id. Une mention <@id> s'affiche « @utilisateur-inconnu » quand le membre n'est pas en
+// cache chez le lecteur (ou a quitté le serveur) : on écrit donc le pseudo en clair dès qu'on le connaît.
+const plain=(s:string)=>s.replace(/[*_~|\`]/g,'');
+export function topCard(rows:{discord_id:string;xp:number}[],names:Record<string,string>={}){
   const medal=['🥇','🥈','🥉'];
   return {flags:MessageFlags.IsComponentsV2 as const,allowedMentions:{parse:[] as never[]},components:[{type:17,accent_color:0x9B7BD4,components:[
     {type:10,content:'# 🏅 Top 10 de l’XP'},
-    {type:10,content:rows.length?rows.slice(0,10).map((r,k)=>`${medal[k]??`\`${k+1}.\``} <@${r.discord_id}> · **${r.xp.toLocaleString('fr-FR')} XP** · ${levelFor(r.xp)?.label??'—'}`).join('\n'):'Personne pour l’instant : l’XP démarre au lancement.'},
+    {type:10,content:rows.length?rows.slice(0,10).map((r,k)=>`${medal[k]??`\`${k+1}.\``} ${names[r.discord_id]?`**${plain(names[r.discord_id]!)}**`:`<@${r.discord_id}>`} · **${r.xp.toLocaleString('fr-FR')} XP** · ${levelFor(r.xp)?.label??'—'}`).join('\n'):'Personne pour l’instant : l’XP démarre au lancement.'},
     {type:14,divider:true,spacing:1},
     {type:10,content:'-# Mis à jour toutes les heures. Tape **/rang** pour voir ta place, ton grade et ce qu’il te manque. XP : chat pendant les lives, tournoi, quêtes, comptes vérifiés, dépôts.'},
   ]}] as never[]};
@@ -166,7 +169,14 @@ async function refreshTop(client:Client,pool:Pool,guild:Guild){
   const all=await guild.channels.fetch();
   const channel=all.find(c=>c?.type===ChannelType.GuildText&&c.name===TOP_CHANNEL) as TextChannel|undefined
     ??await guild.channels.create({name:TOP_CHANNEL,type:ChannelType.GuildText,parent:REWARDS_CATEGORY,topic:'Classements : saison du tournoi et top de l’XP.'});
-  const card=topCard(await totals(pool));
+  const rows=await totals(pool);
+  const ids=rows.slice(0,10).map(r=>r.discord_id),names:Record<string,string>={};
+  const members=await guild.members.fetch({user:ids}).catch(()=>null);
+  for(const id of ids){
+    const m=members?.get(id);
+    names[id]=m?m.displayName:(await client.users.fetch(id).catch(()=>null))?.username??'Membre parti';
+  }
+  const card=topCard(rows,names);
   const row=(await pool.query(`SELECT * FROM belva_xp_top WHERE channel_id=$1`,[channel.id])).rows[0];
   const msg=row?await channel.messages.fetch(row.message_id).catch(()=>null):null;
   if(msg)await msg.edit(card);

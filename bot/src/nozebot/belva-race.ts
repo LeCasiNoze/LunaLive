@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import {MessageFlags,type Interaction,type Message,type TextChannel} from 'discord.js';
 import * as L from './belva-layout.js';
 import {RACE_MIN_WAGER_USD,RACE_PRIZES_USD,maskName,raceRange,ranking,type RaceEntry} from './rainbet-race.js';
+import {renderBoard} from './race-board.js';
 
 // Wager race Rainbet sur le Discord de Belva : carte Components V2 (même DA que les cartes casino),
 // bannière podium en grand, classement lisible en texte, étapes et boutons.
@@ -35,11 +36,16 @@ export async function raceBanner(pot:number,top:{name:string;wagered:number;priz
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
-export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now:Date,brand='BELVA'){
+// board : nouveau classement façon leaderboard de streamer (race-board.ts). Il n'est utilisé en prod qu'une fois
+// la fiche race-v3 / lcn-race-v3 validée ; sinon l'ancienne bannière podium reste en place.
+export async function belvaRaceCard(current:RaceEntry[],previous:RaceEntry[],now:Date,brand='BELVA',board=false){
   const r=raceRange(now),prev=raceRange(now,-1);
   const top=ranking(current,RACE_PRIZES_USD);
   const pot=RACE_PRIZES_USD.reduce((a,b)=>a+b,0);
-  const banner=await raceBanner(pot,top.slice(0,3).map(e=>({name:maskName(e.username),wagered:e.wagered,prize:e.prize})),r.label,brand);
+  const banner=board
+    ?await renderBoard({pot,prizes:RACE_PRIZES_USD,rows:top.slice(0,10).map(e=>({rank:e.rank,name:maskName(e.username),wagered:e.wagered,prize:e.prize})),
+      start:new Date(r.start+'T00:00:00Z'),end:new Date(r.end+'T00:00:00Z'),endsAt:r.endsAt,now,brand:brand==='BELVA'?'BELVA':'LECASINOZE',minWager:RACE_MIN_WAGER_USD})
+    :await raceBanner(pot,top.slice(0,3).map(e=>({name:maskName(e.username),wagered:e.wagered,prize:e.prize})),r.label,brand);
   const rest=top.slice(3).map(e=>`**${e.rank}.** ${maskName(e.username)} · ${usd(e.wagered)}`);
   const winners=prev.monthly?ranking(previous,RACE_PRIZES_USD).filter(e=>e.prize):[];
   const ends=Math.floor(r.endsAt.getTime()/1000);

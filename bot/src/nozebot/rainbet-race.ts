@@ -129,9 +129,9 @@ export function startRainbetRace(client:Client,pool?:Pool):()=>void{
       const [current,previous]=await Promise.all([fetchWagers(raceRange(now)),fetchWagers(raceRange(now,-1))]);
       const payload=await racePanel(current,previous,now);
       // Discord de Belva : nouvelle carte (validée dans 🎨︱validation-design), sinon l'ancien panneau.
-      const belva=await isApproved(pool,'race')?await belvaRaceCard(current,previous,now):null;
+      const belva=await isApproved(pool,'race')?await belvaRaceCard(current,previous,now,'BELVA',await isApproved(pool,'race-v3')):null;
       // Discord LeCasiNoze : même carte, à sa marque (fiche lcn-race).
-      const lcn=await isApproved(pool,'lcn-race')?await belvaRaceCard(current,previous,now,'LECASINOZE'):null;
+      const lcn=await isApproved(pool,'lcn-race')?await belvaRaceCard(current,previous,now,'LECASINOZE',await isApproved(pool,'lcn-race-v3')):null;
       // discord.js ajoute les fichiers dans payload.attachments à chaque envoi : un tableau neuf par salon.
       for(const channel of await raceChannels(client))
         await ((belva&&channel.guild.id===BELVA_GUILD())||(lcn&&channel.guild.id===LCN_GUILD())?upsertBelvaRace(channel,(channel.guild.id===BELVA_GUILD()?belva:lcn)!,messages.get(channel.id)).then(id=>{messages.set(channel.id,id);}):upsert(channel,{...payload,attachments:[]})).catch(error=>console.error(`[nozebot][race] mise à jour impossible salon=${channel.id}`,error?.message??error));

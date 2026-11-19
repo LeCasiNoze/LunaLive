@@ -32,6 +32,8 @@ async function designs(client:Client):Promise<Design[]>{
   return [...cards,
     {key:'lcn-race',title:'Wager race Rainbet',where:'WAGER-RACE · ⚠️ Valider vide le salon et n’y laisse que cette carte',
       previews:async()=>[v2(await belvaRaceCard([{username:'Gotaz',wagered:1598},{username:'NicoCara',wagered:1366},{username:'Nicozap7339',wagered:4270}],[],new Date(Date.UTC(2026,10,20,12)),'LECASINOZE'))]},
+    {key:'lcn-race-v3',title:'Wager race : classement façon leaderboard (v3)',where:'WAGER-RACE · remplace l’image de la carte actuelle',
+      previews:async()=>[v2(await belvaRaceCard([{username:'Gotaz',wagered:1598},{username:'NicoCara',wagered:1366},{username:'Nicozap7339',wagered:4270}],[],new Date(Date.UTC(2026,10,20,12)),'LECASINOZE',true))]},
     {key:'lcn-vip-guide',title:'Guide VIP (tes noms de grades)',where:'Nouveau salon GUIDE-VIP dans COMMUNAUTÉ',previews:async c=>[v2(await lcnGuideCard(c))]},
   ];
 }

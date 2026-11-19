@@ -204,6 +204,8 @@ export const DESIGNS:Design[]=[
   {key:'race',title:'Wager race Rainbet (nouvelle carte)',where:'🏆︱wager-race · ⚠️ Valider vide le salon et n’y laisse que cette carte',
     note:'Exemple avec des mises fictives. Le classement réel vient de l’API Rainbet et se met à jour toutes les 5 minutes.',
     previews:async()=>[v2(await belvaRaceCard([{username:'BelvaaaTV',wagered:12450},{username:'PIAILLE',wagered:8120},{username:'MiseMax',wagered:2310},{username:'SpinSam',wagered:940},{username:'Lucky77',wagered:410}],[],new Date(Date.UTC(2026,10,20,12))))]},
+  {key:'race-v3',title:'Wager race : classement façon leaderboard (v3)',where:'🏆︱wager-race · remplace l’image de la carte actuelle (le reste de la carte ne change pas)',
+    previews:async()=>[v2(await belvaRaceCard([{username:'BelvaaaTV',wagered:12450},{username:'PIAILLE',wagered:8120},{username:'MiseMax',wagered:2310},{username:'SpinSam',wagered:940},{username:'Lucky77',wagered:410}],[],new Date(Date.UTC(2026,10,20,12)),'BELVA',true))]},
   {key:'vip-guide',title:'Guide VIP : XP, grades et avantages',where:'📖︱guide-vip (nouveau salon dans Récompenses)',
     note:'Les boutons « Guide VIP » du hunt et des rappels y renvoient.',
     previews:async c=>[v2(vipGuideCard({offers:c.channel('toutes-les-offres'),hunt:c.channel('hunt'),tournament:c.channel('tournoi')}))]},
