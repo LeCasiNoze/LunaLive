@@ -2,19 +2,30 @@
 import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
 import {t, href, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
 import {HELP} from '../data/help';
 import {CASINOS} from '../data/casinos';
 export type Kind = 'guide' | 'about' | 'responsible-gambling' | 'privacy';
 interface Props {lang: Lang; kind: Kind}
 const {lang, kind} = Astro.props;
 const d = t(lang);
+const u = ui(lang);
 const site = Astro.site!.origin;
 const path = `${kind}/`;
 const meta = {guide: [d.meta.guideTitle, d.meta.guideDesc], about: [d.meta.aboutTitle, d.meta.aboutDesc], 'responsible-gambling': [d.meta.rgTitle, d.meta.rgDesc], privacy: [d.meta.privacyTitle, d.meta.privacyDesc]}[kind];
 const body = kind === 'guide' ? {h1: d.guide.h1, intro: d.guide.intro, sections: d.guide.sections}
-  : kind === 'about' ? {h1: d.about.h1, intro: '', sections: d.about.sections}
+  : kind === 'about' ? {h1: d.about.h1, intro: d.who.p1, sections: d.about.sections}
   : kind === 'privacy' ? {h1: d.privacy.h1, intro: '', sections: d.privacy.sections}
   : {h1: d.rgPage.h1, intro: d.rgPage.intro, sections: []};
+// Une icône et une couleur d'accent par carte, pour que chaque section se repère d'un coup d'œil.
+const ICONS: Record<Kind, string[]> = {
+  guide: ['repeat', 'zap', 'trophy', 'clock', 'percent', 'shield'],
+  about: ['users', 'check', 'coins', 'alert'],
+  privacy: ['shield', 'layers', 'ext'],
+  'responsible-gambling': [],
+};
+const TONES = ['y', 'b', 'g', 'r', 'p', 'o'];
+const kick = {guide: u.nav.guide, about: u.nav.about, privacy: d.footer.links.privacy, 'responsible-gambling': u.nav.rg}[kind];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
     {'@type': 'ListItem', position: 1, name: d.review.crumbsHome, item: site + href(lang)},
@@ -24,25 +35,52 @@ const jsonld = [
 ];
 ---
 <Base lang={lang} title={meta[0]} desc={meta[1]} path={path} jsonld={jsonld} sticky={kind !== 'responsible-gambling'} active={kind}>
-  <div class="wrap page">
+  <div class="page">
     <ol class="crumbs"><li><a href={href(lang)}>{d.review.crumbsHome}</a></li><li aria-current="page">{body.h1}</li></ol>
-    <article class="prose">
+
+    <header class={`phero ${kind === 'responsible-gambling' ? 'phero-rg' : ''}`}>
+      <span class="kick"><Icon name={kind === 'guide' ? 'book' : kind === 'about' ? 'users' : 'shield'} />{kick}</span>
       <h1>{body.h1}</h1>
-      {body.intro && <p class="intro">{body.intro}</p>}
-      {body.sections.map(s => <><h2>{s.h}</h2><p>{s.p}</p></>)}
-      {kind === 'responsible-gambling' && <>
-        <h2>{d.rgPage.tipsH}</h2>
-        <ul>{d.rgPage.tips.map(x => <li>{x}</li>)}</ul>
-        <h2>{d.rgPage.signsH}</h2>
-        <ul>{d.rgPage.signs.map(x => <li>{x}</li>)}</ul>
-        <h2>{d.rgPage.helpH}</h2>
-        <div class="help">{HELP[lang].map(h => <a href={h.url} target="_blank" rel="noopener"><b>{h.name}</b><span>{h.detail}</span></a>)}</div>
-      </>}
-      {kind === 'guide' && <>
-        <h2>{d.list.title}</h2>
-        <div class="others">{CASINOS.map(o => <a class="mini" href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="46" height="46" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div></a>)}</div>
-        <p style="margin-top:22px"><a class="btn btn-go" href={href(lang) + '#offers'}>{d.hero.cta}<Icon name="arrow" /></a></p>
-      </>}
-    </article>
+      {body.intro && <p>{body.intro}</p>}
+      {kind === 'about' && <ul class="phero-chips">{d.who.promises.map(p => <li><Icon name="check" />{p}</li>)}</ul>}
+    </header>
+
+    {body.sections.length > 0 && (
+      <div class={`pcards ${kind === 'guide' ? 'pcards-num' : ''}`}>
+        {body.sections.map((s, i) => (
+          <section class={`pcard tone-${TONES[i % TONES.length]}`}>
+            <span class="pcard-ic">{kind === 'guide' ? <b>{i + 1}</b> : <Icon name={ICONS[kind][i] ?? 'check'} />}</span>
+            <h2>{s.h.replace(/^\d+\.\s*/, '')}</h2>
+            <p>{s.p}</p>
+          </section>
+        ))}
+      </div>
+    )}
+
+    {kind === 'responsible-gambling' && (
+      <>
+        <div class="pcards">
+          <section class="pcard tone-g">
+            <span class="pcard-ic"><Icon name="check" /></span>
+            <h2>{d.rgPage.tipsH}</h2>
+            <ul class="ticks">{d.rgPage.tips.map(x => <li><Icon name="check" />{x}</li>)}</ul>
+          </section>
+          <section class="pcard tone-r">
+            <span class="pcard-ic"><Icon name="alert" /></span>
+            <h2>{d.rgPage.signsH}</h2>
+            <ul class="ticks warn">{d.rgPage.signs.map(x => <li><Icon name="alert" />{x}</li>)}</ul>
+          </section>
+        </div>
+        <h2 class="sec-title">{d.rgPage.helpH}</h2>
+        <div class="help">{HELP[lang].map(h => <a href={h.url} target="_blank" rel="noopener"><b>{h.name}</b><span>{h.detail}</span><Icon name="ext" /></a>)}</div>
+      </>
+    )}
+
+    {kind !== 'responsible-gambling' && kind !== 'privacy' && (
+      <>
+        <h2 class="sec-title">{u.offersTitle}</h2>
+        <div class="others">{CASINOS.map(o => <a class={`mini m-${o.id}`} href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="46" height="46" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div><Icon name="arrow" /></a>)}</div>
+      </>
+    )}
   </div>
 </Base>

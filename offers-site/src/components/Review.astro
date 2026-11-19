@@ -14,6 +14,7 @@ const date = fmtDate(lang, CHECKED);
 const site = Astro.site!.origin;
 const path = `casinos/${c.id}/`;
 const ICON: Record<string, string> = {rakeback: 'percent', claim: 'clock', race: 'trophy', fs: 'star', maxbet: 'zap', days: 'repeat', deposits: 'layers', total: 'coins'};
+const TONES = ['y', 'b', 'g', 'r', 'p', 'o'];
 const faq = [...x.faq, d.faq.items[3]];
 const pairs = PAIRS.filter(([a, b]) => a === c.id || b === c.id);
 const jsonld = [
@@ -29,67 +30,68 @@ const jsonld = [
 <Base lang={lang} title={x.seoTitle} desc={x.seoDesc} path={path} jsonld={jsonld} active={c.id}>
   <div class="page">
     <ol class="crumbs"><li><a href={href(lang)}>{r.crumbsHome}</a></li><li><a href={href(lang) + '#offers'}>{r.crumbsReviews}</a></li><li aria-current="page">{c.name}</li></ol>
-    <div class="rv-hero">
-      <article class="prose">
-        <div class="rv-title"><img src={c.logo} alt={`${c.name} logo`} width="68" height="68" /><h1>{x.h1}</h1></div>
-        <p class="intro">{x.intro}</p>
+
+    <header class={`rhero t-${c.id}`} data-mark={c.name.toUpperCase()} data-sticky-anchor>
+      <div class="rhero-txt">
+        <div class="rhero-id"><img src={c.logo} alt={`${c.name} logo`} width="64" height="64" /><span class="pill">{u.badge[c.badge]}</span></div>
+        <h1>{x.h1}</h1>
+        <p>{x.intro}</p>
         <ul class="stats rv-stats">{c.stats.map(s => <li><Icon name={ICON[s.k]} /><b>{s.v}</b><span>{u.stat[s.k]}</span></li>)}</ul>
-        <p class="byline"><img src="/img/bwd-256.png" alt="" width="28" height="28" /><span>{r.author}<br /><small>{fmt(r.updated, {date})}</small></span></p>
-
-        <h2>{r.offer}</h2>
-        {x.sections.map(s => <><h3>{s.h}</h3><p>{s.p}</p></>)}
-
-        <h2>{r.how}</h2>
-        <ol class="howto">{x.howto.map(h => <li>{h}</li>)}</ol>
-        <p style="margin-top:16px"><a class="btn btn-play" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-howto"><Icon name="play" />{u.play}</a></p>
-
-        <h2>{r.terms}</h2>
-        <dl class="kv">{x.terms.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-        {c.terms.length > 0 && <p style="margin-top:14px">{r.official}: {c.terms.map((l, i) => <>{i > 0 && ' · '}<a href={l.url} target="_blank" rel="nofollow noopener">{l.label}</a></>)}</p>}
-        <p style="font-size:13px;color:var(--dim)">{fmt(r.checked, {date})}</p>
-
-        <h2>{r.deeper}</h2>
-        {x.more.map(s => <><h3>{s.h}</h3><p>{s.p}</p></>)}
-
-        {c.providers.length > 0 && <><h2>{r.play}</h2><p>{r.providers}:</p><div class="provs">{c.providers.map(p => <span>{p}</span>)}</div></>}
-
-        <div class="pc">
-          <div class="pro"><h3>{r.pros}</h3><ul>{x.pros.map(p => <li><Icon name="check" />{p}</li>)}</ul></div>
-          <div class="con"><h3>{r.cons}</h3><ul>{x.cons.map(p => <li><Icon name="alert" />{p}</li>)}</ul></div>
-        </div>
-
-        <h2>{r.faq}</h2>
-        <div class="faq">{faq.map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}</div>
-
-        <h2>{r.compare}</h2>
-        <div class="others">
-          {pairs.map(([a, b]) => {
-            const o = CASINOS.find(z => z.id === (a === c.id ? b : a))!;
-            return <a class="mini" href={href(lang, `vs/${a}-vs-${b}/`)}><img src={o.logo} alt="" width="44" height="44" loading="lazy" /><div><b>{c.name} vs {o.name}</b><span>{d.vs.table}</span></div></a>;
-          })}
-        </div>
-
-        <h2>{r.others}</h2>
-        <div class="others">
-          {CASINOS.filter(o => o.id !== c.id).map(o => <a class="mini" href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="44" height="44" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div></a>)}
-        </div>
-      </article>
-
-      <aside class={`rv-box t-${c.id}`}>
-        <div class="face" data-mark={c.name.toUpperCase()}>
-          <span class="lbl">{d.list.bonusLabel}</span>
-          <p class="big">{x.headline}</p>
-          <p style="font-weight:600">{x.short}</p>
-          {c.code && <div class="code"><span class="code-l">{u.code}</span><b>{c.code}</b><button type="button" data-copy={c.code} data-done={d.featured.copied} data-place="review"><Icon name="copy" /><span>{d.featured.copy}</span></button></div>}
-        </div>
-        <div class="body">
-          <ul class="ticks">{x.bullets.map(b => <li><Icon name="check" />{b}</li>)}</ul>
-          <a class="btn btn-play btn-lg" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-box"><Icon name="play" />{u.play}</a>
-          <p class="fine">{c.code ? `${u.code}: ${c.code}` : u.noCode} · {d.footer.age}</p>
-        </div>
+      </div>
+      <aside class="rhero-box">
+        <span class="lbl">{d.list.bonusLabel}</span>
+        <p class="big">{x.headline}</p>
+        <p class="sub">{x.short}</p>
+        {c.code && <div class="code"><span class="code-l">{u.code}</span><b>{c.code}</b><button type="button" data-copy={c.code} data-done={d.featured.copied} data-place="review"><Icon name="copy" /><span>{d.featured.copy}</span></button></div>}
+        <a class="btn btn-play btn-block" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-hero"><Icon name="play" />{u.play}</a>
+        <p class="fine">{c.code ? `${u.code}: ${c.code}` : u.noCode} · {d.footer.age}</p>
       </aside>
+    </header>
+
+    <p class="byline"><img src="/img/bwd-256.png" alt="" width="30" height="30" /><span>{r.author}<small>{fmt(r.updated, {date})}</small></span></p>
+
+    <h2 class="sec-title">{r.offer}</h2>
+    <div class="pcards">
+      {x.sections.map((s, i) => <section class={`pcard tone-${TONES[i]}`}><span class="pcard-ic"><Icon name={['gift', 'star', 'shield'][i] ?? 'check'} /></span><h3>{s.h}</h3><p>{s.p}</p></section>)}
     </div>
-    <div class="rg" style="margin-top:48px">
+
+    <h2 class="sec-title">{r.how}</h2>
+    <div class="steps">
+      {x.howto.map((h, i) => <div class="step"><span class="n">{i + 1}</span><p>{h}</p></div>)}
+    </div>
+    <div class="cta-row"><a class="btn btn-play btn-lg" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-howto"><Icon name="play" />{u.play}</a>{c.code && <button class="codechip" type="button" data-copy={c.code} data-done={d.featured.copied} data-place="review-howto"><Icon name="copy" /><span>{u.code}: {c.code}</span></button>}</div>
+
+    <h2 class="sec-title">{r.terms}</h2>
+    <div class="terms-card">
+      <dl class="kv">{x.terms.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      <p class="fine">{fmt(r.checked, {date})}{c.terms.length > 0 && <> · {r.official} : {c.terms.map((l, i) => <>{i > 0 && ' · '}<a href={l.url} target="_blank" rel="nofollow noopener">{l.label}</a></>)}</>}</p>
+    </div>
+
+    <h2 class="sec-title">{r.deeper}</h2>
+    <div class="pcards">
+      {x.more.map((s, i) => <section class={`pcard tone-${TONES[(i + 2) % TONES.length]}`}><span class="pcard-ic"><Icon name={['check', 'clock', 'trophy', 'users'][i] ?? 'check'} /></span><h3>{s.h}</h3><p>{s.p}</p></section>)}
+    </div>
+
+    {c.providers.length > 0 && <div class="provs-card"><span>{r.providers}</span><div class="provs">{c.providers.map(p => <span>{p}</span>)}</div></div>}
+
+    <div class="pc">
+      <div class="pro"><h3><Icon name="check" />{r.pros}</h3><ul>{x.pros.map(p => <li><Icon name="check" />{p}</li>)}</ul></div>
+      <div class="con"><h3><Icon name="alert" />{r.cons}</h3><ul>{x.cons.map(p => <li><Icon name="alert" />{p}</li>)}</ul></div>
+    </div>
+
+    <h2 class="sec-title">{r.faq}</h2>
+    <div class="faq">{faq.map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}</div>
+
+    <h2 class="sec-title">{r.compare}</h2>
+    <div class="others">
+      {pairs.map(([a, b]) => {
+        const o = CASINOS.find(z => z.id === (a === c.id ? b : a))!;
+        return <a class={`mini m-${o.id}`} href={href(lang, `vs/${a}-vs-${b}/`)}><img src={o.logo} alt="" width="44" height="44" loading="lazy" /><div><b>{c.name} vs {o.name}</b><span>{d.vs.table}</span></div><Icon name="arrow" /></a>;
+      })}
+      {CASINOS.filter(o => o.id !== c.id).map(o => <a class={`mini m-${o.id}`} href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="44" height="44" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div><Icon name="arrow" /></a>)}
+    </div>
+
+    <div class="rg" style="margin-top:40px">
       <span class="ic">18+</span>
       <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
       <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
