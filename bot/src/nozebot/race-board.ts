@@ -3,7 +3,7 @@ import sharp from 'sharp';
 
 // Classement de la wager race, mise en page inspirée des leaderboards de streamers (logo casino, gros montant,
 // compte à rebours, podium à 3 cartes puis tableau). Une seule image pour les deux serveurs : la marque change
-// les visuels des côtés et la couleur d'accent. Aucun texte sous 22 px pour 1200 px (lisible sur mobile).
+// la couleur d'accent et les halos des côtés (pas de logo de marque : retiré à la demande de Lucas, 19/11). Aucun texte sous 22 px pour 1200 px (lisible sur mobile).
 export type BoardRow={rank:number;name:string;wagered:number;prize:number};
 export type Brand='BELVA'|'LECASINOZE';
 export const BOARD_LABELS={
@@ -18,8 +18,8 @@ const b64=(p:string)=>`data:image/png;base64,${readFileSync(new URL(p,ASSETS)).t
 const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
 const usd=(n:number)=>`${new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}).format(n).replace(/[  ]/g,' ')} $`;
 const BRAND={
-  BELVA:{accent:'#22d3ee',glow:'#0891b2',side:'belva/logo-belva.png',round:false},
-  LECASINOZE:{accent:'#ff7a3d',glow:'#c2410c',side:'lecasinoze/avatar.png',round:true},
+  BELVA:{accent:'#22d3ee',glow:'#0891b2'},
+  LECASINOZE:{accent:'#ff7a3d',glow:'#c2410c'},
 } as const;
 const MEDAL=[{fill:'#f5c518',ink:'#2a1d00',txt:'#f5c518'},{fill:'#cfd6e4',ink:'#1e2430',txt:'#dfe5f0'},{fill:'#e0995e',ink:'#2e1606',txt:'#f0a56a'}];
 
@@ -52,8 +52,7 @@ export function buildBoardSvg(o:{pot:number;prizes:number[];rows:BoardRow[];star
   const fmt=(d:Date)=>new Intl.DateTimeFormat('fr-FR',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(d);
   const max=Math.max(1,...o.rows.map(r=>r.wagered));
   const tTop=960,rowH=66;
-  const side=b64(B.side),rb=b64('belva/logo-rainbet.png');
-  const sideImg=(x:number)=>`<image href="${side}" x="${x}" y="300" width="360" height="360" opacity=".2" clip-path="url(#round)"/>`;
+  const rb=b64('belva/logo-rainbet.png');
   const table=Array.from({length:7},(_,i)=>{
     const rank=i+4,row=o.rows.find(r=>r.rank===rank),y=tTop+20+i*rowH,prize=o.prizes[rank-1];
     const bar=row?Math.max(8,Math.round(240*row.wagered/max)):0;
@@ -76,14 +75,12 @@ export function buildBoardSvg(o:{pot:number;prizes:number[];rows:BoardRow[];star
       <filter id="sh"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-opacity=".55"/></filter>
       <radialGradient id="gB"><stop stop-color="${B.glow}" stop-opacity=".55"/><stop offset="1" stop-color="${B.glow}" stop-opacity="0"/></radialGradient>
       <radialGradient id="gY"><stop stop-color="#f5c518" stop-opacity=".16"/><stop offset="1" stop-color="#f5c518" stop-opacity="0"/></radialGradient>
-      <clipPath id="round" clipPathUnits="objectBoundingBox"><circle cx=".5" cy=".5" r=".5"/></clipPath>
       <clipPath id="rb"><rect x="540" y="40" width="120" height="120" rx="28"/></clipPath>
     </defs>
     <rect width="1200" height="${H}" rx="34" fill="url(#bg)"/>
     <circle cx="60" cy="480" r="380" fill="url(#gB)"/>
     <circle cx="1140" cy="480" r="380" fill="url(#gB)"/>
     <circle cx="600" cy="200" r="360" fill="url(#gY)"/>
-    ${sideImg(-150)}${sideImg(990)}
     <image href="${rb}" x="540" y="40" width="120" height="120" clip-path="url(#rb)"/>
     <text x="600" y="262" text-anchor="middle" font-size="86" font-weight="bold"><tspan fill="#f5c518">${o.pot} $</tspan><tspan fill="#ffffff" dx="26">${L.toWin}</tspan></text>
     <text x="600" y="310" text-anchor="middle" font-size="26" font-weight="bold" fill="#a99dbb" letter-spacing="8">${L.race}</text>
