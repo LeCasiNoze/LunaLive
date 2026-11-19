@@ -55,6 +55,8 @@ export const CASINOS: Casino[] = [
 ];
 
 export const byId = (id: string) => CASINOS.find(c => c.id === id)!;
+// Paires des pages comparatives /vs/<a>-vs-<b>/.
+export const PAIRS: [CasinoId, CasinoId][] = [['rainbet', 'betportal'], ['rainbet', 'celsius'], ['betportal', 'celsius']];
 
 export const YOUTUBE = 'https://www.youtube.com/@BigWinDailyHits';
 export const YT_SUB = 'https://www.youtube.com/@BigWinDailyHits?sub_confirmation=1';

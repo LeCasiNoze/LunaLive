@@ -1,0 +1,72 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import {t, href, fmt, fmtDate, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {CHECKED, type Casino} from '../data/casinos';
+// Comparatif « A vs B » : tableau construit uniquement à partir des données validées des deux fiches.
+interface Props {lang: Lang; a: Casino; b: Casino}
+const {lang, a, b} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const v = d.vs;
+const date = fmtDate(lang, CHECKED);
+const site = Astro.site!.origin;
+const path = `vs/${a.id}-vs-${b.id}/`;
+const both = [a, b];
+const rows: [string, (c: Casino) => string][] = [
+  [d.table.cols[1], c => d.casino[c.id].headline],
+  [d.table.cols[2], c => d.casino[c.id].spread],
+  [d.table.cols[3], c => d.casino[c.id].rules],
+  [d.table.cols[4], c => d.casino[c.id].extra],
+  [u.code, c => c.code ?? u.noCode],
+  [d.list.best, c => d.casino[c.id].best],
+];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    {'@type': 'ListItem', position: 1, name: d.review.crumbsHome, item: site + href(lang)},
+    {'@type': 'ListItem', position: 2, name: fmt(v.h1, {a: a.name, b: b.name}), item: site + href(lang, path)},
+  ]},
+  {'@context': 'https://schema.org', '@type': 'Article', headline: fmt(v.title, {a: a.name, b: b.name}), inLanguage: d.locale, dateModified: CHECKED, author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path)},
+];
+---
+<Base lang={lang} title={fmt(v.title, {a: a.name, b: b.name})} desc={fmt(v.desc, {a: a.name, b: b.name, date})} path={path} jsonld={jsonld}>
+  <div class="page">
+    <ol class="crumbs"><li><a href={href(lang)}>{d.review.crumbsHome}</a></li><li>{v.crumbs}</li><li aria-current="page">{a.name} vs {b.name}</li></ol>
+    <div class="prose" style="max-width:none">
+      <h1>{fmt(v.h1, {a: a.name, b: b.name})}</h1>
+      <p class="intro" style="max-width:780px">{v.intro}</p>
+    </div>
+    <div class="vs-head">
+      {both.map(c => (
+        <div class={`vs-col c-${c.id}`}>
+          <div class="card-logo"><img src={c.logo} alt={`${c.name} logo`} width="64" height="64" /><b>{c.name}</b></div>
+          <p class="card-bonus" set:html={d.casino[c.id].headline} />
+          <a class="btn btn-play btn-block" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="vs"><Icon name="play" />{u.play}</a>
+          <a class="rev" href={href(lang, `casinos/${c.id}/`)}>{u.review} {c.name}</a>
+        </div>
+      ))}
+    </div>
+    <h2 class="vs-h2">{v.table}</h2>
+    <div class="vs-table">
+      <table>
+        <thead><tr><th></th>{both.map(c => <th scope="col">{c.name}</th>)}</tr></thead>
+        <tbody>{rows.map(([label, get]) => <tr><th scope="row">{label}</th>{both.map(c => <td>{get(c)}</td>)}</tr>)}</tbody>
+      </table>
+    </div>
+    <div class="vs-pick">
+      {both.map(c => (
+        <div>
+          <h3>{fmt(v.pick, {name: c.name})}</h3>
+          <ul class="ticks">{[d.casino[c.id].best, ...d.casino[c.id].pros].map(p => <li><Icon name="check" />{p}</li>)}</ul>
+        </div>
+      ))}
+    </div>
+    <div class="who" style="margin-top:20px"><div><h2 class="vs-h2" style="margin:0 0 8px">{v.verdict}</h2><p>{v.verdictP}</p></div></div>
+    <div class="rg" style="margin-top:40px">
+      <span class="ic">18+</span>
+      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </div>
+</Base>

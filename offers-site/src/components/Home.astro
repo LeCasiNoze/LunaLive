@@ -4,7 +4,7 @@ import Icon from './Icon.astro';
 import OfferCard from './OfferCard.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, byId, CHECKED, YOUTUBE} from '../data/casinos';
+import {CASINOS, PAIRS, byId, CHECKED, YOUTUBE} from '../data/casinos';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
@@ -67,6 +67,13 @@ const jsonld = [
   <section class="sec" id="offers">
     <div class="sec-h"><h2>{u.offersTitle}</h2><span class="count">{fmt(u.offersCount, {n: CASINOS.length})}</span></div>
     <div class="cards">{CASINOS.map(c => <OfferCard lang={lang} c={c} />)}</div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-h"><h2>{d.vs.crumbs}</h2></div>
+    <div class="others">
+      {PAIRS.map(([a, b]) => <a class="mini" href={href(lang, `vs/${a}-vs-${b}/`)}><img src={byId(a).logo} alt="" width="44" height="44" loading="lazy" /><div><b>{byId(a).name} vs {byId(b).name}</b><span>{d.vs.table}</span></div></a>)}
+    </div>
   </section>
 
   <section class="sec">

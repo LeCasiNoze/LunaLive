@@ -2,14 +2,16 @@
 import Home from '../components/Home.astro';
 import Review from '../components/Review.astro';
 import Prose, {type Kind} from '../components/Prose.astro';
+import Vs from '../components/Vs.astro';
 import {LANGS, type Lang} from '../i18n';
-import {CASINOS, byId} from '../data/casinos';
+import {CASINOS, PAIRS, byId} from '../data/casinos';
 
 // Toutes les pages, pour toutes les langues : anglais à la racine, autres langues sous /<lang>/.
 export function getStaticPaths() {
   const pages: {kind: string; sub: string}[] = [
     {kind: 'home', sub: ''},
     ...CASINOS.map(c => ({kind: 'review', sub: `casinos/${c.id}`})),
+    ...PAIRS.map(([a, b]) => ({kind: 'vs', sub: `vs/${a}-vs-${b}`})),
     ...['guide', 'about', 'responsible-gambling', 'privacy'].map(k => ({kind: k, sub: k})),
   ];
   return LANGS.flatMap(lang => pages.map(p => ({
@@ -19,4 +21,4 @@ export function getStaticPaths() {
 }
 const {lang, kind, sub} = Astro.props as {lang: Lang; kind: string; sub: string};
 ---
-{kind === 'home' ? <Home lang={lang} /> : kind === 'review' ? <Review lang={lang} c={byId(sub.split('/')[1])} /> : <Prose lang={lang} kind={kind as Kind} />}
+{kind === 'home' ? <Home lang={lang} /> : kind === 'review' ? <Review lang={lang} c={byId(sub.split('/')[1])} /> : kind === 'vs' ? <Vs lang={lang} a={byId(sub.split('/')[1].split('-vs-')[0])} b={byId(sub.split('/')[1].split('-vs-')[1])} /> : <Prose lang={lang} kind={kind as Kind} />}
