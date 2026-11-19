@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import {t, href} from '../i18n';
+const d = t('en');
+---
+<Base lang="en" title={d.meta.notFoundTitle} desc={d.notFound.p} noindex>
+  <div class="wrap page" style="text-align:center;padding:120px 0">
+    <p style="font:900 italic 120px/1 var(--display);color:var(--green)">404</p>
+    <h1 style="font-size:40px;margin:12px 0">{d.notFound.h1}</h1>
+    <p style="color:var(--muted);margin-bottom:28px">{d.notFound.p}</p>
+    <a class="btn btn-go btn-lg" href={href('en') + '#offers'}>{d.notFound.cta}<Icon name="arrow" /></a>
+  </div>
+</Base>

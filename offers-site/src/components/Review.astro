@@ -1,0 +1,81 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import {t, href, fmt, fmtDate, type Lang} from '../i18n';
+import {CASINOS, CHECKED, type Casino} from '../data/casinos';
+interface Props {lang: Lang; c: Casino}
+const {lang, c} = Astro.props;
+const d = t(lang);
+const x = d.casino[c.id];
+const r = d.review;
+const date = fmtDate(lang, CHECKED);
+const site = Astro.site!.origin;
+const path = `casinos/${c.id}/`;
+const title = fmt(d.meta.reviewTitle, {name: c.name, headline: x.headline, year: CHECKED.slice(0, 4)});
+const desc = fmt(d.meta.reviewDesc, {name: c.name, headline: x.headline, date});
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    {'@type': 'ListItem', position: 1, name: r.crumbsHome, item: site + href(lang)},
+    {'@type': 'ListItem', position: 2, name: c.name, item: site + href(lang, path)},
+  ]},
+  {'@context': 'https://schema.org', '@type': 'Article', headline: `${c.name} – ${x.headline}`, inLanguage: d.locale, dateModified: CHECKED, author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path), image: site + c.logo},
+  {'@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: d.locale, mainEntity: x.faq.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))},
+];
+---
+<Base lang={lang} title={title} desc={desc} path={path} jsonld={jsonld}>
+  <div class="wrap page">
+    <ol class="crumbs"><li><a href={href(lang)}>{r.crumbsHome}</a></li><li><a href={href(lang) + '#offers'}>{r.crumbsReviews}</a></li><li aria-current="page">{c.name}</li></ol>
+    <div class="rv-hero">
+      <article class="prose">
+        <div class="rv-title"><img src={c.logo} alt={`${c.name} logo`} width="76" height="76" /><h1>{c.name}: {x.headline}</h1></div>
+        <p class="intro">{x.intro}</p>
+
+        <h2>{r.offer}</h2>
+        {x.sections.map(s => <><h3 style="font-size:18px;margin:22px 0 8px">{s.h}</h3><p>{s.p}</p></>)}
+
+        <h2>{r.how}</h2>
+        <ol class="howto">{x.howto.map(h => <li>{h}</li>)}</ol>
+        <p style="margin-top:16px"><a class="btn btn-go" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-howto">{d.list.claim}<Icon name="arrow" /></a></p>
+
+        <h2>{r.terms}</h2>
+        <dl class="kv">{x.terms.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+        {c.terms.length > 0 && <p style="margin-top:14px">{r.official}: {c.terms.map((l, i) => <>{i > 0 && ' · '}<a href={l.url} target="_blank" rel="nofollow noopener">{l.label}</a></>)}</p>}
+        <p style="font-size:14px;color:var(--dim)">{fmt(r.checked, {date})}</p>
+
+        {c.providers.length > 0 && <><h2>{r.play}</h2><p>{r.providers}:</p><div class="provs">{c.providers.map(p => <span>{p}</span>)}</div></>}
+
+        <div class="pc">
+          <div class="pro"><h3>{r.pros}</h3><ul>{x.pros.map(p => <li><Icon name="check" />{p}</li>)}</ul></div>
+          <div class="con"><h3>{r.cons}</h3><ul>{x.cons.map(p => <li><Icon name="alert" />{p}</li>)}</ul></div>
+        </div>
+
+        <h2>{r.faq}</h2>
+        <div class="faq">{[...x.faq, d.faq.items[3]].map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}</div>
+
+        <h2>{r.others}</h2>
+        <div class="others">
+          {CASINOS.filter(o => o.id !== c.id).map(o => <a class="mini" href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="46" height="46" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div></a>)}
+        </div>
+      </article>
+
+      <aside class={`rv-box t-${c.id}`}>
+        <div class="face" data-mark={c.name.toUpperCase()}>
+          <span class="lbl">{d.list.bonusLabel}</span>
+          <p class="big">{x.headline}</p>
+          <p style="font-weight:600">{x.short}</p>
+          {c.code && <div class="code"><b>{c.code}</b><button type="button" data-copy={c.code} data-done={d.featured.copied} data-place="review"><Icon name="copy" /><span>{d.featured.copy}</span></button></div>}
+        </div>
+        <div class="body">
+          <ul class="ticks">{x.bullets.map(b => <li><Icon name="check" />{b}</li>)}</ul>
+          <a class="btn btn-go btn-lg pulse" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="review-box">{d.list.claim}<Icon name="ext" /></a>
+          <p class="fine">{d.footer.age}</p>
+        </div>
+      </aside>
+    </div>
+    <div class="rg" style="margin-top:56px">
+      <span class="ic">18+</span>
+      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </div>
+</Base>

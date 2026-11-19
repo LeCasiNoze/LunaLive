@@ -1,0 +1,103 @@
+---
+import '../styles/global.css';
+import Icon from '../components/Icon.astro';
+import Logo from '../components/Logo.astro';
+import {LANGS, t, href, type Lang} from '../i18n';
+import {byId, YOUTUBE} from '../data/casinos';
+
+interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean}
+const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true} = Astro.props;
+const d = t(lang);
+const site = Astro.site!.origin;
+const canonical = site + href(lang, path);
+const og = site + '/og.png';
+const rb = byId('rainbet');
+const ld = [
+  {'@context': 'https://schema.org', '@type': 'Organization', '@id': site + '/#org', name: 'Big Win Daily', url: site + '/', logo: site + '/icon-512.png', sameAs: [YOUTUBE]},
+  {'@context': 'https://schema.org', '@type': 'WebSite', '@id': site + '/#site', name: 'Big Win Daily', url: site + '/', inLanguage: LANGS.map(l => t(l).locale), publisher: {'@id': site + '/#org'}},
+  ...jsonld,
+];
+---
+<!doctype html>
+<html lang={d.locale}>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{title}</title>
+  <meta name="description" content={desc} />
+  {noindex ? <meta name="robots" content="noindex, follow" /> : <meta name="robots" content="index, follow, max-image-preview:large" />}
+  <link rel="canonical" href={canonical} />
+  {!noindex && LANGS.map(l => <link rel="alternate" hreflang={t(l).locale.slice(0, 2)} href={site + href(l, path)} />)}
+  {!noindex && <link rel="alternate" hreflang="x-default" href={site + href('en', path)} />}
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-512.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Big Win Daily" />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={desc} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:image" content={og} />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:locale" content={d.locale.replace('-', '_')} />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://lunalive-api.onrender.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@700;800;900&display=swap" rel="stylesheet" />
+  {ld.map(o => <script type="application/ld+json" set:html={JSON.stringify(o)} />)}
+</head>
+<body>
+  <header class="top">
+    <div class="bar wrap">
+      <a class="home" href={href(lang)} aria-label="Big Win Daily"><Logo size={40} /></a>
+      <nav aria-label="Main">
+        <a href={href(lang) + '#offers'}>{d.nav.offers}</a>
+        <a href={href(lang) + '#compare'}>{d.nav.compare}</a>
+        <a href={href(lang, 'guide/')}>{d.nav.guide}</a>
+      </nav>
+      <details class="lang">
+        <summary aria-label={d.nav.language}><Icon name="globe" />{d.short}</summary>
+        <ul>
+          {LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}<span>{t(l).short}</span></a></li>)}
+        </ul>
+      </details>
+    </div>
+  </header>
+
+  <main id="main"><slot /></main>
+
+  <footer>
+    <div class="wrap foot">
+      <div>
+        <a class="home" href={href(lang)} aria-label="Big Win Daily"><Logo size={46} light /></a>
+        <p>{d.footer.disclosure}</p>
+        <p>{d.footer.rights}</p>
+        <span class="age"><b>18+</b>{d.footer.age}</span>
+      </div>
+      <div>
+        <div class="links">
+          <a href={href(lang, 'guide/')}>{d.footer.links.guide}</a>
+          <a href={href(lang, 'about/')}>{d.footer.links.about}</a>
+          <a href={href(lang, 'responsible-gambling/')}>{d.footer.links.rg}</a>
+          <a href={href(lang, 'privacy/')}>{d.footer.links.privacy}</a>
+          <a href={YOUTUBE} rel="noopener" target="_blank">YouTube</a>
+        </div>
+        <div class="langs">
+          {LANGS.map(l => <a href={href(l, path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  {sticky && (
+    <div class="sticky" role="complementary" aria-label={rb.name}>
+      <img src={rb.logo} alt="" width="38" height="38" />
+      <b>{d.casino.rainbet.headline}<small>{d.sticky.text}</small></b>
+      <a class="btn btn-go btn-sm" href={rb.affiliate} target="_blank" rel="sponsored noopener" data-go="rainbet" data-place="sticky">{d.sticky.cta}<Icon name="arrow" /></a>
+    </div>
+  )}
+  <script>import '../scripts/site.ts';</script>
+</body>
+</html>

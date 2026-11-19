@@ -1,0 +1,161 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import Coin from './Coin.astro';
+import {t, href, fmt, fmtDate, type Lang} from '../i18n';
+import {CASINOS, byId, CHECKED, YOUTUBE} from '../data/casinos';
+interface Props {lang: Lang}
+const {lang} = Astro.props;
+const d = t(lang);
+const rb = byId('rainbet');
+const date = fmtDate(lang, CHECKED);
+const site = Astro.site!.origin;
+// Met en couleur le premier montant / pourcentage du titre d'offre.
+const hi = (s: string) => s.replace(/([+]?\s?(?:[€$]|US\$)?\s?\d[\d.,   ]*\s?(?:%|€|\$)?)/, '<em>$1</em>');
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: d.locale, mainEntity: d.faq.items.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: d.list.title, itemListElement: CASINOS.map(c => ({'@type': 'ListItem', position: c.rank, name: `${c.name} – ${d.casino[c.id].headline}`, url: site + href(lang, `casinos/${c.id}/`)}))},
+];
+const others = CASINOS.filter(c => c.rank > 1);
+---
+<Base lang={lang} title={d.meta.homeTitle} desc={d.meta.homeDesc} jsonld={jsonld}>
+  <section class="hero">
+    <Coin class="c1" size={96} tilt={-18} />
+    <Coin class="c2" size={78} tilt={16} />
+    <Coin class="c3" size={54} tilt={-6} />
+    <span class="dots" style="left:6%;top:18%"></span>
+    <span class="dots" style="right:7%;top:62%"></span>
+    <div class="wrap">
+      <span class="pill"><span class="dot"></span>{fmt(d.hero.kicker, {date})}</span>
+      <h1>{d.hero.title1} <span class="l2"><span class="hl">{d.hero.title2}</span></span></h1>
+      <p class="sub">{d.hero.sub}</p>
+
+      <div class="tiles" id="offers">
+        <article class="tile wide t-rainbet" data-sticky-anchor>
+          <div class="face" data-mark="RAINBET">
+            <span class="tag">{d.featured.badge}</span>
+            <div>
+              <div class="brand"><img src={rb.logo} alt="Rainbet logo" width="50" height="50" /><div><b>Rainbet</b><span>{d.casino.rainbet.tagline}</span></div></div>
+              <p class="bonus" set:html={hi(d.featured.title)} />
+              <p class="bonus-sub">{d.featured.sub} <strong>{rb.code}</strong></p>
+            </div>
+            <div class="extras">
+              <div class="code">
+                <b>{rb.code}</b>
+                <button type="button" data-copy={rb.code} data-done={d.featured.copied} data-place="hero"><Icon name="copy" /><span>{d.featured.copy}</span></button>
+              </div>
+              <div class="race">
+                <span class="t"><Icon name="trophy" />{d.featured.race}</span>
+                <div class="cd" data-cd>
+                  <span>{d.featured.resets}</span>
+                  <span class="u" data-u>00<small>{d.featured.d}</small></span>
+                  <span class="u" data-u>00<small>{d.featured.h}</small></span>
+                  <span class="u" data-u>00<small>{d.featured.m}</small></span>
+                  <span class="u" data-u>00<small>{d.featured.s}</small></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="foot">
+            <a class="btn-info" href={href(lang, 'casinos/rainbet/')} aria-label={`${d.list.review} Rainbet`}><Icon name="info" /></a>
+            <a class="btn btn-go btn-lg pulse" href={rb.affiliate} target="_blank" rel="sponsored noopener" data-go="rainbet" data-place="tile">{d.featured.cta}<Icon name="ext" /></a>
+          </div>
+        </article>
+
+        {others.map(c => {
+          const x = d.casino[c.id];
+          return (
+            <article class={`tile t-${c.id}`}>
+              <div class="face" data-mark={c.name.toUpperCase()}>
+                <span class="num">{c.rank}</span>
+                <div class="brand"><img src={c.logo} alt={`${c.name} logo`} width="50" height="50" loading="lazy" /><div><b>{c.name}</b><span>{x.tagline}</span></div></div>
+                <p class="bonus" set:html={hi(x.headline)} />
+                <p class="bonus-sub">{x.short}</p>
+              </div>
+              <div class="foot">
+                <a class="btn-info" href={href(lang, `casinos/${c.id}/`)} aria-label={`${d.list.review} ${c.name}`}><Icon name="info" /></a>
+                <a class="btn btn-go" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="tile">{d.list.claim}<Icon name="ext" /></a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div class="trust">
+        {d.hero.chips.map((c, i) => <div><Icon name={['star', 'shield', 'check', 'alert'][i]} />{c}</div>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="block alt" id="compare">
+    <div class="wrap">
+      <div class="head rv"><span class="kicker">{d.list.kicker}</span><h2>{d.list.title}</h2><p>{d.list.sub}</p></div>
+      <div class="rows">
+        {CASINOS.map(c => {
+          const x = d.casino[c.id];
+          return (
+            <article class={`row rv ${c.rank === 1 ? 'rank1' : ''}`} data-badge={c.rank === 1 ? d.featured.badge : undefined}>
+              <div class="r1">
+                <div class="who"><img src={c.logo} alt="" width="52" height="52" loading="lazy" /><div><b>{c.name}</b><a href={href(lang, `casinos/${c.id}/`)}>{d.list.review} ›</a></div></div>
+                <div class="cell"><b>{x.headline}</b><small>{d.table.cols[1]}</small></div>
+                <div class="cell"><b>{x.spread}</b><small>{d.table.cols[2]}</small></div>
+                <div class="cell"><b>{x.rules}</b><small>{d.table.cols[3]}</small></div>
+              </div>
+              <div class="r2">
+                <a class="btn-info" href={href(lang, `casinos/${c.id}/`)} aria-label={`${d.list.review} ${c.name}`}><Icon name="info" /></a>
+                <a class="btn btn-go" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="list">{d.list.claim}<Icon name="ext" /></a>
+              </div>
+              <details>
+                <summary>{d.list.terms}<Icon name="chevron" /></summary>
+                <dl class="kv">{x.terms.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}<div><dt>{d.list.best}</dt><dd>{x.best}</dd></div></dl>
+              </details>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="head center rv"><span class="kicker">{d.steps.kicker}</span><h2>{d.steps.title}</h2></div>
+      <div class="steps">
+        {d.steps.items.map((s, i) => <div class="step rv"><span class="n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="about-band rv">
+      <div>
+        <span class="kicker">{d.who.kicker}</span>
+        <h2>{d.who.title}</h2>
+        <p>{d.who.p1}</p>
+        <p>{d.who.p2}</p>
+        <ul class="promises">{d.who.promises.map(p => <li><Icon name="check" />{p}</li>)}</ul>
+      </div>
+      <a class="yt" href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="about">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" /></svg></span>
+        <b>Big Win Daily</b>
+        <small>{d.who.yt}</small>
+      </a>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="head rv"><span class="kicker">{d.faq.kicker}</span><h2>{d.faq.title}</h2></div>
+      <div class="faq rv">
+        {d.faq.items.map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="rg rv">
+      <span class="ic">18+</span>
+      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </section>
+</Base>
