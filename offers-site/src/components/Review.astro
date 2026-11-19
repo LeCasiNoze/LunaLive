@@ -22,7 +22,7 @@ const jsonld = [
   {'@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: d.locale, mainEntity: x.faq.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))},
 ];
 ---
-<Base lang={lang} title={title} desc={desc} path={path} jsonld={jsonld}>
+<Base lang={lang} title={title} desc={desc} path={path} jsonld={jsonld} active={c.id}>
   <div class="wrap page">
     <ol class="crumbs"><li><a href={href(lang)}>{r.crumbsHome}</a></li><li><a href={href(lang) + '#offers'}>{r.crumbsReviews}</a></li><li aria-current="page">{c.name}</li></ol>
     <div class="rv-hero">

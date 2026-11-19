@@ -1,0 +1,38 @@
+---
+import Icon from './Icon.astro';
+import {t, href, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import type {Casino} from '../data/casinos';
+interface Props {lang: Lang; c: Casino}
+const {lang, c} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const x = d.casino[c.id];
+const ICON: Record<string, string> = {rakeback: 'percent', claim: 'clock', race: 'trophy', fs: 'star', maxbet: 'zap', days: 'repeat', deposits: 'layers', total: 'coins'};
+// Le premier montant du titre passe dans la couleur d'accent.
+const hi = x.headline.replace(/([+]?\s?(?:[€$]|US\$)?\s?\d[\d.,   ]*\s?(?:%|€|\$)?)/, '<em>$1</em>');
+---
+<article class={`card c-${c.id}`}>
+  <span class="rk">{c.rank}</span>
+  <div class="card-logo">
+    <img src={c.logo} alt={`${c.name} logo`} width="64" height="64" loading="lazy" />
+    <b>{c.name}</b>
+  </div>
+  <div class="card-name"><h3>{c.name}</h3><span class="pill">{u.badge[c.badge]}</span></div>
+  <p class="card-bonus" set:html={hi} />
+  <p class="card-short">{x.short}</p>
+  <ul class="stats">
+    {c.stats.map(s => <li><Icon name={ICON[s.k]} /><b>{s.v}</b><span>{u.stat[s.k]}</span></li>)}
+  </ul>
+  <a class="btn btn-play btn-block" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="card"><Icon name="play" />{u.play}</a>
+  <div class="card-foot">
+    {c.code
+      ? <button class="codechip" type="button" data-copy={c.code} data-done={d.featured.copied} data-place="card"><Icon name="copy" /><span>{u.code}: {c.code}</span></button>
+      : <span class="nocode">{u.noCode}</span>}
+    <details class="more">
+      <summary>{u.details}<Icon name="chevron" /></summary>
+      <dl class="kv">{x.terms.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+    </details>
+    <a class="rev" href={href(lang, `casinos/${c.id}/`)}>{u.review}</a>
+  </div>
+</article>

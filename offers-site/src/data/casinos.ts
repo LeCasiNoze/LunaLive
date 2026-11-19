@@ -14,7 +14,12 @@ export type Casino = {
   terms: {label: string; url: string}[];
   providers: string[];
   slots?: number;
+  // Pastilles de la carte : clé traduite dans ui.ts, valeur neutre (chiffres validés uniquement).
+  stats: {k: StatKey; v: string}[];
+  badge: BadgeKey;
 };
+export type StatKey = 'rakeback' | 'claim' | 'race' | 'fs' | 'maxbet' | 'days' | 'deposits' | 'total';
+export type BadgeKey = 'code' | 'deposits3' | 'deposits2';
 
 export const CASINOS: Casino[] = [
   {
@@ -24,6 +29,8 @@ export const CASINOS: Casino[] = [
     // Catalogue LunaLive (slots vues lors du crawl Rainbet, 19/11/2026) : 7 135 slots.
     providers: ['Pragmatic Play', 'Hacksaw', 'NetEnt', 'Red Tiger', 'BGaming', 'Betsoft'],
     slots: 7000,
+    stats: [{k: 'rakeback', v: '+20%'}, {k: 'claim', v: '15 min'}, {k: 'race', v: '$200'}],
+    badge: 'code',
   },
   {
     id: 'betportal', name: 'Betportal', rank: 2, color: '#1ff25e', colorSoft: 'rgba(31,242,94,.14)', logo: '/img/logo-betportal.png',
@@ -34,18 +41,23 @@ export const CASINOS: Casino[] = [
       {label: '3rd deposit', url: 'https://betportal.com/en/promotions/36'},
     ],
     providers: [],
+    stats: [{k: 'fs', v: '250'}, {k: 'maxbet', v: '€5'}, {k: 'days', v: '14'}, {k: 'deposits', v: '3'}],
+    badge: 'deposits3',
   },
   {
     id: 'celsius', name: 'Celsius', rank: 3, color: '#ff6a3d', colorSoft: 'rgba(255,106,61,.16)', logo: '/img/logo-celsius.png',
     affiliate: 'https://nivoranet.onrender.com/r/lecasinoze-celsius',
     terms: [],
     providers: ['Pragmatic Play', 'Hacksaw Gaming', 'Nolimit City', 'Evolution'],
+    stats: [{k: 'total', v: '300%'}, {k: 'deposits', v: '2'}],
+    badge: 'deposits2',
   },
 ];
 
 export const byId = (id: string) => CASINOS.find(c => c.id === id)!;
 
-export const YOUTUBE = 'https://www.youtube.com/@LeCasiNoze';
+export const YOUTUBE = 'https://www.youtube.com/@BigWinDailyHits';
+export const YT_SUB = 'https://www.youtube.com/@BigWinDailyHits?sub_confirmation=1';
 export const API = 'https://lunalive-api.onrender.com';
 export const TRACK_SLUG = 'bigwindaily';
 export const CHECKED = '2026-11-19';

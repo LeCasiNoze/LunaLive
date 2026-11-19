@@ -23,7 +23,7 @@ const jsonld = [
   ...(kind === 'guide' ? [{'@context': 'https://schema.org', '@type': 'Article', headline: body.h1, inLanguage: d.locale, author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path)}] : []),
 ];
 ---
-<Base lang={lang} title={meta[0]} desc={meta[1]} path={path} jsonld={jsonld} sticky={kind !== 'responsible-gambling'}>
+<Base lang={lang} title={meta[0]} desc={meta[1]} path={path} jsonld={jsonld} sticky={kind !== 'responsible-gambling'} active={kind}>
   <div class="wrap page">
     <ol class="crumbs"><li><a href={href(lang)}>{d.review.crumbsHome}</a></li><li aria-current="page">{body.h1}</li></ol>
     <article class="prose">

@@ -93,3 +93,19 @@ if (sticky && anchor) {
 document.addEventListener('click', e => {
   document.querySelectorAll<HTMLDetailsElement>('details.lang[open]').forEach(d => { if (!d.contains(e.target as Node)) d.open = false; });
 });
+
+// Menu latéral (mobile).
+document.querySelector('[data-open-side]')?.addEventListener('click', () => document.body.classList.add('side-open'));
+document.querySelector('[data-close-side]')?.addEventListener('click', () => document.body.classList.remove('side-open'));
+
+// Contrôle d'âge : affiché une fois par navigateur (le contenu reste dans le HTML pour les moteurs).
+const gate = document.getElementById('gate');
+let ok = false;
+try { ok = localStorage.getItem('bwd_18') === '1'; } catch {}
+if (gate && !ok) {
+  gate.hidden = false;
+  gate.querySelector('[data-gate-yes]')?.addEventListener('click', () => {
+    try { localStorage.setItem('bwd_18', '1'); } catch {}
+    gate.hidden = true;
+  });
+}
