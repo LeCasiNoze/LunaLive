@@ -8,7 +8,7 @@ export function publicRelayText(username:string,body:string,userId:number,botId=
 }
 const lastByUser=new Map<number,number>();
 export async function relayAcceptedLunaMessage(pool:Pool,slug:string,sid:number,uid:number,username:string,body:string){
- if(process.env.LECASINOZE_LUNA_CHAT_RELAY!=='true'||slug.toLowerCase()!=='lecasinoze')return;
+ if(process.env.LECASINOZE_LUNA_CHAT_RELAY!=='true'||!['lecasinoze','belvaa'].includes(slug.toLowerCase()))return;
  const text=publicRelayText(username,body,uid);if(!text)return;
  const now=Date.now();if(now-(lastByUser.get(uid)??0)<2000)return;
  for(const [id,at] of lastByUser)if(now-at>120000)lastByUser.delete(id);
