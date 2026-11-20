@@ -404,19 +404,25 @@ async function resolveActiveHlsFromSlug(vSlug: string, cachedHlsUrl?: string | n
  * Nécessite le videoId avec préfixe "v".
  */
 async function resolveFromEmbedJs(videoIdWithV: string): Promise<{ hlsUrl: string | null; vidNumeric: string | null; thumbnailUrl: string | null }> {
-  const url = `https://rumble.com/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`;
   try {
-    const r = await fetch(url, {
-      signal: AbortSignal.timeout(12_000),
-      headers: {
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        accept: "application/json",
-        referer: "https://rumble.com/",
-        origin: "https://rumble.com",
-      },
-    });
+    // Cloudflare renvoie 403 sur rumble.com/embedJS depuis les IP datacenter (Render, VPS) ;
+    // le même endpoint sur wn0.rumble.com répond (vérifié le 20/11 depuis le VPS).
+    let r: Response | null = null;
+    for (const host of ["rumble.com", "wn0.rumble.com"]) {
+      r = await fetch(`https://${host}/embedJS/u3/?ifr=0&dref=&request=video&ver=2&v=${videoIdWithV}&ad_wt=0`, {
+        signal: AbortSignal.timeout(12_000),
+        headers: {
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          accept: "application/json",
+          referer: "https://rumble.com/",
+          origin: "https://rumble.com",
+        },
+      });
+      if (r.ok) break;
+      console.warn(`[rumble][embedJS] ${host} HTTP ${r.status} for ${videoIdWithV}`);
+    }
 
-    if (!r.ok) return { hlsUrl: null, vidNumeric: null, thumbnailUrl: null };
+    if (!r?.ok) return { hlsUrl: null, vidNumeric: null, thumbnailUrl: null };
     const d = await r.json();
 
     const hlsU = d?.u?.hls?.url ?? null;
