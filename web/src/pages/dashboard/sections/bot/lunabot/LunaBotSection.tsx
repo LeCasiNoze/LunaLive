@@ -314,7 +314,8 @@ export function LunaBotSection({ streamer }: { streamer: ApiMyStreamer }) {
   const [logsLoaded, setLogsLoaded] = React.useState(false);
 
   const [activeCategory, setActiveCategory] = React.useState<ModuleCategory>("general");
-  const [activeModule, setActiveModule] = React.useState<ActiveModule>(null);
+  const [activeModule, setActiveModule] = React.useState<ActiveModule>(() =>
+    new URLSearchParams(window.location.search).get("module") === "commands" ? "commands" : null);
   const [q, setQ] = React.useState("");
 
   const isAdmin = user?.role === "admin";

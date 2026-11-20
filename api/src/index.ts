@@ -16,6 +16,7 @@ import { attachChat } from "./chat_socket.js";
 import { startRumblePoller } from "./rumble_poller.js";
 import { startRumbleYtRedirectPoller } from "./rumble_yt_redirect_poller.js";
 import { startChestJobs } from "./chest_jobs.js";
+import { startChatVotesTicker } from "./chat_votes/ticker.js";
 
 import { ensureBotClips } from "./bot_clips/store.js";
 // import { startClipsVodLinker } from "./bot_clips/vod_linker.js"; // VOD linker base sur DLive — desactive
@@ -212,6 +213,7 @@ function setupProcessCrashGuards() {
   startRumblePoller(io);
   startRumbleYtRedirectPoller();
   startChestJobs(io);
+  startChatVotesTicker(pool, io);
   startAgendaNotifPoller(30_000);
   // startClipsVodLinker(); // VOD linker base sur DLive GraphQL — desactive (DLive shut down)
   startClipsMp4Renderer();

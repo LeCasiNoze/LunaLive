@@ -10,6 +10,7 @@ import { ChatMessageBubble, type ChatMsgLike } from "../components/chat/ChatMess
 import { createEmoteResolver, emotesFromPayload, type ChatEmote } from "../lib/chatEmotes";
 import { DEFAULT_APPEARANCE, normalizeAppearance, type StreamerAppearance } from "../lib/appearance";
 import SpecialEventCard, {type SpecialEventType} from '../components/chat/SpecialEventCard';
+import PollCard, {pollFromPayload, type PollState} from '../components/chat/PollCard';
 import {useActionableEngine,ActionableChatCard,WheelOverlay,type ActKind} from '../components/chat/ActionableEvents';
 import {normalizeOverlayMessage,mergeOverlayMessages,recoverOverlayHistory,ACTIONABLE_TYPES,CELEBRATION_TYPES,type OverlayMessage} from '../components/chat/overlayMessages';
 
@@ -781,6 +782,13 @@ export function NativeOverlayChat({
     return () => {disposed = true;request?.abort();window.clearInterval(interval);window.removeEventListener("online", refresh);};
   }, [slug, socketBase]);
   const cosmeticsCache = React.useRef<Record<string, any>>({});
+  const [polls, setPolls] = React.useState<Record<number, PollState>>({});
+  const mergePoll = React.useCallback((payload: any) => {
+    setPolls((prev) => {
+      const next = pollFromPayload(payload, prev[Number(payload?.id ?? payload?.pollId)]);
+      return next ? { ...prev, [next.id]: next } : prev;
+    });
+  }, []);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const eventEngine=useActionableEngine({me:'',poolNames:[],simulate:false,emitSystem:()=>{},emitRecap:()=>{},
     addChatCard:actId=>setMessages(previous=>mergeOverlayMessages(previous,[{id:`overlay-${actId}`,userId:0,username:'LunaLive',body:'',createdAt:new Date().toISOString(),type:'act',data:{actId}}],maxMessages))});
@@ -860,6 +868,16 @@ export function NativeOverlayChat({
       }catch{}finally{clearTimeout(timer);if(rainController===controller)rainController=null;}
     };
 
+    const recoverPoll=async()=>{
+      try{const response=await fetch(`${socketBase}/api/bot/polls/current?streamerSlug=${encodeURIComponent(slug)}`,{cache:"no-store",signal:AbortSignal.timeout(8000)});
+        const state=await response.json();const poll=state?.poll;
+        if(disposed||!response.ok||!poll||poll.status!=="open")return;
+        mergePoll(poll);
+        setMessages(current=>current.some(m=>m.type==="poll"&&Number(m.data?.pollId)===Number(poll.id))?current
+          :mergeOverlayMessages(current,[{id:`poll-${poll.id}`,userId:0,username:"LunaLive",body:"",createdAt:new Date().toISOString(),type:"poll",data:{...poll,pollId:poll.id}}],maxMessages));
+      }catch{}
+    };
+
     const normalizeMsg = (p: any): OverlayMessage | null => {
       const normalized=normalizeOverlayMessage(p,slug);
       if(!normalized)return null;
@@ -877,6 +895,7 @@ export function NativeOverlayChat({
       if(Array.isArray(payload?.messages)){payload.messages.forEach(handleIncoming);return;}
       const n = normalizeMsg(payload);
       if (!n) return;
+      if(n.type==="poll")mergePoll(n.data);
       if(n.type&&ACTIONABLE_TYPES.has(n.type)){
         engineRef.current.open(n.type as ActKind,{...n.data,real:true,createdAt:n.createdAt,messageId:n.id});return;
       }
@@ -895,9 +914,12 @@ export function NativeOverlayChat({
           if (ack?.appearance) setAppearance(normalizeAppearance(ack.appearance));
           if(ack?.ok)void recoverRain();
           if(ack?.ok)void recoverHistory();
+          if(ack?.ok)void recoverPoll();
         });
       } catch {}
     });
+
+    sock.on("poll:update", (payload: any) => mergePoll(payload));
 
     sock.on("chat:appearance", (payload: any) => {
       if (payload?.appearance) setAppearance(normalizeAppearance(payload.appearance));
@@ -986,6 +1008,7 @@ export function NativeOverlayChat({
             {m.type==='act'?<ActionableChatCard event={eventEngine.events.find(e=>e.id===m.data?.actId)??null} engine={eventEngine} isStreamer={false} readOnly />
             :m.type&&CELEBRATION_TYPES.has(m.type)?<SpecialEventCard type={m.type as SpecialEventType} data={m.data??{}} currentUsername={null} onGg={()=>{}} onCombo={()=>{}} onFollowChannel={()=>{}} onSubscribe={()=>{}} onBossPage={()=>{}} readOnly />
             :m.type==='sys'||m.type==='recap'?<ChatEventLine kind={m.type} html={String(m.data?.html??m.body)} />
+            :m.type==='poll'?<PollCard poll={polls[Number(m.data?.pollId??m.data?.id)]??pollFromPayload(m.data)} readOnly />
             :<ChatMessageBubble
               msg={m}
               streamerAppearance={appearance}

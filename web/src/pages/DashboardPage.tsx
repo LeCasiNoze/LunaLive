@@ -46,7 +46,9 @@ export default function DashboardPage() {
   const [streamer, setStreamer]   = React.useState<ApiMyStreamer | null>(null);
   const [connection, setConnection] = React.useState<ApiStreamConnection | null>(null);
   const canAccess = !!user && (user.role === "streamer" || user.role === "admin");
-  const [tab, setTab]             = React.useState<DashboardTab>("overview");
+  // ?tab=lunabot : lien direct depuis le chat détaché (gérer les commandes)
+  const [tab, setTab]             = React.useState<DashboardTab>(() =>
+    new URLSearchParams(window.location.search).get("tab") === "lunabot" ? "lunabot" : "overview");
 
   React.useEffect(() => {
     document.body.classList.add("ll-dashboard-open");

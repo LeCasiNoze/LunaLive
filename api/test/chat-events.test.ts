@@ -17,6 +17,7 @@ async function fixture(t: any) {
     CREATE TABLE wallet_tx(id SERIAL PRIMARY KEY,user_id INT,kind TEXT,origin TEXT,spend_kind TEXT,spend_type TEXT,streamer_id INT,amount INT,breakdown JSONB,support_rubis INT,streamer_earn_rubis INT,platform_cut_rubis INT,meta JSONB);
     CREATE TABLE predictions(id SERIAL PRIMARY KEY,streamer_id INT,question TEXT,option1_label TEXT,option2_label TEXT,fixed_stake INT,status TEXT,created_at TIMESTAMPTZ DEFAULT NOW(),bets_close_at TIMESTAMPTZ,resolved_option INT,total_pool_1 INT DEFAULT 0,total_pool_2 INT DEFAULT 0);
     CREATE TABLE prediction_bets(prediction_id INT,user_id INT,choice INT CHECK(choice IN (1,2)),amount INT,UNIQUE(prediction_id,user_id));
+    CREATE TABLE prediction_ext_bets(prediction_id INT,provider TEXT,external_id TEXT,choice INT,amount INT);
     INSERT INTO users VALUES(7,100,10);
     INSERT INTO wallet_lots(user_id,origin,amount_remaining) VALUES(7,'farm_watch',100);
     INSERT INTO predictions(streamer_id,question,option1_label,option2_label,fixed_stake,status,bets_close_at)

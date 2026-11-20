@@ -1,5 +1,6 @@
 import {isDedicatedRelayEcho,relayDisplayBody} from "./multichat/rumble-echo.js";
 import {handleExternalCommunityChat,observeExternalAccount} from "./community/external-chat.js";
+import {handleRumbleVoteCommand} from "./chat_votes/rumble_commands.js";
 import { readPublicChat } from "./observatory/sse.js";
 import {rewardFollow} from './automod-shop/follows.js';
 import {observeCnz} from './automod-shop/account-benefits.js';
@@ -492,6 +493,13 @@ export function ensureRumbleBridge(opts: {
     }catch(error){
       console.warn('[community-chat]',opts.slug,(error as any)?.code||'unavailable');
       if(/^!(?:rain\s*$|lier\s+LL-)/i.test(m.text.trim())){await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',`@${m.username} — Service indisponible. Réessaie dans un instant.`);return;}
+    }
+    try{
+      const voteReply=await handleRumbleVoteCommand(opts.pool,opts.io,{streamerId:opts.streamerId,slug:opts.slug,rumbleUserId:m.userId,username:m.username,text:m.text,createdAt:m.createdAt});
+      if(voteReply){for(const chunk of shopReplyChunks(voteReply))await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',chunk);return;}
+    }catch(error){
+      console.warn('[chat-votes]',opts.slug,(error as any)?.message||error);
+      if(/^!\d{1,2}\s*$/.test(m.text.trim())){await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',`@${m.username} — Vote indisponible, réessaie dans un instant.`);return;}
     }
     void observeExternalAccount(opts.pool,externalMessage).catch(()=>{});
     if(opts.slug==='lecasinoze'){

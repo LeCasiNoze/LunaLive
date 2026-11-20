@@ -8,26 +8,18 @@ import { createPredictionSafe, assertStreamerLive } from "./predictions.service.
 
 
 import { emitSpecialCard, emitChatLine, emitChatAll } from "../socket_emit.js";
+import {
+  announcePredictionOnRumble,
+  announcePredictionResultOnRumble,
+  emitPredictionTotals,
+  settleExtPredictionBets,
+} from "../chat_votes/predictions_ext.js";
+import { getOpenPoll } from "../chat_votes/polls.js";
 
 async function predSlug(streamerId: number): Promise<string> {
   const r = await pool.query(`SELECT slug FROM streamers WHERE id=$1 LIMIT 1`, [streamerId]);
   return String(r.rows?.[0]?.slug || "");
 }
-// % de l'option 1 (0-100) à partir des mises réelles.
-async function predPctYes(predictionId: number): Promise<number> {
-  const r = await pool.query(
-    `SELECT choice, COALESCE(SUM(amount),0)::int AS total FROM prediction_bets WHERE prediction_id=$1 GROUP BY choice`,
-    [predictionId]
-  );
-  let a = 0, b = 0;
-  for (const row of r.rows || []) {
-    if (Number(row.choice) === 1) a = Number(row.total);
-    else if (Number(row.choice) === 2) b = Number(row.total);
-  }
-  const tot = a + b;
-  return tot > 0 ? Math.round((a / tot) * 100) : 50;
-}
-
 export const predictionsRouter = express.Router();
 async function canManagePrediction(req: any, streamerId: number) {
   if (req.user?.role === "admin") return true;
@@ -175,6 +167,8 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
     }
 
     if (!await canManagePrediction(req, Number(streamerId))) return res.status(403).json({ ok: false, reason: "forbidden" });
+    // !1/!2 servent aussi aux sondages : jamais les deux ouverts en même temps.
+    if (await getOpenPoll(pool, Number(streamerId))) return res.status(400).json({ ok: false, reason: "poll_active" });
     const dur = Math.max(30, Number(durationSec) || 180);
     const pred = await createPredictionSafe(
       pool,
@@ -200,6 +194,8 @@ predictionsRouter.post("/api/bot/predictions/create", requireAuth, async (req, r
         count: 0, totalStake: 0, pctYes: null,
         real: true,
       });
+      void announcePredictionOnRumble(pool, slug, Number((pred as any).id))
+        .catch((e) => console.warn("[predictions] rumble announce", e?.message || e));
     } catch {}
 
     return res.json({ ok: true, prediction: pred });
@@ -262,14 +258,11 @@ predictionsRouter.post("/api/bot/predictions/bet", requireAuth, async (req, res)
     if (req.body?.round != null && String(req.body.round) !== String(pred.id)) return res.status(409).json({ ok: false, reason: "prediction_changed" });
     await addBet(pool, pred, userId, choice as 1 | 2, stake);
 
-    // % live partagé à tous.
+    // % live partagé à tous (mises du site + mises Rumble).
     try {
       const io = (req as any).app?.locals?.io;
       const slug = await predSlug(Number(streamerId));
-      const stats = await pool.query(`SELECT COUNT(*)::int AS count, COALESCE(SUM(amount),0)::int AS total FROM prediction_bets WHERE prediction_id=$1`, [pred.id]);
-      const totalStake = Number(stats.rows[0]?.total || 0);
-      const pctYes = totalStake ? await predPctYes(Number(pred.id)) : null;
-      emitChatAll(io, slug, "act:predict", { round: pred.id, pctYes, count: Number(stats.rows[0]?.count || 0), totalStake });
+      await emitPredictionTotals(pool, io, slug, Number(pred.id));
     } catch {}
 
     return res.json({ ok: true, stake, allowed, level });
@@ -300,6 +293,10 @@ predictionsRouter.post("/api/bot/predictions/resolve", requireAuth, async (req, 
     if (req.body?.round != null && String(req.body.round) !== String(pred.id)) return res.status(409).json({ ok: false, reason: "prediction_changed" });
 
     await resolvePrediction(pool, pred, winning as 1 | 2);
+    await settleExtPredictionBets(pool, pred, winning as 1 | 2)
+      .catch((e) => console.error("[predictions] ext settle failed", pred.id, e?.message || e));
+    void announcePredictionResultOnRumble(pool, pred, winning as 1 | 2)
+      .catch((e) => console.warn("[predictions] rumble result", e?.message || e));
 
     // Résolution partagée : carte fermée + gagnant annoncé.
     try {

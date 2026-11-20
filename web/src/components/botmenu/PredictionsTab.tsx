@@ -303,6 +303,7 @@ export function PredictionsTab({ token, slug, canMod, onRequireLogin }: Props) {
       if (!r?.ok) {
         const reason = String(r?.reason || "");
         if (reason === "already_active") return uiToast("error", "Création", "Déjà une prédiction active");
+        if (reason === "poll_active") return uiToast("error", "Création", "Un sondage est en cours : termine-le d'abord");
         if (reason === "daily_limit_reached") return uiToast("error", "Création", "Limite journalière atteinte");
         if (reason === "stream_not_live") return uiToast("error", "Création", "Uniquement en live");
         return uiToast("error", "Création", "Impossible de créer");

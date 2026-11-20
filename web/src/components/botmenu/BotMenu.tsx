@@ -2,12 +2,13 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../../auth/AuthProvider";
-import { CloudRain, Crosshair, Dices, GripHorizontal, RotateCw, Sparkles, X } from "lucide-react";
+import { BarChart3, CloudRain, Crosshair, Dices, GripHorizontal, RotateCw, Sparkles, X } from "lucide-react";
 import { CallTab } from "./CallTab";
 import { HuntTabs } from "./HuntTabs";
 import { WheelTab } from "./WheelTab";
 import { RainTab } from "./RainTab";
 import { PredictionsTab } from "./PredictionsTab";
+import { PollsTab } from "./PollsTab";
 import { trackFeatureEvent } from "../../lib/feature_events";
 
 export function BotMenu({
@@ -47,7 +48,7 @@ export function BotMenu({
   void role;
 
   const [tab, setTab] = React.useState<
-    "call" | "hunt" | "wheel" | "rain" | "predictions"
+    "call" | "hunt" | "wheel" | "rain" | "predictions" | "polls"
   >("call");
 
   React.useEffect(() => {
@@ -204,9 +205,9 @@ export function BotMenu({
           flexShrink: 0,
         }}
       >
-        {(["call", "hunt", "wheel", "rain", "predictions"] as const).map((k) => {
-          const Icon = k === "call" ? Dices : k === "hunt" ? Crosshair : k === "wheel" ? RotateCw : k === "rain" ? CloudRain : Sparkles;
-          const label = k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : "Prédictions";
+        {(["call", "hunt", "wheel", "rain", "predictions", "polls"] as const).map((k) => {
+          const Icon = k === "call" ? Dices : k === "hunt" ? Crosshair : k === "wheel" ? RotateCw : k === "rain" ? CloudRain : k === "polls" ? BarChart3 : Sparkles;
+          const label = k === "call" ? "Call" : k === "hunt" ? "Hunt" : k === "wheel" ? "Roue" : k === "rain" ? "Rain" : k === "polls" ? "Sondages" : "Prédictions";
           return (
           <button
             key={k}
@@ -257,6 +258,8 @@ export function BotMenu({
         {tab === "predictions" && (
           <PredictionsTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />
         )}
+
+        {tab === "polls" && <PollsTab token={token} slug={slug} canMod={canMod} onRequireLogin={onRequireLogin} />}
       </div>
     </div>
   );

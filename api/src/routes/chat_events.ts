@@ -36,9 +36,12 @@ export async function readChatEvents(streamerId: number, userId: number) {
     },
     predict: async () => {
       const r=await pool.query(`SELECT p.*,
-        (SELECT COUNT(*)::int FROM prediction_bets b WHERE b.prediction_id=p.id) AS count,
-        (SELECT COALESCE(SUM(b.amount),0)::int FROM prediction_bets b WHERE b.prediction_id=p.id AND b.choice=1) AS yes_total,
-        (SELECT COALESCE(SUM(b.amount),0)::int FROM prediction_bets b WHERE b.prediction_id=p.id AND b.choice=2) AS no_total,
+        (SELECT COUNT(*)::int FROM prediction_bets b WHERE b.prediction_id=p.id)
+          + (SELECT COUNT(*)::int FROM prediction_ext_bets x WHERE x.prediction_id=p.id) AS count,
+        (SELECT COALESCE(SUM(b.amount),0)::int FROM prediction_bets b WHERE b.prediction_id=p.id AND b.choice=1)
+          + (SELECT COALESCE(SUM(x.amount),0)::int FROM prediction_ext_bets x WHERE x.prediction_id=p.id AND x.choice=1) AS yes_total,
+        (SELECT COALESCE(SUM(b.amount),0)::int FROM prediction_bets b WHERE b.prediction_id=p.id AND b.choice=2)
+          + (SELECT COALESCE(SUM(x.amount),0)::int FROM prediction_ext_bets x WHERE x.prediction_id=p.id AND x.choice=2) AS no_total,
         (SELECT b.choice FROM prediction_bets b WHERE b.prediction_id=p.id AND b.user_id=$2) AS my_choice
         FROM predictions p WHERE p.streamer_id=$1 AND p.status IN ('open','locked') ORDER BY p.id DESC LIMIT 1`,[streamerId,userId]);
       const row=r.rows[0];

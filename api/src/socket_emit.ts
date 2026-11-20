@@ -71,7 +71,7 @@ export function emitChatAndStream(io: Server, slug: string, event: string, paylo
 // POST /internal/bot/chat/special, factorisé. Éphémère (non persisté).
 export type SpecialType =
   | "raid" | "follow" | "combo" | "sub" | "don"
-  | "chest" | "rain" | "wheel" | "predict" | "boss" | "level";
+  | "chest" | "rain" | "wheel" | "predict" | "boss" | "level" | "poll";
 
 // Ligne "système" (kind "sys") ou "recap" dans le flux du chat (ex.
 // "X a récupéré ses rubis", "Rain terminée — N ont partagé…"). Éphémère.

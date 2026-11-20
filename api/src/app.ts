@@ -48,6 +48,7 @@ import { wheelRouter } from "./routes/wheel.js";
 import { chestRouter } from "./routes/chest.js";
 import { dailyBonusRoutes } from "./routes/daily_bonus_routes.js";
 import { predictionsRouter } from "./predictions/predictions.routes.js";
+import { pollsRouter } from "./chat_votes/polls.routes.js";
 
 // Casinos (Trustpilot)
 import { casinosPublicRouter } from "./routes/casinos_public.js";
@@ -318,6 +319,7 @@ export function createApp() {
   app.use(wheelRouter);
   app.use(chestRouter);
   app.use(predictionsRouter);
+  app.use(pollsRouter);
 
   app.use("/me/daily-bonus",    requireAuth, dailyBonusRoutes);
   app.use("/me/achievements",   requireAuth, achievementsRouter);

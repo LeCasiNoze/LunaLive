@@ -23,6 +23,8 @@ import { messagePresentation } from './chat/messagePresentation';
 import type { ChatCosmetics } from "../lib/cosmetics";
 import { BotMenu } from "../components/BotMenu";
 import SpecialEventCard, { type SpecialEventType } from "./chat/SpecialEventCard";
+import PollCard, { pollFromPayload, type PollState } from "./chat/PollCard";
+import { QuickActionsBar, type PopupAlign, type QuickAction } from "./chat/DetachedChatTools";
 import ActiveEventsBar, { type ActiveEvent } from "./chat/ActiveEventsBar";
 import {
   useActionableEngine, ActionablePinnedBar, ActionableChatCard, WheelOverlay, ParticipantListModal,
@@ -73,7 +75,7 @@ type ChatMsg = {
   // Émis par /internal/bot/chat/special : body vide, tout est dans type + data.
   // "recap" = ligne centrée · "sys" = message système · "act" = carte
   // actionnable (rain/roue/prédiction/coffre) pilotée par le moteur v2.
-  type?: SpecialEventType | "recap" | "sys" | "act";
+  type?: SpecialEventType | "recap" | "sys" | "act" | "poll";
   data?: any;
 };
 
@@ -369,6 +371,8 @@ function SystemMessageCard(props: {
   msg: ChatMsg;
   joinRain: (_from: "toast" | "chat") => void;
   animated: boolean;
+  margin?: string;
+  origin?: string;
 }) {
   const isRain = isRainOpenMessage(props.msg);
   const body = isRain ? stripRainToken(props.msg.body) : props.msg.body;
@@ -386,9 +390,9 @@ function SystemMessageCard(props: {
         // ✅ popup look
         width: "100%",
         maxWidth: 560,
-        margin: "0 auto",
+        margin: props.margin ?? "0 auto",
         transform: "scale(1.06)",
-        transformOrigin: "center top",
+        transformOrigin: props.origin ?? "center top",
       }}
     >
       <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
@@ -1139,6 +1143,9 @@ export function ChatPanel({
   actionsRef,
   onCanManageSettings,
   showBotFab = true,
+  popupAlign = "center",
+  quickActions,
+  onJoinRole,
 }: {
   slug: string;
   onRequireLogin: () => void;
@@ -1160,6 +1167,12 @@ export function ChatPanel({
   /** false = pas de bouton/menu bot interne (la page fournit son propre
       FloatingBot détaché). true par défaut = popout chat autonome. */
   showBotFab?: boolean;
+  /** chat détaché : position de la colonne de messages */
+  popupAlign?: PopupAlign;
+  /** chat détaché : boutons qui envoient une commande perso en un clic */
+  quickActions?: QuickAction[];
+  /** notifie la page du rôle obtenu à l'arrivée dans le chat */
+  onJoinRole?: (role: string | null) => void;
 }) {
 
 
@@ -1301,6 +1314,9 @@ export function ChatPanel({
   const isTimedOut = !!timeoutUntil && new Date(timeoutUntil).getTime() > Date.now();
   const canSend = isAuthed && !isBanned && !isTimedOut;
   const isPopup = visualMode === "popup";
+  const popupMargin = popupAlign === "left" ? "0 auto 0 0" : popupAlign === "right" ? "0 0 0 auto" : "0 auto";
+  const popupOrigin = popupAlign === "left" ? "left top" : popupAlign === "right" ? "right top" : "center top";
+  const popupItems = popupAlign === "left" ? "flex-start" : popupAlign === "right" ? "flex-end" : "center";
 
   const nameColor = appearance.chat.usernameColor;
   const msgColor = appearance.chat.messageColor;
@@ -1573,6 +1589,31 @@ export function ChatPanel({
   });
   const isStreamerRole = join?.role === "streamer" || join?.role === "admin";
   React.useEffect(() => { actEngine.reset(); setActiveEvents([]); }, [slug, actEngine.reset]);
+
+  // Sondages : état serveur (poll:update) + vote du viewer, carte dans le flux.
+  const [polls, setPolls] = React.useState<Record<number, PollState>>({});
+  React.useEffect(() => { setPolls({}); }, [slug]);
+  const mergePoll = React.useCallback((payload: any) => {
+    setPolls((prev) => {
+      const id = Number(payload?.id ?? payload?.pollId);
+      const next = pollFromPayload(payload, prev[id]);
+      return next ? { ...prev, [next.id]: next } : prev;
+    });
+  }, []);
+  const votePoll = React.useCallback(async (pollId: number, choice: number) => {
+    if (!token) { onRequireLogin(); return; }
+    try {
+      const response = await fetch(`${apiBase()}/api/bot/polls/vote`, {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ streamerSlug: slug, pollId, choice }), signal: AbortSignal.timeout(10000),
+      });
+      const result = await response.json();
+      if (!response.ok || result?.ok === false) throw new Error(result?.reason === "poll_closed" ? "Le sondage est terminé." : "Vote refusé.");
+      if (result.poll) mergePoll(result.poll);
+    } catch (error: any) {
+      window.dispatchEvent(new CustomEvent("ui:toast", { detail: { kind: "error", title: "Sondage", message: error?.message || "Vote refusé." } }));
+    }
+  }, [token, slug, onRequireLogin, mergePoll]);
   React.useEffect(() => { setPredictionStake(null); }, [token]);
 
   // Prompt "annoncer ton rank-up ?" : si le viewer a monté de niveau ailleurs
@@ -1971,6 +2012,7 @@ export function ChatPanel({
         resolved: !!p.resolved,
       });
     });
+    socket.on("poll:update", (p: any) => mergePoll(p));
     socket.on("act:wheel", (p: any) => {
       if (!p) return;
       // Tirage : même roue/gagnant chez tous. Sinon simple maj compteur.
@@ -1990,6 +2032,7 @@ export function ChatPanel({
         actEngine.open(msg.type as any, { ...(msg.data || {}), createdAt: msg.createdAt, messageId: msg.id });
         return;
       }
+      if (msg.type === "poll") mergePoll(msg.data);
       if (msg.type==="combo"&&msg.data?.real) {
         const kind=msg.data.kind==="sub"?"sub":"follow";
         setActiveEvents(prev=>[...prev.filter(e=>e.id!==`combo:${kind}`),{id:`combo:${kind}`,type:"combo",data:msg.data}]);
@@ -2072,6 +2115,11 @@ export function ChatPanel({
         const state=await response.json();
         if(disposed||!response.ok||!state.ok) return;
         actEngine.sync(state.events||[],state.complete||[],requestedAt);
+        const pr=await fetch(`${apiBase()}/api/bot/polls/current?streamerSlug=${encodeURIComponent(s)}`,{
+          headers:token?{Authorization:`Bearer ${token}`}:{},cache:"no-store",signal:AbortSignal.timeout(10000),
+        });
+        const pollState=await pr.json().catch(()=>null);
+        if(!disposed&&pr.ok&&pollState?.poll) mergePoll(pollState.poll);
         if(token){
           const r=await fetch(`${apiBase()}/api/bot/predictions/stake`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});
           const stake=await r.json();if(!disposed&&r.ok&&stake.ok) setPredictionStake(Number(stake.selected));
@@ -2441,6 +2489,8 @@ export function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionsRef, canManageSettings, token]);
 
+  React.useEffect(() => { onJoinRole?.(join?.role ?? null); }, [join?.role, onJoinRole]);
+
   const popupRef = React.useRef<Window | null>(null);
 
 function openChatPopup() {
@@ -2580,6 +2630,15 @@ function openChatPopup() {
         recap={pushRecap}
       />
       <ActionablePinnedBar engine={actEngine} isStreamer={isStreamerRole} />
+      {/* Sondage en cours dont la carte n'est pas dans le flux (arrivée après l'annonce) */}
+      {Object.values(polls)
+        .filter((p) => p.status === "open" && p.endsAtMs > Date.now() && !messages.some((m) => m.type === "poll" && Number(m.data?.pollId ?? m.data?.id) === p.id))
+        .slice(-1)
+        .map((p) => (
+          <div key={`poll-pin-${p.id}`} style={{ padding: "8px 12px 0", flexShrink: 0 }}>
+            <PollCard poll={p} onVote={(choice) => votePoll(p.id, choice)} />
+          </div>
+        ))}
 
       {rankupLevel != null && (
         <div style={{
@@ -2609,7 +2668,7 @@ function openChatPopup() {
             display: "flex",
             flexDirection: "column",
             gap: isPopup ? 14 : 10,
-            alignItems: isPopup ? "center" : "stretch",
+            alignItems: isPopup ? popupItems : "stretch",
             WebkitOverflowScrolling: "touch",
             ...({ ["--chat-name-color" as any]: nameColor, ["--chat-msg-color" as any]: msgColor } as any),
           }}
@@ -2623,7 +2682,7 @@ function openChatPopup() {
           {(() => {
             return messages.map((m) => {
             // Ligne récap centrée (fin de rain, résultat prédiction, combo terminé…)
-            if(m.type==='sys'||m.type==='recap')return <div key={m.id} className={animatedMsgIdsRef.current.has(m.id)?`chat-enter ${CHAT_ENTER_ANIM}`:undefined} onAnimationEnd={()=>animatedMsgIdsRef.current.delete(m.id)} style={{alignSelf:m.type==='recap'?'center':'stretch'}}><ChatEventLine kind={m.type} html={String(m.data?.html||'')}/></div>;
+            if(m.type==='sys'||m.type==='recap')return <div key={m.id} className={animatedMsgIdsRef.current.has(m.id)?`chat-enter ${CHAT_ENTER_ANIM}`:undefined} onAnimationEnd={()=>animatedMsgIdsRef.current.delete(m.id)} style={{alignSelf:m.type==='recap'?(isPopup?popupItems:'center'):'stretch'}}><ChatEventLine kind={m.type} html={String(m.data?.html||'')}/></div>;
 
             // Carte actionnable (rain / roue / prédiction / coffre) — pilotée
             // par le moteur v2, synchronisée avec le chip épinglé.
@@ -2634,9 +2693,24 @@ function openChatPopup() {
                   key={m.id}
                   className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
                   onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? "0 auto" : undefined }}
+                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? popupMargin : undefined }}
                 >
                   <ActionableChatCard event={ev} engine={actEngine} isStreamer={isStreamerRole} />
+                </div>
+              );
+            }
+
+            if (m.type === "poll") {
+              const pollId = Number(m.data?.pollId ?? m.data?.id);
+              const state = polls[pollId] ?? pollFromPayload(m.data);
+              return (
+                <div
+                  key={m.id}
+                  className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
+                  onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
+                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? popupMargin : undefined }}
+                >
+                  <PollCard poll={state} onVote={(choice) => votePoll(pollId, choice)} />
                 </div>
               );
             }
@@ -2648,7 +2722,7 @@ function openChatPopup() {
                   key={m.id}
                   className={animatedMsgIdsRef.current.has(m.id) ? `chat-enter ${CHAT_ENTER_ANIM}` : undefined}
                   onAnimationEnd={() => animatedMsgIdsRef.current.delete(m.id)}
-                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? "0 auto" : undefined }}
+                  style={{ width: "100%", maxWidth: isPopup ? 560 : undefined, margin: isPopup ? popupMargin : undefined }}
                 >
                   <SpecialEventCard
                     type={m.type as SpecialEventType}
@@ -2682,6 +2756,8 @@ function openChatPopup() {
                   msg={m}
                   joinRain={joinRain}
                   animated={animatedMsgIdsRef.current.has(m.id)}
+                  margin={isPopup ? popupMargin : undefined}
+                  origin={isPopup ? popupOrigin : undefined}
                 />
               );
             }
@@ -2714,11 +2790,11 @@ function openChatPopup() {
                   cursor: "pointer",
                   width: "100%",
                   maxWidth: isPopup ? 560 : undefined,
-                  margin: isPopup ? "0 auto" : undefined,
+                  margin: isPopup ? popupMargin : undefined,
 
                   // “plus gros” sans toucher ChatMessageBubble
                   transform: isPopup ? "scale(1.10)" : undefined,
-                  transformOrigin: "center top",
+                  transformOrigin: isPopup ? popupOrigin : "center top",
 
                   // “plus léger” (léger visuellement)
                   opacity: isPopup ? 0.96 : 1,
@@ -2791,6 +2867,10 @@ function openChatPopup() {
           inputRef={inputRef}
           bottomOffsetPx={pickerBottomOffset}
         />
+
+        {isPopup && quickActions?.length ? (
+          <QuickActionsBar actions={quickActions} disabled={!canSend || sending} onSend={(text) => void sendBody(text)} />
+        ) : null}
 
         {/* row 2: composer */}
         <div style={{ display: "flex", gap: 10 }}>

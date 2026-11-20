@@ -18,7 +18,7 @@ async function schema(pool:Pool){
 }
 
 // Chaque mouvement a une clé de ledger unique : un rejeu ne peut ni débiter ni créditer deux fois.
-async function move(c:PoolClient,sid:number,uid:string,delta:number,key:string,reason:string){
+export async function move(c:PoolClient,sid:number,uid:string,delta:number,key:string,reason:string){
  const done=(await c.query('SELECT 1 FROM nozecoin_ledger WHERE streamer_id=$1 AND rumble_user_id=$2 AND event_key=$3',[sid,uid,key])).rows[0];
  if(done||delta===0)return;
  const row=(await c.query(`UPDATE nozecoin_accounts SET balance=balance+$3 WHERE streamer_id=$1 AND rumble_user_id=$2 AND balance+$3>=0 RETURNING balance`,[sid,uid,delta])).rows[0];

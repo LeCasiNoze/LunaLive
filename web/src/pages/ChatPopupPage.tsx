@@ -3,11 +3,19 @@ import { useParams } from "react-router-dom";
 import { ChatPanel } from "../components/ChatPanel";
 import { PopupLiveStats } from "../components/chat/PopupLiveStats";
 import { LoginModal } from "../components/LoginModal";
+import { useAuth } from "../auth/AuthProvider";
+import { DetachedChatSettings, usePopupAlign, useQuickActions } from "../components/chat/DetachedChatTools";
 
 export default function ChatPopupPage() {
   const { slug } = useParams();
   const s = String(slug || "").trim();
   const [loginOpen, setLoginOpen] = React.useState(false);
+  const { token } = useAuth();
+  const [role, setRole] = React.useState<string | null>(null);
+  const [align, setAlign] = usePopupAlign(s);
+  // Boutons rapides : réservés au streamer de la chaîne (ses commandes perso).
+  const isOwner = role === "streamer" || role === "admin";
+  const [quickActions, saveQuickActions] = useQuickActions(isOwner ? token : null);
 
   React.useEffect(() => {
     const previousTitle = document.title;
@@ -28,8 +36,22 @@ export default function ChatPopupPage() {
       }}
     >
       <div style={{ padding: 10, flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div style={{ fontWeight: 950, color: "white", fontSize: 13, opacity: 0.95 }}>Chat détaché</div>
-        <div style={{ fontSize: 12, opacity: 0.65, color: "white", marginTop: 2 }}>Chaîne : {s || "—"}</div>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 950, color: "white", fontSize: 13, opacity: 0.95 }}>Chat détaché</div>
+            <div style={{ fontSize: 12, opacity: 0.65, color: "white", marginTop: 2 }}>Chaîne : {s || "—"}</div>
+          </div>
+          {s ? (
+            <DetachedChatSettings
+              align={align}
+              onAlign={setAlign}
+              canEditActions={isOwner && !!token}
+              token={token}
+              actions={quickActions}
+              onActions={(next) => void saveQuickActions(next)}
+            />
+          ) : null}
+        </div>
         {s && <PopupLiveStats key={s} slug={s} />}
       </div>
 
@@ -44,6 +66,9 @@ export default function ChatPopupPage() {
           botMenuDockWidth={380}
           showBotFab={true}
           onRequireLogin={() => setLoginOpen(true)}
+          popupAlign={align}
+          quickActions={isOwner ? quickActions : undefined}
+          onJoinRole={setRole}
         />
         ) : (
           <div style={{ padding: 12, color: "white", opacity: 0.75 }}>Slug manquant.</div>
