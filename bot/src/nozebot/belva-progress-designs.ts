@@ -71,6 +71,33 @@ export function tierUpLine(userId:string,xp:number,n?:GradeNames){
   const raw=levelFor(xp)!;const l={...raw,label:relabel(raw.label,raw.grade.key,n)};return {content:`${l.label.split(' ')[0]} <@${userId}> passe **${l.label}** · ${fr(xp)} XP`,allowedMentions:{users:[userId]}};
 }
 
+// Fin de session Rainbet (plus de mise depuis un relevé horaire) : récap en MP. Les montants restent privés ;
+// si les MP sont fermés, le repli dans le salon général ne donne que l'XP.
+export function wagerRecapCard(user:{id:string;avatarUrl:string},s:{wager:number;xp:number;total:number}){
+  const l=levelFor(s.total);const next=l?.next?levelFor(l.next):null;
+  const pct=l?.next?Math.min(99,Math.round((s.total-l.floor)/(l.next-l.floor)*100)):l?100:Math.round(s.total/GRADES[0].xp*100);
+  const color=l?spec(l.grade.key).color:0x22d3ee;
+  const goal=l?(l.next?next!.label:null):`${spec('bronze').name} I`;
+  const left=l?(l.next??s.total)-s.total:GRADES[0].xp-s.total;
+  return v2(color,[
+    {type:9,components:[T('# 🌧️ Session terminée !'),T(`GG <@${user.id}>, ta session Rainbet vient d’être comptée.`)],
+      accessory:{type:11,media:{url:user.avatarUrl},description:'Membre'}},
+    SEP(),
+    T(`## 🎰 ${fr(Math.round(s.wager))} $ misés
+## ✨ +${fr(s.xp)} XP`),
+    SEP(),
+    T(`🏅 **${fr(s.total)} XP**${l?` · ${l.label}`:''}`),
+    T(goal?`\`${bar(pct)}\`
+⏭️ Encore **${fr(left)} XP** pour **${goal}**`:'🖤 Niveau maximum atteint'),
+    SEP(1,false),
+    T('-# 1 XP par 10 $ misés · récap envoyé quand ton wager ne bouge plus pendant une heure · **/rang** pour ta place'),
+    FOOT,
+  ],user.id);
+}
+export const wagerRecapLine=(userId:string,s:{xp:number;total:number})=>{const l=levelFor(s.total);
+  return {content:`🌧️ <@${userId}> termine une session Rainbet : **+${fr(s.xp)} XP** (total ${fr(s.total)} XP${l?` · ${l.label}`:''}).
+-# Ouvre tes MP pour recevoir le récap détaillé.`,allowedMentions:{users:[userId]}};};
+
 export type SeasonRow={name:string;id?:string;places:(number|null)[]};
 export function seasonScore(r:SeasonRow,total:number){
   const P=SEASON_POINTS,played=r.places.filter((p):p is number=>p!==null);

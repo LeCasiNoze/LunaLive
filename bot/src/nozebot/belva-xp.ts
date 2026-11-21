@@ -12,7 +12,7 @@ import {GRADES,gradeUpCard,levelFor,tierUpLine} from './belva-progress-designs.j
 // Barème validé : chat Rumble +5 (max 1 toutes les 5 min), tournoi 25 + 20 par duel gagné, compte casino vérifié +300,
 // dépôt remboursé 1 XP/€ (pas d'XP sur les dépôts offerts), wager Rainbet 1 XP/10 $.
 const GUILD_ID=()=>process.env.BELVA_GUILD_ID?.trim()||'1429525570965737668';
-const GENERAL_CHANNEL='1482859803905753372';
+export const GENERAL_CHANNEL='1482859803905753372';
 const REWARDS_CATEGORY='1481924757380272289';
 const TOP_CHANNEL='🏅︱classements';
 // XP comptée rétroactivement depuis le début du duo (décision de Lucas, 17/11/2026).
@@ -31,7 +31,8 @@ function schema(pool:Pool){
 }
 
 // Sources lues en base (rien n'est inventé) : chaque ligne devient au plus un événement d'XP.
-async function collect(pool:Pool){
+export async function collect(pool:Pool){
+  await schema(pool);
   const start=XP_START();
   const q=(sql:string,args:unknown[]=[])=>pool.query(sql,args).catch(e=>{console.error('[nozebot] xp source',e?.message||e);return {rows:[]};});
   // Chat Rumble de Belva et de LeCasiNoze : un message par tranche de 5 minutes (tous lives confondus), pour les comptes reliés.

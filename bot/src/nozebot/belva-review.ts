@@ -11,7 +11,7 @@ import {CHECK_TEXT,linkDm,linkPrompt} from './belva-link.js';
 import {gamesCard,linkCard,rewardsCard} from './belva-info.js';
 import {bjMessage} from './belva-games.js';
 import {BRACKET_URL,BUY_CENTS,bracketCard,championText,confirmCard,eliminationText,priceOption,registrationCard,type BonusOption,type LiveState,type Slot} from './belva-tournament.js';
-import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,seasonCard,tierUpLine} from './belva-progress-designs.js';
+import {GRADES,SEASON_EXAMPLE,XP_RULES,gradeUpCard,levelThresholds,seasonCard,tierUpLine,wagerRecapCard,wagerRecapLine} from './belva-progress-designs.js';
 import {forgetApproval,reviewSchema} from './belva-approval.js';
 import {ensureBelvaRainbetPanel,rainbetCard} from './belva-rainbet.js';
 import {agendaCard,mondayOf,refreshAgenda} from './belva-agenda.js';
@@ -183,6 +183,10 @@ export const DESIGNS:Design[]=[
         '> 💸 Dépôt remboursé · **1 XP par €** déposé (les dépôts offerts ne comptent pas)','> 🌧️ Wager Rainbet · **1 XP par 10 $** misés','> 🎯 Call du hunt du mercredi · **1 XP par tranche de 5x** (max 500)',
         '-# Les quêtes (/quetes) arriveront ensuite avec leurs boutons et le MP du lundi.'].join('\n')),
     ]},
+  {key:'wager-recap',title:'Récap de fin de session Rainbet',where:'MP au membre (compte Rainbet vérifié) · repli dans le salon général si ses MP sont fermés',
+    note:'Le suivi relève le wager toutes les heures : quand un relevé ne bouge plus après une hausse, la session est close et le récap part une seule fois. L’XP reste celle déjà créditée (1 XP par 10 $). Le repli public ne montre jamais le montant misé.',
+    previews:async c=>[text('**En MP :**'),v2(wagerRecapCard(demo(c),{wager:76,xp:7,total:1_930})),
+      text('**Repli dans le salon général (MP fermés) :**'),{...wagerRecapLine(c.botId,{xp:7,total:1_930}),allowedMentions:{parse:[]}} as Preview]},
   {key:'link-prompt',title:'Message « relie ton compte » avec bouton',where:'Réponse privée quand le compte Rumble n’est pas relié : /blackjack, /slot, /claim, /bcoins, /tournoi',
     note:'Le bouton lance directement la liaison (même parcours que /lier, MP compris).',previews:async()=>[{...linkPrompt('Tes **BCoins** sont attachés à ton pseudo Rumble : relie ton compte pour jouer.'),allowedMentions:{parse:[]}} as Preview]},
   {key:'tips',title:'!tips : tip annoncé en live',where:'Chat Rumble de Belva (staff) + MP au joueur + note staff dans 📋︱liste-remboursements',
