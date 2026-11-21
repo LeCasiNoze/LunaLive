@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CHECKED, type Casino} from '../data/casinos';
+import {CHECKED, NOINDEX, type Casino} from '../data/casinos';
 // Comparatif « A vs B » : tableau construit uniquement à partir des données validées des deux fiches.
 interface Props {lang: Lang; a: Casino; b: Casino}
 const {lang, a, b} = Astro.props;
@@ -30,7 +30,7 @@ const jsonld = [
   {'@context': 'https://schema.org', '@type': 'Article', headline: fmt(v.title, {a: a.name, b: b.name}), inLanguage: d.locale, dateModified: CHECKED, author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path)},
 ];
 ---
-<Base lang={lang} title={fmt(v.title, {a: a.name, b: b.name})} desc={fmt(v.desc, {a: a.name, b: b.name, date})} path={path} jsonld={jsonld}>
+<Base lang={lang} title={fmt(v.title, {a: a.name, b: b.name})} desc={fmt(v.desc, {a: a.name, b: b.name, date})} path={path} jsonld={jsonld} noindex={NOINDEX.includes(a.id) || NOINDEX.includes(b.id)}>
   <div class="page">
     <ol class="crumbs"><li><a href={href(lang)}>{d.review.crumbsHome}</a></li><li>{v.crumbs}</li><li aria-current="page">{a.name} vs {b.name}</li></ol>
     <div class="prose" style="max-width:none">

@@ -4,12 +4,13 @@ import Icon from './Icon.astro';
 import OfferCard from './OfferCard.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, PAIRS, byId, CHECKED, YOUTUBE, TELEGRAM} from '../data/casinos';
+import {ranked, PAIRS, byId, CHECKED, YOUTUBE, TELEGRAM} from '../data/casinos';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
 const u = ui(lang);
 const rb = byId('rainbet');
+const CASINOS = ranked(lang);
 const date = fmtDate(lang, CHECKED);
 const site = Astro.site!.origin;
 const jsonld = [

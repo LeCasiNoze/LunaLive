@@ -4,9 +4,11 @@ import Icon from '../components/Icon.astro';
 import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {CASINOS, byId, YOUTUBE, YT_SUB, TELEGRAM} from '../data/casinos';
+import {loadFeed, byKind} from '../data/wins';
 
-interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string}
-const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = ''} = Astro.props;
+// mono : page en une seule langue (pas d'alternates hreflang).
+interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string; mono?: boolean}
+const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = '', mono = false} = Astro.props;
 const d = t(lang);
 const u = ui(lang);
 const site = Astro.site!.origin;
@@ -26,7 +28,9 @@ const nav = [
   {k: 'offers', label: u.nav.offers, url: href(lang) + '#offers', icon: 'gift'},
   ...CASINOS.map(c => ({k: c.id, label: c.name, url: href(lang, `casinos/${c.id}/`), img: c.logo})),
 ];
+const hasWins = byKind(await loadFeed(), 'daily').length > 0;
 const learn = [
+  ...(hasWins ? [{k: 'wins', label: 'Biggest slot wins', url: '/wins/', icon: 'trophy'}] : []),
   {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/'), icon: 'book'},
   {k: 'responsible-gambling', label: u.nav.rg, url: href(lang, 'responsible-gambling/'), icon: 'shield'},
   {k: 'about', label: u.nav.about, url: href(lang, 'about/'), icon: 'users'},
@@ -42,8 +46,8 @@ const learn = [
   <meta name="description" content={desc} />
   {noindex ? <meta name="robots" content="noindex, follow" /> : <meta name="robots" content="index, follow, max-image-preview:large" />}
   <link rel="canonical" href={canonical} />
-  {!noindex && LANGS.map(l => <link rel="alternate" hreflang={t(l).locale.slice(0, 2)} href={site + href(l, path)} />)}
-  {!noindex && <link rel="alternate" hreflang="x-default" href={site + href('en', path)} />}
+  {!noindex && !mono && LANGS.map(l => <link rel="alternate" hreflang={t(l).locale.slice(0, 2)} href={site + href(l, path)} />)}
+  {!noindex && !mono && <link rel="alternate" hreflang="x-default" href={site + href('en', path)} />}
   <meta name="google-site-verification" content="Pm6sWjjh1lu2tu7G8St63-k13pzdxC77wWsTOUBBfz4" />
   <meta name="theme-color" content="#0b0614" />
   <link rel="icon" href="/favicon.png" type="image/png" />
@@ -105,7 +109,7 @@ const learn = [
         <summary aria-label={d.nav.language}><Icon name="globe" />{d.short}</summary>
         <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}<span>{t(l).short}</span></a></li>)}</ul>
       </details>
-      <a class="btn btn-yt btn-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar" aria-label={u.tg.join}><Icon name="tg" /><span>{u.tg.join}</span></a>
+      <a class="btn btn-yt btn-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar" aria-label={u.tg.join}><Icon name="tg" /><span>{u.tg.short}</span></a>
       <a class="btn btn-yt" href={YT_SUB} target="_blank" rel="noopener" data-go="youtube-sub" data-place="topbar"><Icon name="yt" /><span>{u.subscribe}</span></a>
     </header>
 

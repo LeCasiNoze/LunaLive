@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, CHECKED, PAIRS, type Casino} from '../data/casinos';
+import {CASINOS, CHECKED, PAIRS, NOINDEX, type Casino} from '../data/casinos';
 interface Props {lang: Lang; c: Casino}
 const {lang, c} = Astro.props;
 const d = t(lang);
@@ -27,7 +27,7 @@ const jsonld = [
   {'@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: d.locale, mainEntity: faq.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))},
 ];
 ---
-<Base lang={lang} title={x.seoTitle} desc={x.seoDesc} path={path} jsonld={jsonld} active={c.id}>
+<Base lang={lang} title={x.seoTitle} desc={x.seoDesc} path={path} jsonld={jsonld} active={c.id} noindex={NOINDEX.includes(c.id)}>
   <div class="page">
     <ol class="crumbs"><li><a href={href(lang)}>{r.crumbsHome}</a></li><li><a href={href(lang) + '#offers'}>{r.crumbsReviews}</a></li><li aria-current="page">{c.name}</li></ol>
 

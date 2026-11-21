@@ -1,0 +1,85 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import {href} from '../i18n';
+import {CASINOS, TELEGRAM} from '../data/casinos';
+import {type Video, MIN_CLIPS, top, money, multi, streamerName, platformName, dayLabel} from '../data/wins';
+// Page « Biggest slot wins » (anglais seulement) : un Top quotidien ou hebdomadaire, construit depuis le flux du VPS.
+interface Props {v: Video; path: string; latest?: boolean; prev?: string; next?: string; others?: {url: string; label: string}[]}
+const {v, path, latest = false, prev, next, others = []} = Astro.props;
+const site = Astro.site!.origin;
+const clips = top(v);
+const n1 = clips[0];
+const when = v.kind === 'daily' ? dayLabel(v.period) : v.period.replace('-W', ', week ');
+const scope = v.kind === 'daily' ? 'today' : v.kind === 'weekly' ? 'this week' : 'this month';
+const title = v.kind === 'daily'
+  ? (latest ? `Biggest Slot Wins Today – Latest Top ${clips.length} (${when})` : `Biggest Slot Wins of ${when} – ${multi(n1.multi)} by ${streamerName(n1.streamer)}`)
+  : `Biggest Slot Wins of the Week (${when}) – ${multi(n1.multi)} by ${streamerName(n1.streamer)}`;
+const desc = `The ${clips.length} biggest verified slot wins from casino livestreams ${v.kind === 'daily' ? 'on ' + when : 'in ' + when}: #1 ${streamerName(n1.streamer)} hit ${multi(n1.multi)} live on ${platformName(n1.platform)}. Multipliers, bets and the video.`;
+const platforms = [...new Set(clips.map(c => platformName(c.platform)))].join(' and ');
+const intro = `${clips.length} verified wins made the cut. The biggest was ${multi(n1.multi)} by ${streamerName(n1.streamer)}${n1.bet != null ? (n1.bonus_buy ? ` on a ${money(n1.bet, n1.currency)} bonus buy` : ` on a ${money(n1.bet, n1.currency)} bet`) : ''}, live on ${platformName(n1.platform)}. Every win below was detected on a public livestream (${platforms}) and checked frame by frame before it entered the ranking.`;
+const yt = v.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
+const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
+const embed = v.youtube_id && v.age_restricted === false;
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    {'@type': 'ListItem', position: 1, name: 'Home', item: site + href('en')},
+    {'@type': 'ListItem', position: 2, name: 'Biggest slot wins', item: site + '/wins/'},
+    ...(latest ? [] : [{'@type': 'ListItem', position: 3, name: when, item: site + '/' + path}]),
+  ]},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: title, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: clips.length,
+    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${multi(c.multi)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`}))},
+  ...(yt && v.publish_at ? [{'@context': 'https://schema.org', '@type': 'VideoObject', name: title, description: desc, thumbnailUrl: thumb, uploadDate: v.publish_at, contentUrl: yt, ...(embed ? {embedUrl: `https://www.youtube-nocookie.com/embed/${v.youtube_id}`} : {})}] : []),
+];
+---
+<Base lang="en" title={title} desc={desc} path={path} jsonld={jsonld} noindex={clips.length < MIN_CLIPS} mono active="wins">
+  <div class="page">
+    <ol class="crumbs"><li><a href={href('en')}>Home</a></li>{latest ? <li aria-current="page">Biggest slot wins</li> : <><li><a href="/wins/">Biggest slot wins</a></li><li aria-current="page">{when}</li></>}</ol>
+
+    <header class="phero">
+      <span class="kick"><Icon name="trophy" />{v.kind === 'daily' ? `Top ${clips.length} · ${when}` : `Top ${clips.length} · ${when}`}</span>
+      <h1>{v.kind === 'daily' ? (latest ? `Biggest slot wins: the latest Top ${clips.length}` : `Biggest slot wins of ${when}`) : `Biggest slot wins of the week`}</h1>
+      <p>{intro}</p>
+    </header>
+
+    {yt && (
+      embed
+        ? <div class="wins-video"><iframe src={`https://www.youtube-nocookie.com/embed/${v.youtube_id}`} title={title} loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+        : <a class="wins-video" href={yt} target="_blank" rel="noopener" data-go="youtube" data-place="wins-page">{thumb && <img src={thumb} alt={title} width="480" height="360" loading="lazy" />}<span class="btn btn-yt"><Icon name="yt" />Watch the Top {clips.length} on YouTube (18+)</span></a>
+    )}
+
+    <h2 class="sec-title">The ranking</h2>
+    <div class="vs-table">
+      <table>
+        <thead><tr><th scope="col">#</th><th scope="col">Streamer</th><th scope="col">Platform</th><th scope="col">Multiplier</th><th scope="col">Bet</th><th scope="col">Win</th></tr></thead>
+        <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td><b>{multi(c.multi)}</b></td><td>{c.bonus_buy ? `Bonus buy ${money(c.bet, c.currency)}` : money(c.bet, c.currency)}</td><td>{money(c.win, c.currency)}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <p class="fine">Amounts are in the streamer’s own currency when it is known; otherwise only the number is shown. Clips belong to their creators.</p>
+
+    <a class="wins wins-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-page" style="margin-top:28px">
+      <div><h2>Every big win first</h2><p>Live alerts (max 3 a day) and the Top 5 every evening on Telegram. 18+ only.</p></div>
+      <span class="btn btn-yt btn-tg btn-lg"><Icon name="tg" />Join on Telegram</span>
+    </a>
+
+    {(prev || next || others.length > 0) && (
+      <>
+        <h2 class="sec-title">More rankings</h2>
+        <div class="others">
+          {prev && <a class="mini" href={prev}><div><b>← Previous</b><span>Earlier ranking</span></div></a>}
+          {next && <a class="mini" href={next}><div><b>Next →</b><span>Later ranking</span></div></a>}
+          {others.map(o => <a class="mini" href={o.url}><div><b>{o.label}</b><span>Top {scope === 'today' ? 'of the day' : 'of the week'}</span></div><Icon name="arrow" /></a>)}
+        </div>
+      </>
+    )}
+
+    <h2 class="sec-title">The bonuses behind the big wins</h2>
+    <div class="others">{CASINOS.map(o => <a class={`mini m-${o.id}`} href={href('en', `casinos/${o.id}/`)}><img src={o.logo} alt="" width="46" height="46" loading="lazy" /><div><b>{o.name}</b><span>Offer and terms</span></div><Icon name="arrow" /></a>)}</div>
+
+    <div class="rg" style="margin-top:40px">
+      <span class="ic">18+</span>
+      <div><h3>Big wins are rare</h3><p>These are the best moments out of thousands of hours of play. Most sessions lose. Set a budget and stop when it is spent.</p></div>
+      <a href={href('en', 'responsible-gambling/')}>Responsible gambling →</a>
+    </div>
+  </div>
+</Base>
