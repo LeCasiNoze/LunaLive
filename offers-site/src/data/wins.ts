@@ -4,8 +4,9 @@ import {LANGS, t, type Lang} from '../i18n';
 // Flux exporté par le VPS (~/bigwin/export/feed.json) : seulement les clips publiés et vérifiés.
 // Lu au build : WINS_FEED_URL si elle existe, sinon la copie versionnée src/data/wins-feed.json
 // (WINS_FEED_FILE la remplace pour un test local). Sans flux, aucune page /wins/.
-// bonus_buy : gain sur un bonus acheté. Un prix d'achat ne s'affiche que s'il vient de buy_cost, jamais de bet.
-export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; buy_cost?: number | null; game?: string | null; provider?: string | null; currency: string | null; at: string};
+// bet = mise de base ; buy_cost = prix d'un bonus acheté (relevé à l'image, null si inconnu ; bonus_buy vaut true seulement s'il est connu).
+// multi = win / bet (affiché en grand) ; paid_multi = win / (buy_cost, sinon bet), qui fait le classement.
+export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; buy_cost?: number | null; paid_multi?: number | null; game?: string | null; provider?: string | null; currency: string | null; at: string};
 export type Video = {kind: 'daily' | 'weekly' | 'monthly'; period: string; label?: string; title?: string | null; youtube_id: string | null; short_id: string | null; thumb: string | null; publish_at: string | null; age_restricted: boolean | null; clips: Clip[]};
 export type Feed = {generated_at: string; videos: Video[]};
 
@@ -37,8 +38,9 @@ export async function loadFeed(): Promise<Feed | null> {
 export const byKind = (f: Feed | null, kind: Video['kind']) =>
   (f?.videos ?? []).filter(v => v.kind === kind && v.clips.length >= MIN_CLIPS).sort((a, b) => b.period.localeCompare(a.period));
 
-// Du plus gros au plus petit, renuméroté : le flux peut avoir des trous de rang (clips rejetés).
-export const top = (v: Video) => [...v.clips].sort((a, b) => b.multi - a.multi).map((c, i) => ({...c, rank: i + 1}));
+// Classement sur ce qui a été payé, renuméroté : le flux peut avoir des trous de rang (clips rejetés).
+const score = (c: Clip) => c.paid_multi ?? c.multi;
+export const top = (v: Video) => [...v.clips].sort((a, b) => score(b) - score(a)).map((c, i) => ({...c, rank: i + 1}));
 
 // Semaine ISO (AAAA-Www) d'un jour AAAA-MM-JJ, et ses bornes lundi–dimanche.
 export function isoWeek(day: string) {
