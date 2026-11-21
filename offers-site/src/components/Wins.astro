@@ -71,7 +71,7 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
         <div class="vs-table">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
-            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{c.bonus_buy ? (c.buy_cost != null ? `${w.buy} ${money(c.buy_cost, c.currency, lang)}` : w.buy) : money(c.bet, c.currency, lang)}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
+            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{c.bonus_buy ? <b>{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</b> : money(c.bet, c.currency, lang)}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
           </table>
         </div>
         <p class="fine">{w.fine}</p>
