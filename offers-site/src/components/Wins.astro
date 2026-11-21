@@ -30,8 +30,10 @@ const segs = fmt(kind === 'week' ? w.dWeek : w.dDay, vars).split('¦');
 while (segs.length > 1 && segs.join('').length > 160) segs.pop();
 const desc = segs.join('');
 const h1 = kind === 'latest' ? fmt(w.h1Latest, vars) : kind === 'day' ? fmt(w.h1Day, vars) : fmt(w.h1Week, vars);
-const stake = !n1 ? '' : n1.bonus_buy ? (n1.buy_cost != null ? fmt(w.stakeBuy, {v: money(n1.buy_cost, n1.currency, lang)}) : w.stakeBuyNoPrice) : n1.bet != null ? fmt(w.stakeBet, {v: money(n1.bet, n1.currency, lang)}) : '';
-const intro = n1 ? [fmt(w.intro1, {...vars, x: xg(n1), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
+// « Le plus gros » = plus haut multiplicateur, pas forcément le n° 1 : les vidéos d'avant le 21/11 étaient classées sur le prix payé.
+const big = clips.reduce((a, c) => (c.multi > a.multi ? c : a), n1);
+const stake = !big ? '' : big.bonus_buy ? (big.buy_cost != null ? fmt(w.stakeBuy, {v: money(big.buy_cost, big.currency, lang)}) : w.stakeBuyNoPrice) : big.bet != null ? fmt(w.stakeBet, {v: money(big.bet, big.currency, lang)}) : '';
+const intro = n1 ? [fmt(w.intro1, {...vars, x: xg(big), who: streamerName(big.streamer), pf: platformName(big.platform), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
 const yt = v?.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
 const thumb = v?.thumb || (v?.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
 // Une vidéo limitée par l'âge ne s'intègre pas : vignette cliquable, et pas de VideoObject (la page n'est pas une page de lecture).
