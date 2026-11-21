@@ -4,8 +4,8 @@ import {LANGS, t, type Lang} from '../i18n';
 // Flux exporté par le VPS (~/bigwin/export/feed.json) : seulement les clips publiés et vérifiés.
 // Lu au build : WINS_FEED_URL si elle existe, sinon la copie versionnée src/data/wins-feed.json
 // (WINS_FEED_FILE la remplace pour un test local). Sans flux, aucune page /wins/.
-// bonus_buy : bet est alors le prix du bonus acheté, et multi = win / prix.
-export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; game?: string | null; provider?: string | null; currency: string | null; at: string};
+// bonus_buy : gain sur un bonus acheté. Un prix d'achat ne s'affiche que s'il vient de buy_cost, jamais de bet.
+export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; buy_cost?: number | null; game?: string | null; provider?: string | null; currency: string | null; at: string};
 export type Video = {kind: 'daily' | 'weekly' | 'monthly'; period: string; label?: string; title?: string | null; youtube_id: string | null; short_id: string | null; thumb: string | null; publish_at: string | null; age_restricted: boolean | null; clips: Clip[]};
 export type Feed = {generated_at: string; videos: Video[]};
 
