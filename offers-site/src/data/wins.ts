@@ -89,6 +89,8 @@ export const money = (n: number | null, cur: string | null, lang: Lang = 'en') =
 export const multi = (m: number) => `x${Math.round(m).toLocaleString('en-US')}`;
 export const streamerName = (s: string) => s.replace(/^rumble-/i, '');
 export const platformName = (p: Clip['platform']) => (p === 'rumble' ? 'Rumble' : 'Kick');
+// Rumble redirige /user/<nom> vers la casse exacte de la chaîne ; Kick attend le slug en minuscules.
+export const channelUrl = (c: Clip) => (c.platform === 'rumble' ? `https://rumble.com/user/${streamerName(c.streamer)}` : `https://kick.com/${streamerName(c.streamer).toLowerCase()}`);
 export const dayLabel = (lang: Lang, iso: string) => new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
 export const weekLabel = (lang: Lang, week: string) => {
   const [a, b] = weekBounds(week);

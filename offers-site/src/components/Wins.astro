@@ -4,7 +4,7 @@ import Icon from './Icon.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
-import {type WinsPage, top, money, multi, streamerName, platformName, dayLabel, weekLabel, isoWeek} from '../data/wins';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, weekLabel, isoWeek} from '../data/wins';
 // Pages « Biggest slot wins » : dernier Top, un jour, archive d'une semaine. Construites depuis le flux du VPS.
 interface Props {lang: Lang; page: WinsPage}
 const {lang, page} = Astro.props;
@@ -70,13 +70,13 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
     {clips.length > 0 && (
       <>
         <h2 class="sec-title">{kind === 'week' ? w.weekVideo : w.ranking}</h2>
-        <div class="vs-table">
+        <div class="vs-table wins-table">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
-            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><b>{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</b></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
+            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><br /><small><time datetime={c.at}>{new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(c.at.slice(0, 10) + 'T12:00:00Z'))}</time></small></td><td>{c.game ? <>{c.game}{c.provider && <small>{c.provider}</small>}</> : '–'}</td><td>{platformName(c.platform)}</td><td><b class="x">{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
           </table>
         </div>
-        <p class="fine">{w.fine}</p>
+        <p class="fine">{w.fine} <a href="/wins/feed.json" type="application/json">JSON</a></p>
       </>
     )}
 
