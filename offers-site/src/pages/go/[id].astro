@@ -19,7 +19,9 @@ const c = byId(Astro.params.id!);
   <script is:inline define:vars={{url: c.affiliate, id: c.id}}>
     (function () {
       var q = new URLSearchParams(location.search);
-      var body = JSON.stringify({slug: 'bigwindaily', event: 'click_cta', referrer: document.referrer || null, utmSource: q.get('utm_source') || q.get('src') || 'golink', utmMedium: q.get('utm_medium'), utmCampaign: 'go|' + id});
+      // L'API refuse tout l'événement (400) si un champ dépasse 160 caractères.
+      var camp = q.get('c') || q.get('utm_campaign');
+      var body = JSON.stringify({slug: 'bigwindaily', event: 'click_cta', referrer: document.referrer || null, utmSource: (q.get('utm_source') || q.get('src') || 'golink').slice(0, 160), utmMedium: q.get('utm_medium') && q.get('utm_medium').slice(0, 160), utmCampaign: ('go|' + id + (camp ? '|' + camp : '')).slice(0, 160)});
       var done = false; var go = function () { if (!done) { done = true; location.replace(url); } };
       try { fetch('https://lunalive-api.onrender.com/api/public/affi-events', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body, keepalive: true}).finally(go); } catch (e) { go(); }
       setTimeout(go, 600);

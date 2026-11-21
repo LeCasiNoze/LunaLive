@@ -91,6 +91,10 @@ button { font: inherit; color: inherit; }
 .btn-yt { color: #fff; background: linear-gradient(180deg, #ff3355, #e0002a); box-shadow: 0 8px 22px rgba(255, 0, 51, .3); }
 .btn-yt svg, .yt-mini svg { fill: currentColor; stroke: none; width: 20px; height: 20px; }
 .btn-yt:hover { filter: brightness(1.08); }
+.btn-tg, .tg-mini { background: linear-gradient(180deg, #2aabee, #1e88d0); box-shadow: 0 8px 22px rgba(42, 171, 238, .3); }
+.tg-mini { box-shadow: none; }
+.side-foot .yt-mini { padding: 10px 6px; gap: 6px; }
+.side-foot .age18 { flex: none; }
 .btn-ghost { color: var(--text); background: var(--panel2); border: 1px solid var(--line2); }
 .btn-ghost:hover { background: var(--panel3); }
 .btn-lg { min-height: 54px; padding: 0 26px; font-size: 16px; border-radius: 15px; }
@@ -195,6 +199,7 @@ button { font: inherit; color: inherit; }
 .wins h2 { font: 400 clamp(24px, 2.8vw, 34px)/1 var(--display); text-transform: uppercase; }
 .wins p { color: var(--muted); font-weight: 700; margin-top: 8px; font-size: 13px; letter-spacing: .04em; }
 .wins .btn { margin-left: auto; }
+.wins-tg { margin-top: 14px; background: linear-gradient(110deg, #0d2a3a 0%, #0f1a2e 55%, #12081f 100%); border-color: rgba(42, 171, 238, .3); }
 
 /* ---------- Étapes, qui, FAQ ---------- */
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }

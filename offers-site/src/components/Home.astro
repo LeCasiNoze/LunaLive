@@ -4,7 +4,7 @@ import Icon from './Icon.astro';
 import OfferCard from './OfferCard.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, PAIRS, byId, CHECKED, YOUTUBE} from '../data/casinos';
+import {CASINOS, PAIRS, byId, CHECKED, YOUTUBE, TELEGRAM} from '../data/casinos';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
@@ -84,6 +84,14 @@ const jsonld = [
         <p>{u.winsSub}</p>
       </div>
       <span class="btn btn-yt btn-lg"><Icon name="yt" />{u.winsCta}</span>
+    </a>
+    <a class="wins wins-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins">
+      <img src="/img/bwd-256.png" alt="" width="110" height="110" loading="lazy" />
+      <div>
+        <h2>{u.tg.title}</h2>
+        <p>{u.tg.sub}</p>
+      </div>
+      <span class="btn btn-yt btn-tg btn-lg"><Icon name="tg" />{u.tg.join}</span>
     </a>
   </section>
 

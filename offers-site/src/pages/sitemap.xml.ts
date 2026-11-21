@@ -5,7 +5,7 @@ import {CASINOS, PAIRS, CHECKED} from '../data/casinos';
 // Sitemap avec alternates hreflang pour chaque page et chaque langue.
 export const GET: APIRoute = ({site}) => {
   const base = site!.origin;
-  const paths = ['', ...CASINOS.map(c => `casinos/${c.id}/`), ...PAIRS.map(([a, b]) => `vs/${a}-vs-${b}/`), 'guide/', 'about/', 'responsible-gambling/', 'privacy/'];
+  const paths = ['', ...CASINOS.map(c => `casinos/${c.id}/`), ...PAIRS.map(([a, b]) => `vs/${a}-vs-${b}/`), 'guide/', 'about/', 'responsible-gambling/', 'privacy/', 'telegram/'];
   const urls = paths.flatMap(p => LANGS.map(l => {
     const alts = LANGS.map(a => `<xhtml:link rel="alternate" hreflang="${t(a).locale.slice(0, 2)}" href="${base}${href(a, p)}"/>`).join('')
       + `<xhtml:link rel="alternate" hreflang="x-default" href="${base}${href('en', p)}"/>`;

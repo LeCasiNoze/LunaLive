@@ -3,7 +3,7 @@ import '../styles/global.css';
 import Icon from '../components/Icon.astro';
 import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, byId, YOUTUBE, YT_SUB} from '../data/casinos';
+import {CASINOS, byId, YOUTUBE, YT_SUB, TELEGRAM} from '../data/casinos';
 
 interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string}
 const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = ''} = Astro.props;
@@ -30,6 +30,7 @@ const learn = [
   {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/'), icon: 'book'},
   {k: 'responsible-gambling', label: u.nav.rg, url: href(lang, 'responsible-gambling/'), icon: 'shield'},
   {k: 'about', label: u.nav.about, url: href(lang, 'about/'), icon: 'users'},
+  {k: 'telegram', label: u.tg.nav, url: href(lang, 'telegram/'), icon: 'tg'},
 ];
 ---
 <!doctype html>
@@ -81,6 +82,7 @@ const learn = [
     </nav>
     <div class="side-foot">
       <a class="yt-mini" href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="sidebar"><Icon name="yt" />YouTube</a>
+      <a class="yt-mini tg-mini" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="sidebar"><Icon name="tg" />Telegram</a>
       <span class="age18">18+</span>
     </div>
   </aside>
@@ -103,6 +105,7 @@ const learn = [
         <summary aria-label={d.nav.language}><Icon name="globe" />{d.short}</summary>
         <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}<span>{t(l).short}</span></a></li>)}</ul>
       </details>
+      <a class="btn btn-yt btn-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar" aria-label={u.tg.join}><Icon name="tg" /><span>{u.tg.join}</span></a>
       <a class="btn btn-yt" href={YT_SUB} target="_blank" rel="noopener" data-go="youtube-sub" data-place="topbar"><Icon name="yt" /><span>{u.subscribe}</span></a>
     </header>
 
@@ -124,6 +127,7 @@ const learn = [
             {learn.map(n => <a href={n.url}>{n.label}</a>)}
             <a href={href(lang, 'privacy/')}>{d.footer.links.privacy}</a>
             <a href={YOUTUBE} rel="noopener" target="_blank">YouTube</a>
+            <a href={TELEGRAM} rel="noopener" target="_blank" data-go="telegram" data-place="footer">Telegram</a>
           </div>
           <div class="langs">{LANGS.map(l => <a href={href(l, path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}</div>
         </div>

@@ -1,0 +1,49 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import {t, href, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {CASINOS, TELEGRAM, YT_SUB} from '../data/casinos';
+interface Props {lang: Lang}
+const {lang} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const g = u.tg;
+const site = Astro.site!.origin;
+const path = 'telegram/';
+const TONES = ['b', 'y', 'g'];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+    {'@type': 'ListItem', position: 1, name: d.review.crumbsHome, item: site + href(lang)},
+    {'@type': 'ListItem', position: 2, name: g.h1, item: site + href(lang, path)},
+  ]},
+];
+---
+<Base lang={lang} title={g.metaTitle} desc={g.metaDesc} path={path} jsonld={jsonld} active="telegram">
+  <div class="page">
+    <ol class="crumbs"><li><a href={href(lang)}>{d.review.crumbsHome}</a></li><li aria-current="page">{g.h1}</li></ol>
+
+    <header class="phero">
+      <span class="kick"><Icon name="tg" />Telegram</span>
+      <h1>{g.h1}</h1>
+      <p>{g.intro}</p>
+      <div class="cta-row">
+        <a class="btn btn-yt btn-tg btn-lg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="tg-page"><Icon name="tg" />{g.cta}</a>
+        <a class="btn btn-ghost btn-lg" href={YT_SUB} target="_blank" rel="noopener" data-go="youtube-sub" data-place="tg-page"><Icon name="yt" />YouTube</a>
+      </div>
+    </header>
+
+    <div class="pcards">
+      {g.items.map((s, i) => (
+        <section class={`pcard tone-${TONES[i]}`}>
+          <span class="pcard-ic"><Icon name={['trophy', 'zap', 'shield'][i]} /></span>
+          <h2>{s.h}</h2>
+          <p>{s.p}{i === 2 && <> <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a></>}</p>
+        </section>
+      ))}
+    </div>
+
+    <h2 class="sec-title">{u.offersTitle}</h2>
+    <div class="others">{CASINOS.map(o => <a class={`mini m-${o.id}`} href={href(lang, `casinos/${o.id}/`)}><img src={o.logo} alt="" width="46" height="46" loading="lazy" /><div><b>{o.name}</b><span>{d.casino[o.id].headline}</span></div><Icon name="arrow" /></a>)}</div>
+  </div>
+</Base>

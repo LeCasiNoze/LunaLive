@@ -60,6 +60,7 @@ export const PAIRS: [CasinoId, CasinoId][] = [['rainbet', 'betportal'], ['rainbe
 
 export const YOUTUBE = 'https://www.youtube.com/@BigWinDailyHits';
 export const YT_SUB = 'https://www.youtube.com/@BigWinDailyHits?sub_confirmation=1';
+export const TELEGRAM = 'https://t.me/BigWinDailyHits';
 export const API = 'https://lunalive-api.onrender.com';
 export const TRACK_SLUG = 'bigwindaily';
 export const CHECKED = '2026-11-19';
