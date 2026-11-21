@@ -199,7 +199,7 @@ function buildRumbleHlsUrl(rawId: string): string {
 }
 
 function isRumbleMasterPlaylistUrl(url: string): boolean {
-  return /https:\/\/rumble\.com\/live-hls(?:-dvr)?\//i.test(String(url || ""));
+  return /https:\/\/(?:wn\d+\.)?rumble\.com\/live-hls(?:-dvr)?\//i.test(String(url || ""));
 }
 
 /**
