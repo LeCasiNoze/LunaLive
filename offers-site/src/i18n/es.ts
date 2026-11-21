@@ -119,7 +119,7 @@ const es: Dict = {
         {q: '¿El rakeback es mejor que un bono de depósito?', a: 'Para quien da muchos giros, a menudo sí: no hay requisitos de apuesta para desbloquearlo, simplemente recuperas parte de tus apuestas.'},
         {q: '¿Cada cuánto puedo reclamar el rakeback en Rainbet?', a: 'Cada 15 minutos.'},
         {q: '¿Cómo me clasifico para la carrera mensual?', a: 'Regístrate con el código NIVORANET y apuesta al menos 1.000 $ durante el mes. El top 3 se reparte 200 $.'},
-        {q: '¿Puedo añadir el código después de registrarme?', a: 'Normalmente no. Asegúrate de que NIVORANET está en el campo del código antes de crear tu cuenta.'},
+        {q: '¿Puedo añadir el código después de registrarme?', a: 'Solo en las 24 horas siguientes al registro y antes de tu primer depósito; después ya no se puede cambiar. Lo más fácil: escribe NIVORANET en el campo del código al crear tu cuenta.'},
       ],
     },
     betportal: {

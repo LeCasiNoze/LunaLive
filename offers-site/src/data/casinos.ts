@@ -34,7 +34,8 @@ export const CASINOS: Casino[] = [
   },
   {
     id: 'betportal', name: 'Betportal', rank: 2, color: '#1ff25e', colorSoft: 'rgba(31,242,94,.14)', logo: '/img/logo-betportal.png',
-    affiliate: 'https://affiliate.betportal.com/visit/?bta=35392&brand=betportal',
+    // afp = paramètre libre de la plateforme affiliée (repris dans les rapports et postbacks) ; /go/betportal/ le remplace par son src.
+    affiliate: 'https://affiliate.betportal.com/visit/?bta=35392&brand=betportal&afp=site',
     terms: [
       {label: '1st deposit', url: 'https://betportal.com/en/promotions/38'},
       {label: '2nd deposit', url: 'https://betportal.com/en/promotions/37'},

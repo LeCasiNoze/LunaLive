@@ -119,7 +119,7 @@ const pt: Dict = {
         {q: 'O rakeback é melhor que um bônus de depósito?', a: 'Para quem gira muito, muitas vezes sim: não há rollover para liberá-lo, você simplesmente recebe de volta parte das suas apostas.'},
         {q: 'Com que frequência posso resgatar o rakeback na Rainbet?', a: 'A cada 15 minutos.'},
         {q: 'Como me qualifico para a corrida mensal?', a: 'Cadastre-se com o código NIVORANET e aposte pelo menos US$ 1.000 durante o mês. O top 3 divide US$ 200.'},
-        {q: 'Posso adicionar o código depois de me cadastrar?', a: 'Normalmente não. Confirme que NIVORANET está no campo de código antes de criar sua conta.'},
+        {q: 'Posso adicionar o código depois de me cadastrar?', a: 'Só nas 24 horas após o cadastro e antes do seu primeiro depósito; depois disso, não pode mais ser alterado. O mais simples: digite NIVORANET no campo de código ao criar sua conta.'},
       ],
     },
     betportal: {

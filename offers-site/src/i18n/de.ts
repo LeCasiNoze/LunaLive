@@ -119,7 +119,7 @@ const de: Dict = {
         {q: 'Ist Rakeback besser als ein Einzahlungsbonus?', a: 'Für Spieler, die viel drehen, oft ja: Es gibt keine Umsatzbedingungen zum Freischalten, du bekommst einfach einen Teil deiner Einsätze zurück.'},
         {q: 'Wie oft kann ich bei Rainbet Rakeback abholen?', a: 'Alle 15 Minuten.'},
         {q: 'Wie qualifiziere ich mich für das monatliche Rennen?', a: 'Melde dich mit dem Code NIVORANET an und setze im Monat mindestens 1.000 $ um. Die Top 3 teilen sich 200 $.'},
-        {q: 'Kann ich den Code nach der Anmeldung noch hinzufügen?', a: 'Meist nicht. Stelle sicher, dass NIVORANET im Code-Feld steht, bevor du dein Konto erstellst.'},
+        {q: 'Kann ich den Code nach der Anmeldung noch hinzufügen?', a: 'Nur innerhalb von 24 Stunden nach der Anmeldung und vor deiner ersten Einzahlung; danach lässt er sich nicht mehr ändern. Am einfachsten: Trage NIVORANET beim Erstellen deines Kontos ins Code-Feld ein.'},
       ],
     },
     betportal: {

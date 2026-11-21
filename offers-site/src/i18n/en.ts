@@ -118,7 +118,7 @@ const en = {
         {q: 'Is rakeback better than a deposit bonus?', a: 'For players who spin a lot, often yes: there is no wagering requirement to unlock it, you simply get part of your bets back.'},
         {q: 'How often can I claim rakeback on Rainbet?', a: 'Every 15 minutes.'},
         {q: 'How do I qualify for the monthly race?', a: 'Sign up with code NIVORANET and wager at least $1,000 during the month. The top 3 share $200.'},
-        {q: 'Can I add the code after signing up?', a: 'Usually not. Make sure NIVORANET is in the code field before you create your account.'},
+        {q: 'Can I add the code after signing up?', a: 'Only within 24 hours of signing up and before your first deposit; after that it can no longer be changed. Easiest: put NIVORANET in the code field when you create your account.'},
       ],
     },
     betportal: {
