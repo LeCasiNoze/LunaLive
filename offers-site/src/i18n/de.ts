@@ -115,7 +115,7 @@ const de: Dict = {
         {h: 'Für wen Rainbet passt', p: 'Für Spieler, die viele Slots drehen und lieber bei jeder Wette einen Teil zurückbekommen, statt einem großen Einzahlungsbonus mit hohen Umsatzbedingungen nachzujagen. Wenn du einen klassischen Einzahlungsbonus mit Freispielen willst, passt Betportal besser.'},
       ],
       faq: [
-        {q: 'Wie lautet der Rainbet Bonus Code?', a: 'NIVORANET. Er gibt einen +20 % Rakeback-Boost und die Teilnahme an unserem monatlichen 200-$-Wett-Rennen.'},
+        {q: 'Brauche ich bei Rainbet einen Code?', a: 'Ja: NIVORANET. Er gibt einen +20 % Rakeback-Boost und die Teilnahme an unserem monatlichen 200-$-Wett-Rennen.'},
         {q: 'Ist Rakeback besser als ein Einzahlungsbonus?', a: 'Für Spieler, die viel drehen, oft ja: Es gibt keine Umsatzbedingungen zum Freischalten, du bekommst einfach einen Teil deiner Einsätze zurück.'},
         {q: 'Wie oft kann ich bei Rainbet Rakeback abholen?', a: 'Alle 15 Minuten.'},
         {q: 'Wie qualifiziere ich mich für das monatliche Rennen?', a: 'Melde dich mit dem Code NIVORANET an und setze im Monat mindestens 1.000 $ um. Die Top 3 teilen sich 200 $.'},

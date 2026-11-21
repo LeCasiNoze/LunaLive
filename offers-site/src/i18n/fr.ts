@@ -115,7 +115,7 @@ const fr: Dict = {
         {h: 'Pour qui est Rainbet', p: 'Pour les joueurs qui enchaînent les slots et préfèrent récupérer une part de chaque mise plutôt que courir après un gros bonus de dépôt avec un wager lourd. Si tu veux un bonus de dépôt classique avec des free spins, Betportal est plus adapté.'},
       ],
       faq: [
-        {q: 'Quel est le code promo Rainbet ?', a: 'NIVORANET. Il donne un boost de rakeback de +20 % et l’accès à notre course mensuelle au wager de 200 $.'},
+        {q: 'Faut-il un code sur Rainbet ?', a: 'Oui : NIVORANET. Il donne un boost de rakeback de +20 % et l’accès à notre course mensuelle au wager de 200 $.'},
         {q: 'Le rakeback est-il meilleur qu’un bonus de dépôt ?', a: 'Pour les joueurs qui enchaînent les spins, souvent oui : aucun wager à remplir pour le débloquer, tu récupères simplement une partie de tes mises.'},
         {q: 'À quelle fréquence puis-je récupérer le rakeback sur Rainbet ?', a: 'Toutes les 15 minutes.'},
         {q: 'Comment me qualifier pour la course mensuelle ?', a: 'Inscris-toi avec le code NIVORANET et mise au moins 1 000 $ dans le mois. Le top 3 se partage 200 $.'},

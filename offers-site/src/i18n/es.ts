@@ -115,7 +115,7 @@ const es: Dict = {
         {h: 'Para quién es Rainbet', p: 'Para jugadores que dan muchos giros y prefieren recuperar una parte de cada apuesta antes que perseguir un gran bono sobre el depósito con requisitos de apuesta exigentes. Si quieres un bono de depósito clásico con giros gratis, Betportal encaja mejor.'},
       ],
       faq: [
-        {q: '¿Cuál es el código promocional de Rainbet?', a: 'NIVORANET. Da un boost de rakeback del +20 % y acceso a nuestra carrera mensual de apuestas de 200 $.'},
+        {q: '¿Necesito un código en Rainbet?', a: 'Sí: NIVORANET. Da un boost de rakeback del +20 % y acceso a nuestra carrera mensual de apuestas de 200 $.'},
         {q: '¿El rakeback es mejor que un bono de depósito?', a: 'Para quien da muchos giros, a menudo sí: no hay requisitos de apuesta para desbloquearlo, simplemente recuperas parte de tus apuestas.'},
         {q: '¿Cada cuánto puedo reclamar el rakeback en Rainbet?', a: 'Cada 15 minutos.'},
         {q: '¿Cómo me clasifico para la carrera mensual?', a: 'Regístrate con el código NIVORANET y apuesta al menos 1.000 $ durante el mes. El top 3 se reparte 200 $.'},

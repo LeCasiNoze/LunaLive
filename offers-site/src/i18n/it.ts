@@ -115,7 +115,7 @@ const it: Dict = {
         {h: 'A chi è adatto Rainbet', p: 'A chi gira molte slot e preferisce riavere una parte di ogni puntata invece di inseguire un grosso bonus sul deposito con requisiti di puntata pesanti. Se vuoi un classico bonus sul deposito con giri gratis, Betportal è più adatto.'},
       ],
       faq: [
-        {q: 'Qual è il codice promo di Rainbet?', a: 'NIVORANET. Ti dà un boost del +20% sul rakeback e l’ingresso nella nostra gara mensile di puntate da 200 $.'},
+        {q: 'Serve un codice su Rainbet?', a: 'Sì: NIVORANET. Ti dà un boost del +20% sul rakeback e l’ingresso nella nostra gara mensile di puntate da 200 $.'},
         {q: 'Il rakeback è meglio di un bonus sul deposito?', a: 'Per chi gira tanto, spesso sì: non ci sono requisiti di puntata da soddisfare per sbloccarlo, ricevi semplicemente una parte delle tue puntate.'},
         {q: 'Ogni quanto posso richiedere il rakeback su Rainbet?', a: 'Ogni 15 minuti.'},
         {q: 'Come mi qualifico per la gara mensile?', a: 'Registrati con il codice NIVORANET e punta almeno 1.000 $ nel corso del mese. I primi 3 si dividono 200 $.'},

@@ -115,7 +115,7 @@ const pt: Dict = {
         {h: 'Para quem é a Rainbet', p: 'Para quem gira muitos slots e prefere receber de volta uma parte de cada aposta a correr atrás de um grande bônus de depósito com rollover pesado. Se você quer um bônus de depósito clássico com rodadas grátis, a Betportal combina mais.'},
       ],
       faq: [
-        {q: 'Qual é o código promocional da Rainbet?', a: 'NIVORANET. Ele dá um boost de rakeback de +20% e entrada na nossa corrida mensal de apostas de US$ 200.'},
+        {q: 'Preciso de um código na Rainbet?', a: 'Sim: NIVORANET. Ele dá um boost de rakeback de +20% e entrada na nossa corrida mensal de apostas de US$ 200.'},
         {q: 'O rakeback é melhor que um bônus de depósito?', a: 'Para quem gira muito, muitas vezes sim: não há rollover para liberá-lo, você simplesmente recebe de volta parte das suas apostas.'},
         {q: 'Com que frequência posso resgatar o rakeback na Rainbet?', a: 'A cada 15 minutos.'},
         {q: 'Como me qualifico para a corrida mensal?', a: 'Cadastre-se com o código NIVORANET e aposte pelo menos US$ 1.000 durante o mês. O top 3 divide US$ 200.'},

@@ -114,7 +114,7 @@ const en = {
         {h: 'Who Rainbet is for', p: 'Players who spin a lot of slots and prefer getting a share of every bet back over chasing a big deposit match with heavy wagering. If you want a classic deposit bonus with free spins, Betportal fits better.'},
       ],
       faq: [
-        {q: 'What is the Rainbet promo code?', a: 'NIVORANET. It gives a +20% rakeback boost and entry into our monthly $200 wager race.'},
+        {q: 'Do I need a code on Rainbet?', a: 'Yes: NIVORANET. It gives a +20% rakeback boost and entry into our monthly $200 wager race.'},
         {q: 'Is rakeback better than a deposit bonus?', a: 'For players who spin a lot, often yes: there is no wagering requirement to unlock it, you simply get part of your bets back.'},
         {q: 'How often can I claim rakeback on Rainbet?', a: 'Every 15 minutes.'},
         {q: 'How do I qualify for the monthly race?', a: 'Sign up with code NIVORANET and wager at least $1,000 during the month. The top 3 share $200.'},
