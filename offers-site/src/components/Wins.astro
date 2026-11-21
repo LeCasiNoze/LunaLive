@@ -30,7 +30,7 @@ const segs = fmt(kind === 'week' ? w.dWeek : w.dDay, vars).split('¦');
 while (segs.length > 1 && segs.join('').length > 160) segs.pop();
 const desc = segs.join('');
 const h1 = kind === 'latest' ? fmt(w.h1Latest, vars) : kind === 'day' ? fmt(w.h1Day, vars) : fmt(w.h1Week, vars);
-const stake = !n1 ? '' : n1.bonus_buy && n1.buy_cost != null ? fmt(w.stakeBuy, {v: money(n1.buy_cost, n1.currency, lang)}) : n1.bet != null ? fmt(w.stakeBet, {v: money(n1.bet, n1.currency, lang)}) : '';
+const stake = !n1 ? '' : n1.bonus_buy ? (n1.buy_cost != null ? fmt(w.stakeBuy, {v: money(n1.buy_cost, n1.currency, lang)}) : w.stakeBuyNoPrice) : n1.bet != null ? fmt(w.stakeBet, {v: money(n1.bet, n1.currency, lang)}) : '';
 const intro = n1 ? [fmt(w.intro1, {...vars, x: xg(n1), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
 const yt = v?.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
 const thumb = v?.thumb || (v?.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
@@ -71,7 +71,7 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
         <div class="vs-table">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
-            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && c.buy_cost != null && <><br /><b>{w.buy.toLocaleUpperCase(t(lang).locale)} {money(c.buy_cost, c.currency, lang)}</b></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
+            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><b>{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</b></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
           </table>
         </div>
         <p class="fine">{w.fine}</p>
