@@ -1,0 +1,57 @@
+{
+ "generated_at": "2026-11-21T06:12:09+01:00",
+ "videos": [
+  {
+   "kind": "daily",
+   "period": "2026-11-19",
+   "label": "NOV 19, 2026",
+   "title": null,
+   "youtube_id": "2-BZxe4NO2E",
+   "short_id": null,
+   "thumb": "https://i.ytimg.com/vi/2-BZxe4NO2E/hqdefault.jpg",
+   "publish_at": null,
+   "age_restricted": null,
+   "clips": [
+    {
+     "rank": 1,
+     "streamer": "Syztmz",
+     "platform": "kick",
+     "multi": 10781,
+     "win": 4312.36,
+     "bet": 0.4,
+     "bonus_buy": false,
+     "currency": null,
+     "at": "2026-11-19T00:34:45.222096+01:00",
+     "game": "Bootleggers",
+     "provider": null
+    }
+   ]
+  },
+  {
+   "kind": "daily",
+   "period": "2026-11-18",
+   "label": "NOV 18, 2026",
+   "title": null,
+   "youtube_id": "vBfo5czi-XQ",
+   "short_id": null,
+   "thumb": "https://i.ytimg.com/vi/vBfo5czi-XQ/hqdefault.jpg",
+   "publish_at": null,
+   "age_restricted": true,
+   "clips": [
+    {
+     "rank": 4,
+     "streamer": "Classybeef",
+     "platform": "kick",
+     "multi": 488,
+     "win": 9750.0,
+     "bet": 20.0,
+     "bonus_buy": false,
+     "currency": null,
+     "at": "2026-11-18T11:11:12.116744+01:00",
+     "game": null,
+     "provider": null
+    }
+   ]
+  }
+ ]
+}

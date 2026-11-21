@@ -4,6 +4,7 @@ import Icon from './Icon.astro';
 import {t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {CASINOS, TELEGRAM, YT_SUB} from '../data/casinos';
+import {winsPages} from '../data/wins';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
@@ -12,6 +13,7 @@ const g = u.tg;
 const site = Astro.site!.origin;
 const path = 'telegram/';
 const TONES = ['b', 'y', 'g'];
+const hasWins = (await winsPages()).length > 0;
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
     {'@type': 'ListItem', position: 1, name: d.review.crumbsHome, item: site + href(lang)},
@@ -30,6 +32,7 @@ const jsonld = [
       <div class="cta-row">
         <a class="btn btn-yt btn-tg btn-lg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="tg-page"><Icon name="tg" />{g.cta}</a>
         <a class="btn btn-ghost btn-lg" href={YT_SUB} target="_blank" rel="noopener" data-go="youtube-sub" data-place="tg-page"><Icon name="yt" />YouTube</a>
+        {hasWins && <a class="btn btn-ghost btn-lg" href={href(lang, 'wins/')}><Icon name="trophy" />{u.wins.latest}</a>}
       </div>
     </header>
 

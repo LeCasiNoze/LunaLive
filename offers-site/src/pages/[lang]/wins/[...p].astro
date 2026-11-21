@@ -1,0 +1,10 @@
+---
+import Wins from '../../../components/Wins.astro';
+import {winsPaths, LANGS} from '../../../data/wins';
+// Versions traduites : /<lang>/wins/…
+export async function getStaticPaths() {
+  return (await winsPaths(LANGS.filter(l => l !== 'en'))).map(({lang, page}) => ({params: {lang, p: page.sub.replace(/^wins\/?/, '').replace(/\/$/, '') || undefined}, props: {lang, page}}));
+}
+const {lang, page} = Astro.props as any;
+---
+<Wins lang={lang} page={page} />

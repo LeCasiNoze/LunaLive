@@ -3,7 +3,7 @@ import '../styles/global.css';
 import Icon from '../components/Icon.astro';
 import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, byId, YOUTUBE, YT_SUB, TELEGRAM} from '../data/casinos';
+import {CASINOS, byId, ranked, YOUTUBE, YT_SUB, TELEGRAM} from '../data/casinos';
 import {loadFeed, byKind} from '../data/wins';
 
 // mono : page en une seule langue (pas d'alternates hreflang).
@@ -14,6 +14,8 @@ const u = ui(lang);
 const site = Astro.site!.origin;
 const canonical = site + href(lang, path);
 const rb = byId('rainbet');
+// Barre collante : le n°1 de la langue (Rainbet exclut l'Allemagne et l'Autriche).
+const st = ranked(lang)[0];
 const ld = [
   {'@context': 'https://schema.org', '@type': 'Organization', '@id': site + '/#org', name: 'Big Win Daily', url: site + '/', logo: site + '/icon-512.png', sameAs: [YOUTUBE]},
   {'@context': 'https://schema.org', '@type': 'WebSite', '@id': site + '/#site', name: 'Big Win Daily', url: site + '/', inLanguage: LANGS.map(l => t(l).locale), publisher: {'@id': site + '/#org'}},
@@ -30,7 +32,7 @@ const nav = [
 ];
 const hasWins = byKind(await loadFeed(), 'daily').length > 0;
 const learn = [
-  ...(hasWins ? [{k: 'wins', label: 'Biggest slot wins', url: '/wins/', icon: 'trophy'}] : []),
+  ...(hasWins ? [{k: 'wins', label: u.wins.nav, url: href(lang, 'wins/'), icon: 'trophy'}] : []),
   {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/'), icon: 'book'},
   {k: 'responsible-gambling', label: u.nav.rg, url: href(lang, 'responsible-gambling/'), icon: 'shield'},
   {k: 'about', label: u.nav.about, url: href(lang, 'about/'), icon: 'users'},
@@ -140,10 +142,10 @@ const learn = [
   </div>
 
   {sticky && (
-    <div class="sticky" role="complementary" aria-label={rb.name}>
-      <img src={rb.logo} alt="" width="40" height="40" />
-      <b>{d.casino.rainbet.headline}<small>{d.sticky.text}</small></b>
-      <a class="btn btn-play btn-sm" href={rb.affiliate} target="_blank" rel="sponsored noopener" data-go="rainbet" data-place="sticky">{d.sticky.cta}</a>
+    <div class="sticky" role="complementary" aria-label={st.name}>
+      <img src={st.logo} alt="" width="40" height="40" />
+      <b>{d.casino[st.id].headline}<small>{st.code ? d.sticky.text : d.casino[st.id].short}</small></b>
+      <a class="btn btn-play btn-sm" href={st.affiliate} target="_blank" rel="sponsored noopener" data-go={st.id} data-place="sticky">{d.sticky.cta}</a>
     </div>
   )}
 

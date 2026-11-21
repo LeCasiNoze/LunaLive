@@ -5,12 +5,16 @@ import OfferCard from './OfferCard.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, PAIRS, byId, CHECKED, YOUTUBE, TELEGRAM} from '../data/casinos';
+import {winsPages} from '../data/wins';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
 const u = ui(lang);
 const rb = byId('rainbet');
 const CASINOS = ranked(lang);
+// Le n°1 de la langue (Celsius en allemand, Rainbet ailleurs) est mis en vedette.
+const lead = CASINOS[0];
+const hasWins = (await winsPages()).length > 0;
 const date = fmtDate(lang, CHECKED);
 const site = Astro.site!.origin;
 const jsonld = [
@@ -26,32 +30,44 @@ const jsonld = [
         <h1><span>{u.heroA}</span> <em>{u.heroB}</em></h1>
         <p>{u.heroSub}</p>
         <div class="hero-cta">
-          <a class="btn btn-play btn-lg" href={rb.affiliate} target="_blank" rel="sponsored noopener" data-go="rainbet" data-place="hero"><Icon name="play" />{u.heroCta}</a>
+          <a class="btn btn-play btn-lg" href={lead.affiliate} target="_blank" rel="sponsored noopener" data-go={lead.id} data-place="hero"><Icon name="play" />{u.heroCta}</a>
           <a class="btn btn-ghost btn-lg" href="#offers">{u.offersTitle}<Icon name="chevron" /></a>
         </div>
       </div>
-      <div class="hero-card" data-sticky-anchor>
-        <div class="hc-top">
-          <img src={rb.logo} alt="Rainbet" width="56" height="56" />
-          <div><b>Rainbet</b><span>{u.top}</span></div>
-        </div>
-        <p class="hc-big">+20%<small>Rakeback</small></p>
-        <p class="hc-sub">{d.casino.rainbet.headline}</p>
-        <div class="code">
-          <span class="code-l">{u.code}</span>
-          <b>{rb.code}</b>
-          <button type="button" data-copy={rb.code} data-done={d.featured.copied} data-place="hero"><Icon name="copy" /><span>{d.featured.copy}</span></button>
-        </div>
-        <div class="race">
-          <span class="t"><Icon name="trophy" />{d.featured.race}</span>
-          <div class="cd" data-cd>
-            <span class="u" data-u>00<small>{d.featured.d}</small></span>
-            <span class="u" data-u>00<small>{d.featured.h}</small></span>
-            <span class="u" data-u>00<small>{d.featured.m}</small></span>
-            <span class="u" data-u>00<small>{d.featured.s}</small></span>
+      {lead.id === 'rainbet' ? (
+        <div class="hero-card" data-sticky-anchor>
+          <div class="hc-top">
+            <img src={rb.logo} alt="Rainbet" width="56" height="56" />
+            <div><b>Rainbet</b><span>{u.top}</span></div>
+          </div>
+          <p class="hc-big">+20%<small>Rakeback</small></p>
+          <p class="hc-sub">{d.casino.rainbet.headline}</p>
+          <div class="code">
+            <span class="code-l">{u.code}</span>
+            <b>{rb.code}</b>
+            <button type="button" data-copy={rb.code} data-done={d.featured.copied} data-place="hero"><Icon name="copy" /><span>{d.featured.copy}</span></button>
+          </div>
+          <div class="race">
+            <span class="t"><Icon name="trophy" />{d.featured.race}</span>
+            <div class="cd" data-cd>
+              <span class="u" data-u>00<small>{d.featured.d}</small></span>
+              <span class="u" data-u>00<small>{d.featured.h}</small></span>
+              <span class="u" data-u>00<small>{d.featured.m}</small></span>
+              <span class="u" data-u>00<small>{d.featured.s}</small></span>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div class="hero-card" data-sticky-anchor>
+          <div class="hc-top">
+            <img src={lead.logo} alt={lead.name} width="56" height="56" />
+            <div><b>{lead.name}</b><span>{u.top}</span></div>
+          </div>
+          <p class="hc-sub" style="font-size:22px;font-weight:800">{d.casino[lead.id].headline}</p>
+          <p class="hc-sub">{d.casino[lead.id].short}</p>
+          <a class="btn btn-play btn-block" href={lead.affiliate} target="_blank" rel="sponsored noopener" data-go={lead.id} data-place="hero-card"><Icon name="play" />{u.play}</a>
+        </div>
+      )}
     </div>
   </section>
 
@@ -78,7 +94,7 @@ const jsonld = [
   </section>
 
   <section class="sec">
-    <a class="wins" href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="wins">
+    <a class="wins" href={hasWins ? href(lang, 'wins/') : YOUTUBE} target={hasWins ? undefined : '_blank'} rel="noopener" data-go={hasWins ? 'wins' : 'youtube'} data-place="wins">
       <img src="/img/bwd-256.png" alt="Big Win Daily" width="110" height="110" loading="lazy" />
       <div>
         <h2>{u.winsTitle}</h2>

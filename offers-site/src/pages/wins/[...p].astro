@@ -1,20 +1,10 @@
 ---
 import Wins from '../../components/Wins.astro';
-import {loadFeed, byKind, dayLabel, type Video} from '../../data/wins';
-// /wins/ (dernier Top du jour), /wins/<AAAA-MM-JJ>/, /wins/week/<AAAA-Wnn>/. Sans flux : aucune page.
+import {winsPaths} from '../../data/wins';
+// Version anglaise, à la racine : /wins/, /wins/<AAAA-MM-JJ>/, /wins/week/<AAAA-Wnn>/. Sans flux : aucune page.
 export async function getStaticPaths() {
-  const f = await loadFeed();
-  const days = byKind(f, 'daily'), weeks = byKind(f, 'weekly');
-  const url = (v: Video) => (v.kind === 'daily' ? `/wins/${v.period}/` : `/wins/week/${v.period}/`);
-  const nav = (list: Video[], i: number) => ({prev: list[i + 1] && url(list[i + 1]), next: list[i - 1] && url(list[i - 1])});
-  const recent = days.slice(0, 7).map(v => ({url: url(v), label: dayLabel(v.period)}));
-  if (!days.length) return [];
-  return [
-    {params: {p: undefined}, props: {v: days[0], path: 'wins/', latest: true, others: [...recent.slice(1), ...weeks.slice(0, 1).map(w => ({url: url(w), label: 'This week’s Top 10'}))]}},
-    ...days.map((v, i) => ({params: {p: v.period}, props: {v, path: `wins/${v.period}/`, ...nav(days, i), others: recent.filter(o => o.url !== url(v))}})),
-    ...weeks.map((v, i) => ({params: {p: `week/${v.period}`}, props: {v, path: `wins/week/${v.period}/`, ...nav(weeks, i)}})),
-  ];
+  return (await winsPaths(['en'])).map(({lang, page}) => ({params: {p: page.sub.replace(/^wins\/?/, '').replace(/\/$/, '') || undefined}, props: {lang, page}}));
 }
-const props = Astro.props as any;
+const {lang, page} = Astro.props as any;
 ---
-<Wins {...props} />
+<Wins lang={lang} page={page} />
