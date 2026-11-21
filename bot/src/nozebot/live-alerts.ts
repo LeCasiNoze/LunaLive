@@ -63,6 +63,8 @@ type LunaLiveEntry = {
 
 const STATE_TABLE = "nozebot_live_alert_state";
 const CLAIM_TIMEOUT_MINUTES = 3;
+// Une détection de live qui oscille ne doit jamais republier l'alerte (@everyone).
+const ALERT_COOLDOWN_MINUTES = 120;
 const OFFLINE_CONFIRMATION_POLLS = 3;
 
 function cleanBaseUrl(value: string): string {
@@ -296,7 +298,9 @@ async function claimLiveAlert(
        claimed_at = NOW(),
        last_seen_at = NOW(),
        updated_at = NOW()
-     WHERE ${STATE_TABLE}.is_live = FALSE
+     WHERE (${STATE_TABLE}.announced_at IS NULL
+        OR ${STATE_TABLE}.announced_at < NOW() - ($9::int * INTERVAL '1 minute'))
+       AND (${STATE_TABLE}.is_live = FALSE
         OR ${STATE_TABLE}.live_key IS DISTINCT FROM EXCLUDED.live_key
         OR (
           ${STATE_TABLE}.message_id IS NULL
@@ -304,7 +308,7 @@ async function claimLiveAlert(
             ${STATE_TABLE}.claimed_at IS NULL
             OR ${STATE_TABLE}.claimed_at < NOW() - ($8::int * INTERVAL '1 minute')
           )
-        )
+        ))
      RETURNING claim_token AS "claimToken"`,
     [
       config.guildId,
@@ -315,6 +319,7 @@ async function claimLiveAlert(
       snapshot.startedAt,
       claimToken,
       CLAIM_TIMEOUT_MINUTES,
+      ALERT_COOLDOWN_MINUTES,
     ]
   );
   return result.rows[0]?.claimToken === claimToken ? claimToken : null;
