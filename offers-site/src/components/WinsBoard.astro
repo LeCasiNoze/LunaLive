@@ -1,0 +1,105 @@
+---
+import Shell from '../layouts/Shell.astro';
+import {t, href, fmt, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {ranked, TELEGRAM} from '../data/casinos';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, slug} from '../data/wins';
+// Proposition de refonte de /wins/ (dernier Top et pages jour) : le classement d'abord, la vidéo et l'offre principale à côté.
+interface Props {lang: Lang; page: WinsPage}
+const {lang, page} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const w = u.wins;
+const site = Astro.site!.origin;
+const v = page.v!;
+const clips = top(v);
+const n1 = clips[0];
+const date = dayLabel(lang, v.period);
+const vars = {n: clips.length, date, x: multi(n1.multi), who: streamerName(n1.streamer), pf: platformName(n1.platform)};
+let title = page.kind === 'latest' ? fmt(w.tLatest, vars) : fmt(w.tDay, vars);
+if (title.length > 60) title = title.split(' – ')[0];
+const segs = fmt(w.dDay, vars).split('¦');
+while (segs.length > 1 && segs.join('').length > 160) segs.pop();
+const desc = segs.join('');
+const h1 = page.kind === 'latest' ? fmt(w.h1Latest, vars) : fmt(w.h1Day, vars);
+const big = clips.reduce((a, c) => (c.multi > a.multi ? c : a), n1);
+const xg = (c: typeof n1) => (c.game ? `${multi(c.multi)} ${w.on} ${c.game}` : multi(c.multi));
+const stake = big.bonus_buy ? (big.buy_cost != null ? fmt(w.stakeBuy, {v: money(big.buy_cost, big.currency, lang)}) : w.stakeBuyNoPrice) : big.bet != null ? fmt(w.stakeBet, {v: money(big.bet, big.currency, lang)}) : '';
+const pfs = [...new Set(clips.map(c => platformName(c.platform)))].join(' & ');
+const lede = [fmt(w.intro1, {...vars, x: xg(big), who: streamerName(big.streamer), pf: platformName(big.platform), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs, n: clips.length, xl: multi(clips[clips.length - 1].multi)})].join(' ');
+const yt = v.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
+const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
+const embed = !!v.youtube_id && v.age_restricted === false;
+const offer = ranked(lang)[0];
+const slotUrl = (g: string) => page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, ...(page.kind === 'latest' ? [] : [{name: date, url: href(lang, page.sub)}])];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: clips.length,
+    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${xg(c)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`}))},
+];
+const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
+---
+<Shell lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
+  <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
+
+  <header class="pg-hd">
+    <p class="kick">Top {clips.length} · <time datetime={v.period}>{date}</time></p>
+    <h1>{h1}</h1>
+    <p class="lede">{lede}</p>
+  </header>
+
+  <div class="board">
+    <section class="board-main" aria-labelledby="rk-t">
+      <h2 id="rk-t" class="vh">{w.ranking}</h2>
+      <table class="rk">
+        <thead><tr>{cols.map((c, i) => <th scope="col" class={i >= 3 ? 'num' : undefined}>{c}</th>)}</tr></thead>
+        <tbody>{clips.map(c => (
+          <tr class={c.rank === 1 ? 'top' : undefined}>
+            <td class="pos">{c.rank}</td>
+            <td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><span class="sub">{platformName(c.platform)}</span></td>
+            <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{c.provider && <span class="sub">{c.provider}</span>}</td>
+            <td class="num x">{multi(c.multi)}</td>
+            <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
+            <td class="num">{money(c.win, c.currency, lang)}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <p class="note">{w.method} {w.fine} <a href="/wins/feed.json" type="application/json">JSON</a></p>
+    </section>
+
+    <aside class="board-side">
+      <div class="offer">
+        <div class="offer-hd">
+          <img src={offer.logo} alt="" width="40" height="40" />
+          <div><b>{offer.name}</b><span>{d.casino[offer.id].headline}</span></div>
+        </div>
+        <a class="btn" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="wins-side">{u.play}</a>
+        <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a></p>
+      </div>
+      {yt && (embed
+        ? <div class="vid"><iframe src={`https://www.youtube-nocookie.com/embed/${v.youtube_id}`} title={title} loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
+        : <a class="vid" href={yt} target="_blank" rel="noopener" data-go="youtube" data-place="wins-side">{thumb && <img src={thumb} alt={title} width="480" height="270" loading="lazy" />}<span>{fmt(w.watch, {n: clips.length})}</span></a>)}
+      <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-side"><b>{u.tg.title}</b><span>{u.tg.short} →</span></a>
+    </aside>
+  </div>
+
+  {page.days.length > 0 && (
+    <section class="sec">
+      <h2>{w.more}</h2>
+      <table class="list"><tbody>{page.days.map(x => { const t1 = top(x)[0]; return <tr><td><a href={href(lang, `wins/${x.period}/`)}>{dayLabel(lang, x.period)}</a></td><td>{streamerName(t1.streamer)}</td><td class="num x">{multi(t1.multi)}</td></tr>; })}</tbody></table>
+    </section>
+  )}
+
+  {((page.streamers?.length ?? 0) > 0 || (page.slots?.length ?? 0) > 0) && (
+    <section class="sec cols2">
+      {(page.streamers?.length ?? 0) > 0 && <div><h2>{w.byStreamer}</h2><ul class="links">{page.streamers!.map(g => <li><a href={href(lang, g.sub)}>{g.name}</a><span>{multi(g.hits[0].multi)}</span></li>)}</ul></div>}
+      {(page.slots?.length ?? 0) > 0 && <div><h2>{w.bySlot}</h2><ul class="links">{page.slots!.map(g => <li><a href={href(lang, g.sub)}>{g.name}</a><span>{multi(g.hits[0].multi)}</span></li>)}</ul></div>}
+    </section>
+  )}
+
+  <section class="sec rg">
+    <h2>{w.rgT}</h2>
+    <p>{w.rgP} <a href={href(lang, 'responsible-gambling/')}>{d.rg.link}</a></p>
+  </section>
+</Shell>

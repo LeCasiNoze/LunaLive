@@ -1,0 +1,11 @@
+---
+import Wins from '../../../../components/Wins.astro';
+import WinsGroup from '../../../../components/WinsGroup.astro';
+import {winsPaths, LANGS} from '../../../../data/wins';
+// Versions traduites : /<lang>/wins/week|slot|streamer/<id>/.
+export async function getStaticPaths() {
+  return (await winsPaths(LANGS.filter(l => l !== 'en'))).filter(({page}) => page.kind !== 'latest' && page.kind !== 'day').map(({lang, page}) => { const [, kind, id] = page.sub.split('/'); return {params: {lang, kind, id}, props: {lang, page}}; });
+}
+const {lang, page} = Astro.props as any;
+---
+{page.kind === 'week' ? <Wins lang={lang} page={page} /> : <WinsGroup lang={lang} page={page} />}
