@@ -387,6 +387,13 @@ footer { margin-top: 50px; padding: 30px 0 110px; border-top: 1px solid var(--li
 .wins-table td small { display: block; margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--dim); white-space: nowrap; }
 .wins-table .x { font: 400 26px/1 var(--display); color: var(--y); white-space: nowrap; }
 .wins-table .buy { display: inline-block; margin-top: 6px; padding: 3px 8px; border-radius: 999px; background: var(--red); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: .04em; white-space: nowrap; }
+/* Sur téléphone, le multiplicateur doit rester visible sans défilement : jeu et plateforme passent à la trappe (la plateforme est rappelée dans l'intro). */
+@media (max-width: 600px) {
+  .wins-table th, .wins-table td { padding: 10px 6px; }
+  .wins-table .x { font-size: 20px; }
+  .wins-table thead th { font-size: 15px; }
+  .wins-day th:nth-child(3), .wins-day td:nth-child(3), .wins-day th:nth-child(4), .wins-day td:nth-child(4), .wins-group th:nth-child(3), .wins-group td:nth-child(3) { display: none; }
+}
 .vs-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
 .vs-pick > div { padding: 18px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); }
 .vs-pick h3 { font: 400 22px/1.1 var(--display); text-transform: uppercase; margin-bottom: 12px; }

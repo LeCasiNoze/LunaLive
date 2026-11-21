@@ -52,7 +52,7 @@ const jsonld = [
     </header>
 
     <h2 class="sec-title">{w.ranking}</h2>
-    <div class="vs-table wins-table">
+    <div class="vs-table wins-table wins-group">
       <table>
         <thead><tr>{(slot ? w.colsSlot : w.colsStreamer).map(c => <th scope="col">{c}</th>)}</tr></thead>
         <tbody>{hits.map(c => <tr>

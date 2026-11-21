@@ -73,7 +73,7 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
     {clips.length > 0 && (
       <>
         <h2 class="sec-title">{kind === 'week' ? w.weekVideo : w.ranking}</h2>
-        <div class="vs-table wins-table">
+        <div class="vs-table wins-table wins-day">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
             <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><br /><small><time datetime={c.at}>{new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(c.at.slice(0, 10) + 'T12:00:00Z'))}</time></small></td><td>{c.game ? <>{slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game}{c.provider && <small>{c.provider}</small>}</> : '–'}</td><td>{platformName(c.platform)}</td><td><b class="x">{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
