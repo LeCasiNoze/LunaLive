@@ -1,10 +1,11 @@
 ---
 import Wins from '../../components/Wins.astro';
+import WinsGroup from '../../components/WinsGroup.astro';
 import {winsPaths} from '../../data/wins';
-// Version anglaise, à la racine : /wins/, /wins/<AAAA-MM-JJ>/, /wins/week/<AAAA-Wnn>/. Sans flux : aucune page.
+// Version anglaise, à la racine : /wins/, /wins/<AAAA-MM-JJ>/, /wins/week/<AAAA-Wnn>/, /wins/slot/<jeu>/, /wins/streamer/<nom>/. Sans flux : aucune page.
 export async function getStaticPaths() {
   return (await winsPaths(['en'])).map(({lang, page}) => ({params: {p: page.sub.replace(/^wins\/?/, '').replace(/\/$/, '') || undefined}, props: {lang, page}}));
 }
 const {lang, page} = Astro.props as any;
 ---
-<Wins lang={lang} page={page} />
+{page.kind === 'slot' || page.kind === 'streamer' ? <WinsGroup lang={lang} page={page} /> : <Wins lang={lang} page={page} />}

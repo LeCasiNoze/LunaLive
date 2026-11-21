@@ -1,0 +1,90 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from './Icon.astro';
+import GroupCards from './GroupCards.astro';
+import {t, href, fmt, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {ranked} from '../data/casinos';
+import {type WinsPage, money, multi, streamerName, platformName, channelUrl, dayLabel} from '../data/wins';
+// Pages « <jeu> max win » et « <streamer> biggest wins » : tous les gains vérifiés d'un jeu ou d'un streamer, tirés des Tops du jour publiés.
+interface Props {lang: Lang; page: WinsPage}
+const {lang, page} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const w = u.wins;
+const site = Astro.site!.origin;
+const slot = page.kind === 'slot';
+const hits = page.hits!;
+const big = hits[0];
+const name = page.name!;
+const pfs = [...new Set(hits.map(c => platformName(c.platform)))].join(' & ');
+const vars = {g: name, who: slot ? streamerName(big.streamer) : name, x: multi(big.multi), n: hits.length, pf: slot ? platformName(big.platform) : pfs};
+let title = slot ? fmt(w.tSlot, vars) : big.game ? fmt(w.tStreamer, {...vars, g: big.game}) : fmt(w.tStreamerNo, vars);
+if (title.length > 60) title = title.replace(/ \([^)]*\)$/, '');
+const segs = fmt(slot ? w.dSlot : w.dStreamer, vars).split('¦');
+while (segs.length > 1 && segs.join('').length > 160) segs.pop();
+const desc = segs.join('');
+const h1 = fmt(slot ? w.h1Slot : w.h1Streamer, vars);
+const stake = big.bonus_buy ? (big.buy_cost != null ? fmt(w.stakeBuy, {v: money(big.buy_cost, big.currency, lang)}) : w.stakeBuyNoPrice) : big.bet != null ? fmt(w.stakeBet, {v: money(big.bet, big.currency, lang)}) : '';
+const intro = [fmt(slot ? w.iSlot : w.iStreamer, {...vars, x: slot || !big.game ? multi(big.multi) : `${multi(big.multi)} ${w.on} ${big.game}`, stake, pf: platformName(big.platform), date: dayLabel(lang, big.day)}), w.method].join(' ');
+const short = (iso: string) => new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
+const offer = ranked(lang)[0];
+const crumbs = [
+  {name: d.review.crumbsHome, url: href(lang)},
+  {name: w.crumb, url: href(lang, 'wins/')},
+  {name, url: href(lang, page.sub)},
+];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: hits.length,
+    itemListElement: hits.map(c => ({'@type': 'ListItem', position: c.rank, name: `${multi(c.multi)}${c.game ? ` ${w.on} ${c.game}` : ''} – ${streamerName(c.streamer)} (${platformName(c.platform)}, ${c.day})`}))},
+];
+---
+<Base lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
+  <div class="page">
+    <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
+
+    <header class="phero">
+      <span class="kick"><Icon name="trophy" />{slot ? [w.kSlot, hits.find(c => c.provider)?.provider].filter(Boolean).join(' · ') : `${w.kStreamer} · ${pfs}`}</span>
+      <h1>{h1}</h1>
+      <p>{intro}</p>
+      {!slot && <p>{[...new Map(hits.map(c => [channelUrl(c), c])).keys()].map((url, i) => <>{i > 0 && ' · '}<a href={url} target="_blank" rel="noopener nofollow">{url.replace('https://', '')} ↗</a></>)}</p>}
+    </header>
+
+    <h2 class="sec-title">{w.ranking}</h2>
+    <div class="vs-table wins-table">
+      <table>
+        <thead><tr>{(slot ? w.colsSlot : w.colsStreamer).map(c => <th scope="col">{c}</th>)}</tr></thead>
+        <tbody>{hits.map(c => <tr>
+          <th scope="row">{c.rank}</th>
+          {slot
+            ? <td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a></td>
+            : <td>{c.game ? <>{c.game}{c.provider && <small>{c.provider}</small>}</> : '–'}</td>}
+          <td>{slot ? platformName(c.platform) : <a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)}</a>}</td>
+          <td><b class="x">{multi(c.multi)}</b></td>
+          <td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(d.locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td>
+          <td>{money(c.win, c.currency, lang)}</td>
+          <td><a href={href(lang, `wins/${c.day}/`)}><time datetime={c.at}>{short(c.day)}</time></a>{c.youtube_id && <small><a href={`https://www.youtube.com/watch?v=${c.youtube_id}`} target="_blank" rel="noopener" data-go="youtube" data-place={`wins-${page.kind}`}>YouTube</a></small>}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <p class="fine">{w.fine}</p>
+
+    <a class="wins" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place={`wins-${page.kind}`} style="margin-top:28px">
+      <img src={offer.logo} alt="" width="56" height="56" loading="lazy" />
+      <div><h2>{offer.name}: {d.casino[offer.id].headline}</h2></div>
+      <span class="btn btn-play btn-lg"><Icon name="play" />{u.play}</span>
+    </a>
+
+    <GroupCards lang={lang} title={w.byStreamer} groups={slot ? page.streamers : undefined} />
+    <GroupCards lang={lang} title={w.bySlot} groups={slot ? undefined : page.slots} />
+
+    <div class="others" style="margin-top:16px"><a class="mini" href={href(lang, 'wins/')}><div><b>{w.latest}</b><span>{w.crumb}</span></div><Icon name="arrow" /></a></div>
+
+    <div class="rg" style="margin-top:40px">
+      <span class="ic">18+</span>
+      <div><h3>{w.rgT}</h3><p>{w.rgP}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </div>
+</Base>

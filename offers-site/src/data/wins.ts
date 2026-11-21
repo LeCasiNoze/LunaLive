@@ -14,6 +14,8 @@ export type Feed = {generated_at: string; videos: Video[]};
 export const MIN_CLIPS = 3;
 // Une archive de semaine n'existe qu'à partir de 2 jours publiés.
 export const MIN_DAYS = 2;
+// Page par jeu ou par streamer seulement à partir de 2 gains vérifiés (sinon page mince).
+export const MIN_GROUP = 2;
 
 let cache: Feed | null | undefined;
 export async function loadFeed(): Promise<Feed | null> {
@@ -61,7 +63,24 @@ export function weekBounds(week: string) {
 }
 
 // Pages à générer, identiques dans les 6 langues (hreflang réciproque).
-export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string};
+export type Hit = Clip & {day: string; youtube_id: string | null};
+export type Group = {sub: string; name: string; hits: Hit[]};
+export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
+  name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]};
+export const slug = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+// Seuls les Tops du jour comptent : un même clip repasse dans le Top de la semaine.
+function groups(days: Video[], key: (c: Clip) => string | null | undefined, base: string): Group[] {
+  const m = new Map<string, Hit[]>();
+  for (const v of days) for (const c of v.clips) {
+    const k = slug(key(c)?.trim() || '');
+    if (k) m.set(k, [...(m.get(k) ?? []), {...c, day: v.period, youtube_id: v.youtube_id}]);
+  }
+  return [...m].filter(([, h]) => h.length >= MIN_GROUP).map(([k, h]) => {
+    const hits = h.sort((a, b) => b.multi - a.multi).map((c, i) => ({...c, rank: i + 1}));
+    return {sub: `wins/${base}/${k}/`, name: key(hits[0])!.trim(), hits};
+  }).sort((a, b) => b.hits[0].multi - a.hits[0].multi);
+}
+const near = (gs: Group[], vs: Video[]) => gs.filter(g => g.hits.some(h => vs.some(v => v.period === h.day)));
 export async function winsPages(): Promise<WinsPage[]> {
   const f = await loadFeed();
   const days = byKind(f, 'daily'), weeklies = byKind(f, 'weekly');
@@ -69,11 +88,18 @@ export async function winsPages(): Promise<WinsPage[]> {
   const daySub = (v: Video) => `wins/${v.period}/`;
   const weeks = [...new Set(days.map(v => isoWeek(v.period)))].filter(w => days.filter(v => isoWeek(v.period) === w).length >= MIN_DAYS).sort().reverse();
   const weekSub = (w: string) => (weeks.includes(w) ? `wins/week/${w}/` : undefined);
+  const slots = groups(days, c => c.game, 'slot'), streamers = groups(days, c => streamerName(c.streamer), 'streamer');
+  const last = (g: Group) => g.hits.reduce((a, h) => (h.day > a ? h.day : a), '');
   return [
-    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period))},
-    ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period))})),
-    ...weeks.map((w, i) => ({sub: `wins/week/${w}/`, kind: 'week' as const, week: w, v: weeklies.find(x => x.period === w), days: days.filter(v => isoWeek(v.period) === w),
-      prev: weeks[i + 1] && `wins/week/${weeks[i + 1]}/`, next: weeks[i - 1] && `wins/week/${weeks[i - 1]}/`})),
+    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), slots, streamers},
+    ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period)), slots: near(slots, [v]), streamers: near(streamers, [v])})),
+    ...weeks.map((w, i) => {
+      const wd = days.filter(v => isoWeek(v.period) === w);
+      return {sub: `wins/week/${w}/`, kind: 'week' as const, week: w, v: weeklies.find(x => x.period === w), days: wd,
+        prev: weeks[i + 1] && `wins/week/${weeks[i + 1]}/`, next: weeks[i - 1] && `wins/week/${weeks[i - 1]}/`, slots: near(slots, wd), streamers: near(streamers, wd)};
+    }),
+    ...slots.map(g => ({sub: g.sub, kind: 'slot' as const, name: g.name, hits: g.hits, last: last(g), days: [], streamers: streamers.filter(x => x.hits.some(h => slug(h.game ?? '') === slug(g.name)))})),
+    ...streamers.map(g => ({sub: g.sub, kind: 'streamer' as const, name: g.name, hits: g.hits, last: last(g), days: [], slots: slots.filter(x => x.hits.some(h => slug(streamerName(h.streamer)) === slug(g.name)))})),
   ];
 }
 export const winsPaths = async (langs: readonly Lang[]) => {

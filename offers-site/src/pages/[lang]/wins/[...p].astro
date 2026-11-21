@@ -1,5 +1,6 @@
 ---
 import Wins from '../../../components/Wins.astro';
+import WinsGroup from '../../../components/WinsGroup.astro';
 import {winsPaths, LANGS} from '../../../data/wins';
 // Versions traduites : /<lang>/wins/…
 export async function getStaticPaths() {
@@ -7,4 +8,4 @@ export async function getStaticPaths() {
 }
 const {lang, page} = Astro.props as any;
 ---
-<Wins lang={lang} page={page} />
+{page.kind === 'slot' || page.kind === 'streamer' ? <WinsGroup lang={lang} page={page} /> : <Wins lang={lang} page={page} />}

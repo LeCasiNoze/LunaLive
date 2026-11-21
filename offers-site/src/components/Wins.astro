@@ -1,10 +1,11 @@
 ---
 import Base from '../layouts/Base.astro';
 import Icon from './Icon.astro';
+import GroupCards from './GroupCards.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
-import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, weekLabel, isoWeek} from '../data/wins';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, weekLabel, isoWeek, slug} from '../data/wins';
 // Pages « Biggest slot wins » : dernier Top, un jour, archive d'une semaine. Construites depuis le flux du VPS.
 interface Props {lang: Lang; page: WinsPage}
 const {lang, page} = Astro.props;
@@ -34,6 +35,8 @@ const h1 = kind === 'latest' ? fmt(w.h1Latest, vars) : kind === 'day' ? fmt(w.h1
 const big = clips.reduce((a, c) => (c.multi > a.multi ? c : a), n1);
 const stake = !big ? '' : big.bonus_buy ? (big.buy_cost != null ? fmt(w.stakeBuy, {v: money(big.buy_cost, big.currency, lang)}) : w.stakeBuyNoPrice) : big.bet != null ? fmt(w.stakeBet, {v: money(big.bet, big.currency, lang)}) : '';
 const intro = n1 ? [fmt(w.intro1, {...vars, x: xg(big), who: streamerName(big.streamer), pf: platformName(big.platform), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
+// Nom du jeu lié à sa page quand elle existe (2 gains vérifiés ou plus).
+const slotUrl = (g: string) => page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
 const yt = v?.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
 const thumb = v?.thumb || (v?.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
 // Une vidéo limitée par l'âge ne s'intègre pas : vignette cliquable, et pas de VideoObject (la page n'est pas une page de lecture).
@@ -73,7 +76,7 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
         <div class="vs-table wins-table">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
-            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><br /><small><time datetime={c.at}>{new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(c.at.slice(0, 10) + 'T12:00:00Z'))}</time></small></td><td>{c.game ? <>{c.game}{c.provider && <small>{c.provider}</small>}</> : '–'}</td><td>{platformName(c.platform)}</td><td><b class="x">{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
+            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><br /><small><time datetime={c.at}>{new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(c.at.slice(0, 10) + 'T12:00:00Z'))}</time></small></td><td>{c.game ? <>{slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game}{c.provider && <small>{c.provider}</small>}</> : '–'}</td><td>{platformName(c.platform)}</td><td><b class="x">{multi(c.multi)}</b></td><td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(t(lang).locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
           </table>
         </div>
         <p class="fine">{w.fine} <a href="/wins/feed.json" type="application/json">JSON</a></p>
@@ -81,6 +84,9 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
     )}
 
     {kind === 'week' && <p class="fine">{w.method}</p>}
+
+    <GroupCards lang={lang} title={w.bySlot} groups={page.slots} />
+    <GroupCards lang={lang} title={w.byStreamer} groups={page.streamers} />
 
     <a class="wins wins-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-page" style="margin-top:28px">
       <div><h2>{u.tg.title}</h2><p>{u.tg.sub}</p></div>

@@ -1,0 +1,15 @@
+---
+import Icon from './Icon.astro';
+import {href, type Lang} from '../i18n';
+import {type Group, multi, streamerName} from '../data/wins';
+// Liens vers les pages par jeu ou par streamer (rien si la liste est vide).
+interface Props {lang: Lang; title: string; groups?: Group[]}
+const {lang, title, groups = []} = Astro.props;
+const sub = (g: Group) => (g.sub.startsWith('wins/slot/') ? `#1 ${streamerName(g.hits[0].streamer)} · ${multi(g.hits[0].multi)}` : `#1 ${g.hits[0].game ? `${g.hits[0].game} · ` : ''}${multi(g.hits[0].multi)}`);
+---
+{groups.length > 0 && (
+  <>
+    <h2 class="sec-title">{title}</h2>
+    <div class="others">{groups.map(g => <a class="mini" href={href(lang, g.sub)}><div><b>{g.name}</b><span>{sub(g)}</span></div><Icon name="arrow" /></a>)}</div>
+  </>
+)}

@@ -7,7 +7,7 @@ import {winsPages} from '../data/wins';
 export const GET: APIRoute = async ({site}) => {
   const base = site!.origin;
   // Pages /wins/ : mêmes pages dans les 6 langues, lastmod = date de la vidéo.
-  const wins = (await winsPages()).map(w => [w.sub, w.v?.period ?? w.days[0]?.period ?? CHECKED] as const);
+  const wins = (await winsPages()).map(w => [w.sub, w.v?.period ?? w.last ?? w.days[0]?.period ?? CHECKED] as const);
   const lastmod = new Map<string, string>(wins);
   const paths = [...wins.map(([p]) => p), '', ...CASINOS.filter(c => !NOINDEX.includes(c.id)).map(c => `casinos/${c.id}/`), ...PAIRS.filter(p => !p.some(id => NOINDEX.includes(id))).map(([a, b]) => `vs/${a}-vs-${b}/`), 'guide/', 'about/', 'responsible-gambling/', 'privacy/', 'telegram/'];
   const urls = paths.flatMap(p => LANGS.map(l => {
