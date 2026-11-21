@@ -1,9 +1,8 @@
 ---
 import '../styles/global.css';
-import Icon from '../components/Icon.astro';
 import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
-import {CASINOS, byId, ranked, YOUTUBE, YT_SUB, TELEGRAM} from '../data/casinos';
+import {YOUTUBE, TELEGRAM} from '../data/casinos';
 import {loadFeed, byKind} from '../data/wins';
 
 // mono : page en une seule langue (pas d'alternates hreflang).
@@ -13,34 +12,28 @@ const d = t(lang);
 const u = ui(lang);
 const site = Astro.site!.origin;
 const canonical = site + href(lang, path);
-const rb = byId('rainbet');
-// Barre collante : le n°1 de la langue (Rainbet exclut l'Allemagne et l'Autriche).
-const st = ranked(lang)[0];
 const ld = [
   {'@context': 'https://schema.org', '@type': 'Organization', '@id': site + '/#org', name: 'Big Win Daily', url: site + '/', logo: site + '/icon-512.png', sameAs: [YOUTUBE]},
   {'@context': 'https://schema.org', '@type': 'WebSite', '@id': site + '/#site', name: 'Big Win Daily', url: site + '/', inLanguage: LANGS.map(l => t(l).locale), publisher: {'@id': site + '/#org'}},
   ...jsonld,
 ];
-const tick = [
-  ...CASINOS.map(c => ({c, text: d.casino[c.id].headline})),
-  {c: rb, text: u.ticker},
-];
-const nav = [
-  {k: 'home', label: u.nav.home, url: href(lang), icon: 'home'},
-  {k: 'offers', label: u.nav.offers, url: href(lang) + '#offers', icon: 'gift'},
-  ...CASINOS.map(c => ({k: c.id, label: c.name, url: href(lang, `casinos/${c.id}/`), img: c.logo})),
-];
+// Une page d'avis casino allume l'entrée « Casino bonuses ».
+const cur = ['rainbet', 'celsius', 'betportal'].includes(active) ? 'offers' : active;
 const hasWins = byKind(await loadFeed(), 'daily').length > 0;
-const learn = [
-  ...(hasWins ? [{k: 'wins', label: u.wins.nav, url: href(lang, 'wins/'), icon: 'trophy'}] : []),
-  {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/'), icon: 'book'},
-  {k: 'responsible-gambling', label: u.nav.rg, url: href(lang, 'responsible-gambling/'), icon: 'shield'},
-  {k: 'about', label: u.nav.about, url: href(lang, 'about/'), icon: 'users'},
-  {k: 'telegram', label: u.tg.nav, url: href(lang, 'telegram/'), icon: 'tg'},
+// Menu court, comme les sites du secteur : les avis casino sont dans « Casino bonuses ».
+const nav = [
+  ...(hasWins ? [{k: 'wins', label: u.wins.nav, url: href(lang, 'wins/')}] : []),
+  {k: 'offers', label: u.nav.offers, url: href(lang) + '#offers'},
+  {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/')},
+];
+const foot = [
+  {label: u.nav.about, url: href(lang, 'about/')},
+  {label: u.nav.rg, url: href(lang, 'responsible-gambling/')},
+  {label: u.tg.nav, url: href(lang, 'telegram/')},
 ];
 ---
 <!doctype html>
-<html lang={d.locale}>
+<html lang={d.locale} class="rf rf-a">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -52,7 +45,7 @@ const learn = [
   {!noindex && !mono && <link rel="alternate" hreflang="x-default" href={site + href('en', path)} />}
   <meta name="google-site-verification" content="Pm6sWjjh1lu2tu7G8St63-k13pzdxC77wWsTOUBBfz4" />
   <meta name="google-site-verification" content="x4oEe0c4uEHjIztc11OKQXFP-Piu1Ss1ZJpIDPc_uZQ" />
-  <meta name="theme-color" content="#0b0614" />
+  <meta name="theme-color" content="#0f1115" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icon-512.png" />
   <meta property="og:type" content="website" />
@@ -68,92 +61,43 @@ const learn = [
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://lunalive-api.onrender.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   {ld.map(o => <script type="application/ld+json" set:html={JSON.stringify(o)} />)}
 </head>
 <body>
-  <aside class="side" id="side" aria-label="Menu">
-    <a class="side-logo" href={href(lang)} aria-label="Big Win Daily">
-      <img src="/img/bwd-256.png" alt="" width="44" height="44" />
-      <span><b>BIG <em>WIN</em></b><small>DAILY · BONUS</small></span>
-    </a>
-    <nav>
-      <p class="grp">{u.nav.page}</p>
-      {nav.map(n => (
-        <a href={n.url} class={active === n.k ? 'on' : ''} aria-current={active === n.k ? 'page' : undefined}>
-          {'img' in n ? <img src={n.img} alt="" width="22" height="22" /> : <Icon name={n.icon!} />}{n.label}
-        </a>
-      ))}
-      <p class="grp">{u.nav.more}</p>
-      {learn.map(n => <a href={n.url} class={active === n.k ? 'on' : ''}><Icon name={n.icon} />{n.label}</a>)}
-    </nav>
-    <div class="side-foot">
-      <a class="yt-mini" href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="sidebar"><Icon name="yt" />YouTube</a>
-      <a class="yt-mini tg-mini" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="sidebar"><Icon name="tg" />Telegram</a>
-      <span class="age18">18+</span>
-    </div>
-  </aside>
-  <div class="scrim" data-close-side></div>
-
-  <div class="app">
-    <div class="ticker" aria-hidden="true">
-      <div class="track">
-        {[0, 1].map(() => tick.map(x => <a href={x.c.affiliate} target="_blank" rel="sponsored noopener" tabindex="-1" data-go={x.c.id} data-place="ticker"><img src={x.c.logo} alt="" width="18" height="18" /><b>{x.c.name}</b>{x.text}</a>))}
-      </div>
-    </div>
-
-    <header class="topbar">
-      <button class="burger" type="button" aria-label="Menu" aria-controls="side" data-open-side><Icon name="menu" /></button>
-      <a class="chan" href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="topbar">
-        <img src="/img/bwd-256.png" alt="Big Win Daily" width="38" height="38" />
-        <span><b>Big Win Daily</b><small>{u.channelTag}</small></span>
-      </a>
+  <header class="hd">
+    <div class="wrap hd-in">
+      <a class="brand" href={href(lang)}><img src="/img/bwd-256.png" alt="" width="32" height="32" /><span>Big Win Daily</span></a>
+      <nav class="hd-nav" aria-label="Menu">{nav.map(n => <a href={n.url} aria-current={cur === n.k ? 'page' : undefined}>{n.label}</a>)}</nav>
+      <a class="hd-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar">Telegram</a>
       <details class="lang">
-        <summary aria-label={d.nav.language}><Icon name="globe" />{d.short}</summary>
-        <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}<span>{t(l).short}</span></a></li>)}</ul>
+        <summary aria-label={d.nav.language}>{d.short}</summary>
+        <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a></li>)}</ul>
       </details>
-      <a class="btn btn-yt btn-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar" aria-label={u.tg.join}><Icon name="tg" /><span>{u.tg.short}</span></a>
-      <a class="btn btn-yt" href={YT_SUB} target="_blank" rel="noopener" data-go="youtube-sub" data-place="topbar"><Icon name="yt" /><span>{u.subscribe}</span></a>
-    </header>
-
-    <main id="main"><slot /></main>
-
-    <footer>
-      <div class="foot">
-        <div>
-          <a class="side-logo" href={href(lang)} aria-label="Big Win Daily">
-            <img src="/img/bwd-256.png" alt="" width="52" height="52" />
-            <span><b>BIG <em>WIN</em></b><small>DAILY · BONUS</small></span>
-          </a>
-          <p>{d.footer.disclosure}</p>
-          <p>{d.footer.rights}</p>
-          <span class="age"><b>18+</b>{d.footer.age}</span>
-        </div>
-        <div>
-          <div class="links">
-            {learn.map(n => <a href={n.url}>{n.label}</a>)}
-            <a href={href(lang, 'privacy/')}>{d.footer.links.privacy}</a>
-            <a href={YOUTUBE} rel="noopener" target="_blank">YouTube</a>
-            <a href={TELEGRAM} rel="noopener" target="_blank" data-go="telegram" data-place="footer">Telegram</a>
-          </div>
-          <div class="langs">{LANGS.map(l => <a href={href(l, path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}</div>
-        </div>
-      </div>
-    </footer>
-  </div>
-
-  {sticky && (
-    <div class="sticky" role="complementary" aria-label={st.name}>
-      <img src={st.logo} alt="" width="40" height="40" />
-      <b>{d.casino[st.id].headline}<small>{st.code ? d.sticky.text : d.casino[st.id].short}</small></b>
-      <a class="btn btn-play btn-sm" href={st.affiliate} target="_blank" rel="sponsored noopener" data-go={st.id} data-place="sticky">{d.sticky.cta}</a>
     </div>
-  )}
+  </header>
+
+  <main id="main" class="wrap"><slot /></main>
+
+  <footer class="ft">
+    <div class="wrap ft-in">
+      <div>
+        <p class="ft-brand">Big Win Daily</p>
+        <p>{d.footer.disclosure}</p>
+        <p>{d.footer.age}</p>
+        <p>{d.footer.rights}</p>
+      </div>
+      <nav aria-label="Footer">
+        {foot.map(n => <a href={n.url}>{n.label}</a>)}
+        <a href={href(lang, 'privacy/')}>{d.footer.links.privacy}</a>
+        <a href={YOUTUBE} rel="noopener" target="_blank">YouTube</a>
+      </nav>
+      <nav class="ft-langs" aria-label={d.nav.language}>{LANGS.map(l => <a href={href(l, path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}</nav>
+    </div>
+  </footer>
 
   <div class="gate" id="gate" hidden role="dialog" aria-modal="true" aria-labelledby="gate-t">
     <div class="gate-box">
-      <span class="gate-18">18+</span>
-      <img src="/img/bwd-256.png" alt="Big Win Daily" width="72" height="72" />
       <h2 id="gate-t">{u.age.title}</h2>
       <p>{u.age.text}</p>
       <div class="gate-act">

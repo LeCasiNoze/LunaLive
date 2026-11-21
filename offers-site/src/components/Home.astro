@@ -5,16 +5,17 @@ import OfferCard from './OfferCard.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, PAIRS, byId, CHECKED, YOUTUBE, TELEGRAM} from '../data/casinos';
-import {winsPages} from '../data/wins';
+import {winsPages, top, multi, money, streamerName, platformName, dayLabel} from '../data/wins';
 interface Props {lang: Lang}
 const {lang} = Astro.props;
 const d = t(lang);
 const u = ui(lang);
-const rb = byId('rainbet');
 const CASINOS = ranked(lang);
 // Le n°1 de la langue (Celsius en allemand, Rainbet ailleurs) est mis en vedette.
 const lead = CASINOS[0];
-const hasWins = (await winsPages()).length > 0;
+const latest = (await winsPages())[0]?.v;
+const hasWins = !!latest;
+const w = u.wins;
 const date = fmtDate(lang, CHECKED);
 const site = Astro.site!.origin;
 const jsonld = [
@@ -23,110 +24,62 @@ const jsonld = [
 ];
 ---
 <Base lang={lang} title={d.meta.homeTitle} desc={d.meta.homeDesc} jsonld={jsonld} active="home">
-  <section class="hero">
-    <div class="hero-in">
-      <div class="hero-txt">
-        <span class="kick"><span class="live"></span>{fmt(d.hero.kicker, {date})}</span>
-        <h1><span>{u.heroA}</span> <em>{u.heroB}</em></h1>
-        <p>{u.heroSub}</p>
-        <div class="hero-cta">
-          <a class="btn btn-play btn-lg" href={lead.affiliate} target="_blank" rel="sponsored noopener" data-go={lead.id} data-place="hero"><Icon name="play" />{u.heroCta}</a>
-          <a class="btn btn-ghost btn-lg" href="#offers">{u.offersTitle}<Icon name="chevron" /></a>
-        </div>
-      </div>
-      {lead.id === 'rainbet' ? (
-        <div class="hero-card" data-sticky-anchor>
-          <div class="hc-top">
-            <img src={rb.logo} alt="Rainbet" width="56" height="56" />
-            <div><b>Rainbet</b><span>{u.top}</span></div>
-          </div>
-          <p class="hc-big">+20%<small>Rakeback</small></p>
-          <p class="hc-sub">{d.casino.rainbet.headline}</p>
-          <div class="code">
-            <span class="code-l">{u.code}</span>
-            <b>{rb.code}</b>
-            <button type="button" data-copy={rb.code} data-done={d.featured.copied} data-place="hero"><Icon name="copy" /><span>{d.featured.copy}</span></button>
-          </div>
-          <div class="race">
-            <span class="t"><Icon name="trophy" />{d.featured.race}</span>
-            <div class="cd" data-cd>
-              <span class="u" data-u>00<small>{d.featured.d}</small></span>
-              <span class="u" data-u>00<small>{d.featured.h}</small></span>
-              <span class="u" data-u>00<small>{d.featured.m}</small></span>
-              <span class="u" data-u>00<small>{d.featured.s}</small></span>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div class="hero-card" data-sticky-anchor>
-          <div class="hc-top">
-            <img src={lead.logo} alt={lead.name} width="56" height="56" />
-            <div><b>{lead.name}</b><span>{u.top}</span></div>
-          </div>
-          <p class="hc-sub" style="font-size:22px;font-weight:800">{d.casino[lead.id].headline}</p>
-          <p class="hc-sub">{d.casino[lead.id].short}</p>
-          <a class="btn btn-play btn-block" href={lead.affiliate} target="_blank" rel="sponsored noopener" data-go={lead.id} data-place="hero-card"><Icon name="play" />{u.play}</a>
-        </div>
-      )}
+  <section class="home-hd">
+    <div>
+      <p class="kick">{fmt(d.hero.kicker, {date})}</p>
+      <h1>{u.heroA} {u.heroB}</h1>
+      <p class="lede">{u.heroSub}</p>
+      <p class="home-jump"><a href="#offers">{u.offersTitle} ↓</a>{hasWins && <a href={href(lang, 'wins/')}>{w.latest} →</a>}</p>
     </div>
+    <aside class="offer">
+      <div class="offer-hd">
+        <img src={lead.logo} alt="" width="44" height="44" />
+        <div><b>{lead.name}</b><span>{u.top}</span></div>
+      </div>
+      <p class="offer-big">{d.casino[lead.id].headline}</p>
+      {lead.code && <button class="codechip" type="button" data-copy={lead.code} data-done={d.featured.copied} data-place="hero"><span>{u.code}: {lead.code}</span><Icon name="copy" /></button>}
+      <a class="btn btn-play btn-block" href={lead.affiliate} target="_blank" rel="sponsored noopener" data-go={lead.id} data-place="hero">{u.play}</a>
+      <p class="small">18+ · <a href={href(lang, `casinos/${lead.id}/`)}>{u.review}</a></p>
+    </aside>
   </section>
-
-  <div class="promos">
-    {CASINOS.map(c => (
-      <a class={`promo p-${c.id}`} href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place="promo">
-        <img src={c.logo} alt="" width="40" height="40" loading="lazy" />
-        <span><small>{c.name}</small><b>{d.casino[c.id].headline}</b></span>
-        <Icon name="arrow" />
-      </a>
-    ))}
-  </div>
 
   <section class="sec" id="offers">
     <div class="sec-h"><h2>{u.offersTitle}</h2><span class="count">{fmt(u.offersCount, {n: CASINOS.length})}</span></div>
     <div class="cards">{CASINOS.map(c => <OfferCard lang={lang} c={c} />)}</div>
   </section>
 
-  <section class="sec">
-    <div class="sec-h"><h2>{d.vs.crumbs}</h2></div>
-    <div class="others">
-      {PAIRS.map(([a, b]) => <a class="mini" href={href(lang, `vs/${a}-vs-${b}/`)}><img src={byId(a).logo} alt="" width="44" height="44" loading="lazy" /><div><b>{byId(a).name} vs {byId(b).name}</b><span>{d.vs.table}</span></div></a>)}
-    </div>
-  </section>
+  {latest && (
+    <section class="sec">
+      <div class="sec-h"><h2>{u.winsTitle}</h2><a href={href(lang, 'wins/')}>{w.latest} →</a></div>
+      <table class="rk">
+        <caption class="vh">{dayLabel(lang, latest.period)}</caption>
+        <thead><tr><th scope="col">{w.cols[0]}</th><th scope="col">{w.cols[1]}</th><th scope="col">{w.cols[2]}</th><th scope="col" class="num">{w.cols[4]}</th><th scope="col" class="num">{w.cols[5]}</th></tr></thead>
+        <tbody>{top(latest).slice(0, 5).map(c => <tr class={c.rank === 1 ? 'top' : undefined}><td class="pos">{c.rank}</td><td>{streamerName(c.streamer)}<span class="sub">{platformName(c.platform)}</span></td><td>{c.game ?? <span class="na">–</span>}</td><td class="num x">{multi(c.multi)}</td><td class="num">{money(c.bet, c.currency, lang)}</td></tr>)}</tbody>
+      </table>
+      <p class="note">{dayLabel(lang, latest.period)} · <a href={YOUTUBE} target="_blank" rel="noopener" data-go="youtube" data-place="home-wins">YouTube</a> · <a href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="home-wins">Telegram</a></p>
+    </section>
+  )}
+  {!latest && (
+    <section class="sec">
+      <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins"><b>{u.tg.title}</b><span>{u.tg.join} →</span></a>
+    </section>
+  )}
 
   <section class="sec">
-    <a class="wins" href={hasWins ? href(lang, 'wins/') : YOUTUBE} target={hasWins ? undefined : '_blank'} rel="noopener" data-go={hasWins ? 'wins' : 'youtube'} data-place="wins">
-      <img src="/img/bwd-256.png" alt="Big Win Daily" width="110" height="110" loading="lazy" />
-      <div>
-        <h2>{u.winsTitle}</h2>
-        <p>{u.winsSub}</p>
-      </div>
-      <span class="btn btn-yt btn-lg"><Icon name="yt" />{u.winsCta}</span>
-    </a>
-    <a class="wins wins-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins">
-      <img src="/img/bwd-256.png" alt="" width="110" height="110" loading="lazy" />
-      <div>
-        <h2>{u.tg.title}</h2>
-        <p>{u.tg.sub}</p>
-      </div>
-      <span class="btn btn-yt btn-tg btn-lg"><Icon name="tg" />{u.tg.join}</span>
-    </a>
+    <div class="sec-h"><h2>{d.vs.crumbs}</h2></div>
+    <ul class="links">{PAIRS.map(([a, b]) => <li><a href={href(lang, `vs/${a}-vs-${b}/`)}>{byId(a).name} vs {byId(b).name}</a><span>{d.vs.table}</span></li>)}</ul>
   </section>
 
   <section class="sec">
     <div class="sec-h"><h2>{d.steps.title}</h2></div>
-    <div class="steps">
-      {d.steps.items.map((s, i) => <div class="step"><span class="n">{i + 1}</span><h3>{s.t}</h3><p>{s.d}</p></div>)}
-    </div>
+    <ol class="steps">{d.steps.items.map(s => <li class="step"><h3>{s.t}</h3><p>{s.d}</p></li>)}</ol>
   </section>
 
   <section class="sec">
     <div class="sec-h"><h2>{d.who.title}</h2></div>
     <div class="who">
-      <div>
-        <p>{d.who.p1}</p>
-        <p>{d.who.p2}</p>
-      </div>
-      <ul>{d.who.promises.map(p => <li><Icon name="check" />{p}</li>)}</ul>
+      <div><p>{d.who.p1}</p><p>{d.who.p2}</p></div>
+      <ul>{d.who.promises.map(p => <li>{p}</li>)}</ul>
     </div>
   </section>
 
@@ -135,11 +88,8 @@ const jsonld = [
     <div class="faq">{d.faq.items.map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}</div>
   </section>
 
-  <section class="sec">
-    <div class="rg">
-      <span class="ic">18+</span>
-      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
-      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
-    </div>
+  <section class="sec rg">
+    <h2>{d.rg.title}</h2>
+    <p>{d.rg.p} <a href={href(lang, 'responsible-gambling/')}>{d.rg.link}</a></p>
   </section>
 </Base>

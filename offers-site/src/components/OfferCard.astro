@@ -15,10 +15,9 @@ const hi = x.headline.replace(/([+]?\s?(?:[€$]|US\$)?\s?\d[\d.,   ]*\s?(?:%
 <article class={`card c-${c.id}`}>
   <span class="rk">{c.rank}</span>
   <div class="card-logo">
-    <img src={c.logo} alt={`${c.name} logo`} width="64" height="64" loading="lazy" />
-    <b>{c.name}</b>
+    <img src={c.logo} alt={`${c.name} logo`} width="44" height="44" loading="lazy" />
+    <div><h3>{c.name}</h3><span class="pill">{u.badge[c.badge]}</span></div>
   </div>
-  <div class="card-name"><h3>{c.name}</h3><span class="pill">{u.badge[c.badge]}</span></div>
   <p class="card-bonus" set:html={hi} />
   <p class="card-short">{x.short}</p>
   <ul class="stats">

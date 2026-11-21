@@ -1,5 +1,5 @@
 ---
-import Shell from '../layouts/Shell.astro';
+import Base from '../layouts/Base.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
@@ -40,7 +40,7 @@ const jsonld = [
 ];
 const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
 ---
-<Shell lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
+<Base lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
   <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
 
   <header class="pg-hd">
@@ -102,4 +102,4 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
     <h2>{w.rgT}</h2>
     <p>{w.rgP} <a href={href(lang, 'responsible-gambling/')}>{d.rg.link}</a></p>
   </section>
-</Shell>
+</Base>
