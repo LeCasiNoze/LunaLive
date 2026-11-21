@@ -35,8 +35,9 @@ export async function loadFeed(): Promise<Feed | null> {
   return cache ?? null;
 }
 
+// Pas de page avant publish_at : la vidéo est encore privée et le flux en ligne la contient déjà.
 export const byKind = (f: Feed | null, kind: Video['kind']) =>
-  (f?.videos ?? []).filter(v => v.kind === kind && v.clips.length >= MIN_CLIPS).sort((a, b) => b.period.localeCompare(a.period));
+  (f?.videos ?? []).filter(v => v.kind === kind && v.clips.length >= MIN_CLIPS && (!v.publish_at || Date.parse(v.publish_at) <= Date.now())).sort((a, b) => b.period.localeCompare(a.period));
 
 // Ordre de la vidéo, renuméroté : le flux peut avoir des trous de rang (clips rejetés).
 export const top = (v: Video) => [...v.clips].sort((a, b) => a.rank - b.rank).map((c, i) => ({...c, rank: i + 1}));
