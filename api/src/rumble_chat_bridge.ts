@@ -550,7 +550,7 @@ export function ensureRumbleBridge(opts: {
     const bang = parseBangCommand(m.text);
     if (bang) {
       console.log(`[rumble_chat] command received slug=${opts.slug} cmd=${bang.cmd} user=${m.userId}`);
-      if (bang.cmd === "mcall" && opts.slug === "lecasinoze") {
+      if (bang.cmd === "mcall" && (opts.slug === "lecasinoze" || opts.slug === "belvaa")) {
         const removed = await removeLatestRumbleCall(opts.pool, opts.streamerId, m.userId, m.username);
         const reply = removed
           ? `✅ @${m.username}, ton dernier call « ${removed.slotName.slice(0, 110)} » a bien été supprimé.`
