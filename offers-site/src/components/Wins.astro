@@ -18,6 +18,8 @@ const n1 = clips[0];
 const date = v && v.kind === 'daily' ? dayLabel(lang, v.period) : '';
 const wk = kind === 'week' ? weekLabel(lang, page.week!) : '';
 const pfs = (cs: typeof clips) => [...new Set(cs.map(c => platformName(c.platform)))].join(' & ');
+// Nom du jeu accolé au multiplicateur quand le flux le donne (« x10,781 on Bootleggers »).
+const xg = (c: typeof clips[number]) => (c.game ? `${multi(c.multi)} ${w.on} ${c.game}` : multi(c.multi));
 const vars = n1 ? {n: clips.length, date, x: multi(n1.multi), who: streamerName(n1.streamer), pf: platformName(n1.platform), w: wk} : {w: wk};
 let title = kind === 'latest' ? fmt(w.tLatest, vars) : kind === 'day' ? fmt(w.tDay, vars) : fmt(w.tWeek, vars);
 // Limites d'affichage Google : on retire d'abord le complément « – x par streamer », puis la date entre parenthèses.
@@ -29,7 +31,7 @@ while (segs.length > 1 && segs.join('').length > 160) segs.pop();
 const desc = segs.join('');
 const h1 = kind === 'latest' ? fmt(w.h1Latest, vars) : kind === 'day' ? fmt(w.h1Day, vars) : fmt(w.h1Week, vars);
 const stake = n1 && n1.bet != null ? fmt(n1.bonus_buy ? w.stakeBuy : w.stakeBet, {v: money(n1.bet, n1.currency, lang)}) : '';
-const intro = n1 ? [fmt(w.intro1, {...vars, stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
+const intro = n1 ? [fmt(w.intro1, {...vars, x: xg(n1), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs: pfs(clips), n: clips.length, xl: multi(clips[clips.length - 1].multi)}), w.method].join(' ') : '';
 const yt = v?.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
 const thumb = v?.thumb || (v?.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
 // Une vidéo limitée par l'âge ne s'intègre pas : vignette cliquable, et pas de VideoObject (la page n'est pas une page de lecture).
@@ -42,7 +44,7 @@ const crumbs = [
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
   ...(clips.length ? [{'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: clips.length,
-    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${multi(c.multi)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`}))}] : []),
+    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${xg(c)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`}))}] : []),
   ...(embed && v!.publish_at ? [{'@context': 'https://schema.org', '@type': 'VideoObject', name: v!.title || title, description: desc, thumbnailUrl: thumb, uploadDate: v!.publish_at, contentUrl: yt, embedUrl: `https://www.youtube-nocookie.com/embed/${v!.youtube_id}`}] : []),
 ];
 const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), label: dayLabel(lang, x.period), sub: `#1 ${streamerName(top(x)[0].streamer)} · ${multi(top(x)[0].multi)}`}));
@@ -69,7 +71,7 @@ const dayCards = page.days.map(x => ({url: href(lang, `wins/${x.period}/`), labe
         <div class="vs-table">
           <table>
             <thead><tr>{w.cols.map(c => <th scope="col">{c}</th>)}</tr></thead>
-            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td><b>{multi(c.multi)}</b></td><td>{c.bonus_buy ? `${w.buy} ${money(c.bet, c.currency, lang)}` : money(c.bet, c.currency, lang)}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
+            <tbody>{clips.map(c => <tr><th scope="row">{c.rank}</th><td>{streamerName(c.streamer)}</td><td>{platformName(c.platform)}</td><td>{c.game ? <>{c.game}{c.provider && <small> · {c.provider}</small>}</> : '–'}</td><td><b>{multi(c.multi)}</b></td><td>{c.bonus_buy ? `${w.buy} ${money(c.bet, c.currency, lang)}` : money(c.bet, c.currency, lang)}</td><td>{money(c.win, c.currency, lang)}</td></tr>)}</tbody>
           </table>
         </div>
         <p class="fine">{w.fine}</p>
