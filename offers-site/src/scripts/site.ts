@@ -4,10 +4,11 @@ const SLUG = 'bigwindaily';
 const lang = document.documentElement.lang.slice(0, 2);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// Source de la visite (premier contact de la session) : ?utm_source=… ou ?src=… dans le lien partagé.
+// Source de la visite (premier contact de la session) : ?src=…&c=… (convention MESURE.md) ou ?utm_source=…&utm_campaign=….
+// La campagne s'ajoute en dernier segment : <lang>|<page ou casino|place>|<campagne>.
 function source() {
   const q = new URLSearchParams(location.search);
-  const now = {s: q.get('utm_source') || q.get('src'), m: q.get('utm_medium'), c: q.get('utm_campaign')};
+  const now = {s: q.get('utm_source') || q.get('src'), m: q.get('utm_medium'), c: q.get('utm_campaign') || q.get('c')};
   try {
     if (now.s) sessionStorage.setItem('bwd_src', JSON.stringify(now));
     return JSON.parse(sessionStorage.getItem('bwd_src') || 'null') || now;
@@ -15,7 +16,7 @@ function source() {
 }
 export function track(event: 'view' | 'click_cta', what: string) {
   const s = source();
-  const body = JSON.stringify({slug: SLUG, event, referrer: document.referrer || null, utmSource: s.s || 'direct', utmMedium: s.m || null, utmCampaign: `${lang}|${what}`.slice(0, 160)});
+  const body = JSON.stringify({slug: SLUG, event, referrer: document.referrer || null, utmSource: s.s || 'direct', utmMedium: s.m || null, utmCampaign: `${lang}|${what}${s.c ? `|${s.c}` : ''}`.slice(0, 160)});
   try { fetch(API, {method: 'POST', headers: {'Content-Type': 'application/json'}, body, keepalive: true, mode: 'cors'}).catch(() => {}); } catch {}
 }
 if (!document.querySelector('[data-go-redirect]')) track('view', location.pathname);
