@@ -22,7 +22,7 @@ export const INTENTS: Intent[] = [
     facts: [
       ['Code', 'NIVORANET'],
       ['Ce qu’il donne', '+20 % de rakeback pendant 72 heures (« Affiliate Code Redemption »)'],
-      ['En plus', 'notre course mensuelle de 200 $ (100 $, 60 $, 40 $) entre les joueurs du code'],
+      ['En plus', 'notre course mensuelle de 200 $ (100 $, 60 $, 40 $), à partir de 1 000 $ misés dans le mois'],
       ['Où le saisir', 'champ « code d’affilié » de l’inscription'],
       ['Oublié à l’inscription', 'ajout possible pendant 24 h, tant qu’aucun dépôt n’a été fait'],
       ['Changer de code', 'impossible une fois le code enregistré'],
@@ -33,7 +33,7 @@ export const INTENTS: Intent[] = [
         'Les boosts ne se cumulent pas : seul le plus élevé s’applique à un instant donné. Le +20 % du code est le plus fort de la liste officielle (le bonus d’inscription donne +15 % pendant 24 h).',
       ]},
       {h: 'La course mensuelle', p: [
-        'Les joueurs inscrits avec NIVORANET sont classés chaque mois sur leurs mises : 200 $ pour le top 3 (100 $, 60 $ et 40 $). Cette course est la nôtre, pas une promotion de Rainbet ; le compteur de la page d’accueil indique sa fin.',
+        'Les joueurs inscrits avec NIVORANET sont classés chaque mois sur leurs mises : 200 $ pour le top 3 (100 $, 60 $ et 40 $). Pour être payé, il faut avoir misé au moins 1 000 $ dans le mois ; les mises sont pondérées par Rainbet selon le RTP des jeux. Cette course est la nôtre, pas une promotion de Rainbet.',
       ]},
       {h: 'Où et quand saisir le code', p: [
         'À l’inscription, Rainbet affiche un champ pour le code d’affilié : notre lien le pré-remplit, vérifiez qu’il indique NIVORANET. Si vous l’avez oublié, le centre d’aide laisse 24 heures pour l’ajouter depuis le portefeuille, à condition de ne pas avoir encore déposé.',
@@ -81,13 +81,13 @@ export const INTENTS: Intent[] = [
     title: 'Rainbet c’est quoi ? Casino crypto, rakeback et code NIVORANET',
     desc: 'Rainbet, c’est quoi : un casino crypto (Rain Group Ltd, Anjouan) avec rakeback toutes les 15 minutes, bonus quotidiens à mensuels et plus de 7 000 slots. L’essentiel, sources à l’appui.',
     h1: 'Rainbet, c’est quoi ?',
-    lede: 'Rainbet est un casino en ligne en crypto, centré sur les machines à sous, qui reverse une part de chaque mise (le rakeback) plutôt que de miser sur un gros bonus de dépôt. C’est le casino sur lequel nos streamers jouent le plus.',
+    lede: 'Rainbet est un casino en ligne en crypto, centré sur les machines à sous, qui reverse une part de chaque mise (le rakeback) plutôt que de miser sur un gros bonus de dépôt.',
     facts: [
       ['Exploitant', 'Rain Group Ltd, Anjouan (société n° 16077)'],
       ['Paiements', 'crypto (BTC, ETH, USDT, USDC, LTC, SOL…)'],
-      ['Catalogue', 'plus de 7 000 machines à sous (notre relevé du 19/11/2026)'],
+      ['Catalogue', 'plus de 7 000 machines à sous (notre relevé du 22/11/2026)'],
       ['Récompenses', 'rakeback toutes les 15 min, bonus quotidien, hebdomadaire et mensuel, 3 reloads par jour'],
-      ['Notre code', 'NIVORANET : +20 % de rakeback pendant 72 h'],
+      ['Notre code', 'NIVORANET : +20 % de rakeback pendant 72 h, et notre course mensuelle de 200 $ (1 000 $ misés minimum)'],
     ],
     sections: [
       {h: 'Comment Rainbet récompense ses joueurs', p: [
@@ -95,7 +95,7 @@ export const INTENTS: Intent[] = [
         'Des rangs VIP donnent un bonus à chaque montée de rang. Des « RakeBoosts » augmentent temporairement le rakeback ; ils ne se cumulent pas.',
       ]},
       {h: 'Les jeux', p: [
-        'Notre relevé du catalogue du 19/11/2026 compte plus de 7 000 machines à sous, de Pragmatic Play, Hacksaw, Nolimit City, NetEnt, Red Tiger, BGaming et d’autres. Les jeux de notre catalogue vérifiés chez Rainbet sont listés sur notre page avis.',
+        'Notre relevé du catalogue du 22/11/2026 compte plus de 7 000 machines à sous, de Pragmatic Play, Hacksaw, Nolimit City, NetEnt, Red Tiger, BGaming et d’autres. Les jeux de notre catalogue vérifiés chez Rainbet sont listés sur notre page avis.',
       ]},
       {h: 'Dépôts et retraits', p: [
         'Tout se fait en crypto depuis le portefeuille du compte. Chaque dépôt doit être misé une fois avant retrait ; Rainbet annonce un traitement en 5 à 15 minutes et ne prend pas de frais en plus de ceux du réseau.',
@@ -116,7 +116,7 @@ export const INTENTS: Intent[] = [
     facts: [
       ['Code', 'NIVORANET'],
       ['What it gives', '+20% rakeback for 72 hours (“Affiliate Code Redemption”)'],
-      ['On top', 'our $200 monthly race ($100, $60, $40) between players on the code'],
+      ['On top', 'our $200 monthly race ($100, $60, $40), from $1,000 wagered in the month'],
       ['Where to enter it', 'the affiliate code field at sign-up'],
       ['Forgot it?', 'you can add it within 24 hours, as long as you haven’t deposited'],
       ['Changing code', 'not possible once set'],
@@ -127,7 +127,7 @@ export const INTENTS: Intent[] = [
         'Boosts don’t stack: only the highest one applies at any time. The +20% code boost is the largest on the official list (the sign-up bonus gives +15% for 24 hours).',
       ]},
       {h: 'The monthly race', p: [
-        'Players registered with NIVORANET are ranked every month on their wagers: $200 for the top 3 ($100, $60 and $40). This race is ours, not a Rainbet promotion; the countdown on our home page shows when it ends.',
+        'Players registered with NIVORANET are ranked every month on their wagers: $200 for the top 3 ($100, $60 and $40). To be paid, you need at least $1,000 wagered in the month; Rainbet weights wagers by the games’ RTP. This race is ours, not a Rainbet promotion.',
       ]},
       {h: 'Where and when to enter the code', p: [
         'At sign-up, Rainbet shows an affiliate code field; our link fills it in, so check that it reads NIVORANET. If you missed it, the help center gives you 24 hours to add it from your wallet, as long as you haven’t made a deposit.',
@@ -216,7 +216,7 @@ export const INTENTS: Intent[] = [
     title: 'Betportal code promo 2026 : pas de code, le bonus passe par le lien',
     desc: 'Faut-il un code promo sur Betportal ? Non : le bonus de bienvenue (jusqu’à 1 000 € + 250 free spins sur 3 dépôts) s’active à l’inscription par le lien. Les paliers officiels.',
     h1: 'Code promo Betportal : faut-il un code ?',
-    lede: 'Non. Avec notre lien, l’inscription est rattachée à notre compte partenaire et le bonus de bienvenue se réclame sans saisir de code. Voici ce que l’offre donne, palier par palier, d’après les pages officielles de Betportal.',
+    lede: 'Non. Notre lien ne demande aucun code : il rattache l’inscription à notre compte partenaire. Voici ce que l’offre donne, palier par palier, d’après les pages officielles de Betportal.',
     facts: [
       ['Code promo', 'aucun à saisir'],
       ['Offre de bienvenue', 'jusqu’à 1 000 € + 250 free spins sur 3 dépôts'],
