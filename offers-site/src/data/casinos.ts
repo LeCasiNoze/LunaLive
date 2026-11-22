@@ -29,7 +29,7 @@ export const CASINOS: Casino[] = [
     affiliate: 'https://rainbet.com/?r=nivoranet', code: 'NIVORANET',
     terms: [{label: 'Terms', url: 'https://rainbet.com/terms'}, {label: 'VIP', url: 'https://rainbet.com/vip'}],
     // Catalogue LunaLive (slots vues lors du crawl Rainbet, 19/11/2026) : 7 135 slots.
-    providers: ['Pragmatic Play', 'Hacksaw', 'NetEnt', 'Red Tiger', 'BGaming', 'Betsoft'],
+    providers: ['Pragmatic Play', 'Hacksaw', 'Nolimit City', 'NetEnt', 'Red Tiger', 'BGaming', 'Betsoft'],
     slots: 7000,
     stats: [{k: 'rakeback', v: '+20%'}, {k: 'claim', v: '15 min'}, {k: 'race', v: '$200'}],
     badge: 'code',

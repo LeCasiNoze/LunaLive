@@ -346,7 +346,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'the-dog-house-megaways', name: 'The Dog House Megaways', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/the-dog-house-megaways/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://www.pragmaticplay.com/en/games/the-dog-house-megaways/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.55], volatility: '', maxWin: 12305, grid: '6 reels · up to 117,649 ways', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/the-dog-house-megaways', 'https://www.pokerlistings.com/online-slots/free/the-dog-house-megaways'],
@@ -386,7 +386,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'madame-destiny-megaways', name: 'Madame Destiny Megaways', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/madame-destiny-megaways/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://www.pragmaticplay.com/en/games/madame-destiny-megaways/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.56], volatility: '', maxWin: 5000, grid: '6 reels · Megaways', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/madame-destiny-megaways', 'https://www.pokerlistings.com/online-slots/free/madame-destiny-megaways'],
@@ -426,7 +426,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sweet-rush-bonanza', name: 'Sweet Rush Bonanza', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sweet-rush-bonanza/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://www.pragmaticplay.com/en/games/sweet-rush-bonanza/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.5], volatility: '', maxWin: 5000, grid: '6×5 · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: null}, {name: 'Free Spins with 2x multipliers', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/sweet-rush-bonanza', 'https://www.pokerlistings.com/online-slots/free/sweet-rush-bonanza'],
@@ -467,7 +467,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sugar-rush', name: 'Sugar Rush', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sugar-rush/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://www.pragmaticplay.com/en/games/sugar-rush/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.5], volatility: 'high', maxWin: 5000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/sugar-rush', 'https://www.pokerlistings.com/online-slots/free/sugar-rush'],
@@ -509,7 +509,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'mental', name: 'Mental', provider: 'Nolimit City',
-    source: 'https://nolimitcity.com/games/mental', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://nolimitcity.com/games/mental', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.08], volatility: 'extreme', maxWin: 66666, grid: '3–5 rows · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.19, fsOdds: "1 in 216", maxOdds: "1 in 18,000,000",
     cited: {
 
@@ -549,7 +549,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'san-quentin', name: 'San Quentin xWays', provider: 'Nolimit City',
-    source: 'https://nolimitcity.com/games/san-quentin', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://nolimitcity.com/games/san-quentin', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.03], volatility: 'extreme', maxWin: 150000, grid: '5×3 · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.25, fsOdds: "1 in 230",
     cited: {
 
@@ -589,7 +589,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'fire-in-the-hole', name: 'Fire in the Hole xBomb', provider: 'Nolimit City',
-    source: 'https://nolimitcity.com/games/fire-in-the-hole', checked: '2026-11-22',
+    source: 'https://nolimitcity.com/games/fire-in-the-hole', checked: '2026-11-22', at: {rainbet: '2026-11-22'},
     rtp: [96.06], volatility: 'extreme', maxWin: 60000, grid: '6×3 to 6×6 · 64 to 46,656 ways', buys: [{name: 'Feature buy', cost: null}], hit: 25.98, fsOdds: "1 in 200", maxOdds: "1 in 2,400,000",
     cited: {
 
