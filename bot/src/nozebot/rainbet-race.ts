@@ -94,6 +94,23 @@ export async function fetchWagers(range:RaceRange):Promise<RaceEntry[]>{
   return body!.affiliates.flatMap(a=>{const wagered=Number(a.wagered_amount);return a.username&&Number.isFinite(wagered)?[{username:a.username,wagered}]:[];});
 }
 
+// Classement public déjà masqué : l'API LunaLive le lit sans jamais détenir la clé Rainbet.
+export function publicRace(current:readonly RaceEntry[],previous:readonly RaceEntry[],now:Date){
+  const race=raceRange(now),prev=raceRange(now,-1);
+  const {list:prizes,cur}=prizesOf(race),{list:prevPrizes,cur:prevCur}=prizesOf(prev);
+  const row=(e:ReturnType<typeof ranking>[number])=>({rank:e.rank,name:maskName(e.username),wagered:Math.round(e.wagered*100)/100,prize:e.prize});
+  return {race:{start:race.start,end:race.end,endsAt:race.endsAt.toISOString(),label:race.label,monthly:!!race.monthly},
+    prizes,currency:cur,minWagerUsd:RACE_MIN_WAGER_USD,referralUrl:REFERRAL_URL,
+    leaderboard:ranking(current,prizes).map(row),
+    players:current.filter(e=>e.wagered>0).length,
+    totalWageredUsd:Math.round(current.reduce((s,e)=>s+Math.max(0,e.wagered),0)),
+    previous:prev.start>=RACE_FIRST_START?{start:prev.start,end:prev.end,label:prev.label,currency:prevCur,winners:ranking(previous,prevPrizes).filter(e=>e.prize).map(row)}:null,
+    updatedAt:now.toISOString()};
+}
+async function publishPublicRace(pool:Pool,current:readonly RaceEntry[],previous:readonly RaceEntry[],now:Date){
+  await pool.query(`CREATE TABLE IF NOT EXISTS rainbet_race_public(id text PRIMARY KEY,data jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT NOW())`);
+  await pool.query(`INSERT INTO rainbet_race_public(id,data,updated_at) VALUES('current',$1,NOW()) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=NOW()`,[JSON.stringify(publicRace(current,previous,now))]);
+}
 const isRaceChannelName=(name:string)=>name.normalize('NFKC').toLowerCase().includes('wager-race');
 
 async function raceChannels(client:Client):Promise<TextChannel[]>{
@@ -127,6 +144,7 @@ export function startRainbetRace(client:Client,pool?:Pool):()=>void{
     try{
       const now=new Date();
       const [current,previous]=await Promise.all([fetchWagers(raceRange(now)),fetchWagers(raceRange(now,-1))]);
+      if(pool)await publishPublicRace(pool,current,previous,now).catch(error=>console.error('[nozebot][race] publication publique impossible',(error as Error)?.message??error));
       const payload=await racePanel(current,previous,now);
       // Discord de Belva : nouvelle carte (validée dans 🎨︱validation-design), sinon l'ancien panneau.
       const belva=await isApproved(pool,'race')?await belvaRaceCard(current,previous,now,'BELVA',await isApproved(pool,'race-v3')):null;

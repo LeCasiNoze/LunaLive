@@ -91,6 +91,7 @@ import { callsHuntRouter } from "./routes/calls_hunt.js";
 import { hunt2Router } from "./routes/hunt2.js";
 import { publicCallsRouter } from "./routes/public_calls.js";
 import { publicSlotsRouter } from "./routes/public-slots.js";
+import { publicRainbetRaceRouter } from "./routes/public_rainbet_race.js";
 import { belvaTournamentRouter } from "./routes/belva_tournament.js";
 
 // Billing / uploads / emotes / reports / admin content
@@ -171,6 +172,7 @@ export function createApp() {
   app.options("/hls", (_req, res) => res.sendStatus(204));
 
   app.use("/api/public/slots", publicSlotsRouter);
+  app.use("/api/public/rainbet", publicRainbetRaceRouter);
   app.use(belvaTournamentRouter);
   // Overlay public — calls queue (no auth) — monté tôt pour échapper aux routers d'auth
   app.use(publicCallsRouter);
