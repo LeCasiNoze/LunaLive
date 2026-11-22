@@ -1,0 +1,86 @@
+---
+import Base from '../layouts/Base.astro';
+import {t, href, fmt, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {ranked, TELEGRAM} from '../data/casinos';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug} from '../data/wins';
+// Page du mois : le top 30 des gains vérifiés de tous les Tops du jour du mois, puis la liste des jours.
+interface Props {lang: Lang; page: WinsPage}
+const {lang, page} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const w = u.wins;
+const site = Astro.site!.origin;
+const hits = page.hits!;
+const big = hits[0];
+const m = monthLabel(lang, page.name!);
+const vars = {m, n: hits.length, x: multi(big.multi), who: streamerName(big.streamer), pf: platformName(big.platform)};
+let title = fmt(w.tMonth, vars);
+if (title.length > 60) title = title.split(' – ')[0];
+const segs = fmt(w.dMonth, vars).split('¦');
+while (segs.length > 1 && segs.join('').length > 160) segs.pop();
+const desc = segs.join('');
+const h1 = fmt(w.h1Month, vars);
+const offer = ranked(lang)[0];
+const short = (iso: string) => new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
+const groupUrl = (base: string, name: string, list?: {sub: string}[]) => list?.find(x => x.sub === `wins/${base}/${slug(name)}/`) && href(lang, `wins/${base}/${slug(name)}/`);
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, {name: m, url: href(lang, page.sub)}];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: hits.length,
+    itemListElement: hits.map(c => ({'@type': 'ListItem', position: c.rank, name: `${multi(c.multi)}${c.game ? ` ${w.on} ${c.game}` : ''} – ${streamerName(c.streamer)} (${platformName(c.platform)}, ${c.day})`, url: site + href(lang, `wins/${c.day}/`)}))},
+];
+const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], w.colsSlot[6]];
+---
+<Base lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
+  <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
+
+  <header class="pg-hd">
+    <p class="kick">Top {hits.length} · {page.days.length} {w.daysCount}</p>
+    <h1>{h1}</h1>
+    <p class="lede">{fmt(w.iMonth, vars)} {w.method}</p>
+  </header>
+
+  <div class="board">
+    <section class="board-main">
+      <table class="rk">
+        <thead><tr>{cols.map((c, i) => <th scope="col" class={i >= 3 && i <= 5 ? 'num' : undefined}>{c}</th>)}</tr></thead>
+        <tbody>{hits.map(c => (
+          <tr class={c.rank === 1 ? 'top' : undefined}>
+            <td class="pos">{c.rank}</td>
+            <td>{groupUrl('streamer', streamerName(c.streamer), page.streamers) ? <a href={groupUrl('streamer', streamerName(c.streamer), page.streamers)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
+            <td>{c.game ? (groupUrl('slot', c.game, page.slots) ? <a href={groupUrl('slot', c.game, page.slots)}>{c.game}</a> : c.game) : <span class="na">–</span>}</td>
+            <td class="num x">{multi(c.multi)}</td>
+            <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
+            <td class="num">{money(c.win, c.currency, lang)}</td>
+            <td><a href={href(lang, `wins/${c.day}/`)}>{short(c.day)}</a></td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <p class="note">{w.fine}</p>
+    </section>
+
+    <aside class="board-side">
+      <div class="offer">
+        <div class="offer-hd">
+          <img src={offer.logo} alt="" width="40" height="40" />
+          <div><b>{offer.name}</b><span>{d.casino[offer.id].headline}</span></div>
+        </div>
+        <a class="btn btn-play btn-block" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="wins-month">{u.play}</a>
+        <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a></p>
+      </div>
+      <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-month"><b>{u.tg.title}</b><span>{u.tg.short} →</span></a>
+    </aside>
+  </div>
+
+  <section class="sec">
+    <h2>{w.daysMonth}</h2>
+    <table class="list"><tbody>{page.days.map(x => { const t1 = top(x)[0]; return <tr><td><a href={href(lang, `wins/${x.period}/`)}>{dayLabel(lang, x.period)}</a></td><td>{streamerName(t1.streamer)}</td><td class="num x">{multi(t1.multi)}</td></tr>; })}</tbody></table>
+    {(page.prev || page.next) && <p class="note">{page.prev && <a href={href(lang, page.prev)}>← {monthLabel(lang, page.prev.split('/')[2])}</a>}{page.prev && page.next && ' · '}{page.next && <a href={href(lang, page.next)}>{monthLabel(lang, page.next.split('/')[2])} →</a>}</p>}
+  </section>
+
+  <section class="sec rg">
+    <h2>{w.rgT}</h2>
+    <p>{w.rgP} <a href={href(lang, 'responsible-gambling/')}>{d.rg.link}</a></p>
+  </section>
+</Base>

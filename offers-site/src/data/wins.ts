@@ -65,8 +65,8 @@ export function weekBounds(week: string) {
 // Pages à générer, identiques dans les 6 langues (hreflang réciproque).
 export type Hit = Clip & {day: string; youtube_id: string | null};
 export type Group = {sub: string; name: string; hits: Hit[]};
-export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
-  name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]};
+export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer' | 'month'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
+  name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]; monthSub?: string};
 export const slug = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 // Seuls les Tops du jour comptent : un même clip repasse dans le Top de la semaine.
 function groups(days: Video[], key: (c: Clip) => string | null | undefined, base: string): Group[] {
@@ -90,13 +90,22 @@ export async function winsPages(): Promise<WinsPage[]> {
   const weekSub = (w: string) => (weeks.includes(w) ? `wins/week/${w}/` : undefined);
   const slots = groups(days, c => c.game, 'slot'), streamers = groups(days, c => streamerName(c.streamer), 'streamer');
   const last = (g: Group) => g.hits.reduce((a, h) => (h.day > a ? h.day : a), '');
+  // Page du mois : le top 30 des gains de tous les jours du mois, dès 2 jours publiés.
+  const months = [...new Set(days.map(v => v.period.slice(0, 7)))].filter(m => days.filter(v => v.period.startsWith(m)).length >= MIN_DAYS).sort().reverse();
+  const monthSub = (day: string) => (months.includes(day.slice(0, 7)) ? `wins/month/${day.slice(0, 7)}/` : undefined);
   return [
-    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), slots, streamers},
-    ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period)), slots: near(slots, [v]), streamers: near(streamers, [v])})),
+    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), monthSub: monthSub(days[0].period), slots, streamers},
+    ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period)), monthSub: monthSub(v.period), slots: near(slots, [v]), streamers: near(streamers, [v])})),
     ...weeks.map((w, i) => {
       const wd = days.filter(v => isoWeek(v.period) === w);
       return {sub: `wins/week/${w}/`, kind: 'week' as const, week: w, v: weeklies.find(x => x.period === w), days: wd,
         prev: weeks[i + 1] && `wins/week/${weeks[i + 1]}/`, next: weeks[i - 1] && `wins/week/${weeks[i - 1]}/`, slots: near(slots, wd), streamers: near(streamers, wd)};
+    }),
+    ...months.map((m, i) => {
+      const md = days.filter(v => v.period.startsWith(m));
+      const hits = md.flatMap(v => v.clips.map(c => ({...c, day: v.period, youtube_id: v.youtube_id}))).sort((a, b) => b.multi - a.multi).slice(0, 30).map((c, j) => ({...c, rank: j + 1}));
+      return {sub: `wins/month/${m}/`, kind: 'month' as const, name: m, hits, last: md[0].period, days: md,
+        prev: months[i + 1] && `wins/month/${months[i + 1]}/`, next: months[i - 1] && `wins/month/${months[i - 1]}/`, slots: near(slots, md), streamers: near(streamers, md)};
     }),
     ...slots.map(g => ({sub: g.sub, kind: 'slot' as const, name: g.name, hits: g.hits, last: last(g), days: [], streamers: streamers.filter(x => x.hits.some(h => slug(h.game ?? '') === slug(g.name)))})),
     ...streamers.map(g => ({sub: g.sub, kind: 'streamer' as const, name: g.name, hits: g.hits, last: last(g), days: [], slots: slots.filter(x => x.hits.some(h => slug(streamerName(h.streamer)) === slug(g.name)))})),
@@ -118,6 +127,7 @@ export const streamerName = (s: string) => s.replace(/^rumble-/i, '');
 export const platformName = (p: Clip['platform']) => (p === 'rumble' ? 'Rumble' : 'Kick');
 // Rumble redirige /user/<nom> vers la casse exacte de la chaîne ; Kick attend le slug en minuscules.
 export const channelUrl = (c: Clip) => (c.platform === 'rumble' ? `https://rumble.com/user/${streamerName(c.streamer)}` : `https://kick.com/${streamerName(c.streamer).toLowerCase()}`);
+export const monthLabel = (lang: Lang, ym: string) => new Intl.DateTimeFormat(t(lang).locale, {month: 'long', year: 'numeric', timeZone: 'UTC'}).format(new Date(ym + '-15T12:00:00Z'));
 export const dayLabel = (lang: Lang, iso: string) => new Intl.DateTimeFormat(t(lang).locale, {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
 export const weekLabel = (lang: Lang, week: string) => {
   const [a, b] = weekBounds(week);

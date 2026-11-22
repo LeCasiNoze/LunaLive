@@ -3,7 +3,7 @@ import Base from '../layouts/Base.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
-import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, slug} from '../data/wins';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug} from '../data/wins';
 // Proposition de refonte de /wins/ (dernier Top et pages jour) : le classement d'abord, la vidéo et l'offre principale à côté.
 interface Props {lang: Lang; page: WinsPage}
 const {lang, page} = Astro.props;
@@ -75,6 +75,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
         ))}</tbody>
       </table>
       <p class="note">{w.method} {w.fine} <a href="/wins/feed.json" type="application/json">JSON</a></p>
+      {page.monthSub && <p class="note"><a href={href(lang, page.monthSub)}>{w.monthLink} · {monthLabel(lang, v.period.slice(0, 7))} →</a></p>}
     </section>
 
     <aside class="board-side">
