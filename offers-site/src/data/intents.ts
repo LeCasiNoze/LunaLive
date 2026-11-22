@@ -14,6 +14,61 @@ export interface Intent {
 
 export const INTENTS: Intent[] = [
   {
+    casino: 'celsius', lang: 'en', slug: 'promo-code', place: 'intent-promo-code',
+    title: 'Celsius Casino Promo Code 2026: No Code Needed – Up to €2,000 + 250 Free Spins',
+    desc: 'Do you need a Celsius Casino promo code? Not with our link. The welcome offer is up to €2,000 + 250 free spins over 4 deposits, wagering x40 (x45 on the 3rd). The official tiers and rules.',
+    h1: 'Celsius Casino promo code: do you need one?',
+    lede: 'No. Our link carries our partner ID, so there is no code to type. Here is what the Celsius welcome offer gives, tier by tier, according to Celsius’s official pages.',
+    facts: [
+      ['Promo code', 'none to enter with our link'],
+      ['Welcome offer', 'up to €2,000 + 250 free spins over the first 4 deposits'],
+      ['1st deposit', '100% up to €500 + 150 free spins (50 a day for 3 days)'],
+      ['2nd deposit', '100% up to €300 + 50 free spins'],
+      ['3rd deposit', '200% up to €200 + 50 free spins'],
+      ['4th deposit', '150% up to €1,000'],
+      ['Wagering', 'x40 on the 1st and 2nd deposits, x45 on the 3rd'],
+      ['Max bet with a bonus', '€5 per spin'],
+    ],
+    sections: [
+      {h: 'How the offer works', p: [
+        'Each of your first four deposits unlocks one tier. Free spins from the 2nd and 3rd deposits are credited at once; the 150 from the 1st arrive as 50 a day for three days. They can only be played on the eligible slots.',
+        'Bonus funds can’t be withdrawn until the wagering is done. Asking for a withdrawal before that forfeits the bonus and any winnings from it (bonus terms, article 1.15), and a bonus expires 20 days after it is claimed if the wagering isn’t complete (article 1.22).',
+      ]},
+      {h: 'What about a no-deposit code?', p: [
+        'The public offer has none: every tier needs a deposit. Celsius’s bonus terms do cover no-deposit free spins when they are handed out, and cap what you can withdraw from them at €100 (article 3.3).',
+      ]},
+    ],
+    sources: [
+      {label: 'Celsius Casino welcome bonus page', url: 'https://celsiuscasino.com/welcome-bonus', checked: '2026-11-22'},
+      {label: 'Celsius Casino bonus terms, articles 1.15, 1.22 and 3.3', url: 'https://celsiuscasino.com/bonuses-terms', checked: '2026-11-22'},
+    ],
+  },
+  {
+    casino: 'betportal', lang: 'en', slug: 'bonus-code', place: 'intent-bonus-code',
+    title: 'Betportal Bonus Code 2026: No Code Needed – Up to €1,000 + 250 Free Spins',
+    desc: 'Do you need a Betportal bonus code? Not with our link. The welcome package is up to €1,000 + 250 free spins over 3 deposits. The tiers, from Betportal’s official pages.',
+    h1: 'Betportal bonus code: do you need one?',
+    lede: 'No. Our link asks for no code: it ties your sign-up to our partner account. Here is what the welcome package gives, tier by tier, according to Betportal’s official pages.',
+    facts: [
+      ['Bonus code', 'none to enter with our link'],
+      ['Welcome package', 'up to €1,000 + 250 free spins over 3 deposits'],
+      ['1st deposit', '150% up to €500 + 200 free spins'],
+      ['2nd deposit', '100% up to €300 + 50 free spins'],
+      ['3rd deposit', '50% up to €200'],
+    ],
+    sections: [
+      {h: 'What the package is worth', p: [
+        'Up to €1,000 in bonus money and 250 free spins in total, spread over your first three deposits: 150% up to €500 and 200 free spins on the first, 100% up to €300 and 50 free spins on the second, 50% up to €200 on the third.',
+        'Wagering, maximum bet and validity are set out on Betportal’s official page for each tier, linked below. Read them before you deposit.',
+      ]},
+    ],
+    sources: [
+      {label: 'Betportal, 1st deposit offer (read by our Affiliation team)', url: 'https://betportal.com/en/promotions/38', checked: '2026-11-21'},
+      {label: 'Betportal, 2nd deposit offer', url: 'https://betportal.com/en/promotions/37', checked: '2026-11-21'},
+      {label: 'Betportal, 3rd deposit offer', url: 'https://betportal.com/en/promotions/36', checked: '2026-11-21'},
+    ],
+  },
+  {
     casino: 'rainbet', lang: 'fr', slug: 'code-promo', place: 'intent-code-promo',
     title: 'Rainbet code promo et code parrainage : NIVORANET (+20 % de rakeback)',
     desc: 'Code promo Rainbet = code de parrainage : NIVORANET. Il donne +20 % de rakeback pendant 72 h et l’accès à notre course mensuelle de 200 $. Où le saisir, délai de 24 h, règles officielles.',
