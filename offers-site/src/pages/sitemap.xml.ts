@@ -4,6 +4,7 @@ import {CASINOS, PAIRS, CHECKED, NOINDEX} from '../data/casinos';
 import {winsPages} from '../data/wins';
 import {SLOTS} from '../data/slots';
 import {INTENTS, intentPath} from '../data/intents';
+import {maxWinPages, generatedAt} from '../data/maxwin';
 
 // Sitemap avec alternates hreflang pour chaque page et chaque langue.
 export const GET: APIRoute = async ({site}) => {
@@ -19,5 +20,6 @@ export const GET: APIRoute = async ({site}) => {
     return `<url><loc>${base}${href(l, p)}</loc><lastmod>${lastmod.get(p) ?? CHECKED}</lastmod><priority>${pr}</priority>${alts}</url>`;
   }));
   const mono = INTENTS.filter(x => !NOINDEX.includes(x.casino)).map(x => `<url><loc>${base}${href(x.lang, intentPath(x))}</loc><lastmod>${x.sources.map(s => s.checked).sort().at(-1)}</lastmod><priority>0.8</priority></url>`);
-  return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${urls.join('')}${mono.join('')}</urlset>`, {headers: {'Content-Type': 'application/xml'}});
+  const mw = maxWinPages().map(p => `<url><loc>${base}/max-win/${p.id}/</loc><lastmod>${generatedAt.slice(0, 10)}</lastmod><priority>0.8</priority></url>`);
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${urls.join('')}${mono.join('')}${mw.join('')}</urlset>`, {headers: {'Content-Type': 'application/xml'}});
 };

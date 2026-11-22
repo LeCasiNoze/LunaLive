@@ -1,0 +1,84 @@
+---
+import Base from '../../layouts/Base.astro';
+import {t, href, fmtDate} from '../../i18n';
+import {ui} from '../../i18n/ui';
+import {ranked} from '../../data/casinos';
+import {maxWinPages, MIN_WINS, generatedAt} from '../../data/maxwin';
+import {streamerName, platformName} from '../../data/wins';
+// « {jeu} max win » (anglais seulement) : le max officiel face aux gains vérifiés à l'image par notre détecteur.
+export function getStaticPaths() { return maxWinPages().map(p => ({params: {id: p.id}, props: p})); }
+const {id, sheet, stats} = Astro.props;
+const lang = 'en';
+const d = t(lang);
+const u = ui(lang);
+const site = Astro.site!.origin;
+const path = `max-win/${id}/`;
+const nf = (n: number) => n.toLocaleString('en-US', {maximumFractionDigits: 2});
+const share = stats.best.multi / sheet.maxWin * 100;
+const first = stats.top10.map(w => w.day).sort()[0];
+const months = Object.entries(stats.wins_1000x_by_month).sort();
+const updated = generatedAt.slice(0, 10);
+const offer = ranked(lang)[0];
+const title = `${sheet.game} Max Win: ${nf(sheet.maxWin)}x – Has Anyone Hit It?`;
+const desc = `${sheet.game} max win is ${nf(sheet.maxWin)}x. The biggest of the ${stats.wins} wins our detector verified on stream: x${nf(stats.best.multi)} by ${streamerName(stats.best.streamer)} (${fmtDate(lang, stats.best.day)}).`;
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: 'Max win', url: href(lang, path)}];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [...crumbs, {name: sheet.game, url: href(lang, path)}].slice(0, 2).map((b, i) => ({'@type': 'ListItem', position: i + 1, name: i ? sheet.game : b.name, item: site + (i ? href(lang, path) : b.url)}))},
+  {'@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [
+    {'@type': 'Question', name: `What is the ${sheet.game} max win?`, acceptedAnswer: {'@type': 'Answer', text: `${nf(sheet.maxWin)} times the bet.`}},
+    {'@type': 'Question', name: `Has anyone hit the ${sheet.game} max win?`, acceptedAnswer: {'@type': 'Answer', text: `Not in the ${stats.wins} stream wins we verified since ${fmtDate(lang, first)}. The best is x${nf(stats.best.multi)}, ${nf(share)}% of the max.`}},
+  ]},
+];
+---
+<Base lang={lang} title={title} desc={desc} path={path} jsonld={jsonld} mono>
+  <div class="page">
+    <ol class="crumbs"><li><a href={crumbs[0].url}>{crumbs[0].name}</a></li><li aria-current="page">{sheet.game} max win</li></ol>
+    <header class="pg-hd">
+      <p class="kick">{stats.provider} · updated {fmtDate(lang, updated)}</p>
+      <h1>{sheet.game} max win: {nf(sheet.maxWin)}x. Has anyone hit it?</h1>
+      <p class="lede">Not in the {stats.wins} wins our detector has verified on casino streams since {fmtDate(lang, first)}. The biggest is <b>x{nf(stats.best.multi)}</b> by {streamerName(stats.best.streamer)} on {fmtDate(lang, stats.best.day)}{stats.best.bonus_buy ? ' (bought bonus)' : ''}, which is {nf(share)}% of the max win.</p>
+    </header>
+
+    <section class="sec">
+      <h2>Verified wins on stream</h2>
+      <p>Each win was read on screen by our detector and checked on the image; rejected or doubtful reads are left out. Multipliers are win ÷ bet. For a bought bonus, “× buy cost” is the win divided by the price paid for the bonus.</p>
+      <table class="rk rk-all">
+        <thead><tr><th scope="col">Date</th><th scope="col">Streamer</th><th scope="col" class="num">× bet</th><th scope="col" class="num">× buy cost</th></tr></thead>
+        <tbody>{stats.top10.map(w => (
+          <tr><td>{fmtDate(lang, w.day)}</td><td>{streamerName(w.streamer)}<span class="sub">{platformName(w.platform as 'kick')}</span></td><td class="num x">x{nf(w.multi)}</td><td class="num">{w.bonus_buy ? `x${nf(w.paid_multi)}` : '–'}</td></tr>
+        ))}</tbody>
+      </table>
+      {months.length > 0 && <p class="note">Wins of 1,000x or more: {months.map(([m, n]) => `${new Date(m + '-01T12:00:00Z').toLocaleString('en-US', {month: 'long', year: 'numeric', timeZone: 'UTC'})}: ${n}`).join(' · ')}. These pages update with each batch of verified wins and only exist from {MIN_WINS} verified wins.</p>}
+    </section>
+
+    <section class="sec">
+      <h2>{sheet.game}: the official figures</h2>
+      <dl class="kv spec">
+        <div><dt>Max win</dt><dd>{nf(sheet.maxWin)}x the bet</dd></div>
+        {sheet.maxOdds && <div><dt>Max win odds</dt><dd>{sheet.maxOdds} spins</dd></div>}
+        <div><dt>RTP</dt><dd>{sheet.rtp}%</dd></div>
+        <div><dt>Volatility</dt><dd>{sheet.volatility ?? 'not published by the provider'}</dd></div>
+        {sheet.hit && <div><dt>Hit frequency</dt><dd>{sheet.hit}</dd></div>}
+        {sheet.fsOdds && <div><dt>Free spins</dt><dd>{sheet.fsOdds} spins</dd></div>}
+        <div><dt>Grid</dt><dd>{sheet.grid}</dd></div>
+      </dl>
+      <p>{sheet.about}</p>
+      <ul class="list">{sheet.sources.map(s => <li><a href={s.url} target="_blank" rel="noopener nofollow">{s.label}</a> ({s.covers}), checked on {fmtDate(lang, s.checked)}</li>)}</ul>
+    </section>
+
+    <div class="offer">
+      <div class="offer-hd">
+        <img src={offer.logo} alt="" width="40" height="40" />
+        <div><b>{offer.name}</b><span>{d.casino[offer.id].headline}</span></div>
+      </div>
+      <a class="btn" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="max-win">{u.play}</a>
+      <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a> · <a href={href(lang, 'wins/')}>{u.wins.nav}</a></p>
+    </div>
+
+    <div class="rg" style="margin-top:40px">
+      <span class="ic">18+</span>
+      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </div>
+</Base>
