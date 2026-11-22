@@ -15,8 +15,11 @@ const v = page.v!;
 const clips = top(v);
 const n1 = clips[0];
 const date = dayLabel(lang, v.period);
+const dayShort = new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'}).format(new Date(v.period + 'T12:00:00Z'));
 const vars = {n: clips.length, date, x: multi(n1.multi), who: streamerName(n1.streamer), pf: platformName(n1.platform)};
 let title = page.kind === 'latest' ? fmt(w.tLatest, vars) : fmt(w.tDay, vars);
+// Au-delà de 60 caractères : d'abord le mois abrégé (on garde « x4,940 by … », le plus cherché), sinon on coupe le complément.
+if (title.length > 60) title = (page.kind === 'latest' ? fmt(w.tLatest, {...vars, date: dayShort}) : fmt(w.tDay, {...vars, date: dayShort}));
 if (title.length > 60) title = title.split(' – ')[0];
 const segs = fmt(w.dDay, vars).split('¦');
 while (segs.length > 1 && segs.join('').length > 160) segs.pop();
@@ -31,16 +34,22 @@ const yt = v.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : nu
 const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
 const embed = !!v.youtube_id && v.age_restricted === false;
 const offer = ranked(lang)[0];
+const streamerUrl = (c: typeof n1) => page.streamers?.find(x => x.sub === `wins/streamer/${slug(streamerName(c.streamer))}/`) && href(lang, `wins/streamer/${slug(streamerName(c.streamer))}/`);
 const slotUrl = (g: string) => page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
 const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, ...(page.kind === 'latest' ? [] : [{name: date, url: href(lang, page.sub)}])];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
   {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: clips.length,
-    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${xg(c)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`}))},
+    itemListElement: clips.map(c => ({'@type': 'ListItem', position: c.rank, name: `${xg(c)} – ${streamerName(c.streamer)} (${platformName(c.platform)})`, ...(streamerUrl(c) ? {url: site + streamerUrl(c)} : {})}))},
+  ...(page.kind === 'latest' ? [{'@context': 'https://schema.org', '@type': 'Dataset', name: 'Big Win Daily – verified slot wins from casino livestreams',
+    description: 'Daily ranking of the biggest slot wins detected on public Kick and Rumble casino livestreams and checked frame by frame: streamer, platform, game, multiplier (win / base bet), bet, win and date. Amounts have no currency.',
+    url: site + href('en', 'wins/'), creator: {'@id': site + '/#org'}, isAccessibleForFree: true, dateModified: v.period,
+    keywords: ['slot wins', 'big win', 'casino streamers', 'Kick', 'Rumble', 'multiplier'],
+    distribution: [{'@type': 'DataDownload', encodingFormat: 'application/json', contentUrl: site + '/wins/feed.json'}]}] : []),
 ];
 const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
 ---
-<Base lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins">
+<Base lang={lang} title={title} desc={desc} path={page.sub} jsonld={jsonld} active="wins" image={thumb && thumb.startsWith('http') ? thumb : undefined}>
   <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
 
   <header class="pg-hd">
@@ -57,7 +66,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
         <tbody>{clips.map(c => (
           <tr class={c.rank === 1 ? 'top' : undefined}>
             <td class="pos">{c.rank}</td>
-            <td><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{streamerName(c.streamer)}</a><span class="sub">{platformName(c.platform)}</span></td>
+            <td>{streamerUrl(c) ? <a href={streamerUrl(c)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
             <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{c.provider && <span class="sub">{c.provider}</span>}</td>
             <td class="num x">{multi(c.multi)}</td>
             <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>

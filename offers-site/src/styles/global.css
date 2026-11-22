@@ -142,6 +142,8 @@ table.rk td a { text-decoration: none; font-weight: 600; }
 table.rk td a:hover { text-decoration: underline; }
 .sub { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
 .sub.buy { color: var(--accent); }
+.sub a { font-weight: 500; text-decoration: none; }
+.sub a:hover { text-decoration: underline; }
 .x { font-weight: 700; font-size: 17px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .na { color: var(--muted); }
 .vs-table { overflow-x: auto; }

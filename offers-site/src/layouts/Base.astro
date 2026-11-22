@@ -6,8 +6,8 @@ import {YOUTUBE, TELEGRAM} from '../data/casinos';
 import {loadFeed, byKind} from '../data/wins';
 
 // mono : page en une seule langue (pas d'alternates hreflang).
-interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string; mono?: boolean}
-const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = '', mono = false} = Astro.props;
+interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string; mono?: boolean; image?: string}
+const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = '', mono = false, image} = Astro.props;
 const d = t(lang);
 const u = ui(lang);
 const site = Astro.site!.origin;
@@ -53,9 +53,10 @@ const foot = [
   <meta property="og:title" content={title} />
   <meta property="og:description" content={desc} />
   <meta property="og:url" content={canonical} />
-  <meta property="og:image" content={site + '/og.png'} />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+  {/* image : vignette de la vidéo du jour sur /wins/, sinon l'image du site (1200 × 630). */}
+  <meta property="og:image" content={image ?? site + '/og.png'} />
+  {!image && <meta property="og:image:width" content="1200" />}
+  {!image && <meta property="og:image:height" content="630" />}
   <meta property="og:locale" content={d.locale.replace('-', '_')} />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
