@@ -111,7 +111,7 @@ const fr: Dict = {
       more: [
         {h: 'Où saisir le code NIVORANET', p: 'Notre bouton Réclamer ouvre Rainbet avec le code déjà associé. Si le formulaire d’inscription affiche un champ code de parrainage ou code promo, vérifie qu’il indique bien NIVORANET avant de créer ton compte : on ne peut généralement plus ajouter le code une fois le compte créé.'},
         {h: 'Le code fonctionne-t-il toujours ?', p: 'On utilise nous-mêmes Rainbet en stream plusieurs fois par semaine et on revérifie l’offre régulièrement. Dernière vérification : voir la date en bas de cette page. Si quelque chose change, cette page est mise à jour en premier.'},
-        {h: 'La course mensuelle au wager', p: 'Chaque mois, les joueurs inscrits avec le code NIVORANET s’affrontent dans notre course au wager : 200 $ pour le top 3 (100 $, 60 $ et 40 $). Il faut au moins 1 000 $ misés dans le mois pour être classé. Le compteur de notre page d’accueil indique la fin de la course en cours.'},
+        {h: 'La course mensuelle au wager', p: 'Chaque mois, les joueurs inscrits avec le code NIVORANET s’affrontent dans notre course au wager : 200 $ pour le top 3 (100 $, 60 $ et 40 $). Il faut au moins 1 000 $ misés dans le mois pour être classé.'},
         {h: 'Pour qui est Rainbet', p: 'Pour les joueurs qui enchaînent les slots et préfèrent récupérer une part de chaque mise plutôt que courir après un gros bonus de dépôt avec un wager lourd. Si tu veux un bonus de dépôt classique avec des free spins, Betportal est plus adapté.'},
       ],
       faq: [

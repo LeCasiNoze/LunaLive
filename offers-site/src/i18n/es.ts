@@ -111,7 +111,7 @@ const es: Dict = {
       more: [
         {h: 'Dónde introducir el código NIVORANET', p: 'Nuestro botón de reclamar abre Rainbet con el código ya incluido. Si el formulario de registro muestra un campo de código de referido o promocional, comprueba que pone NIVORANET antes de crear la cuenta: normalmente no se puede añadir un código una vez creada.'},
         {h: '¿Sigue funcionando el código?', p: 'Usamos Rainbet nosotros mismos en directo varias veces por semana y revisamos la oferta con regularidad. Última comprobación: mira la fecha al final de esta página. Si algo cambia, esta página se actualiza primero.'},
-        {h: 'La carrera mensual de apuestas', p: 'Cada mes, los jugadores registrados con el código NIVORANET compiten en nuestra carrera de apuestas: 200 $ para el top 3 (100 $, 60 $ y 40 $). Necesitas al menos 1.000 $ apostados durante el mes para entrar en la clasificación. El contador de nuestra página de inicio indica cuándo termina la carrera en curso.'},
+        {h: 'La carrera mensual de apuestas', p: 'Cada mes, los jugadores registrados con el código NIVORANET compiten en nuestra carrera de apuestas: 200 $ para el top 3 (100 $, 60 $ y 40 $). Necesitas al menos 1.000 $ apostados durante el mes para entrar en la clasificación.'},
         {h: 'Para quién es Rainbet', p: 'Para jugadores que dan muchos giros y prefieren recuperar una parte de cada apuesta antes que perseguir un gran bono sobre el depósito con requisitos de apuesta exigentes. Si quieres un bono de depósito clásico con giros gratis, Betportal encaja mejor.'},
       ],
       faq: [

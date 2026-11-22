@@ -111,7 +111,7 @@ const it: Dict = {
       more: [
         {h: 'Dove inserire il codice NIVORANET', p: 'Il nostro pulsante Richiedi apre Rainbet con il codice già associato. Se il modulo di registrazione mostra un campo per il codice referral o promo, controlla che ci sia scritto NIVORANET prima di creare l’account: di solito il codice non si può aggiungere a account già creato.'},
         {h: 'Il codice funziona ancora?', p: 'Usiamo Rainbet noi stessi in streaming più volte a settimana e ricontrolliamo l’offerta con regolarità. Ultima verifica: vedi la data in fondo a questa pagina. Se qualcosa cambia, aggiorniamo prima questa pagina.'},
-        {h: 'La gara mensile di puntate', p: 'Ogni mese i giocatori registrati con il codice NIVORANET partecipano alla nostra gara di puntate: 200 $ per i primi 3 (100 $, 60 $ e 40 $). Servono almeno 1.000 $ puntati nel corso del mese per entrare in classifica. Il contatore nella nostra home mostra quando finisce la gara in corso.'},
+        {h: 'La gara mensile di puntate', p: 'Ogni mese i giocatori registrati con il codice NIVORANET partecipano alla nostra gara di puntate: 200 $ per i primi 3 (100 $, 60 $ e 40 $). Servono almeno 1.000 $ puntati nel corso del mese per entrare in classifica.'},
         {h: 'A chi è adatto Rainbet', p: 'A chi gira molte slot e preferisce riavere una parte di ogni puntata invece di inseguire un grosso bonus sul deposito con requisiti di puntata pesanti. Se vuoi un classico bonus sul deposito con giri gratis, Betportal è più adatto.'},
       ],
       faq: [

@@ -111,7 +111,7 @@ const de: Dict = {
       more: [
         {h: 'Wo du den Code NIVORANET eingibst', p: 'Unser Button öffnet Rainbet mit bereits angehängtem Code. Wenn das Anmeldeformular ein Feld für Empfehlungs- oder Promo-Code zeigt, prüfe vor der Kontoerstellung, dass dort NIVORANET steht – nachträglich lässt sich ein Code meist nicht mehr hinzufügen.'},
         {h: 'Funktioniert der Code noch?', p: 'Wir nutzen Rainbet selbst mehrmals pro Woche im Stream und prüfen das Angebot regelmäßig. Letzte Prüfung: siehe Datum am Ende dieser Seite. Ändert sich etwas, wird diese Seite zuerst aktualisiert.'},
-        {h: 'Das monatliche Wett-Rennen', p: 'Jeden Monat treten Spieler, die sich mit dem Code NIVORANET angemeldet haben, in unserem Wett-Rennen an: 200 $ für die Top 3 (100 $, 60 $ und 40 $). Für die Wertung brauchst du im Monat mindestens 1.000 $ Umsatz. Der Zähler auf unserer Startseite zeigt, wann das aktuelle Rennen endet.'},
+        {h: 'Das monatliche Wett-Rennen', p: 'Jeden Monat treten Spieler, die sich mit dem Code NIVORANET angemeldet haben, in unserem Wett-Rennen an: 200 $ für die Top 3 (100 $, 60 $ und 40 $). Für die Wertung brauchst du im Monat mindestens 1.000 $ Umsatz.'},
         {h: 'Für wen Rainbet passt', p: 'Für Spieler, die viele Slots drehen und lieber bei jeder Wette einen Teil zurückbekommen, statt einem großen Einzahlungsbonus mit hohen Umsatzbedingungen nachzujagen. Wenn du einen klassischen Einzahlungsbonus mit Freispielen willst, passt Betportal besser.'},
       ],
       faq: [

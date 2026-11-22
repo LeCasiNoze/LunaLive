@@ -110,7 +110,7 @@ const en = {
       more: [
         {h: 'Where to enter the code NIVORANET', p: 'Our Claim button opens Rainbet with the code already attached. If the sign-up form shows a referral or promo code field, check that it reads NIVORANET before you create the account – a code usually cannot be added once the account exists.'},
         {h: 'Is the code still working?', p: 'We use Rainbet ourselves on stream several times a week and re-check the offer regularly. Last check: see the date at the bottom of this page. If anything changes, this page is updated first.'},
-        {h: 'The monthly wager race', p: 'Every month, players registered under code NIVORANET compete in our wager race: $200 for the top 3 ($100, $60 and $40). You need at least $1,000 wagered during the month to be ranked. The counter on our home page shows when the current race ends.'},
+        {h: 'The monthly wager race', p: 'Every month, players registered under code NIVORANET compete in our wager race: $200 for the top 3 ($100, $60 and $40). You need at least $1,000 wagered during the month to be ranked.'},
         {h: 'Who Rainbet is for', p: 'Players who spin a lot of slots and prefer getting a share of every bet back over chasing a big deposit match with heavy wagering. If you want a classic deposit bonus with free spins, Betportal fits better.'},
       ],
       faq: [
