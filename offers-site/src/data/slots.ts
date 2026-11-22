@@ -8,7 +8,7 @@ export type Slot = {
   id: string; name: string; provider: string; source: string; checked: string;
   rtp: number[]; volatility: string; maxWin: number; grid: string; buys: Buy[];
   // Chiffres absents de la fiche officielle : au moins deux sources indépendantes et concordantes, citées sur la page.
-  cited?: Partial<Record<'maxWin' | 'volatility' | 'buys', string[]>>;
+  cited?: Partial<Record<'maxWin' | 'volatility' | 'buys' | 'grid', string[]>>;
   text: Record<Lang, string[]>;
 };
 
@@ -90,6 +90,48 @@ export const SLOTS: Slot[] = [
         'Gates of Olympus è la slot di Zeus di Pragmatic Play: sei rulli a cascata dove 8 o più simboli uguali pagano ovunque sullo schermo, con un RTP pubblicato del 96,50%.',
         'Il suo marchio è il simbolo moltiplicatore. Moltiplicatori fino a 500x possono cadere nel gioco base e nei giri gratis, e valgono per la vincita della cascata in cui cadono.',
         'Quattro o più scatter di Zeus attivano 15 giri gratis. Durante il bonus ogni moltiplicatore vincente si somma a un totale che continua a crescere: da qui arriva la vincita massima di 5.000x. In alcuni mercati i giri gratis si comprano direttamente a 100 volte la puntata.',
+      ],
+    },
+  },
+  {
+    id: 'fortune-of-olympus', name: 'Fortune of Olympus', provider: 'Pragmatic Play',
+    source: 'https://www.pragmaticplay.com/en/games/fortune-of-olympus/', checked: '2026-11-22',
+    rtp: [96.55], volatility: 'high', maxWin: 10000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
+    cited: {
+      maxWin: ['https://www.olbg.com/slots/games/fortune-of-olympus', 'https://www.casinos.com/slots/fortune-of-olympus', 'https://www.vegasslotsonline.com/pragmatic-play/fortune-of-olympus/'],
+      volatility: ['https://www.casinos.com/slots/fortune-of-olympus', 'https://www.vegasslotsonline.com/pragmatic-play/fortune-of-olympus/'],
+      grid: ['https://www.olbg.com/slots/games/fortune-of-olympus', 'https://www.vegasslotsonline.com/pragmatic-play/fortune-of-olympus/'],
+    },
+    text: {
+      en: [
+        'Fortune of Olympus brings Zeus back to Pragmatic Play, this time in a gold-filled throne room: a tumbling cluster slot with a published RTP of 96.55%.',
+        'Multipliers worth up to 500x can hit at random in the base game and in the bonus. When several land during one tumble sequence, their values are added together and paid once the sequence ends.',
+        'Four to seven scatters start up to 30 free spins, and during the round every multiplier that hits joins a running total applied to every win until the end. Up to four optional special bets change the base game: multipliers on every spin, a higher minimum multiplier of up to 50x, or a better chance to reach the free spins.',
+      ],
+      fr: [
+        'Fortune of Olympus ramène Zeus chez Pragmatic Play, cette fois dans une salle du trône remplie d’or : une machine à sous à grappes et cascades, avec un RTP publié de 96,55 %.',
+        'Des multiplicateurs jusqu’à 500x peuvent tomber au hasard dans le jeu de base comme dans le bonus. Quand plusieurs arrivent pendant une même cascade, leurs valeurs s’additionnent et sont payées à la fin de la séquence.',
+        'De quatre à sept scatters lancent jusqu’à 30 tours gratuits ; pendant le bonus, chaque multiplicateur qui tombe rejoint un total appliqué à tous les gains jusqu’à la fin. Jusqu’à quatre mises spéciales facultatives modifient le jeu de base : multiplicateurs à chaque tour, multiplicateur minimum relevé jusqu’à 50x, ou meilleures chances d’atteindre les tours gratuits.',
+      ],
+      de: [
+        'Fortune of Olympus holt Zeus zurück zu Pragmatic Play, diesmal in einen goldgefüllten Thronsaal: ein Cluster-Slot mit Tumble-Funktion und einem veröffentlichten RTP von 96,55 %.',
+        'Multiplikatoren bis 500x können im Basisspiel und im Bonus zufällig landen. Erscheinen mehrere in derselben Tumble-Folge, werden ihre Werte addiert und am Ende der Folge ausgezahlt.',
+        'Vier bis sieben Scatter starten bis zu 30 Freispiele; in der Runde fließt jeder Multiplikator in eine laufende Summe, die bis zum Ende für jeden Gewinn gilt. Bis zu vier optionale Sonderwetten verändern das Basisspiel: Multiplikatoren in jeder Drehung, ein höherer Mindestmultiplikator bis 50x oder bessere Chancen auf die Freispiele.',
+      ],
+      es: [
+        'Fortune of Olympus trae de vuelta a Zeus en Pragmatic Play, esta vez en una sala del trono llena de oro: una tragaperras de grupos en cascada con un RTP publicado del 96,55 %.',
+        'Pueden caer al azar multiplicadores de hasta 500x en el juego base y en el bono. Si caen varios durante una misma cascada, sus valores se suman y se pagan al terminar la secuencia.',
+        'De cuatro a siete scatters activan hasta 30 giros gratis; durante la ronda, cada multiplicador que cae se suma a un total que se aplica a todos los premios hasta el final. Hasta cuatro apuestas especiales opcionales cambian el juego base: multiplicadores en cada giro, un multiplicador mínimo de hasta 50x o más opciones de llegar a los giros gratis.',
+      ],
+      pt: [
+        'Fortune of Olympus traz Zeus de volta à Pragmatic Play, desta vez numa sala do trono cheia de ouro: um slot de clusters em cascata com RTP publicado de 96,55%.',
+        'Multiplicadores de até 500x podem cair aleatoriamente no jogo base e no bônus. Quando vários caem durante a mesma cascata, os valores são somados e pagos no fim da sequência.',
+        'De quatro a sete scatters ativam até 30 rodadas grátis; durante a rodada, cada multiplicador que cai entra num total aplicado a todos os ganhos até o fim. Até quatro apostas especiais opcionais mudam o jogo base: multiplicadores em todo giro, multiplicador mínimo de até 50x ou mais chances de chegar às rodadas grátis.',
+      ],
+      it: [
+        'Fortune of Olympus riporta Zeus da Pragmatic Play, questa volta in una sala del trono piena d’oro: una slot a cluster con cascate e un RTP pubblicato del 96,55%.',
+        'Moltiplicatori fino a 500x possono cadere a caso nel gioco base e nel bonus. Se ne cadono diversi nella stessa cascata, i valori si sommano e vengono pagati alla fine della sequenza.',
+        'Da quattro a sette scatter attivano fino a 30 giri gratis; durante il round ogni moltiplicatore che cade entra in un totale applicato a tutte le vincite fino alla fine. Fino a quattro puntate speciali facoltative cambiano il gioco base: moltiplicatori a ogni giro, un moltiplicatore minimo fino a 50x o più possibilità di arrivare ai giri gratis.',
       ],
     },
   },
