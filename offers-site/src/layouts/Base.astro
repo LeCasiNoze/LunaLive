@@ -68,11 +68,11 @@ const foot = [
 <body>
   <header class="hd">
     <div class="wrap hd-in">
-      <a class="brand" href={href(lang)}><img src="/img/bwd-256.png" alt="" width="32" height="32" /><span>Big Win Daily</span></a>
+      <a class="brand" href={href(lang)} aria-label="Big Win Daily"><img src="/img/bwd-256.png" alt="" width="32" height="32" /><span>Big Win Daily</span></a>
       <nav class="hd-nav" aria-label="Menu">{nav.map(n => <a href={n.url} aria-current={cur === n.k ? 'page' : undefined}>{n.label}</a>)}</nav>
       <a class="hd-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar">Telegram</a>
       <details class="lang">
-        <summary aria-label={d.nav.language}>{d.short}</summary>
+        <summary><span class="vh">{d.nav.language} </span>{d.short}</summary>
         <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a></li>)}</ul>
       </details>
     </div>
