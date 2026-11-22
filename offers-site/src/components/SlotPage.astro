@@ -4,7 +4,7 @@ import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked} from '../data/casinos';
 import {type Slot, SL} from '../data/slots';
-import {loadFeed, byKind, multi, money, streamerName, platformName, channelUrl, dayLabel, slug} from '../data/wins';
+import {loadFeed, byKind, multi, money, streamerName, platformName, channelUrl, dayLabel, slug, clipVideo} from '../data/wins';
 // Fiche d'une machine à sous : chiffres officiels de l'éditeur (source et date), texte propre au jeu, nos gains vérifiés.
 interface Props {lang: Lang; s: Slot}
 const {lang, s} = Astro.props;
@@ -28,7 +28,7 @@ const h1 = fmt(l.h1, vars);
 const days = byKind(await loadFeed(), 'daily');
 const hits = days.flatMap(v => v.clips.filter(c => c.game && slug(c.game) === slug(s.name)).map(c => ({...c, day: v.period, yt: v.youtube_id}))).sort((a, b) => b.multi - a.multi);
 // Lien vers la vidéo, au chapitre du gain quand le flux donne t (secondes).
-const ytUrl = (c: {yt: string | null; t?: number | null}) => c.yt && `https://www.youtube.com/watch?v=${c.yt}${c.t != null ? `&t=${c.t}s` : ''}`;
+const ytUrl = (c: {yt: string | null; t?: number | null}) => clipVideo(c.yt, c.t);
 // L'offre mise en avant : la première de la langue qui propose les jeux de cet éditeur.
 const brand = s.provider.split(' ')[0].toLowerCase();
 const offer = ranked(lang).find(c => c.providers.some(p => p.toLowerCase().startsWith(brand)));

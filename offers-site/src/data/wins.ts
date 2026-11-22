@@ -127,6 +127,9 @@ export const money = (n: number | null, cur: string | null, lang: Lang = 'en') =
   return cur && SYM[cur] ? `${SYM[cur]}${s}` : s;
 };
 export const multi = (m: number) => `x${Math.round(m).toLocaleString('en-US')}`;
+// Lien vers la vidéo au début du chapitre du clip quand le flux donne t (secondes).
+export const clipVideo = (id: string | null | undefined, t?: number | null) => (id ? `https://www.youtube.com/watch?v=${id}${t != null ? `&t=${t}s` : ''}` : null);
+export const mmss = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 export const streamerName = (s: string) => s.replace(/^rumble-/i, '');
 export const platformName = (p: Clip['platform']) => (p === 'rumble' ? 'Rumble' : 'Kick');
 // Rumble redirige /user/<nom> vers la casse exacte de la chaîne ; Kick attend le slug en minuscules.

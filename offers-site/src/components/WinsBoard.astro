@@ -4,7 +4,7 @@ import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
 import {bySlotName} from '../data/slots';
-import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug} from '../data/wins';
+import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug, clipVideo, mmss} from '../data/wins';
 // Proposition de refonte de /wins/ (dernier Top et pages jour) : le classement d'abord, la vidéo et l'offre principale à côté.
 interface Props {lang: Lang; page: WinsPage}
 const {lang, page} = Astro.props;
@@ -70,7 +70,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
             <td class="pos">{c.rank}</td>
             <td>{streamerUrl(c) ? <a href={streamerUrl(c)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
             <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{c.provider && <span class="sub">{c.provider}</span>}</td>
-            <td class="num x">{multi(c.multi)}</td>
+            <td class="num x">{multi(c.multi)}{v.youtube_id && c.t != null && <span class="sub"><a href={clipVideo(v.youtube_id, c.t)!} target="_blank" rel="noopener" data-go="youtube" data-place="wins-clip">▶ {mmss(c.t)}</a></span>}</td>
             <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
             <td class="num">{money(c.win, c.currency, lang)}</td>
           </tr>

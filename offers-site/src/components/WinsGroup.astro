@@ -5,7 +5,7 @@ import GroupCards from './GroupCards.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked} from '../data/casinos';
-import {type WinsPage, money, multi, streamerName, platformName, channelUrl, dayLabel} from '../data/wins';
+import {type WinsPage, money, multi, streamerName, platformName, channelUrl, dayLabel, clipVideo} from '../data/wins';
 // Pages « <jeu> max win » et « <streamer> biggest wins » : tous les gains vérifiés d'un jeu ou d'un streamer, tirés des Tops du jour publiés.
 interface Props {lang: Lang; page: WinsPage}
 const {lang, page} = Astro.props;
@@ -64,7 +64,7 @@ const jsonld = [
           <td><b class="x">{multi(c.multi)}</b></td>
           <td>{money(c.bet, c.currency, lang)}{c.bonus_buy && <><br /><span class="buy">{w.buy.toLocaleUpperCase(d.locale)}{c.buy_cost != null && ` ${money(c.buy_cost, c.currency, lang)}`}</span></>}</td>
           <td>{money(c.win, c.currency, lang)}</td>
-          <td><a href={href(lang, `wins/${c.day}/`)}><time datetime={c.at}>{short(c.day)}</time></a>{c.youtube_id && <small><a href={`https://www.youtube.com/watch?v=${c.youtube_id}`} target="_blank" rel="noopener" data-go="youtube" data-place={`wins-${page.kind}`}>YouTube</a></small>}</td>
+          <td><a href={href(lang, `wins/${c.day}/`)}><time datetime={c.at}>{short(c.day)}</time></a>{c.youtube_id && <small><a href={clipVideo(c.youtube_id, c.t)!} target="_blank" rel="noopener" data-go="youtube" data-place={`wins-${page.kind}`}>YouTube</a></small>}</td>
         </tr>)}</tbody>
       </table>
     </div>
