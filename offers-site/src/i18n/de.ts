@@ -158,7 +158,7 @@ const de: Dict = {
       ],
     },
     celsius: {
-      seoTitle: 'Celsius Casino Bonus 2026 – bis 2.000 € + 250 Freispiele',
+      seoTitle: 'Celsius Casino Test 2026 – bis 2.000 € + 250 Freispiele',
       seoDesc: 'Celsius Willkommenspaket: bis 2.000 € + 250 Freispiele auf deine ersten 4 Einzahlungen (insgesamt 550 %). Umsatz, Maximaleinsatz, Mindesteinzahlung und so sicherst du ihn dir.',
       h1: 'Celsius Casino Bonus: bis 2.000 € + 250 Freispiele',
       tagline: 'Riesige Auswahl, Bonus Battles und Sportwetten',

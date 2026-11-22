@@ -11,13 +11,15 @@ export type Slot = {
   cited?: Partial<Record<'maxWin' | 'volatility' | 'buys' | 'grid' | 'rtp', string[]>>;
   // Chiffres officiels en plus quand l'éditeur les publie (fréquence de gain, chances de tours gratuits et du gain maximal).
   hit?: number; fsOdds?: string; maxOdds?: string;
+  // Casinos où le jeu a été vu dans le catalogue, avec la date du relevé : l'encadré « disponible sur » n'apparaît que pour eux.
+  at?: Partial<Record<'rainbet' | 'celsius' | 'betportal', string>>;
   text: Record<Lang, string[]>;
 };
 
 export const SLOTS: Slot[] = [
   {
     id: 'wanted-dead-or-a-wild', name: 'Wanted Dead or a Wild', provider: 'Hacksaw Gaming',
-    source: 'https://www.hacksawgaming.com/games/wanted-dead-or-a-wild', checked: '2026-11-22',
+    source: 'https://www.hacksawgaming.com/games/wanted-dead-or-a-wild', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.38, 94.55, 92.33, 88.42], volatility: '4/5', maxWin: 12500, grid: '5×5 · 15 paylines',
     buys: [{name: 'The Great Train Robbery', cost: null}, {name: 'Duel at Dawn', cost: null}, {name: 'Dead Man’s Hand', cost: null}],
     text: {
@@ -55,7 +57,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'gates-of-olympus', name: 'Gates of Olympus', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.5], volatility: 'high', maxWin: 5000, grid: '6 reels · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: 100}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/gates-olympus', 'https://www.gambling.com/uk/online-casinos/slots/games/gates-of-olympus', 'https://www.pokerlistings.com/online-slots/free/gates-of-olympus'],
@@ -97,7 +99,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'fortune-of-olympus', name: 'Fortune of Olympus', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/fortune-of-olympus/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/fortune-of-olympus/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.55], volatility: 'high', maxWin: 10000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/fortune-of-olympus', 'https://www.casinos.com/slots/fortune-of-olympus', 'https://www.vegasslotsonline.com/pragmatic-play/fortune-of-olympus/'],
@@ -139,7 +141,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'gates-of-olympus-1000', name: 'Gates of Olympus 1000', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus-1000/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus-1000/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.5], volatility: 'high', maxWin: 15000, grid: '6×5 · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: 100}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/gates-olympus-1000', 'https://www.vegasslotsonline.com/pragmatic-play/gates-of-olympus-1000/', 'https://www.pokerlistings.com/online-slots/free/gates-of-olympus-1000'],
@@ -180,7 +182,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'gates-of-olympus-super-scatter', name: 'Gates of Olympus Super Scatter', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus-super-scatter/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/gates-of-olympus-super-scatter/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.5], volatility: 'high', maxWin: 50000, grid: 'pays anywhere · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       rtp: ['https://www.olbg.com/slots/games/gates-of-olympus-super-scatter', 'https://www.pokerlistings.com/online-slots/free/gates-of-olympus-super-scatter'],
@@ -221,7 +223,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sweet-bonanza-1000', name: 'Sweet Bonanza 1000', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sweet-bonanza-1000/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/sweet-bonanza-1000/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.53], volatility: 'high', maxWin: 25000, grid: '6×5 · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       volatility: ['https://www.vegasslotsonline.com/pragmatic-play/sweet-bonanza-1000/', 'https://www.pokerlistings.com/online-slots/free/sweet-bonanza-1000'],
@@ -261,7 +263,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sugar-rush-1000', name: 'Sugar Rush 1000', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sugar-rush-1000/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/sugar-rush-1000/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96], volatility: 'high', maxWin: 25000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.vegasslotsonline.com/pragmatic-play/sugar-rush-1000/', 'https://www.pokerlistings.com/online-slots/free/sugar-rush-1000'],
@@ -302,7 +304,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'big-bass-splash', name: 'Big Bass Splash', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/big-bass-splash/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/big-bass-splash/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.71], volatility: 'high', maxWin: 5000, grid: '5×3 · 10 paylines', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/big-bass-splash', 'https://www.vegasslotsonline.com/pragmatic-play/big-bass-splash/', 'https://www.pokerlistings.com/online-slots/free/big-bass-splash'],
@@ -344,7 +346,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'the-dog-house-megaways', name: 'The Dog House Megaways', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/the-dog-house-megaways/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/the-dog-house-megaways/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.55], volatility: '', maxWin: 12305, grid: '6 reels · up to 117,649 ways', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/the-dog-house-megaways', 'https://www.pokerlistings.com/online-slots/free/the-dog-house-megaways'],
@@ -384,7 +386,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'madame-destiny-megaways', name: 'Madame Destiny Megaways', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/madame-destiny-megaways/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/madame-destiny-megaways/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.56], volatility: '', maxWin: 5000, grid: '6 reels · Megaways', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/madame-destiny-megaways', 'https://www.pokerlistings.com/online-slots/free/madame-destiny-megaways'],
@@ -424,7 +426,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sweet-rush-bonanza', name: 'Sweet Rush Bonanza', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sweet-rush-bonanza/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/sweet-rush-bonanza/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.5], volatility: '', maxWin: 5000, grid: '6×5 · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: null}, {name: 'Free Spins with 2x multipliers', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/sweet-rush-bonanza', 'https://www.pokerlistings.com/online-slots/free/sweet-rush-bonanza'],
@@ -465,7 +467,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'sugar-rush', name: 'Sugar Rush', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/sugar-rush/', checked: '2026-11-22',
+    source: 'https://www.pragmaticplay.com/en/games/sugar-rush/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.5], volatility: 'high', maxWin: 5000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/sugar-rush', 'https://www.pokerlistings.com/online-slots/free/sugar-rush'],
@@ -507,7 +509,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'mental', name: 'Mental', provider: 'Nolimit City',
-    source: 'https://nolimitcity.com/games/mental', checked: '2026-11-22',
+    source: 'https://nolimitcity.com/games/mental', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.08], volatility: 'extreme', maxWin: 66666, grid: '3–5 rows · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.19, fsOdds: "1 in 216", maxOdds: "1 in 18,000,000",
     cited: {
 
@@ -547,7 +549,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'san-quentin', name: 'San Quentin xWays', provider: 'Nolimit City',
-    source: 'https://nolimitcity.com/games/san-quentin', checked: '2026-11-22',
+    source: 'https://nolimitcity.com/games/san-quentin', checked: '2026-11-22', at: {celsius: '2026-11-22'},
     rtp: [96.03], volatility: 'extreme', maxWin: 150000, grid: '5×3 · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.25, fsOdds: "1 in 230",
     cited: {
 
@@ -646,35 +648,35 @@ export const SL: Record<Lang, L> = {
     provider: 'Provider', maxWin: 'Max win', rtp: 'RTP', volatility: 'Volatility', grid: 'Grid', bonus: 'Bonus games', buyPrice: 'Bonus buy price',
     buyUnknown: 'Shown in the game’s buy menu; {provider} does not publish it, so we don’t print a guess.', rtpNote: '{provider} publishes these RTP versions; the casino picks one, and the game’s info screen shows which.',
     source: 'Source: official {provider} game page, checked {date}.', about: 'About the game', ourWins: 'Our verified wins on {name}', noWins: 'No verified win on this game in our rankings yet.',
-    playAt: '{provider} games are available at {casino}', cols: ['Date', 'Streamer', 'Multiplier', 'Bet'], vol: {"high": "High", "very-high": "Very high", "medium": "Medium", "low": "Low", "extreme": "Extreme"}, volNa: "Not published consistently: sources disagree, so we leave it blank.", hitL: "Hit frequency", fsL: "Free spins", maxOddsL: "Max win odds", rtpNote1: "The value {provider} publishes; some casinos run a lower version, shown in the game’s info screen.", cited: "Not on the provider’s page; the same value at {links}, checked {date}.", indexT: "Slot Games – Max Win, RTP & Bonus Buys by Provider", indexH: "Slot games: max win, RTP and bonus buys", indexD: "Max win, RTP, volatility and bonus buy prices of popular slots, from official provider data and checked sources, with our verified live wins. 18+.", indexP: "Every figure comes from the provider’s official game page or from at least two sources that agree, with the date we checked it. Where a figure isn’t published, we leave it blank.", watch: "Video"},
+    playAt: '{name} is in the {casino} game library (checked {date})', cols: ['Date', 'Streamer', 'Multiplier', 'Bet'], vol: {"high": "High", "very-high": "Very high", "medium": "Medium", "low": "Low", "extreme": "Extreme"}, volNa: "Not published consistently: sources disagree, so we leave it blank.", hitL: "Hit frequency", fsL: "Free spins", maxOddsL: "Max win odds", rtpNote1: "The value {provider} publishes; some casinos run a lower version, shown in the game’s info screen.", cited: "Not on the provider’s page; the same value at {links}, checked {date}.", indexT: "Slot Games – Max Win, RTP & Bonus Buys by Provider", indexH: "Slot games: max win, RTP and bonus buys", indexD: "Max win, RTP, volatility and bonus buy prices of popular slots, from official provider data and checked sources, with our verified live wins. 18+.", indexP: "Every figure comes from the provider’s official game page or from at least two sources that agree, with the date we checked it. Where a figure isn’t published, we leave it blank.", watch: "Video"},
   fr: {crumb: 'Machines à sous', title: '{name} – gain max {max}x, RTP et bonus achetés', h1: '{name} : gain maximal, RTP et bonus',
     desc: '{name} de {provider} : gain max {max}x, RTP jusqu’à {rtp} %, volatilité {vol}, {n} bonus. Chiffres officiels relevés le {date}, et nos gains vérifiés en live. 18+.',
     provider: 'Éditeur', maxWin: 'Gain maximal', rtp: 'RTP', volatility: 'Volatilité', grid: 'Grille', bonus: 'Bonus', buyPrice: 'Prix du bonus acheté',
     buyUnknown: 'Affiché dans le menu d’achat du jeu ; {provider} ne le publie pas, donc nous n’affichons pas d’estimation.', rtpNote: '{provider} publie ces versions de RTP ; le casino en choisit une, visible dans l’écran d’infos du jeu.',
     source: 'Source : fiche officielle de {provider}, relevée le {date}.', about: 'Le jeu', ourWins: 'Nos gains vérifiés sur {name}', noWins: 'Pas encore de gain vérifié sur ce jeu dans nos classements.',
-    playAt: 'Les jeux {provider} sont disponibles sur {casino}', cols: ['Date', 'Streamer', 'Multiplicateur', 'Mise'], vol: {"high": "Élevée", "very-high": "Très élevée", "medium": "Moyenne", "low": "Faible", "extreme": "Extrême"}, volNa: "Pas de valeur concordante : les sources divergent, donc nous laissons la case vide.", hitL: "Fréquence de gain", fsL: "Tours gratuits", maxOddsL: "Chance du gain max", rtpNote1: "La valeur publiée par {provider} ; certains casinos utilisent une version plus basse, indiquée dans l’écran d’infos du jeu.", cited: "Absent de la fiche de l’éditeur ; même valeur sur {links}, relevé le {date}.", indexT: "Machines à sous – gain max, RTP et bonus par éditeur", indexH: "Machines à sous : gain maximal, RTP et bonus achetés", indexD: "Gain maximal, RTP, volatilité et prix des bonus achetés des machines à sous connues, d’après les fiches officielles et des sources vérifiées, avec nos gains vérifiés en live. 18+.", indexP: "Chaque chiffre vient de la fiche officielle de l’éditeur ou d’au moins deux sources concordantes, avec la date du relevé. Quand un chiffre n’est pas publié, la case reste vide.", watch: "Vidéo"},
+    playAt: '{name} figure dans la ludothèque de {casino} (vérifié le {date})', cols: ['Date', 'Streamer', 'Multiplicateur', 'Mise'], vol: {"high": "Élevée", "very-high": "Très élevée", "medium": "Moyenne", "low": "Faible", "extreme": "Extrême"}, volNa: "Pas de valeur concordante : les sources divergent, donc nous laissons la case vide.", hitL: "Fréquence de gain", fsL: "Tours gratuits", maxOddsL: "Chance du gain max", rtpNote1: "La valeur publiée par {provider} ; certains casinos utilisent une version plus basse, indiquée dans l’écran d’infos du jeu.", cited: "Absent de la fiche de l’éditeur ; même valeur sur {links}, relevé le {date}.", indexT: "Machines à sous – gain max, RTP et bonus par éditeur", indexH: "Machines à sous : gain maximal, RTP et bonus achetés", indexD: "Gain maximal, RTP, volatilité et prix des bonus achetés des machines à sous connues, d’après les fiches officielles et des sources vérifiées, avec nos gains vérifiés en live. 18+.", indexP: "Chaque chiffre vient de la fiche officielle de l’éditeur ou d’au moins deux sources concordantes, avec la date du relevé. Quand un chiffre n’est pas publié, la case reste vide.", watch: "Vidéo"},
   de: {crumb: 'Slots', title: '{name} – Max Win {max}x, RTP & Bonuskauf', h1: '{name}: Maximalgewinn, RTP und Bonusspiele',
     desc: '{name} von {provider}: Max Win {max}x, RTP bis {rtp} %, Volatilität {vol}, {n} Bonusspiele. Offizielle Werte vom {date} und unsere verifizierten Live-Gewinne. 18+.',
     provider: 'Anbieter', maxWin: 'Maximalgewinn', rtp: 'RTP', volatility: 'Volatilität', grid: 'Raster', bonus: 'Bonusspiele', buyPrice: 'Preis des Bonuskaufs',
     buyUnknown: 'Steht im Kaufmenü des Spiels; {provider} veröffentlicht ihn nicht, daher keine Schätzung.', rtpNote: '{provider} veröffentlicht diese RTP-Versionen; das Casino wählt eine, der Info-Bildschirm des Spiels zeigt welche.',
     source: 'Quelle: offizielle Spielseite von {provider}, geprüft am {date}.', about: 'Das Spiel', ourWins: 'Unsere verifizierten Gewinne auf {name}', noWins: 'Noch kein verifizierter Gewinn auf diesem Spiel in unseren Rankings.',
-    playAt: '{provider}-Spiele gibt es bei {casino}', cols: ['Datum', 'Streamer', 'Multiplikator', 'Einsatz'], vol: {"high": "Hoch", "very-high": "Sehr hoch", "medium": "Mittel", "low": "Niedrig", "extreme": "Extrem"}, volNa: "Kein übereinstimmender Wert: Die Quellen weichen ab, daher bleibt das Feld leer.", hitL: "Trefferquote", fsL: "Freispiele", maxOddsL: "Chance auf Max Win", rtpNote1: "Der von {provider} veröffentlichte Wert; manche Casinos nutzen eine niedrigere Version, die der Info-Bildschirm des Spiels zeigt.", cited: "Nicht auf der Seite des Anbieters; derselbe Wert bei {links}, geprüft am {date}.", indexT: "Slots – Max Win, RTP & Bonuskauf nach Anbieter", indexH: "Slots: Maximalgewinn, RTP und Bonuskauf", indexD: "Maximalgewinn, RTP, Volatilität und Bonuskaufpreise bekannter Slots, aus offiziellen Anbieterdaten und geprüften Quellen, mit unseren verifizierten Live-Gewinnen. 18+.", indexP: "Jede Zahl stammt von der offiziellen Spielseite des Anbieters oder aus mindestens zwei übereinstimmenden Quellen, mit Prüfdatum. Wird ein Wert nicht veröffentlicht, bleibt das Feld leer.", watch: "Video"},
+    playAt: '{name} ist im Spieleangebot von {casino} (geprüft am {date})', cols: ['Datum', 'Streamer', 'Multiplikator', 'Einsatz'], vol: {"high": "Hoch", "very-high": "Sehr hoch", "medium": "Mittel", "low": "Niedrig", "extreme": "Extrem"}, volNa: "Kein übereinstimmender Wert: Die Quellen weichen ab, daher bleibt das Feld leer.", hitL: "Trefferquote", fsL: "Freispiele", maxOddsL: "Chance auf Max Win", rtpNote1: "Der von {provider} veröffentlichte Wert; manche Casinos nutzen eine niedrigere Version, die der Info-Bildschirm des Spiels zeigt.", cited: "Nicht auf der Seite des Anbieters; derselbe Wert bei {links}, geprüft am {date}.", indexT: "Slots – Max Win, RTP & Bonuskauf nach Anbieter", indexH: "Slots: Maximalgewinn, RTP und Bonuskauf", indexD: "Maximalgewinn, RTP, Volatilität und Bonuskaufpreise bekannter Slots, aus offiziellen Anbieterdaten und geprüften Quellen, mit unseren verifizierten Live-Gewinnen. 18+.", indexP: "Jede Zahl stammt von der offiziellen Spielseite des Anbieters oder aus mindestens zwei übereinstimmenden Quellen, mit Prüfdatum. Wird ein Wert nicht veröffentlicht, bleibt das Feld leer.", watch: "Video"},
   es: {crumb: 'Tragaperras', title: '{name} – premio máx. {max}x, RTP y compra de bono', h1: '{name}: premio máximo, RTP y bonos',
     desc: '{name} de {provider}: premio máx. {max}x, RTP hasta {rtp} %, volatilidad {vol}, {n} bonos. Cifras oficiales revisadas el {date} y nuestras ganancias verificadas en directo. 18+.',
     provider: 'Proveedor', maxWin: 'Premio máximo', rtp: 'RTP', volatility: 'Volatilidad', grid: 'Cuadrícula', bonus: 'Bonos', buyPrice: 'Precio de la compra de bono',
     buyUnknown: 'Aparece en el menú de compra del juego; {provider} no lo publica, así que no mostramos una estimación.', rtpNote: '{provider} publica estas versiones de RTP; el casino elige una y la pantalla de información del juego la muestra.',
     source: 'Fuente: ficha oficial de {provider}, revisada el {date}.', about: 'El juego', ourWins: 'Nuestras ganancias verificadas en {name}', noWins: 'Todavía no hay ganancias verificadas en este juego en nuestros rankings.',
-    playAt: 'Los juegos de {provider} están en {casino}', cols: ['Fecha', 'Streamer', 'Multiplicador', 'Apuesta'], vol: {"high": "Alta", "very-high": "Muy alta", "medium": "Media", "low": "Baja", "extreme": "Extrema"}, volNa: "No hay un valor coincidente: las fuentes difieren, así que la casilla queda vacía.", hitL: "Frecuencia de premio", fsL: "Giros gratis", maxOddsL: "Probabilidad del premio máximo", rtpNote1: "El valor que publica {provider}; algunos casinos usan una versión más baja, que aparece en la pantalla de información del juego.", cited: "No figura en la página del proveedor; el mismo valor en {links}, revisado el {date}.", indexT: "Tragaperras – premio máx., RTP y compra de bono por proveedor", indexH: "Tragaperras: premio máximo, RTP y compra de bono", indexD: "Premio máximo, RTP, volatilidad y precio de la compra de bono de tragaperras conocidas, con datos oficiales y fuentes verificadas, y nuestras ganancias verificadas en directo. 18+.", indexP: "Cada cifra viene de la página oficial del proveedor o de al menos dos fuentes que coinciden, con la fecha de revisión. Si una cifra no se publica, la casilla queda vacía.", watch: "Vídeo"},
+    playAt: '{name} está en el catálogo de {casino} (comprobado el {date})', cols: ['Fecha', 'Streamer', 'Multiplicador', 'Apuesta'], vol: {"high": "Alta", "very-high": "Muy alta", "medium": "Media", "low": "Baja", "extreme": "Extrema"}, volNa: "No hay un valor coincidente: las fuentes difieren, así que la casilla queda vacía.", hitL: "Frecuencia de premio", fsL: "Giros gratis", maxOddsL: "Probabilidad del premio máximo", rtpNote1: "El valor que publica {provider}; algunos casinos usan una versión más baja, que aparece en la pantalla de información del juego.", cited: "No figura en la página del proveedor; el mismo valor en {links}, revisado el {date}.", indexT: "Tragaperras – premio máx., RTP y compra de bono por proveedor", indexH: "Tragaperras: premio máximo, RTP y compra de bono", indexD: "Premio máximo, RTP, volatilidad y precio de la compra de bono de tragaperras conocidas, con datos oficiales y fuentes verificadas, y nuestras ganancias verificadas en directo. 18+.", indexP: "Cada cifra viene de la página oficial del proveedor o de al menos dos fuentes que coinciden, con la fecha de revisión. Si una cifra no se publica, la casilla queda vacía.", watch: "Vídeo"},
   pt: {crumb: 'Slots', title: '{name} – ganho máx. {max}x, RTP e compra de bônus', h1: '{name}: ganho máximo, RTP e bônus',
     desc: '{name} da {provider}: ganho máx. {max}x, RTP até {rtp}%, volatilidade {vol}, {n} bônus. Números oficiais conferidos em {date} e nossos ganhos verificados ao vivo. 18+.',
     provider: 'Provedor', maxWin: 'Ganho máximo', rtp: 'RTP', volatility: 'Volatilidade', grid: 'Grade', bonus: 'Bônus', buyPrice: 'Preço da compra de bônus',
     buyUnknown: 'Aparece no menu de compra do jogo; a {provider} não o publica, então não mostramos estimativa.', rtpNote: 'A {provider} publica estas versões de RTP; o cassino escolhe uma, e a tela de informações do jogo mostra qual.',
     source: 'Fonte: página oficial da {provider}, conferida em {date}.', about: 'O jogo', ourWins: 'Nossos ganhos verificados em {name}', noWins: 'Ainda não há ganho verificado neste jogo nos nossos rankings.',
-    playAt: 'Os jogos da {provider} estão na {casino}', cols: ['Data', 'Streamer', 'Multiplicador', 'Aposta'], vol: {"high": "Alta", "very-high": "Muito alta", "medium": "Média", "low": "Baixa", "extreme": "Extrema"}, volNa: "Sem valor concordante: as fontes divergem, então o campo fica vazio.", hitL: "Frequência de acerto", fsL: "Rodadas grátis", maxOddsL: "Chance do ganho máximo", rtpNote1: "O valor que a {provider} publica; alguns cassinos usam uma versão mais baixa, mostrada na tela de informações do jogo.", cited: "Não consta na página do provedor; o mesmo valor em {links}, conferido em {date}.", indexT: "Slots – ganho máx., RTP e compra de bônus por provedor", indexH: "Slots: ganho máximo, RTP e compra de bônus", indexD: "Ganho máximo, RTP, volatilidade e preço da compra de bônus de slots conhecidos, com dados oficiais e fontes conferidas, e nossos ganhos verificados ao vivo. 18+.", indexP: "Cada número vem da página oficial do provedor ou de pelo menos duas fontes que concordam, com a data da conferência. Quando um número não é publicado, o campo fica vazio.", watch: "Vídeo"},
+    playAt: '{name} está no catálogo da {casino} (conferido em {date})', cols: ['Data', 'Streamer', 'Multiplicador', 'Aposta'], vol: {"high": "Alta", "very-high": "Muito alta", "medium": "Média", "low": "Baixa", "extreme": "Extrema"}, volNa: "Sem valor concordante: as fontes divergem, então o campo fica vazio.", hitL: "Frequência de acerto", fsL: "Rodadas grátis", maxOddsL: "Chance do ganho máximo", rtpNote1: "O valor que a {provider} publica; alguns cassinos usam uma versão mais baixa, mostrada na tela de informações do jogo.", cited: "Não consta na página do provedor; o mesmo valor em {links}, conferido em {date}.", indexT: "Slots – ganho máx., RTP e compra de bônus por provedor", indexH: "Slots: ganho máximo, RTP e compra de bônus", indexD: "Ganho máximo, RTP, volatilidade e preço da compra de bônus de slots conhecidos, com dados oficiais e fontes conferidas, e nossos ganhos verificados ao vivo. 18+.", indexP: "Cada número vem da página oficial do provedor ou de pelo menos duas fontes que concordam, com a data da conferência. Quando um número não é publicado, o campo fica vazio.", watch: "Vídeo"},
   it: {crumb: 'Slot', title: '{name} – vincita max {max}x, RTP e bonus buy', h1: '{name}: vincita massima, RTP e bonus',
     desc: '{name} di {provider}: vincita max {max}x, RTP fino al {rtp}%, volatilità {vol}, {n} bonus. Dati ufficiali verificati il {date} e le nostre vincite verificate in live. 18+.',
     provider: 'Fornitore', maxWin: 'Vincita massima', rtp: 'RTP', volatility: 'Volatilità', grid: 'Griglia', bonus: 'Bonus', buyPrice: 'Prezzo del bonus buy',
     buyUnknown: 'È indicato nel menu di acquisto del gioco; {provider} non lo pubblica, quindi non mostriamo stime.', rtpNote: '{provider} pubblica queste versioni di RTP; il casinò ne sceglie una, indicata nella schermata info del gioco.',
     source: 'Fonte: pagina ufficiale di {provider}, verificata il {date}.', about: 'Il gioco', ourWins: 'Le nostre vincite verificate su {name}', noWins: 'Ancora nessuna vincita verificata su questo gioco nelle nostre classifiche.',
-    playAt: 'I giochi {provider} sono disponibili su {casino}', cols: ['Data', 'Streamer', 'Moltiplicatore', 'Puntata'], vol: {"high": "Alta", "very-high": "Molto alta", "medium": "Media", "low": "Bassa", "extreme": "Estrema"}, volNa: "Nessun valore concorde: le fonti non coincidono, quindi il campo resta vuoto.", hitL: "Frequenza di vincita", fsL: "Giri gratis", maxOddsL: "Probabilità della vincita max", rtpNote1: "Il valore pubblicato da {provider}; alcuni casinò usano una versione più bassa, indicata nella schermata info del gioco.", cited: "Non presente nella pagina del fornitore; stesso valore su {links}, verificato il {date}.", indexT: "Slot – vincita max, RTP e bonus buy per fornitore", indexH: "Slot: vincita massima, RTP e bonus buy", indexD: "Vincita massima, RTP, volatilità e prezzi dei bonus buy delle slot più note, da dati ufficiali e fonti verificate, con le nostre vincite verificate in live. 18+.", indexP: "Ogni cifra viene dalla pagina ufficiale del fornitore o da almeno due fonti concordanti, con la data della verifica. Se una cifra non è pubblicata, il campo resta vuoto.", watch: "Video"},
+    playAt: '{name} è nel catalogo di {casino} (verificato il {date})', cols: ['Data', 'Streamer', 'Moltiplicatore', 'Puntata'], vol: {"high": "Alta", "very-high": "Molto alta", "medium": "Media", "low": "Bassa", "extreme": "Estrema"}, volNa: "Nessun valore concorde: le fonti non coincidono, quindi il campo resta vuoto.", hitL: "Frequenza di vincita", fsL: "Giri gratis", maxOddsL: "Probabilità della vincita max", rtpNote1: "Il valore pubblicato da {provider}; alcuni casinò usano una versione più bassa, indicata nella schermata info del gioco.", cited: "Non presente nella pagina del fornitore; stesso valore su {links}, verificato il {date}.", indexT: "Slot – vincita max, RTP e bonus buy per fornitore", indexH: "Slot: vincita massima, RTP e bonus buy", indexD: "Vincita massima, RTP, volatilità e prezzi dei bonus buy delle slot più note, da dati ufficiali e fonti verificate, con le nostre vincite verificate in live. 18+.", indexP: "Ogni cifra viene dalla pagina ufficiale del fornitore o da almeno due fonti concordanti, con la data della verifica. Se una cifra non è pubblicata, il campo resta vuoto.", watch: "Video"},
 };

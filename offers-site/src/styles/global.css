@@ -109,9 +109,8 @@ h1 { font: 700 clamp(28px, 3.4vw, 38px)/1.15 var(--body); letter-spacing: -.02em
 .card-bonus { margin-top: 16px; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
 .card-bonus em { font-style: normal; color: var(--accent); }
 .card-short { margin-top: 6px; font-size: 14px; color: var(--muted); }
-.stats { display: grid; grid-template-columns: 1fr 1fr; margin: 16px 0; padding: 0; list-style: none; border-top: 1px solid var(--line); border-left: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-.stats li { display: flex; flex-direction: column; padding: 8px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.stats li:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.stats { display: flex; flex-wrap: wrap; margin: 16px 0; padding: 0; list-style: none; }
+.stats li { display: flex; flex-direction: column; flex: 1 1 45%; padding: 8px 10px; border: 1px solid var(--line); margin: 0 -1px -1px 0; }
 .stats svg { display: none; }
 .stats b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .stats span { font-size: 12px; color: var(--muted); }
@@ -237,7 +236,7 @@ table.rk td a:hover { text-decoration: underline; }
 .rhero-id img { width: 48px; height: 48px; border-radius: 10px; }
 .rhero h1 { margin-top: 14px; }
 .rhero-txt > p { margin-top: 12px; color: var(--muted); }
-.rv-stats { grid-template-columns: repeat(4, 1fr); max-width: 640px; }
+.rv-stats li { flex: 0 1 160px; }
 .rhero-box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; }
 .rhero-box .lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
 .rhero-box .big { margin-top: 6px; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
@@ -328,7 +327,6 @@ table.rk td a:hover { text-decoration: underline; }
   table.rk:not(.rk-all) th:nth-child(3), table.rk:not(.rk-all) td:nth-child(3) { display: none; }
   table.rk .pos { width: 28px; }
   .x { font-size: 15px; }
-  .rv-stats { grid-template-columns: 1fr 1fr; }
   .rg { grid-template-columns: 1fr; }
   .wins-table th, .wins-table td { padding: 10px 6px; }
   .wins-day th:nth-child(3), .wins-day td:nth-child(3), .wins-day th:nth-child(4), .wins-day td:nth-child(4), .wins-group th:nth-child(3), .wins-group td:nth-child(3) { display: none; }

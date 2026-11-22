@@ -158,7 +158,7 @@ const es: Dict = {
       ],
     },
     celsius: {
-      seoTitle: 'Bono Celsius Casino 2026 – hasta 2.000 € + 250 giros gratis',
+      seoTitle: 'Celsius Casino opiniones 2026 – hasta 2.000 € + 250 giros gratis',
       seoDesc: 'Paquete de bienvenida de Celsius: hasta 2.000 € + 250 giros gratis en tus 4 primeros depósitos (550 % en total). Requisitos de apuesta, apuesta máxima, depósito mínimo y cómo reclamarlo.',
       h1: 'Bono Celsius Casino: hasta 2.000 € + 250 giros gratis',
       tagline: 'Un catálogo enorme, Bonus Battles y apuestas deportivas',

@@ -158,7 +158,7 @@ const pt: Dict = {
       ],
     },
     celsius: {
-      seoTitle: 'Bônus Celsius Cassino 2026 – até € 2.000 + 250 rodadas grátis',
+      seoTitle: 'Celsius Cassino análise 2026 – até € 2.000 + 250 rodadas grátis',
       seoDesc: 'Pacote de boas-vindas da Celsius: até € 2.000 + 250 rodadas grátis nos seus 4 primeiros depósitos (550% no total). Rollover, aposta máxima, depósito mínimo e como resgatar.',
       h1: 'Bônus Celsius Cassino: até € 2.000 + 250 rodadas grátis',
       tagline: 'Um lobby enorme, Bonus Battles e apostas esportivas',

@@ -158,7 +158,7 @@ const it: Dict = {
       ],
     },
     celsius: {
-      seoTitle: 'Bonus Celsius Casinò 2026 – fino a 2.000 € + 250 giri gratis',
+      seoTitle: 'Celsius Casinò recensione 2026 – fino a 2.000 € + 250 giri gratis',
       seoDesc: 'Pacchetto di benvenuto Celsius: fino a 2.000 € + 250 giri gratis sui primi 4 depositi (550% in totale). Requisiti di puntata, puntata massima, deposito minimo e come richiederlo.',
       h1: 'Bonus Celsius Casinò: fino a 2.000 € + 250 giri gratis',
       tagline: 'Una lobby enorme, Bonus Battles e un sito di scommesse sportive',

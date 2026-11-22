@@ -158,7 +158,7 @@ const fr: Dict = {
       ],
     },
     celsius: {
-      seoTitle: 'Bonus casino Celsius 2026 – jusqu’à 2 000 € + 250 free spins',
+      seoTitle: 'Celsius Casino : avis 2026 – jusqu’à 2 000 € + 250 free spins',
       seoDesc: 'Pack de bienvenue Celsius : jusqu’à 2 000 € + 250 free spins sur tes 4 premiers dépôts (550 % au total). Wager, mise max, dépôt minimum et comment le réclamer.',
       h1: 'Bonus casino Celsius : jusqu’à 2 000 € + 250 free spins',
       tagline: 'Un énorme catalogue, des Bonus Battles et un site de paris sportifs',

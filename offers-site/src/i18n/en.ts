@@ -157,7 +157,7 @@ const en = {
       ],
     },
     celsius: {
-      seoTitle: 'Celsius Casino Bonus 2026 – Up to €2,000 + 250 Free Spins',
+      seoTitle: 'Celsius Casino Review 2026 – Up to €2,000 + 250 Free Spins',
       seoDesc: 'Celsius welcome package: up to €2,000 + 250 free spins over your first 4 deposits (550% in total). Wagering, max bet, minimum deposit and how to claim it.',
       h1: 'Celsius casino bonus: up to €2,000 + 250 free spins',
       tagline: 'A huge lobby, Bonus Battles and a sportsbook',

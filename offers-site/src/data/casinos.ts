@@ -13,6 +13,8 @@ export type Casino = {
   code?: string;
   terms: {label: string; url: string}[];
   providers: string[];
+  // Faits lus sur les conditions officielles du casino (operator, licence), avec la page et la date du relevé.
+  facts?: {operator: string; licence: string; source: string; checked: string};
   slots?: number;
   // Pastilles de la carte : clé traduite dans ui.ts, valeur neutre (chiffres validés uniquement).
   stats: {k: StatKey; v: string}[];
@@ -36,6 +38,7 @@ export const CASINOS: Casino[] = [
     id: 'celsius', name: 'Celsius', rank: 2, color: '#ff6a3d', colorSoft: 'rgba(255,106,61,.16)', logo: '/img/logo-celsius.png',
     affiliate: 'https://nivoranet.onrender.com/r/lecasinoze-celsius',
     terms: [],
+    facts: {operator: 'Celsius Holdings N.V. (reg. 157856), Willemstad, Curaçao', licence: 'Curaçao 365/JAZ (Gaming Services Provider N.V.)', source: 'https://celsiuscasino.com/terms', checked: '2026-11-22'},
     providers: ['Pragmatic Play', 'Hacksaw Gaming', 'Nolimit City', 'Evolution'],
     stats: [{k: 'total', v: '550%'}, {k: 'deposits', v: '4'}],
     badge: 'deposits4',

@@ -4,6 +4,7 @@ import Icon from './Icon.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {CASINOS, CHECKED, PAIRS, NOINDEX, type Casino} from '../data/casinos';
+import {SLOTS, SL} from '../data/slots';
 interface Props {lang: Lang; c: Casino}
 const {lang, c} = Astro.props;
 const d = t(lang);
@@ -26,6 +27,15 @@ const jsonld = [
   {'@context': 'https://schema.org', '@type': 'Article', headline: x.h1, description: x.seoDesc, inLanguage: d.locale, datePublished: '2026-11-19', dateModified: CHECKED, author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path), image: site + c.logo, about: {'@type': 'Organization', name: c.name}},
   {'@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: d.locale, mainEntity: faq.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))},
 ];
+// Libellés du bloc « en bref » (faits lus sur les conditions officielles du casino).
+const FL: Record<string, {h: string; operator: string; licence: string; age: string; src: string; games: string}> = {
+  en: {h: '{name} Casino at a glance', operator: 'Operator', licence: 'Licence', age: 'Minimum age', src: 'Source: the casino’s official terms of service, read on {date}.', games: 'Slots from our catalogue in the {name} game library'},
+  fr: {h: '{name} Casino en bref', operator: 'Exploitant', licence: 'Licence', age: 'Âge minimum', src: 'Source : conditions générales officielles du casino, lues le {date}.', games: 'Machines à sous de notre catalogue présentes chez {name}'},
+  de: {h: '{name} Casino im Überblick', operator: 'Betreiber', licence: 'Lizenz', age: 'Mindestalter', src: 'Quelle: offizielle AGB des Casinos, gelesen am {date}.', games: 'Slots aus unserem Katalog bei {name}'},
+  es: {h: '{name} Casino en resumen', operator: 'Operador', licence: 'Licencia', age: 'Edad mínima', src: 'Fuente: condiciones oficiales del casino, leídas el {date}.', games: 'Tragaperras de nuestro catálogo en {name}'},
+  pt: {h: '{name} Cassino em resumo', operator: 'Operador', licence: 'Licença', age: 'Idade mínima', src: 'Fonte: termos oficiais do cassino, lidos em {date}.', games: 'Slots do nosso catálogo na {name}'},
+  it: {h: '{name} Casinò in breve', operator: 'Operatore', licence: 'Licenza', age: 'Età minima', src: 'Fonte: termini ufficiali del casinò, letti il {date}.', games: 'Slot del nostro catalogo presenti su {name}'},
+};
 ---
 <Base lang={lang} title={x.seoTitle} desc={x.seoDesc} path={path} jsonld={jsonld} active={c.id} noindex={NOINDEX.includes(c.id)}>
   <div class="page">
@@ -47,6 +57,18 @@ const jsonld = [
         <p class="fine">{c.code ? `${u.code}: ${c.code}` : u.noCode} · {d.footer.age}</p>
       </aside>
     </header>
+
+    {c.facts && (
+      <section class="sec facts">
+        <h2>{FL[lang].h.replace('{name}', c.name)}</h2>
+        <dl class="kv spec">
+          <div><dt>{FL[lang].operator}</dt><dd>{c.facts.operator}</dd></div>
+          <div><dt>{FL[lang].licence}</dt><dd>{c.facts.licence}</dd></div>
+          <div><dt>{FL[lang].age}</dt><dd>18+</dd></div>
+        </dl>
+        <p class="note">{FL[lang].src.replace('{date}', fmtDate(lang, c.facts.checked))} <a href={c.facts.source} target="_blank" rel="noopener nofollow">{new URL(c.facts.source).hostname}</a></p>
+      </section>
+    )}
 
     <p class="byline"><img src="/img/bwd-256.png" alt="" width="30" height="30" /><span>{r.author}<small>{fmt(r.updated, {date})}</small></span></p>
 
@@ -72,6 +94,12 @@ const jsonld = [
       {x.more.map((s, i) => <section class={`pcard tone-${TONES[(i + 2) % TONES.length]}`}><span class="pcard-ic"><Icon name={['check', 'clock', 'trophy', 'users'][i] ?? 'check'} /></span><h3>{s.h}</h3><p>{s.p}</p></section>)}
     </div>
 
+    {SLOTS.some(g => g.at?.[c.id as 'rainbet']) && (
+      <section class="sec">
+        <h2>{FL[lang].games.replace('{name}', c.name)}</h2>
+        <ul class="links">{SLOTS.filter(g => g.at?.[c.id as 'rainbet']).sort((a, b) => b.maxWin - a.maxWin).map(g => <li><a href={href(lang, `slots/${g.id}/`)}>{g.name}</a><span>{g.provider} · {SL[lang].maxWin} {g.maxWin.toLocaleString(d.locale)}x</span></li>)}</ul>
+      </section>
+    )}
     {c.providers.length > 0 && <div class="provs-card"><span>{r.providers}</span><div class="provs">{c.providers.map(p => <span>{p}</span>)}</div></div>}
 
     <div class="pc">
