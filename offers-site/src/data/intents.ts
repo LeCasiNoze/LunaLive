@@ -6,6 +6,8 @@ import type {CasinoId} from './casinos';
 // Ce que la source ne dit pas est écrit comme tel, jamais estimé.
 export interface Intent {
   casino: CasinoId; lang: Lang; slug: string; place: string;
+  // Adresse propre (ex. « rainbet-vs-stake/ ») au lieu de casinos/<casino>/<slug>/.
+  path?: string;
   title: string; desc: string; h1: string; lede: string;
   facts: [string, string][];
   sections: {h: string; p: string[]}[];
@@ -13,6 +15,143 @@ export interface Intent {
 }
 
 export const INTENTS: Intent[] = [
+  {
+    casino: 'rainbet', lang: 'en', slug: 'vs-stake', path: 'rainbet-vs-stake/', place: 'vs-stake',
+    title: 'Rainbet vs Stake 2026: Rewards, VIP Thresholds and Operators Compared',
+    desc: 'Rainbet vs Stake from their official pages: rakeback every 15 min and 3 daily reloads at Rainbet; Stake’s VIP ranks from $10,000 to $25M wagered, reloads from $250,000. Operators and licences.',
+    h1: 'Rainbet vs Stake',
+    lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Stake publishes its thresholds, so the comparison is on what each one gives and from what level of play.',
+    facts: [
+      ['Rainbet operator', 'Rain Group Ltd, Anjouan (company no. 16077)'],
+      ['Rainbet rewards', 'rakeback claimable every 15 min, daily, weekly and monthly bonuses, a pre-monthly bonus on the 16th, 3 daily reloads'],
+      ['Rainbet VIP host', 'from $2,500,000 wagered (lifetime)'],
+      ['Rainbet withdrawals', 'processed in 5 to 15 minutes, per Rainbet'],
+      ['Code NIVORANET', '+20% rakeback for 72 hours'],
+      ['Stake operator', 'Medium Rare N.V., Curaçao (no. 145353)'],
+      ['Stake ranks', 'Bronze $10,000 · Silver $50,000 · Gold $100,000 · Platinum I–III $250,000–$2.5M · Platinum IV–VI $2.5M–$25M · Diamond $25M wagered'],
+      ['Stake rewards', 'weekly and monthly bonuses, rakeback and level-up bonuses from Bronze; daily bonuses and reloads from Platinum I'],
+      ['Stake VIP host', 'from Platinum IV ($2.5M wagered)'],
+    ],
+    sections: [
+      {h: 'Reloads and bonuses', p: [
+        'Rainbet’s help center lists three daily reloads (every 8 hours), a daily bonus, weekly and monthly bonuses and a pre-monthly bonus on the 16th, plus rakeback you can claim every 15 minutes. A reward not claimed before the next one unlocks expires.',
+        'Stake’s VIP page ties rewards to wagered amounts: weekly and monthly bonuses, rakeback and level-up bonuses from Bronze ($10,000 wagered), and daily bonuses and reloads from Platinum I ($250,000 wagered).',
+      ]},
+      {h: 'VIP host', p: [
+        'Both put the dedicated VIP host at the same level of play: $2,500,000 wagered over the account’s life at Rainbet, Platinum IV ($2.5M wagered) at Stake.',
+      ]},
+      {h: 'Our code', p: [
+        'Signing up at Rainbet with the code NIVORANET gives +20% rakeback for 72 hours (the largest boost on Rainbet’s list; boosts don’t stack) and entry to our $200 monthly race, paid from $1,000 wagered in the month.',
+      ]},
+    ],
+    sources: [
+      {label: 'Rainbet help center, “Rewards Overview”', url: 'https://help.rainbet.com/en/articles/9171035-rewards-overview', checked: '2026-11-23'},
+      {label: 'Rainbet help center, “VIP Program”', url: 'https://help.rainbet.com/en/articles/15265421-vip-program', checked: '2026-11-23'},
+      {label: 'Rainbet help center, withdrawal times', url: 'https://help.rainbet.com/en/articles/8403745-how-much-time-does-it-take-for-a-withdrawal', checked: '2026-11-22'},
+      {label: 'Rainbet terms of service (operator), read by our Affiliation team', url: 'https://rainbet.com/terms', checked: '2026-11-21'},
+      {label: 'Stake VIP Club page', url: 'https://stake.com/vip-club', checked: '2026-11-23'},
+    ],
+  },
+  {
+    casino: 'rainbet', lang: 'en', slug: 'vs-roobet', path: 'rainbet-vs-roobet/', place: 'vs-roobet',
+    title: 'Rainbet vs Roobet 2026: Rewards, VIP Access and Operators Compared',
+    desc: 'Rainbet vs Roobet from their official pages: Rainbet’s rakeback every 15 min, daily reloads and VIP host at $2.5M wagered; Roobet’s invitation-only VIP. Operators and licences.',
+    h1: 'Rainbet vs Roobet',
+    lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Roobet publishes no thresholds at all: its VIP club is by invitation.',
+    facts: [
+      ['Rainbet operator', 'Rain Group Ltd, Anjouan (company no. 16077)'],
+      ['Rainbet rewards', 'rakeback claimable every 15 min, daily, weekly and monthly bonuses, a pre-monthly bonus on the 16th, 3 daily reloads'],
+      ['Rainbet VIP host', 'from $2,500,000 wagered (lifetime)'],
+      ['Rainbet withdrawals', 'processed in 5 to 15 minutes, per Rainbet'],
+      ['Code NIVORANET', '+20% rakeback for 72 hours'],
+      ['Roobet operator', 'Raw Entertainment B.V., Curaçao (no. 157205), licence OGL/2024/687/0427'],
+      ['Roobet VIP', 'invitation only; no published thresholds'],
+      ['Roobet VIP rewards', 'weekly slot rewards, activity-based cashback, monthly VIP promotions, dedicated support'],
+    ],
+    sections: [
+      {h: 'How you get rewards', p: [
+        'Rainbet lists its rewards for every player in its help center: rakeback every 15 minutes, three daily reloads, daily, weekly, monthly and pre-monthly bonuses. A dedicated VIP host comes at $2,500,000 wagered.',
+        'Roobet’s VIP page says membership is by invitation only, based on loyalty, stakes and variety of play, with no application. Its VIP perks are weekly slot rewards, activity-based cashback for eligible VIPs, monthly VIP promotions and dedicated support.',
+      ]},
+      {h: 'Our code', p: [
+        'Signing up at Rainbet with the code NIVORANET gives +20% rakeback for 72 hours and entry to our $200 monthly race, paid from $1,000 wagered in the month.',
+      ]},
+    ],
+    sources: [
+      {label: 'Rainbet help center, “Rewards Overview”', url: 'https://help.rainbet.com/en/articles/9171035-rewards-overview', checked: '2026-11-23'},
+      {label: 'Rainbet help center, “VIP Program”', url: 'https://help.rainbet.com/en/articles/15265421-vip-program', checked: '2026-11-23'},
+      {label: 'Rainbet help center, withdrawal times', url: 'https://help.rainbet.com/en/articles/8403745-how-much-time-does-it-take-for-a-withdrawal', checked: '2026-11-22'},
+      {label: 'Rainbet terms of service (operator), read by our Affiliation team', url: 'https://rainbet.com/terms', checked: '2026-11-21'},
+      {label: 'Roobet VIP page and footer', url: 'https://roobet.com/vip', checked: '2026-11-23'},
+    ],
+  },
+  {
+    casino: 'rainbet', lang: 'en', slug: 'vs-shuffle', path: 'rainbet-vs-shuffle/', place: 'vs-shuffle',
+    title: 'Rainbet vs Shuffle 2026: Rewards, VIP Ranks and Operators Compared',
+    desc: 'Rainbet vs Shuffle from their official pages: Rainbet’s rakeback every 15 min, daily reloads and VIP host at $2.5M wagered; Shuffle’s 8 VIP ranks with instant rakeback from Bronze. Operators and licences.',
+    h1: 'Rainbet vs Shuffle',
+    lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Shuffle lists its ranks and their perks but not their thresholds either.',
+    facts: [
+      ['Rainbet operator', 'Rain Group Ltd, Anjouan (company no. 16077)'],
+      ['Rainbet rewards', 'rakeback claimable every 15 min, daily, weekly and monthly bonuses, a pre-monthly bonus on the 16th, 3 daily reloads'],
+      ['Rainbet VIP host', 'from $2,500,000 wagered (lifetime)'],
+      ['Rainbet withdrawals', 'processed in 5 to 15 minutes, per Rainbet'],
+      ['Code NIVORANET', '+20% rakeback for 72 hours'],
+      ['Shuffle operator', 'Natural Nine B.V., Curaçao (no. 160998), licence OGL/2024/1337/0628'],
+      ['Shuffle ranks', 'Bronze, Silver, Gold, Platinum, Jade, Sapphire, Ruby, Diamond; thresholds not published'],
+      ['Shuffle rewards', 'instant rakeback, weekly, level and rank-up bonuses from Bronze; monthly bonus from Silver'],
+      ['Shuffle VIP host', 'for higher ranks'],
+    ],
+    sections: [
+      {h: 'Rakeback and bonuses', p: [
+        'Rainbet’s help center lists rakeback claimable every 15 minutes, three daily reloads, and daily, weekly, monthly and pre-monthly bonuses. Shuffle’s VIP table lists instant rakeback, a weekly bonus, level bonuses and rank-up bonuses from its first rank, Bronze, and a monthly bonus from Silver.',
+      ]},
+      {h: 'VIP host', p: [
+        'Rainbet gives a dedicated host from $2,500,000 wagered over the account’s life. Shuffle reserves its VIP hosts for higher ranks without giving the amount.',
+      ]},
+      {h: 'Our code', p: [
+        'Signing up at Rainbet with the code NIVORANET gives +20% rakeback for 72 hours and entry to our $200 monthly race, paid from $1,000 wagered in the month.',
+      ]},
+    ],
+    sources: [
+      {label: 'Rainbet help center, “Rewards Overview”', url: 'https://help.rainbet.com/en/articles/9171035-rewards-overview', checked: '2026-11-23'},
+      {label: 'Rainbet help center, “VIP Program”', url: 'https://help.rainbet.com/en/articles/15265421-vip-program', checked: '2026-11-23'},
+      {label: 'Rainbet help center, withdrawal times', url: 'https://help.rainbet.com/en/articles/8403745-how-much-time-does-it-take-for-a-withdrawal', checked: '2026-11-22'},
+      {label: 'Rainbet terms of service (operator), read by our Affiliation team', url: 'https://rainbet.com/terms', checked: '2026-11-21'},
+      {label: 'Shuffle VIP program page and footer', url: 'https://shuffle.com/vip-program', checked: '2026-11-23'},
+    ],
+  },
+  {
+    casino: 'rainbet', lang: 'en', slug: 'like-stake', path: 'casinos-like-stake/', place: 'like-stake',
+    title: 'Casinos Like Stake in 2026: Rainbet and Celsius Compared on the Facts',
+    desc: 'Looking for a casino like Stake? Two crypto casinos we stream on: Rainbet (rakeback every 15 min, 3 daily reloads, code NIVORANET) and Celsius (up to €2,000 + 250 free spins). Official figures only.',
+    h1: 'Casinos like Stake: two alternatives we play on',
+    lede: 'Stake is a crypto casino with a wager-based VIP ladder. Here are the two crypto casinos our streamers use, with what each one publishes. No ranking, no verdict: the facts and their sources.',
+    facts: [
+      ['Stake, for reference', 'Medium Rare N.V. (Curaçao); VIP ranks from $10,000 wagered, reloads from $250,000, VIP host from $2.5M'],
+      ['Rainbet', 'rakeback every 15 min, 3 daily reloads, daily to monthly bonuses; VIP host from $2.5M wagered'],
+      ['Rainbet with NIVORANET', '+20% rakeback for 72 hours, plus our $200 monthly race'],
+      ['Celsius', 'welcome offer up to €2,000 + 250 free spins over 4 deposits, wagering x40 (x45 on the 3rd)'],
+      ['Celsius operator', 'Celsius Holdings N.V., Curaçao (no. 157856)'],
+    ],
+    sections: [
+      {h: 'Rainbet: closest to Stake’s rewards model', p: [
+        'Like Stake, Rainbet pays you back on volume rather than with a big deposit match: rakeback claimable every 15 minutes, three daily reloads, and daily, weekly, monthly and pre-monthly bonuses, per its help center. Stake starts its reloads at Platinum I ($250,000 wagered); Rainbet’s help center lists the daily reloads without a published threshold.',
+        'With our code NIVORANET you get +20% rakeback for 72 hours, and you enter our $200 monthly race (paid from $1,000 wagered in the month).',
+      ]},
+      {h: 'Celsius: a deposit bonus instead', p: [
+        'Celsius goes the other way, with a welcome package over four deposits: 100% up to €500 + 150 free spins, 100% up to €300 + 50 free spins, 200% up to €200 + 50 free spins, then 150% up to €1,000. Wagering is x40 on the first two, x45 on the third, with a €5 maximum bet while a bonus is active.',
+      ]},
+    ],
+    sources: [
+      {label: 'Stake VIP Club page', url: 'https://stake.com/vip-club', checked: '2026-11-23'},
+      {label: 'Rainbet help center, “Rewards Overview”', url: 'https://help.rainbet.com/en/articles/9171035-rewards-overview', checked: '2026-11-23'},
+      {label: 'Rainbet help center, “VIP Program”', url: 'https://help.rainbet.com/en/articles/15265421-vip-program', checked: '2026-11-23'},
+      {label: 'Rainbet help center, withdrawal times', url: 'https://help.rainbet.com/en/articles/8403745-how-much-time-does-it-take-for-a-withdrawal', checked: '2026-11-22'},
+      {label: 'Rainbet terms of service (operator), read by our Affiliation team', url: 'https://rainbet.com/terms', checked: '2026-11-21'},
+      {label: 'Celsius Casino welcome bonus page', url: 'https://celsiuscasino.com/welcome-bonus', checked: '2026-11-22'},
+    ],
+  },
   {
     casino: 'celsius', lang: 'fr', slug: 'fiable', place: 'intent-fiable',
     title: 'Celsius Casino est-il fiable ? Licence, exploitant et règles de retrait',
@@ -327,5 +466,5 @@ export const INTENTS: Intent[] = [
   },
 ];
 
-export const intentPath = (x: Intent) => `casinos/${x.casino}/${x.slug}/`;
+export const intentPath = (x: Intent) => x.path ?? `casinos/${x.casino}/${x.slug}/`;
 export const intentsOf = (casino: CasinoId, lang: Lang) => INTENTS.filter(x => x.casino === casino && x.lang === lang);
