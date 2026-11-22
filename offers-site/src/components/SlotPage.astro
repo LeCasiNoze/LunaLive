@@ -63,7 +63,7 @@ const jsonld = [
       <section class="sec">
         <h2>{fmt(l.ourWins, vars)}</h2>
         {hits.length > 0
-          ? <table class="rk"><thead><tr><th scope="col">{l.cols[0]}</th><th scope="col">{l.cols[1]}</th><th scope="col" class="num">{l.cols[2]}</th><th scope="col" class="num">{l.cols[3]}</th></tr></thead>
+          ? <table class="rk rk-all"><thead><tr><th scope="col">{l.cols[0]}</th><th scope="col">{l.cols[1]}</th><th scope="col" class="num">{l.cols[2]}</th><th scope="col" class="num">{l.cols[3]}</th></tr></thead>
               <tbody>{hits.map(c => <tr><td><a href={href(lang, `wins/${c.day}/`)}>{dayLabel(lang, c.day)}</a></td><td>{streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td><td class="num x">{multi(c.multi)}</td><td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{u.wins.buy}</span>}</td></tr>)}</tbody></table>
           : <p class="muted">{l.noWins}</p>}
         <p class="note"><a href={href(lang, 'wins/')}>{u.wins.latest} →</a></p>

@@ -324,7 +324,7 @@ table.rk td a:hover { text-decoration: underline; }
   .home-hd { margin-top: 24px; gap: 24px; }
   table.rk { font-size: 14px; }
   table.rk th, table.rk td { padding: 10px 8px; }
-  table.rk th:nth-child(3), table.rk td:nth-child(3) { display: none; }
+  table.rk:not(.rk-all) th:nth-child(3), table.rk:not(.rk-all) td:nth-child(3) { display: none; }
   table.rk .pos { width: 28px; }
   .x { font-size: 15px; }
   .rv-stats { grid-template-columns: 1fr 1fr; }
