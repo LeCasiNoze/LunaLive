@@ -8,6 +8,10 @@ export interface Intent {
   casino: CasinoId; lang: Lang; slug: string; place: string;
   // Adresse propre (ex. « rainbet-vs-stake/ ») au lieu de casinos/<casino>/<slug>/.
   path?: string;
+  // Comparatifs : tableau à critères explicites (1re colonne = critère) à la place de la liste de faits.
+  table?: {cols: string[]; rows: string[][]};
+  faq?: {q: string; a: string}[];
+  steps?: string[];
   title: string; desc: string; h1: string; lede: string;
   facts: [string, string][];
   sections: {h: string; p: string[]}[];
@@ -17,7 +21,7 @@ export interface Intent {
 export const INTENTS: Intent[] = [
   {
     casino: 'rainbet', lang: 'en', slug: 'vs-stake', path: 'rainbet-vs-stake/', place: 'vs-stake',
-    title: 'Rainbet vs Stake 2026: Rewards, VIP Thresholds and Operators Compared',
+    title: 'Rainbet vs Stake ({month}): Rewards, VIP Thresholds, Operators',
     desc: 'Rainbet vs Stake from their official pages: rakeback every 15 min and 3 daily reloads at Rainbet; Stake’s VIP ranks from $10,000 to $25M wagered, reloads from $250,000. Operators and licences.',
     h1: 'Rainbet vs Stake',
     lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Stake publishes its thresholds, so the comparison is on what each one gives and from what level of play.',
@@ -31,6 +35,21 @@ export const INTENTS: Intent[] = [
       ['Stake ranks', 'Bronze $10,000 · Silver $50,000 · Gold $100,000 · Platinum I–III $250,000–$2.5M · Platinum IV–VI $2.5M–$25M · Diamond $25M wagered'],
       ['Stake rewards', 'weekly and monthly bonuses, rakeback and level-up bonuses from Bronze; daily bonuses and reloads from Platinum I'],
       ['Stake VIP host', 'from Platinum IV ($2.5M wagered)'],
+    ],
+    table: {cols: ['Criterion', 'Rainbet', 'Stake'], rows: [
+      ['Operator', 'Rain Group Ltd, Anjouan (no. 16077)', 'Medium Rare N.V., Curaçao (no. 145353)'],
+      ['Rakeback', 'claimable every 15 minutes', 'from Bronze ($10,000 wagered)'],
+      ['Reloads', '3 a day, every 8 hours', 'from Platinum I ($250,000 wagered)'],
+      ['Weekly and monthly bonuses', 'yes, plus a pre-monthly bonus on the 16th', 'from Bronze'],
+      ['VIP host', 'from $2,500,000 wagered (lifetime)', 'from Platinum IV ($2.5M wagered)'],
+      ['Rank thresholds', 'not published', '$10,000 (Bronze) to $25M (Diamond) wagered'],
+      ['Sign-up code', 'NIVORANET: +20% rakeback for 72 hours', '–'],
+    ]},
+    faq: [
+      {q: 'When does Stake give reloads?', a: 'From Platinum I, at $250,000 wagered, per Stake’s VIP Club page (read 23/11/2026).'},
+      {q: 'How often can Rainbet rakeback be claimed?', a: 'Every 15 minutes, per Rainbet’s help center (read 23/11/2026).'},
+      {q: 'When do you get a VIP host?', a: 'At $2.5M wagered on both: lifetime at Rainbet, Platinum IV at Stake (official pages, read 23/11/2026).'},
+      {q: 'What does the code NIVORANET give on Rainbet?', a: '+20% rakeback for 72 hours, the “Affiliate Code Redemption” boost in Rainbet’s help center (read 22/11/2026).'},
     ],
     sections: [
       {h: 'Reloads and bonuses', p: [
@@ -54,7 +73,7 @@ export const INTENTS: Intent[] = [
   },
   {
     casino: 'rainbet', lang: 'en', slug: 'vs-roobet', path: 'rainbet-vs-roobet/', place: 'vs-roobet',
-    title: 'Rainbet vs Roobet 2026: Rewards, VIP Access and Operators Compared',
+    title: 'Rainbet vs Roobet ({month}): Rewards, VIP Access, Operators',
     desc: 'Rainbet vs Roobet from their official pages: Rainbet’s rakeback every 15 min, daily reloads and VIP host at $2.5M wagered; Roobet’s invitation-only VIP. Operators and licences.',
     h1: 'Rainbet vs Roobet',
     lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Roobet publishes no thresholds at all: its VIP club is by invitation.',
@@ -67,6 +86,20 @@ export const INTENTS: Intent[] = [
       ['Roobet operator', 'Raw Entertainment B.V., Curaçao (no. 157205), licence OGL/2024/687/0427'],
       ['Roobet VIP', 'invitation only; no published thresholds'],
       ['Roobet VIP rewards', 'weekly slot rewards, activity-based cashback, monthly VIP promotions, dedicated support'],
+    ],
+    table: {cols: ['Criterion', 'Rainbet', 'Roobet'], rows: [
+      ['Operator', 'Rain Group Ltd, Anjouan (no. 16077)', 'Raw Entertainment B.V., Curaçao (no. 157205)'],
+      ['Licence number published', 'not found', 'OGL/2024/687/0427'],
+      ['Rakeback', 'claimable every 15 minutes', 'activity-based cashback for eligible VIPs'],
+      ['Reloads', '3 a day, every 8 hours', 'not listed'],
+      ['VIP access', 'host from $2,500,000 wagered', 'invitation only, no published threshold'],
+      ['Sign-up code', 'NIVORANET: +20% rakeback for 72 hours', '–'],
+    ]},
+    faq: [
+      {q: 'How do you join Roobet VIP?', a: 'By invitation only, with no application and no published threshold, per Roobet’s VIP page (read 23/11/2026).'},
+      {q: 'How often can Rainbet rakeback be claimed?', a: 'Every 15 minutes, per Rainbet’s help center (read 23/11/2026).'},
+      {q: 'What licence does Roobet show?', a: 'Curaçao licence OGL/2024/687/0427, held by Raw Entertainment B.V., per Roobet’s footer (read 23/11/2026).'},
+      {q: 'What does the code NIVORANET give on Rainbet?', a: '+20% rakeback for 72 hours, per Rainbet’s help center (read 22/11/2026).'},
     ],
     sections: [
       {h: 'How you get rewards', p: [
@@ -87,7 +120,7 @@ export const INTENTS: Intent[] = [
   },
   {
     casino: 'rainbet', lang: 'en', slug: 'vs-shuffle', path: 'rainbet-vs-shuffle/', place: 'vs-shuffle',
-    title: 'Rainbet vs Shuffle 2026: Rewards, VIP Ranks and Operators Compared',
+    title: 'Rainbet vs Shuffle ({month}): Rewards, VIP Ranks, Operators',
     desc: 'Rainbet vs Shuffle from their official pages: Rainbet’s rakeback every 15 min, daily reloads and VIP host at $2.5M wagered; Shuffle’s 8 VIP ranks with instant rakeback from Bronze. Operators and licences.',
     h1: 'Rainbet vs Shuffle',
     lede: 'We give no verdict: these are the differences each casino publishes, side by side. Rainbet does not publish the wager thresholds of its ranks. Shuffle lists its ranks and their perks but not their thresholds either.',
@@ -101,6 +134,22 @@ export const INTENTS: Intent[] = [
       ['Shuffle ranks', 'Bronze, Silver, Gold, Platinum, Jade, Sapphire, Ruby, Diamond; thresholds not published'],
       ['Shuffle rewards', 'instant rakeback, weekly, level and rank-up bonuses from Bronze; monthly bonus from Silver'],
       ['Shuffle VIP host', 'for higher ranks'],
+    ],
+    table: {cols: ['Criterion', 'Rainbet', 'Shuffle'], rows: [
+      ['Operator', 'Rain Group Ltd, Anjouan (no. 16077)', 'Natural Nine B.V., Curaçao (no. 160998)'],
+      ['Licence number published', 'not found', 'OGL/2024/1337/0628'],
+      ['Rakeback', 'claimable every 15 minutes', 'instant, from Bronze'],
+      ['Reloads', '3 a day, every 8 hours', 'listed among VIP perks, no schedule given'],
+      ['Monthly bonus', 'yes, plus a pre-monthly bonus on the 16th', 'from Silver'],
+      ['VIP host', 'from $2,500,000 wagered (lifetime)', 'for higher ranks, amount not published'],
+      ['Rank thresholds', 'not published', 'not published (8 ranks, Bronze to Diamond)'],
+      ['Sign-up code', 'NIVORANET: +20% rakeback for 72 hours', '–'],
+    ]},
+    faq: [
+      {q: 'How many VIP ranks does Shuffle have?', a: 'Eight, from Bronze to Diamond, per Shuffle’s VIP program page (read 23/11/2026).'},
+      {q: 'How often can Rainbet rakeback be claimed?', a: 'Every 15 minutes, per Rainbet’s help center (read 23/11/2026).'},
+      {q: 'When do you get a VIP host on Rainbet?', a: 'At $2,500,000 wagered over the account’s life, per Rainbet’s help center (read 23/11/2026).'},
+      {q: 'What does the code NIVORANET give on Rainbet?', a: '+20% rakeback for 72 hours, per Rainbet’s help center (read 22/11/2026).'},
     ],
     sections: [
       {h: 'Rakeback and bonuses', p: [
@@ -123,7 +172,7 @@ export const INTENTS: Intent[] = [
   },
   {
     casino: 'rainbet', lang: 'en', slug: 'like-stake', path: 'casinos-like-stake/', place: 'like-stake',
-    title: 'Casinos Like Stake in 2026: Rainbet and Celsius Compared on the Facts',
+    title: 'Casinos Like Stake ({month}): Rainbet and Celsius on the Facts',
     desc: 'Looking for a casino like Stake? Two crypto casinos we stream on: Rainbet (rakeback every 15 min, 3 daily reloads, code NIVORANET) and Celsius (up to €2,000 + 250 free spins). Official figures only.',
     h1: 'Casinos like Stake: two alternatives we play on',
     lede: 'Stake is a crypto casino with a wager-based VIP ladder. Here are the two crypto casinos our streamers use, with what each one publishes. No ranking, no verdict: the facts and their sources.',
@@ -133,6 +182,20 @@ export const INTENTS: Intent[] = [
       ['Rainbet with NIVORANET', '+20% rakeback for 72 hours, plus our $200 monthly race'],
       ['Celsius', 'welcome offer up to €2,000 + 250 free spins over 4 deposits, wagering x40 (x45 on the 3rd)'],
       ['Celsius operator', 'Celsius Holdings N.V., Curaçao (no. 157856)'],
+    ],
+    table: {cols: ['Criterion', 'Stake (reference)', 'Rainbet', 'Celsius'], rows: [
+      ['Model', 'wager-based VIP ladder', 'rakeback and daily reloads', 'deposit bonus'],
+      ['Rakeback', 'from Bronze ($10,000 wagered)', 'claimable every 15 minutes', 'listed as a possible special bonus (bonus terms, 1.21)'],
+      ['Reloads', 'from Platinum I ($250,000 wagered)', '3 a day, every 8 hours', '–'],
+      ['Welcome offer', '–', 'code NIVORANET: +20% rakeback for 72 hours', 'up to €2,000 + 250 free spins over 4 deposits'],
+      ['Wagering on the welcome offer', '–', '–', 'x40 (x45 on the 3rd deposit)'],
+      ['Operator', 'Medium Rare N.V., Curaçao', 'Rain Group Ltd, Anjouan', 'Celsius Holdings N.V., Curaçao'],
+    ]},
+    faq: [
+      {q: 'Which casino is closest to Stake’s rewards model?', a: 'Rainbet, which pays rakeback every 15 minutes and three daily reloads rather than a deposit match, per its help center (read 23/11/2026).'},
+      {q: 'Which alternative has a deposit bonus?', a: 'Celsius, with up to €2,000 + 250 free spins over four deposits, per its welcome bonus page (read 22/11/2026).'},
+      {q: 'When does Stake start reloads?', a: 'At Platinum I, $250,000 wagered, per Stake’s VIP Club page (read 23/11/2026).'},
+      {q: 'Is there a code for Rainbet?', a: 'Yes, NIVORANET gives +20% rakeback for 72 hours, per Rainbet’s help center (read 22/11/2026).'},
     ],
     sections: [
       {h: 'Rainbet: closest to Stake’s rewards model', p: [
@@ -150,6 +213,7 @@ export const INTENTS: Intent[] = [
       {label: 'Rainbet help center, withdrawal times', url: 'https://help.rainbet.com/en/articles/8403745-how-much-time-does-it-take-for-a-withdrawal', checked: '2026-11-22'},
       {label: 'Rainbet terms of service (operator), read by our Affiliation team', url: 'https://rainbet.com/terms', checked: '2026-11-21'},
       {label: 'Celsius Casino welcome bonus page', url: 'https://celsiuscasino.com/welcome-bonus', checked: '2026-11-22'},
+      {label: 'Celsius Casino bonus terms, article 1.21', url: 'https://celsiuscasino.com/bonuses-terms', checked: '2026-11-22'},
     ],
   },
   {
@@ -379,6 +443,12 @@ export const INTENTS: Intent[] = [
       ['Moyen de paiement', 'celui du dépôt, sauf accord du casino (clause 9.4)'],
       ['Vérification', 'pièce d’identité, justificatif de domicile, parfois selfie ou appel (clause 9.3)'],
       ['Délai de traitement', 'non indiqué dans les conditions'],
+    ],
+    steps: [
+      'Faire vérifier son compte : pièce d’identité et justificatif de domicile, parfois selfie ou appel (clause 9.3).',
+      'Avoir misé au moins 3 fois son dépôt (clause 9.2), et fini le wager d’un éventuel bonus (conditions des bonus, 1.15).',
+      'Demander le retrait vers le moyen de paiement du dépôt (clause 9.4), à partir de 10 € (clause 9.1).',
+      'Rester sous le plafond de 10 000 € par mois, ou 5 000 € si le solde dépasse 10 fois les dépôts (clause 9.6).',
     ],
     sections: [
       {h: 'Avant la première demande', p: [

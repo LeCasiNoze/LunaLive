@@ -14,14 +14,19 @@ const c = byId(x.casino);
 const site = Astro.site!.origin;
 const path = intentPath(x);
 const L = lang === 'fr' ? {on: 'relevé le', more: ' : autres questions'} : {on: 'checked on', more: ': other questions'};
+const last = x.sources.map(s => s.checked).sort().at(-1)!;
+// {month} dans le titre = mois du relevé le plus récent (ex. « November 2026 »).
+const month = new Date(last + 'T12:00:00Z').toLocaleString(d.locale, {month: 'long', year: 'numeric', timeZone: 'UTC'});
+const title = x.title.replace('{month}', month);
 const others = intentsOf(x.casino, lang).filter(o => o.slug !== x.slug);
 const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: c.name, url: href(lang, `casinos/${c.id}/`)}, {name: x.h1, url: href(lang, path)}];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((b, i) => ({'@type': 'ListItem', position: i + 1, name: b.name, item: site + b.url}))},
+  ...(x.faq ? [{'@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: x.faq.map(f => ({'@type': 'Question', name: f.q, acceptedAnswer: {'@type': 'Answer', text: f.a}}))}] : []),
   {'@context': 'https://schema.org', '@type': 'Article', headline: x.h1, inLanguage: d.locale, dateModified: x.sources.map(s => s.checked).sort().at(-1), author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path)},
 ];
 ---
-<Base lang={lang} title={x.title} desc={x.desc} path={path} jsonld={jsonld} active={c.id} mono>
+<Base lang={lang} title={title} desc={x.desc} path={path} jsonld={jsonld} active={c.id} mono>
   <div class="page">
     <ol class="crumbs"><li><a href={crumbs[0].url}>{crumbs[0].name}</a></li><li><a href={crumbs[1].url}>{c.name}</a></li><li aria-current="page">{x.h1}</li></ol>
     <header class="pg-hd">
@@ -30,7 +35,11 @@ const jsonld = [
       <p class="lede">{x.lede}</p>
     </header>
 
-    <dl class="kv spec">{x.facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+    {x.table
+      ? <table class="rk rk-all"><thead><tr>{x.table.cols.map(h => <th scope="col">{h}</th>)}</tr></thead><tbody>{x.table.rows.map(r => <tr>{r.map((v, i) => i ? <td>{v}</td> : <th scope="row">{v}</th>)}</tr>)}</tbody></table>
+      : <dl class="kv spec">{x.facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+
+    {x.steps && <div class="steps">{x.steps.map((s, i) => <div class="step"><span class="n">{i + 1}</span><p>{s}</p></div>)}</div>}
 
     {x.sections.map(s => (
       <section class="sec prose-txt">
@@ -38,6 +47,13 @@ const jsonld = [
         {s.p.map(p => <p>{p}</p>)}
       </section>
     ))}
+
+    {x.faq && (
+      <section class="sec">
+        <h2>FAQ</h2>
+        <div class="faq">{x.faq.map(f => <details><summary>{f.q}</summary><p class="a">{f.a}</p></details>)}</div>
+      </section>
+    )}
 
     <div class="offer">
       <div class="offer-hd">
