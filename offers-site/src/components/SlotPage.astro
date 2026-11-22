@@ -17,7 +17,7 @@ const date = dayLabel(lang, s.checked);
 const vol = l.vol[s.volatility] ?? s.volatility;
 const vars = {name: s.name, provider: s.provider, max: nf(s.maxWin), rtp: nf(Math.max(...s.rtp)), vol, n: s.buys.length, date};
 // Renvoi vers les sources citées d'un chiffre absent de la fiche officielle.
-const cite = (k: 'maxWin' | 'volatility' | 'buys' | 'grid') => s.cited?.[k];
+const cite = (k: 'maxWin' | 'volatility' | 'buys' | 'grid' | 'rtp') => s.cited?.[k];
 const host = (u: string) => new URL(u).hostname.replace(/^www\./, '');
 let title = fmt(l.title, vars);
 if (title.length > 60) title = title.split(' – ')[0] + ' – ' + fmt(l.maxWin, vars) + ` ${vars.max}x`;
@@ -53,7 +53,7 @@ const jsonld = [
       <dl class="kv spec">
         <div><dt>{l.provider}</dt><dd>{s.provider}</dd></div>
         <div><dt>{l.maxWin}</dt><dd><b class="x">{vars.max}x</b>{cite('maxWin') && <span class="sub">{fmt(l.cited.split('{links}')[0], vars)}{cite('maxWin')!.map((u, i) => <>{i > 0 && ', '}<a href={u} target="_blank" rel="noopener nofollow">{host(u)}</a></>)}{fmt(l.cited.split('{links}')[1], vars)}</span>}</dd></div>
-        <div><dt>{l.rtp}</dt><dd>{s.rtp.map(r => `${nf(r)}${['fr', 'de', 'es'].includes(lang) ? ' %' : '%'}`).join(' · ')}<span class="sub">{fmt(s.rtp.length > 1 ? l.rtpNote : l.rtpNote1, vars)}</span></dd></div>
+        <div><dt>{l.rtp}</dt><dd>{s.rtp.map(r => `${nf(r)}${['fr', 'de', 'es'].includes(lang) ? ' %' : '%'}`).join(' · ')}{cite('rtp') ? cite('rtp') && <span class="sub">{fmt(l.cited.split('{links}')[0], vars)}{cite('rtp')!.map((u, i) => <>{i > 0 && ', '}<a href={u} target="_blank" rel="noopener nofollow">{host(u)}</a></>)}{fmt(l.cited.split('{links}')[1], vars)}</span> : <span class="sub">{fmt(s.rtp.length > 1 ? l.rtpNote : l.rtpNote1, vars)}</span>}</dd></div>
         <div><dt>{l.volatility}</dt><dd>{vol}{cite('volatility') && <span class="sub">{fmt(l.cited.split('{links}')[0], vars)}{cite('volatility')!.map((u, i) => <>{i > 0 && ', '}<a href={u} target="_blank" rel="noopener nofollow">{host(u)}</a></>)}{fmt(l.cited.split('{links}')[1], vars)}</span>}</dd></div>
         <div><dt>{l.grid}</dt><dd>{s.grid}{cite('grid') && <span class="sub">{fmt(l.cited.split('{links}')[0], vars)}{cite('grid')!.map((u, i) => <>{i > 0 && ', '}<a href={u} target="_blank" rel="noopener nofollow">{host(u)}</a></>)}{fmt(l.cited.split('{links}')[1], vars)}</span>}</dd></div>
         <div><dt>{l.bonus}</dt><dd>{s.buys.map(b => b.name).join(' · ')}</dd></div>

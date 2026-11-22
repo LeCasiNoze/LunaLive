@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-21T22:07:17+01:00",
+ "generated_at": "2026-11-22T06:36:30+01:00",
  "videos": [
   {
    "kind": "daily",
@@ -10,7 +10,7 @@
    "short_id": "Vm8cyYn1u0Q",
    "thumb": "https://i.ytimg.com/vi/y8_uzErnvSQ/hqdefault.jpg",
    "publish_at": null,
-   "age_restricted": true,
+   "age_restricted": null,
    "clips": [
     {
      "rank": 1,
@@ -25,7 +25,8 @@
      "currency": null,
      "at": "2026-11-20T22:40:53.516159+01:00",
      "game": "Diamond Mole",
-     "provider": null
+     "provider": null,
+     "t": 650
     },
     {
      "rank": 2,
@@ -40,7 +41,8 @@
      "currency": null,
      "at": "2026-11-20T23:13:06.589649+01:00",
      "game": "Wanted Dead or a Wild",
-     "provider": "Hacksaw Gaming"
+     "provider": "Hacksaw Gaming",
+     "t": 592
     },
     {
      "rank": 3,
@@ -55,7 +57,8 @@
      "currency": null,
      "at": "2026-11-20T15:54:14.724123+01:00",
      "game": "Fortune of Olympus",
-     "provider": "Pragmatic Play"
+     "provider": "Pragmatic Play",
+     "t": 549
     },
     {
      "rank": 4,
@@ -70,7 +73,8 @@
      "currency": null,
      "at": "2026-11-20T18:05:03.177937+01:00",
      "game": "Duck Hunters Happy Hour",
-     "provider": null
+     "provider": null,
+     "t": 472
     },
     {
      "rank": 5,
@@ -85,7 +89,8 @@
      "currency": null,
      "at": "2026-11-20T19:53:25.175153+01:00",
      "game": "Hand of Anubis",
-     "provider": "Hacksaw Gaming"
+     "provider": "Hacksaw Gaming",
+     "t": 400
     },
     {
      "rank": 6,
@@ -100,7 +105,8 @@
      "currency": null,
      "at": "2026-11-20T16:47:29.307045+01:00",
      "game": "Sweet Rush Bonanza",
-     "provider": "Pragmatic Play"
+     "provider": "Pragmatic Play",
+     "t": 315
     },
     {
      "rank": 7,
@@ -115,7 +121,8 @@
      "currency": null,
      "at": "2026-11-20T18:56:32.217104+01:00",
      "game": "Dork Unit",
-     "provider": "Hacksaw Gaming"
+     "provider": "Hacksaw Gaming",
+     "t": 253
     },
     {
      "rank": 8,
@@ -130,7 +137,8 @@
      "currency": null,
      "at": "2026-11-20T14:01:27.646614+01:00",
      "game": "Gates of Olympus 2500",
-     "provider": "Pragmatic Play"
+     "provider": "Pragmatic Play",
+     "t": 176
     },
     {
      "rank": 9,
@@ -145,7 +153,8 @@
      "currency": null,
      "at": "2026-11-20T13:46:04.115906+01:00",
      "game": null,
-     "provider": null
+     "provider": null,
+     "t": 91
     },
     {
      "rank": 10,
@@ -160,7 +169,8 @@
      "currency": null,
      "at": "2026-11-20T13:11:02.671087+01:00",
      "game": "Wings of Horus",
-     "provider": null
+     "provider": null,
+     "t": 8
     }
    ]
   },
@@ -188,7 +198,8 @@
      "currency": null,
      "at": "2026-11-19T00:34:45.222096+01:00",
      "game": "Bootleggers",
-     "provider": null
+     "provider": null,
+     "t": 320
     }
    ]
   },
@@ -216,7 +227,8 @@
      "currency": null,
      "at": "2026-11-18T11:11:12.116744+01:00",
      "game": null,
-     "provider": null
+     "provider": null,
+     "t": 90
     }
    ]
   }
