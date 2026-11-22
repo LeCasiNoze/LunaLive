@@ -6,7 +6,7 @@ import {LANGS, t, type Lang} from '../i18n';
 // (WINS_FEED_FILE la remplace pour un test local). Sans flux, aucune page /wins/.
 // bet = mise de base ; bonus_buy = bonus acheté ; buy_cost = son prix relevé à l'image (null si non lu, prix alors jamais affiché).
 // multi = win / bet, affiché en grand ; rank suit l'ordre de la vidéo (classement sur multi depuis le 21/11) ; paid_multi est seulement informatif.
-export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; buy_cost?: number | null; paid_multi?: number | null; game?: string | null; provider?: string | null; currency: string | null; at: string; t?: number | null};
+export type Clip = {rank: number; streamer: string; platform: 'kick' | 'rumble'; multi: number; win: number | null; bet: number | null; bonus_buy?: boolean; buy_cost?: number | null; paid_multi?: number | null; game?: string | null; provider?: string | null; currency: string | null; at: string; t?: number | null; casino?: string | null};
 export type Video = {kind: 'daily' | 'weekly' | 'monthly'; period: string; label?: string; title?: string | null; youtube_id: string | null; short_id: string | null; thumb: string | null; publish_at: string | null; age_restricted: boolean | null; clips: Clip[]};
 export type Feed = {generated_at: string; videos: Video[]};
 

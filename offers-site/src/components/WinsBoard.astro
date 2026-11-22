@@ -35,6 +35,8 @@ const yt = v.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : nu
 const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
 const embed = !!v.youtube_id && v.age_restricted === false;
 const offer = ranked(lang)[0];
+// Casino du clip (champ casino du flux) : lien vers notre avis seulement si c'est l'un de nos casinos.
+const ours = (name: string) => ranked(lang).find(o => o.name.toLowerCase() === name.toLowerCase())?.id;
 const streamerUrl = (c: typeof n1) => page.streamers?.find(x => x.sub === `wins/streamer/${slug(streamerName(c.streamer))}/`) && href(lang, `wins/streamer/${slug(streamerName(c.streamer))}/`);
 // Fiche du catalogue d'abord (chiffres officiels), sinon la page des gains de ce jeu si elle existe.
 const slotUrl = (g: string) => bySlotName(g) ? href(lang, `slots/${bySlotName(g)!.id}/`) : page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
@@ -69,7 +71,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
           <tr class={c.rank === 1 ? 'top' : undefined}>
             <td class="pos">{c.rank}</td>
             <td>{streamerUrl(c) ? <a href={streamerUrl(c)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
-            <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{c.provider && <span class="sub">{c.provider}</span>}</td>
+            <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{(c.provider || c.casino) && <span class="sub">{[c.provider, c.casino && (ours(c.casino) ? null : `${w.on} ${c.casino}`)].filter(Boolean).join(' · ')}{c.casino && ours(c.casino) && <>{c.provider ? ' · ' : ''}<a href={href(lang, `casinos/${ours(c.casino)}/`)}>{w.on} {c.casino}</a></>}</span>}</td>
             <td class="num x">{multi(c.multi)}{v.youtube_id && c.t != null && <span class="sub"><a href={clipVideo(v.youtube_id, c.t)!} target="_blank" rel="noopener" data-go="youtube" data-place="wins-clip">▶ {mmss(c.t)}</a></span>}</td>
             <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
             <td class="num">{money(c.win, c.currency, lang)}</td>

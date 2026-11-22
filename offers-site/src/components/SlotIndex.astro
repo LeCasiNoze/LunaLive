@@ -29,7 +29,7 @@ const jsonld = [
       <table class="rk rk-all">
         <thead><tr><th scope="col">{l.crumb}</th><th scope="col" class="num">{l.maxWin}</th><th scope="col" class="num">{l.rtp}</th><th scope="col">{l.volatility}</th></tr></thead>
         <tbody>{SLOTS.filter(s => s.provider === p).sort((a, b) => b.maxWin - a.maxWin).map(s => (
-          <tr><td><a href={href(lang, `slots/${s.id}/`)}>{s.name}</a></td><td class="num x">{nf(s.maxWin)}x</td><td class="num">{nf(Math.max(...s.rtp))}%</td><td>{l.vol[s.volatility] ?? s.volatility}</td></tr>
+          <tr><td><a href={href(lang, `slots/${s.id}/`)}>{s.name}</a></td><td class="num x">{nf(s.maxWin)}x</td><td class="num">{nf(Math.max(...s.rtp))}%</td><td>{s.volatility ? l.vol[s.volatility] ?? s.volatility : '–'}</td></tr>
         ))}</tbody>
       </table>
     </section>

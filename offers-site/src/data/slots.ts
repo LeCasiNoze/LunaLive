@@ -9,6 +9,8 @@ export type Slot = {
   rtp: number[]; volatility: string; maxWin: number; grid: string; buys: Buy[];
   // Chiffres absents de la fiche officielle : au moins deux sources indépendantes et concordantes, citées sur la page.
   cited?: Partial<Record<'maxWin' | 'volatility' | 'buys' | 'grid' | 'rtp', string[]>>;
+  // Chiffres officiels en plus quand l'éditeur les publie (fréquence de gain, chances de tours gratuits et du gain maximal).
+  hit?: number; fsOdds?: string; maxOdds?: string;
   text: Record<Lang, string[]>;
 };
 
@@ -340,6 +342,289 @@ export const SLOTS: Slot[] = [
       ],
     },
   },
+  {
+    id: 'the-dog-house-megaways', name: 'The Dog House Megaways', provider: 'Pragmatic Play',
+    source: 'https://www.pragmaticplay.com/en/games/the-dog-house-megaways/', checked: '2026-11-22',
+    rtp: [96.55], volatility: '', maxWin: 12305, grid: '6 reels · up to 117,649 ways', buys: [{name: 'Free Spins', cost: null}],
+    cited: {
+      maxWin: ['https://www.olbg.com/slots/games/the-dog-house-megaways', 'https://www.pokerlistings.com/online-slots/free/the-dog-house-megaways'],
+    },
+    text: {
+      en: [
+        'The Dog House Megaways is Pragmatic Play’s Megaways version of its dog-themed slot, with up to 117,649 ways to win and a published RTP of 96.55%.',
+        'Wilds on reels 2 to 5 carry a 2x or 3x win multiplier. Three to six scatters let you choose one of two bonus games.',
+        'Sticky Wilds gives 7 to 20 free spins with wilds that stay in place and resize as the Megaways reels change. Raining Wilds gives 15 to 30 free spins where up to six wilds drop on random positions each spin.',
+      ],
+      fr: [
+        'The Dog House Megaways est la version Megaways de la machine à sous canine de Pragmatic Play, avec jusqu’à 117 649 façons de gagner et un RTP publié de 96,55 %.',
+        'Les wilds des rouleaux 2 à 5 portent un multiplicateur de gain de 2x ou 3x. Trois à six scatters permettent de choisir l’un des deux bonus.',
+        'Sticky Wilds donne 7 à 20 tours gratuits avec des wilds qui restent en place et changent de taille avec les rouleaux Megaways. Raining Wilds donne 15 à 30 tours gratuits où jusqu’à six wilds tombent sur des positions au hasard à chaque tour.',
+      ],
+      de: [
+        'The Dog House Megaways ist die Megaways-Version des Hunde-Slots von Pragmatic Play, mit bis zu 117.649 Gewinnwegen und einem veröffentlichten RTP von 96,55 %.',
+        'Wilds auf den Walzen 2 bis 5 tragen einen Gewinnmultiplikator von 2x oder 3x. Drei bis sechs Scatter lassen dich eines von zwei Bonusspielen wählen.',
+        'Sticky Wilds bringt 7 bis 20 Freispiele mit Wilds, die liegen bleiben und sich mit den Megaways-Walzen in der Größe ändern. Raining Wilds bringt 15 bis 30 Freispiele, in denen bis zu sechs Wilds pro Drehung auf zufällige Positionen fallen.',
+      ],
+      es: [
+        'The Dog House Megaways es la versión Megaways de la tragaperras perruna de Pragmatic Play, con hasta 117.649 formas de ganar y un RTP publicado del 96,55 %.',
+        'Los wilds de los carretes 2 a 5 llevan un multiplicador de premio de 2x o 3x. De tres a seis scatters permiten elegir uno de los dos bonos.',
+        'Sticky Wilds da de 7 a 20 giros gratis con wilds que se quedan fijos y cambian de tamaño con los carretes Megaways. Raining Wilds da de 15 a 30 giros gratis en los que hasta seis wilds caen en posiciones al azar en cada giro.',
+      ],
+      pt: [
+        'The Dog House Megaways é a versão Megaways do slot de cachorros da Pragmatic Play, com até 117.649 formas de ganhar e RTP publicado de 96,55%.',
+        'Os wilds dos rolos 2 a 5 têm multiplicador de ganho de 2x ou 3x. De três a seis scatters permitem escolher um de dois bônus.',
+        'Sticky Wilds dá de 7 a 20 rodadas grátis com wilds que ficam fixos e mudam de tamanho com os rolos Megaways. Raining Wilds dá de 15 a 30 rodadas grátis em que até seis wilds caem em posições aleatórias a cada giro.',
+      ],
+      it: [
+        'The Dog House Megaways è la versione Megaways della slot a tema cani di Pragmatic Play, con fino a 117.649 modi di vincere e un RTP pubblicato del 96,55%.',
+        'I wild sui rulli da 2 a 5 hanno un moltiplicatore di vincita di 2x o 3x. Da tre a sei scatter fanno scegliere uno dei due bonus.',
+        'Sticky Wilds dà da 7 a 20 giri gratis con wild che restano fermi e cambiano dimensione con i rulli Megaways. Raining Wilds dà da 15 a 30 giri gratis in cui fino a sei wild cadono in posizioni casuali a ogni giro.',
+      ],
+    },
+  },
+  {
+    id: 'madame-destiny-megaways', name: 'Madame Destiny Megaways', provider: 'Pragmatic Play',
+    source: 'https://www.pragmaticplay.com/en/games/madame-destiny-megaways/', checked: '2026-11-22',
+    rtp: [96.56], volatility: '', maxWin: 5000, grid: '6 reels · Megaways', buys: [{name: 'Free Spins', cost: null}],
+    cited: {
+      maxWin: ['https://www.olbg.com/slots/games/madame-destiny-megaways', 'https://www.pokerlistings.com/online-slots/free/madame-destiny-megaways'],
+    },
+    text: {
+      en: [
+        'Madame Destiny Megaways is Pragmatic Play’s fortune-teller slot on an expanded Megaways grid, with black cats, candles and tarot cards and a published RTP of 96.56%.',
+        'Madame Destiny is the wild: she doubles any winning line she is part of. Three to six crystal-ball scatters trigger the free spins and also pay 5x to 100x the stake.',
+        'The feature opens with a wheel of fortune that sets up to 12 free spins and a win multiplier of up to 25x for the round.',
+      ],
+      fr: [
+        'Madame Destiny Megaways est la machine à sous de voyante de Pragmatic Play sur une grille Megaways agrandie, avec chats noirs, bougies et cartes de tarot, et un RTP publié de 96,56 %.',
+        'Madame Destiny est le wild : elle double toute ligne gagnante dont elle fait partie. Trois à six scatters boule de cristal lancent les tours gratuits et paient aussi 5x à 100x la mise.',
+        'Le bonus s’ouvre sur une roue de la fortune qui fixe jusqu’à 12 tours gratuits et un multiplicateur de gain jusqu’à 25x pour la séquence.',
+      ],
+      de: [
+        'Madame Destiny Megaways ist der Wahrsager-Slot von Pragmatic Play auf einem erweiterten Megaways-Raster, mit schwarzen Katzen, Kerzen und Tarotkarten und einem veröffentlichten RTP von 96,56 %.',
+        'Madame Destiny ist das Wild: Sie verdoppelt jede Gewinnlinie, an der sie beteiligt ist. Drei bis sechs Kristallkugel-Scatter lösen die Freispiele aus und zahlen zusätzlich das 5- bis 100-Fache des Einsatzes.',
+        'Das Feature beginnt mit einem Glücksrad, das bis zu 12 Freispiele und einen Gewinnmultiplikator bis 25x für die Runde festlegt.',
+      ],
+      es: [
+        'Madame Destiny Megaways es la tragaperras de la adivina de Pragmatic Play en una cuadrícula Megaways ampliada, con gatos negros, velas y cartas de tarot, y un RTP publicado del 96,56 %.',
+        'Madame Destiny es el wild: duplica cualquier línea ganadora en la que participa. De tres a seis scatters de bola de cristal activan los giros gratis y además pagan de 5x a 100x la apuesta.',
+        'El bono empieza con una rueda de la fortuna que fija hasta 12 giros gratis y un multiplicador de premio de hasta 25x para la ronda.',
+      ],
+      pt: [
+        'Madame Destiny Megaways é o slot da cartomante da Pragmatic Play numa grade Megaways ampliada, com gatos pretos, velas e cartas de tarô e RTP publicado de 96,56%.',
+        'Madame Destiny é o wild: ela dobra qualquer linha vencedora de que faz parte. De três a seis scatters de bola de cristal ativam as rodadas grátis e ainda pagam de 5x a 100x a aposta.',
+        'O bônus começa com uma roda da fortuna que define até 12 rodadas grátis e um multiplicador de ganho de até 25x para a rodada.',
+      ],
+      it: [
+        'Madame Destiny Megaways è la slot della chiromante di Pragmatic Play su una griglia Megaways ampliata, con gatti neri, candele e tarocchi e un RTP pubblicato del 96,56%.',
+        'Madame Destiny è il wild: raddoppia ogni linea vincente di cui fa parte. Da tre a sei scatter sfera di cristallo attivano i giri gratis e pagano anche da 5x a 100x la puntata.',
+        'Il bonus si apre con una ruota della fortuna che fissa fino a 12 giri gratis e un moltiplicatore di vincita fino a 25x per il round.',
+      ],
+    },
+  },
+  {
+    id: 'sweet-rush-bonanza', name: 'Sweet Rush Bonanza', provider: 'Pragmatic Play',
+    source: 'https://www.pragmaticplay.com/en/games/sweet-rush-bonanza/', checked: '2026-11-22',
+    rtp: [96.5], volatility: '', maxWin: 5000, grid: '6×5 · pays anywhere · tumble', buys: [{name: 'Free Spins', cost: null}, {name: 'Free Spins with 2x multipliers', cost: null}],
+    cited: {
+      maxWin: ['https://www.olbg.com/slots/games/sweet-rush-bonanza', 'https://www.pokerlistings.com/online-slots/free/sweet-rush-bonanza'],
+      grid: ['https://www.olbg.com/slots/games/sweet-rush-bonanza'],
+    },
+    text: {
+      en: [
+        'Sweet Rush Bonanza is a Pragmatic Play candy slot where 8 to 12 or more matching symbols win anywhere on the grid, up to 50x in the base game, with a published RTP of 96.50%.',
+        'Winning symbols mark their spot. Each new hit on a marked spot in the same spin grows a multiplier that starts at 2x and doubles up to 128x; when several multipliers touch one win, they are added together.',
+        'Four or more scatters start 10 free spins where marked spots and multipliers stay between spins. Pragmatic lists three ante bets and two bonus buys, one of which adds 2x multipliers on every position.',
+      ],
+      fr: [
+        'Sweet Rush Bonanza est une machine à sous de bonbons de Pragmatic Play où 8 à 12 symboles identiques ou plus gagnent n’importe où sur la grille, jusqu’à 50x dans le jeu de base, avec un RTP publié de 96,50 %.',
+        'Les symboles gagnants marquent leur case. Chaque nouveau gain sur une case marquée pendant le même tour fait grandir un multiplicateur qui part de 2x et double jusqu’à 128x ; quand plusieurs multiplicateurs touchent un même gain, ils s’additionnent.',
+        'Quatre scatters ou plus lancent 10 tours gratuits où les cases marquées et les multiplicateurs restent d’un tour à l’autre. Pragmatic indique trois mises ante et deux achats de bonus, dont l’un ajoute des multiplicateurs 2x sur toutes les positions.',
+      ],
+      de: [
+        'Sweet Rush Bonanza ist ein Candy-Slot von Pragmatic Play, in dem 8 bis 12 oder mehr gleiche Symbole überall auf dem Raster gewinnen, bis 50x im Basisspiel, mit einem veröffentlichten RTP von 96,50 %.',
+        'Gewinnsymbole markieren ihr Feld. Jeder weitere Treffer auf einem markierten Feld in derselben Drehung lässt einen Multiplikator wachsen, der bei 2x beginnt und sich bis 128x verdoppelt; berühren mehrere Multiplikatoren einen Gewinn, werden sie addiert.',
+        'Vier oder mehr Scatter starten 10 Freispiele, in denen markierte Felder und Multiplikatoren zwischen den Drehungen bleiben. Pragmatic nennt drei Ante-Wetten und zwei Bonuskäufe, von denen einer 2x-Multiplikatoren auf allen Positionen hinzufügt.',
+      ],
+      es: [
+        'Sweet Rush Bonanza es una tragaperras de caramelos de Pragmatic Play donde de 8 a 12 o más símbolos iguales ganan en cualquier lugar de la cuadrícula, hasta 50x en el juego base, con un RTP publicado del 96,50 %.',
+        'Los símbolos ganadores marcan su casilla. Cada nuevo acierto en una casilla marcada durante el mismo giro hace crecer un multiplicador que empieza en 2x y se duplica hasta 128x; si varios multiplicadores tocan un mismo premio, se suman.',
+        'Cuatro o más scatters activan 10 giros gratis en los que las casillas marcadas y los multiplicadores se mantienen entre giros. Pragmatic indica tres apuestas ante y dos compras de bono, una de las cuales añade multiplicadores 2x en todas las posiciones.',
+      ],
+      pt: [
+        'Sweet Rush Bonanza é um slot de doces da Pragmatic Play em que de 8 a 12 ou mais símbolos iguais ganham em qualquer lugar da grade, até 50x no jogo base, com RTP publicado de 96,50%.',
+        'Os símbolos vencedores marcam sua casa. Cada novo acerto numa casa marcada no mesmo giro faz crescer um multiplicador que começa em 2x e dobra até 128x; quando vários multiplicadores tocam o mesmo ganho, eles são somados.',
+        'Quatro ou mais scatters ativam 10 rodadas grátis em que as casas marcadas e os multiplicadores ficam de um giro para o outro. A Pragmatic indica três apostas ante e duas compras de bônus, uma delas acrescentando multiplicadores 2x em todas as posições.',
+      ],
+      it: [
+        'Sweet Rush Bonanza è una slot di caramelle di Pragmatic Play dove da 8 a 12 o più simboli uguali vincono ovunque sulla griglia, fino a 50x nel gioco base, con un RTP pubblicato del 96,50%.',
+        'I simboli vincenti segnano la loro casella. Ogni nuova vincita su una casella segnata nello stesso giro fa crescere un moltiplicatore che parte da 2x e raddoppia fino a 128x; se più moltiplicatori toccano la stessa vincita, si sommano.',
+        'Quattro o più scatter attivano 10 giri gratis in cui caselle segnate e moltiplicatori restano tra un giro e l’altro. Pragmatic indica tre puntate ante e due acquisti del bonus, uno dei quali aggiunge moltiplicatori 2x su tutte le posizioni.',
+      ],
+    },
+  },
+  {
+    id: 'sugar-rush', name: 'Sugar Rush', provider: 'Pragmatic Play',
+    source: 'https://www.pragmaticplay.com/en/games/sugar-rush/', checked: '2026-11-22',
+    rtp: [96.5], volatility: 'high', maxWin: 5000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
+    cited: {
+      maxWin: ['https://www.olbg.com/slots/games/sugar-rush', 'https://www.pokerlistings.com/online-slots/free/sugar-rush'],
+      volatility: ['https://www.olbg.com/slots/games/sugar-rush', 'https://www.pokerlistings.com/online-slots/free/sugar-rush'],
+      grid: ['https://www.olbg.com/slots/games/sugar-rush'],
+    },
+    text: {
+      en: [
+        'Sugar Rush is the original of Pragmatic Play’s candy cluster slots: gummy bears and jellybeans on tumbling reels, where clusters of 5 to 15 or more matching symbols pay up to 150x, with a published RTP of 96.50%.',
+        'A winning cluster marks the spots its symbols occupied. Each further win on a marked spot in the same spin adds a multiplier that starts at 2x and doubles up to 128x.',
+        'Three to seven scatters give 10, 12, 15, 20 or 30 free spins, and during the feature the marked spots and their multipliers stay for the whole round.',
+      ],
+      fr: [
+        'Sugar Rush est l’original des machines à sous à grappes de bonbons de Pragmatic Play : oursons et dragées sur des rouleaux en cascade, où les grappes de 5 à 15 symboles identiques ou plus paient jusqu’à 150x, avec un RTP publié de 96,50 %.',
+        'Une grappe gagnante marque les cases occupées par ses symboles. Chaque nouveau gain sur une case marquée pendant le même tour ajoute un multiplicateur qui part de 2x et double jusqu’à 128x.',
+        'Trois à sept scatters donnent 10, 12, 15, 20 ou 30 tours gratuits, et pendant le bonus les cases marquées et leurs multiplicateurs restent toute la séquence.',
+      ],
+      de: [
+        'Sugar Rush ist das Original der Candy-Cluster-Slots von Pragmatic Play: Gummibärchen und Jellybeans auf Tumble-Walzen, auf denen Cluster aus 5 bis 15 oder mehr gleichen Symbolen bis 150x zahlen, mit einem veröffentlichten RTP von 96,50 %.',
+        'Ein Gewinn-Cluster markiert die Felder seiner Symbole. Jeder weitere Gewinn auf einem markierten Feld in derselben Drehung fügt einen Multiplikator hinzu, der bei 2x beginnt und sich bis 128x verdoppelt.',
+        'Drei bis sieben Scatter bringen 10, 12, 15, 20 oder 30 Freispiele, und im Feature bleiben die markierten Felder und ihre Multiplikatoren die ganze Runde stehen.',
+      ],
+      es: [
+        'Sugar Rush es el original de las tragaperras de grupos de caramelos de Pragmatic Play: ositos de goma y gominolas en carretes en cascada, donde grupos de 5 a 15 o más símbolos iguales pagan hasta 150x, con un RTP publicado del 96,50 %.',
+        'Un grupo ganador marca las casillas que ocupaban sus símbolos. Cada nuevo premio en una casilla marcada durante el mismo giro añade un multiplicador que empieza en 2x y se duplica hasta 128x.',
+        'De tres a siete scatters dan 10, 12, 15, 20 o 30 giros gratis, y durante el bono las casillas marcadas y sus multiplicadores se mantienen toda la ronda.',
+      ],
+      pt: [
+        'Sugar Rush é o original dos slots de clusters de doces da Pragmatic Play: ursinhos de goma e jujubas em rolos em cascata, onde clusters de 5 a 15 ou mais símbolos iguais pagam até 150x, com RTP publicado de 96,50%.',
+        'Um cluster vencedor marca as casas ocupadas por seus símbolos. Cada novo ganho numa casa marcada no mesmo giro adiciona um multiplicador que começa em 2x e dobra até 128x.',
+        'De três a sete scatters dão 10, 12, 15, 20 ou 30 rodadas grátis, e durante o bônus as casas marcadas e seus multiplicadores ficam a rodada inteira.',
+      ],
+      it: [
+        'Sugar Rush è l’originale delle slot a cluster di caramelle di Pragmatic Play: orsetti gommosi e gelatine su rulli a cascata, dove cluster di 5–15 o più simboli uguali pagano fino a 150x, con un RTP pubblicato del 96,50%.',
+        'Un cluster vincente segna le caselle occupate dai suoi simboli. Ogni nuova vincita su una casella segnata nello stesso giro aggiunge un moltiplicatore che parte da 2x e raddoppia fino a 128x.',
+        'Da tre a sette scatter danno 10, 12, 15, 20 o 30 giri gratis, e durante il bonus le caselle segnate e i loro moltiplicatori restano per tutto il round.',
+      ],
+    },
+  },
+  {
+    id: 'mental', name: 'Mental', provider: 'Nolimit City',
+    source: 'https://nolimitcity.com/games/mental', checked: '2026-11-22',
+    rtp: [96.08], volatility: 'extreme', maxWin: 66666, grid: '3–5 rows · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.19, fsOdds: "1 in 216", maxOdds: "1 in 18,000,000",
+    cited: {
+
+    },
+    text: {
+      en: [
+        'Mental is Nolimit City’s asylum slot, a dark sepia-toned game released in August 2021 with a published RTP of 96.08% and an Extreme volatility rating from the studio itself.',
+        'Its grid shifts and grows as you spin. Fire Frames can ignite on random positions and split symbols, while Nolimit’s xWays and xNudge mechanics and the Dead Patients feature keep changing the board.',
+        'Nolimit caps the game at 66,666 times the bet and puts the odds of reaching it at about 1 in 18 million. It lists a hit frequency of 34.19%, free spins about once in 216 spins, and a feature buy.',
+      ],
+      fr: [
+        'Mental est la machine à sous de l’asile chez Nolimit City, un jeu sombre aux tons sépia sorti en août 2021, avec un RTP publié de 96,08 % et une volatilité classée Extrême par le studio lui-même.',
+        'Sa grille bouge et grandit au fil des tours. Des Fire Frames peuvent s’allumer sur des positions au hasard et dédoubler des symboles, tandis que les mécaniques xWays et xNudge de Nolimit et la fonction Dead Patients modifient sans cesse le plateau.',
+        'Nolimit plafonne le jeu à 66 666 fois la mise et estime la probabilité de l’atteindre à environ 1 sur 18 millions. Il indique une fréquence de gain de 34,19 %, des tours gratuits environ une fois tous les 216 tours, et un achat de bonus.',
+      ],
+      de: [
+        'Mental ist der Psychiatrie-Slot von Nolimit City, ein düsteres Spiel in Sepiatönen, erschienen im August 2021, mit einem veröffentlichten RTP von 96,08 % und einer vom Studio selbst vergebenen Volatilität „Extreme“.',
+        'Das Raster verändert und vergrößert sich mit jeder Drehung. Fire Frames können auf zufälligen Positionen aufflammen und Symbole teilen, während Nolimits xWays- und xNudge-Mechaniken und das Feature Dead Patients das Feld ständig umbauen.',
+        'Nolimit begrenzt das Spiel auf das 66.666-Fache des Einsatzes und beziffert die Chance darauf mit etwa 1 zu 18 Millionen. Angegeben sind eine Trefferquote von 34,19 %, Freispiele etwa alle 216 Drehungen und ein Feature-Kauf.',
+      ],
+      es: [
+        'Mental es la tragaperras del manicomio de Nolimit City, un juego oscuro en tonos sepia lanzado en agosto de 2021, con un RTP publicado del 96,08 % y una volatilidad calificada de Extrema por el propio estudio.',
+        'Su cuadrícula cambia y crece con cada giro. Los Fire Frames pueden encenderse en posiciones al azar y dividir símbolos, mientras las mecánicas xWays y xNudge de Nolimit y la función Dead Patients transforman el tablero sin parar.',
+        'Nolimit limita el juego a 66.666 veces la apuesta y sitúa la probabilidad de alcanzarlo en cerca de 1 entre 18 millones. Indica una frecuencia de premio del 34,19 %, giros gratis aproximadamente una vez cada 216 giros y una compra de función.',
+      ],
+      pt: [
+        'Mental é o slot do hospício da Nolimit City, um jogo sombrio em tons sépia lançado em agosto de 2021, com RTP publicado de 96,08% e volatilidade classificada como Extrema pelo próprio estúdio.',
+        'A grade muda e cresce a cada giro. Fire Frames podem acender em posições aleatórias e dividir símbolos, enquanto as mecânicas xWays e xNudge da Nolimit e o recurso Dead Patients transformam o tabuleiro o tempo todo.',
+        'A Nolimit limita o jogo a 66.666 vezes a aposta e estima a chance de chegar lá em cerca de 1 em 18 milhões. Indica frequência de acerto de 34,19%, rodadas grátis mais ou menos uma vez a cada 216 giros e compra de bônus.',
+      ],
+      it: [
+        'Mental è la slot del manicomio di Nolimit City, un gioco cupo in toni seppia uscito ad agosto 2021, con un RTP pubblicato del 96,08% e una volatilità classificata Estrema dallo studio stesso.',
+        'La griglia cambia e cresce a ogni giro. I Fire Frames possono accendersi su posizioni casuali e dividere i simboli, mentre le meccaniche xWays e xNudge di Nolimit e la funzione Dead Patients trasformano di continuo il tabellone.',
+        'Nolimit limita il gioco a 66.666 volte la puntata e stima la probabilità di arrivarci in circa 1 su 18 milioni. Indica una frequenza di vincita del 34,19%, giri gratis circa una volta ogni 216 giri e un acquisto della funzione.',
+      ],
+    },
+  },
+  {
+    id: 'san-quentin', name: 'San Quentin xWays', provider: 'Nolimit City',
+    source: 'https://nolimitcity.com/games/san-quentin', checked: '2026-11-22',
+    rtp: [96.03], volatility: 'extreme', maxWin: 150000, grid: '5×3 · xWays', buys: [{name: 'Feature buy', cost: null}], hit: 34.25, fsOdds: "1 in 230",
+    cited: {
+
+    },
+    text: {
+      en: [
+        'San Quentin xWays is Nolimit City’s maximum-security prison slot, released in January 2021, with a published RTP of 96.03% and an Extreme volatility rating from the studio.',
+        'The action starts on a 5×3 reel layout that can expand quickly as special symbols land, with the convicts Crazy Joe Labrador and Beefy Dick among the characters.',
+        'Its top prize, the Psycho Manhunt, pays 150,000 times the base bet and ends the round. Nolimit lists a hit frequency of 34.25%, free spins about once in 230 spins, and a feature buy.',
+      ],
+      fr: [
+        'San Quentin xWays est la machine à sous de prison de haute sécurité de Nolimit City, sortie en janvier 2021, avec un RTP publié de 96,03 % et une volatilité classée Extrême par le studio.',
+        'L’action démarre sur une grille 5×3 qui peut s’agrandir vite quand des symboles spéciaux tombent, avec les détenus Crazy Joe Labrador et Beefy Dick parmi les personnages.',
+        'Son gain maximal, le Psycho Manhunt, paie 150 000 fois la mise de base et met fin à la partie. Nolimit indique une fréquence de gain de 34,25 %, des tours gratuits environ une fois tous les 230 tours, et un achat de bonus.',
+      ],
+      de: [
+        'San Quentin xWays ist der Hochsicherheitsgefängnis-Slot von Nolimit City, erschienen im Januar 2021, mit einem veröffentlichten RTP von 96,03 % und einer vom Studio vergebenen Volatilität „Extreme“.',
+        'Gespielt wird auf einem 5×3-Raster, das sich schnell vergrößern kann, wenn Spezialsymbole landen; zu den Figuren gehören die Häftlinge Crazy Joe Labrador und Beefy Dick.',
+        'Der Höchstgewinn, die Psycho Manhunt, zahlt das 150.000-Fache des Grundeinsatzes und beendet die Runde. Nolimit nennt eine Trefferquote von 34,25 %, Freispiele etwa alle 230 Drehungen und einen Feature-Kauf.',
+      ],
+      es: [
+        'San Quentin xWays es la tragaperras de la prisión de máxima seguridad de Nolimit City, lanzada en enero de 2021, con un RTP publicado del 96,03 % y una volatilidad calificada de Extrema por el estudio.',
+        'La acción empieza en una cuadrícula de 5×3 que puede crecer rápido cuando caen símbolos especiales, con los presos Crazy Joe Labrador y Beefy Dick entre los personajes.',
+        'Su premio máximo, la Psycho Manhunt, paga 150.000 veces la apuesta base y termina la ronda. Nolimit indica una frecuencia de premio del 34,25 %, giros gratis aproximadamente una vez cada 230 giros y una compra de función.',
+      ],
+      pt: [
+        'San Quentin xWays é o slot da prisão de segurança máxima da Nolimit City, lançado em janeiro de 2021, com RTP publicado de 96,03% e volatilidade classificada como Extrema pelo estúdio.',
+        'A ação começa numa grade 5×3 que pode crescer rápido quando caem símbolos especiais, com os presos Crazy Joe Labrador e Beefy Dick entre os personagens.',
+        'O prêmio máximo, a Psycho Manhunt, paga 150.000 vezes a aposta base e encerra a rodada. A Nolimit indica frequência de acerto de 34,25%, rodadas grátis mais ou menos uma vez a cada 230 giros e compra de bônus.',
+      ],
+      it: [
+        'San Quentin xWays è la slot del carcere di massima sicurezza di Nolimit City, uscita a gennaio 2021, con un RTP pubblicato del 96,03% e una volatilità classificata Estrema dallo studio.',
+        'L’azione parte da una griglia 5×3 che può allargarsi in fretta quando cadono simboli speciali, con i detenuti Crazy Joe Labrador e Beefy Dick tra i personaggi.',
+        'La vincita massima, la Psycho Manhunt, paga 150.000 volte la puntata base e chiude il round. Nolimit indica una frequenza di vincita del 34,25%, giri gratis circa una volta ogni 230 giri e un acquisto della funzione.',
+      ],
+    },
+  },
+  {
+    id: 'fire-in-the-hole', name: 'Fire in the Hole xBomb', provider: 'Nolimit City',
+    source: 'https://nolimitcity.com/games/fire-in-the-hole', checked: '2026-11-22',
+    rtp: [96.06], volatility: 'extreme', maxWin: 60000, grid: '6×3 to 6×6 · 64 to 46,656 ways', buys: [{name: 'Feature buy', cost: null}], hit: 25.98, fsOdds: "1 in 200", maxOdds: "1 in 2,400,000",
+    cited: {
+
+    },
+    text: {
+      en: [
+        'Fire in the Hole xBomb is Nolimit City’s mining slot, released in March 2021, with a published RTP of 96.06% and an Extreme volatility rating from the studio.',
+        'The grid starts at 6×3 with 64 ways to win and can expand to 6×6 with up to 46,656 ways. Its Collapsing Mine feature triggers consecutive cascades on every winning spin or explosion, with exploding wilds clearing the way.',
+        'Nolimit caps the game at 60,000 times the bet and puts the odds of reaching it at about 1 in 2.4 million. It lists a hit frequency of 25.98%, free spins about once in 200 spins, and a feature buy.',
+      ],
+      fr: [
+        'Fire in the Hole xBomb est la machine à sous minière de Nolimit City, sortie en mars 2021, avec un RTP publié de 96,06 % et une volatilité classée Extrême par le studio.',
+        'La grille démarre en 6×3 avec 64 façons de gagner et peut s’étendre à 6×6 avec jusqu’à 46 656 façons. La fonction Collapsing Mine déclenche des cascades successives à chaque gain ou explosion, avec des wilds explosifs qui ouvrent le passage.',
+        'Nolimit plafonne le jeu à 60 000 fois la mise et estime la probabilité de l’atteindre à environ 1 sur 2,4 millions. Il indique une fréquence de gain de 25,98 %, des tours gratuits environ une fois tous les 200 tours, et un achat de bonus.',
+      ],
+      de: [
+        'Fire in the Hole xBomb ist der Bergbau-Slot von Nolimit City, erschienen im März 2021, mit einem veröffentlichten RTP von 96,06 % und einer vom Studio vergebenen Volatilität „Extreme“.',
+        'Das Raster beginnt bei 6×3 mit 64 Gewinnwegen und kann auf 6×6 mit bis zu 46.656 Wegen wachsen. Das Feature Collapsing Mine löst bei jedem Gewinn oder jeder Explosion aufeinanderfolgende Kaskaden aus, explodierende Wilds räumen den Weg frei.',
+        'Nolimit begrenzt das Spiel auf das 60.000-Fache des Einsatzes und beziffert die Chance darauf mit etwa 1 zu 2,4 Millionen. Angegeben sind eine Trefferquote von 25,98 %, Freispiele etwa alle 200 Drehungen und ein Feature-Kauf.',
+      ],
+      es: [
+        'Fire in the Hole xBomb es la tragaperras minera de Nolimit City, lanzada en marzo de 2021, con un RTP publicado del 96,06 % y una volatilidad calificada de Extrema por el estudio.',
+        'La cuadrícula empieza en 6×3 con 64 formas de ganar y puede ampliarse a 6×6 con hasta 46.656 formas. La función Collapsing Mine provoca cascadas sucesivas en cada premio o explosión, con wilds explosivos que abren camino.',
+        'Nolimit limita el juego a 60.000 veces la apuesta y sitúa la probabilidad de alcanzarlo en cerca de 1 entre 2,4 millones. Indica una frecuencia de premio del 25,98 %, giros gratis aproximadamente una vez cada 200 giros y una compra de función.',
+      ],
+      pt: [
+        'Fire in the Hole xBomb é o slot de mineração da Nolimit City, lançado em março de 2021, com RTP publicado de 96,06% e volatilidade classificada como Extrema pelo estúdio.',
+        'A grade começa em 6×3 com 64 formas de ganhar e pode crescer até 6×6 com até 46.656 formas. O recurso Collapsing Mine dispara cascatas seguidas a cada ganho ou explosão, com wilds explosivos abrindo caminho.',
+        'A Nolimit limita o jogo a 60.000 vezes a aposta e estima a chance de chegar lá em cerca de 1 em 2,4 milhões. Indica frequência de acerto de 25,98%, rodadas grátis mais ou menos uma vez a cada 200 giros e compra de bônus.',
+      ],
+      it: [
+        'Fire in the Hole xBomb è la slot mineraria di Nolimit City, uscita a marzo 2021, con un RTP pubblicato del 96,06% e una volatilità classificata Estrema dallo studio.',
+        'La griglia parte da 6×3 con 64 modi di vincere e può allargarsi a 6×6 con fino a 46.656 modi. La funzione Collapsing Mine attiva cascate consecutive a ogni vincita o esplosione, con wild esplosivi che aprono la strada.',
+        'Nolimit limita il gioco a 60.000 volte la puntata e stima la probabilità di arrivarci in circa 1 su 2,4 milioni. Indica una frequenza di vincita del 25,98%, giri gratis circa una volta ogni 200 giri e un acquisto della funzione.',
+      ],
+    },
+  },
 ];
 
 export const bySlotName = (name: string) => {
@@ -354,42 +639,42 @@ export const maxBuy = (s: Slot) => {
 
 type L = {crumb: string; title: string; h1: string; desc: string; provider: string; maxWin: string; rtp: string; volatility: string; grid: string;
   bonus: string; buyPrice: string; buyUnknown: string; rtpNote: string; source: string; about: string; ourWins: string; noWins: string; playAt: string; cols: string[];
-  vol: Record<string, string>; rtpNote1: string; cited: string; indexT: string; indexH: string; indexD: string; indexP: string; watch: string};
+  vol: Record<string, string>; volNa: string; hitL: string; fsL: string; maxOddsL: string; rtpNote1: string; cited: string; indexT: string; indexH: string; indexD: string; indexP: string; watch: string};
 export const SL: Record<Lang, L> = {
   en: {crumb: 'Slots', title: '{name} Slot – Max Win {max}x, RTP & Bonus Buys', h1: '{name}: max win, RTP and bonus games',
     desc: '{name} by {provider}: max win {max}x, RTP up to {rtp}%, volatility {vol}, {n} bonus games. Official figures checked {date}, plus our verified live wins. 18+.',
     provider: 'Provider', maxWin: 'Max win', rtp: 'RTP', volatility: 'Volatility', grid: 'Grid', bonus: 'Bonus games', buyPrice: 'Bonus buy price',
     buyUnknown: 'Shown in the game’s buy menu; {provider} does not publish it, so we don’t print a guess.', rtpNote: '{provider} publishes these RTP versions; the casino picks one, and the game’s info screen shows which.',
     source: 'Source: official {provider} game page, checked {date}.', about: 'About the game', ourWins: 'Our verified wins on {name}', noWins: 'No verified win on this game in our rankings yet.',
-    playAt: '{provider} games are available at {casino}', cols: ['Date', 'Streamer', 'Multiplier', 'Bet'], vol: {"high": "High", "very-high": "Very high", "medium": "Medium", "low": "Low"}, rtpNote1: "The value {provider} publishes; some casinos run a lower version, shown in the game’s info screen.", cited: "Not on the provider’s page; the same value at {links}, checked {date}.", indexT: "Slot Games – Max Win, RTP & Bonus Buys by Provider", indexH: "Slot games: max win, RTP and bonus buys", indexD: "Max win, RTP, volatility and bonus buy prices of popular slots, from official provider data and checked sources, with our verified live wins. 18+.", indexP: "Every figure comes from the provider’s official game page or from at least two sources that agree, with the date we checked it. Where a figure isn’t published, we leave it blank.", watch: "Video"},
+    playAt: '{provider} games are available at {casino}', cols: ['Date', 'Streamer', 'Multiplier', 'Bet'], vol: {"high": "High", "very-high": "Very high", "medium": "Medium", "low": "Low", "extreme": "Extreme"}, volNa: "Not published consistently: sources disagree, so we leave it blank.", hitL: "Hit frequency", fsL: "Free spins", maxOddsL: "Max win odds", rtpNote1: "The value {provider} publishes; some casinos run a lower version, shown in the game’s info screen.", cited: "Not on the provider’s page; the same value at {links}, checked {date}.", indexT: "Slot Games – Max Win, RTP & Bonus Buys by Provider", indexH: "Slot games: max win, RTP and bonus buys", indexD: "Max win, RTP, volatility and bonus buy prices of popular slots, from official provider data and checked sources, with our verified live wins. 18+.", indexP: "Every figure comes from the provider’s official game page or from at least two sources that agree, with the date we checked it. Where a figure isn’t published, we leave it blank.", watch: "Video"},
   fr: {crumb: 'Machines à sous', title: '{name} – gain max {max}x, RTP et bonus achetés', h1: '{name} : gain maximal, RTP et bonus',
     desc: '{name} de {provider} : gain max {max}x, RTP jusqu’à {rtp} %, volatilité {vol}, {n} bonus. Chiffres officiels relevés le {date}, et nos gains vérifiés en live. 18+.',
     provider: 'Éditeur', maxWin: 'Gain maximal', rtp: 'RTP', volatility: 'Volatilité', grid: 'Grille', bonus: 'Bonus', buyPrice: 'Prix du bonus acheté',
     buyUnknown: 'Affiché dans le menu d’achat du jeu ; {provider} ne le publie pas, donc nous n’affichons pas d’estimation.', rtpNote: '{provider} publie ces versions de RTP ; le casino en choisit une, visible dans l’écran d’infos du jeu.',
     source: 'Source : fiche officielle de {provider}, relevée le {date}.', about: 'Le jeu', ourWins: 'Nos gains vérifiés sur {name}', noWins: 'Pas encore de gain vérifié sur ce jeu dans nos classements.',
-    playAt: 'Les jeux {provider} sont disponibles sur {casino}', cols: ['Date', 'Streamer', 'Multiplicateur', 'Mise'], vol: {"high": "Élevée", "very-high": "Très élevée", "medium": "Moyenne", "low": "Faible"}, rtpNote1: "La valeur publiée par {provider} ; certains casinos utilisent une version plus basse, indiquée dans l’écran d’infos du jeu.", cited: "Absent de la fiche de l’éditeur ; même valeur sur {links}, relevé le {date}.", indexT: "Machines à sous – gain max, RTP et bonus par éditeur", indexH: "Machines à sous : gain maximal, RTP et bonus achetés", indexD: "Gain maximal, RTP, volatilité et prix des bonus achetés des machines à sous connues, d’après les fiches officielles et des sources vérifiées, avec nos gains vérifiés en live. 18+.", indexP: "Chaque chiffre vient de la fiche officielle de l’éditeur ou d’au moins deux sources concordantes, avec la date du relevé. Quand un chiffre n’est pas publié, la case reste vide.", watch: "Vidéo"},
+    playAt: 'Les jeux {provider} sont disponibles sur {casino}', cols: ['Date', 'Streamer', 'Multiplicateur', 'Mise'], vol: {"high": "Élevée", "very-high": "Très élevée", "medium": "Moyenne", "low": "Faible", "extreme": "Extrême"}, volNa: "Pas de valeur concordante : les sources divergent, donc nous laissons la case vide.", hitL: "Fréquence de gain", fsL: "Tours gratuits", maxOddsL: "Chance du gain max", rtpNote1: "La valeur publiée par {provider} ; certains casinos utilisent une version plus basse, indiquée dans l’écran d’infos du jeu.", cited: "Absent de la fiche de l’éditeur ; même valeur sur {links}, relevé le {date}.", indexT: "Machines à sous – gain max, RTP et bonus par éditeur", indexH: "Machines à sous : gain maximal, RTP et bonus achetés", indexD: "Gain maximal, RTP, volatilité et prix des bonus achetés des machines à sous connues, d’après les fiches officielles et des sources vérifiées, avec nos gains vérifiés en live. 18+.", indexP: "Chaque chiffre vient de la fiche officielle de l’éditeur ou d’au moins deux sources concordantes, avec la date du relevé. Quand un chiffre n’est pas publié, la case reste vide.", watch: "Vidéo"},
   de: {crumb: 'Slots', title: '{name} – Max Win {max}x, RTP & Bonuskauf', h1: '{name}: Maximalgewinn, RTP und Bonusspiele',
     desc: '{name} von {provider}: Max Win {max}x, RTP bis {rtp} %, Volatilität {vol}, {n} Bonusspiele. Offizielle Werte vom {date} und unsere verifizierten Live-Gewinne. 18+.',
     provider: 'Anbieter', maxWin: 'Maximalgewinn', rtp: 'RTP', volatility: 'Volatilität', grid: 'Raster', bonus: 'Bonusspiele', buyPrice: 'Preis des Bonuskaufs',
     buyUnknown: 'Steht im Kaufmenü des Spiels; {provider} veröffentlicht ihn nicht, daher keine Schätzung.', rtpNote: '{provider} veröffentlicht diese RTP-Versionen; das Casino wählt eine, der Info-Bildschirm des Spiels zeigt welche.',
     source: 'Quelle: offizielle Spielseite von {provider}, geprüft am {date}.', about: 'Das Spiel', ourWins: 'Unsere verifizierten Gewinne auf {name}', noWins: 'Noch kein verifizierter Gewinn auf diesem Spiel in unseren Rankings.',
-    playAt: '{provider}-Spiele gibt es bei {casino}', cols: ['Datum', 'Streamer', 'Multiplikator', 'Einsatz'], vol: {"high": "Hoch", "very-high": "Sehr hoch", "medium": "Mittel", "low": "Niedrig"}, rtpNote1: "Der von {provider} veröffentlichte Wert; manche Casinos nutzen eine niedrigere Version, die der Info-Bildschirm des Spiels zeigt.", cited: "Nicht auf der Seite des Anbieters; derselbe Wert bei {links}, geprüft am {date}.", indexT: "Slots – Max Win, RTP & Bonuskauf nach Anbieter", indexH: "Slots: Maximalgewinn, RTP und Bonuskauf", indexD: "Maximalgewinn, RTP, Volatilität und Bonuskaufpreise bekannter Slots, aus offiziellen Anbieterdaten und geprüften Quellen, mit unseren verifizierten Live-Gewinnen. 18+.", indexP: "Jede Zahl stammt von der offiziellen Spielseite des Anbieters oder aus mindestens zwei übereinstimmenden Quellen, mit Prüfdatum. Wird ein Wert nicht veröffentlicht, bleibt das Feld leer.", watch: "Video"},
+    playAt: '{provider}-Spiele gibt es bei {casino}', cols: ['Datum', 'Streamer', 'Multiplikator', 'Einsatz'], vol: {"high": "Hoch", "very-high": "Sehr hoch", "medium": "Mittel", "low": "Niedrig", "extreme": "Extrem"}, volNa: "Kein übereinstimmender Wert: Die Quellen weichen ab, daher bleibt das Feld leer.", hitL: "Trefferquote", fsL: "Freispiele", maxOddsL: "Chance auf Max Win", rtpNote1: "Der von {provider} veröffentlichte Wert; manche Casinos nutzen eine niedrigere Version, die der Info-Bildschirm des Spiels zeigt.", cited: "Nicht auf der Seite des Anbieters; derselbe Wert bei {links}, geprüft am {date}.", indexT: "Slots – Max Win, RTP & Bonuskauf nach Anbieter", indexH: "Slots: Maximalgewinn, RTP und Bonuskauf", indexD: "Maximalgewinn, RTP, Volatilität und Bonuskaufpreise bekannter Slots, aus offiziellen Anbieterdaten und geprüften Quellen, mit unseren verifizierten Live-Gewinnen. 18+.", indexP: "Jede Zahl stammt von der offiziellen Spielseite des Anbieters oder aus mindestens zwei übereinstimmenden Quellen, mit Prüfdatum. Wird ein Wert nicht veröffentlicht, bleibt das Feld leer.", watch: "Video"},
   es: {crumb: 'Tragaperras', title: '{name} – premio máx. {max}x, RTP y compra de bono', h1: '{name}: premio máximo, RTP y bonos',
     desc: '{name} de {provider}: premio máx. {max}x, RTP hasta {rtp} %, volatilidad {vol}, {n} bonos. Cifras oficiales revisadas el {date} y nuestras ganancias verificadas en directo. 18+.',
     provider: 'Proveedor', maxWin: 'Premio máximo', rtp: 'RTP', volatility: 'Volatilidad', grid: 'Cuadrícula', bonus: 'Bonos', buyPrice: 'Precio de la compra de bono',
     buyUnknown: 'Aparece en el menú de compra del juego; {provider} no lo publica, así que no mostramos una estimación.', rtpNote: '{provider} publica estas versiones de RTP; el casino elige una y la pantalla de información del juego la muestra.',
     source: 'Fuente: ficha oficial de {provider}, revisada el {date}.', about: 'El juego', ourWins: 'Nuestras ganancias verificadas en {name}', noWins: 'Todavía no hay ganancias verificadas en este juego en nuestros rankings.',
-    playAt: 'Los juegos de {provider} están en {casino}', cols: ['Fecha', 'Streamer', 'Multiplicador', 'Apuesta'], vol: {"high": "Alta", "very-high": "Muy alta", "medium": "Media", "low": "Baja"}, rtpNote1: "El valor que publica {provider}; algunos casinos usan una versión más baja, que aparece en la pantalla de información del juego.", cited: "No figura en la página del proveedor; el mismo valor en {links}, revisado el {date}.", indexT: "Tragaperras – premio máx., RTP y compra de bono por proveedor", indexH: "Tragaperras: premio máximo, RTP y compra de bono", indexD: "Premio máximo, RTP, volatilidad y precio de la compra de bono de tragaperras conocidas, con datos oficiales y fuentes verificadas, y nuestras ganancias verificadas en directo. 18+.", indexP: "Cada cifra viene de la página oficial del proveedor o de al menos dos fuentes que coinciden, con la fecha de revisión. Si una cifra no se publica, la casilla queda vacía.", watch: "Vídeo"},
+    playAt: 'Los juegos de {provider} están en {casino}', cols: ['Fecha', 'Streamer', 'Multiplicador', 'Apuesta'], vol: {"high": "Alta", "very-high": "Muy alta", "medium": "Media", "low": "Baja", "extreme": "Extrema"}, volNa: "No hay un valor coincidente: las fuentes difieren, así que la casilla queda vacía.", hitL: "Frecuencia de premio", fsL: "Giros gratis", maxOddsL: "Probabilidad del premio máximo", rtpNote1: "El valor que publica {provider}; algunos casinos usan una versión más baja, que aparece en la pantalla de información del juego.", cited: "No figura en la página del proveedor; el mismo valor en {links}, revisado el {date}.", indexT: "Tragaperras – premio máx., RTP y compra de bono por proveedor", indexH: "Tragaperras: premio máximo, RTP y compra de bono", indexD: "Premio máximo, RTP, volatilidad y precio de la compra de bono de tragaperras conocidas, con datos oficiales y fuentes verificadas, y nuestras ganancias verificadas en directo. 18+.", indexP: "Cada cifra viene de la página oficial del proveedor o de al menos dos fuentes que coinciden, con la fecha de revisión. Si una cifra no se publica, la casilla queda vacía.", watch: "Vídeo"},
   pt: {crumb: 'Slots', title: '{name} – ganho máx. {max}x, RTP e compra de bônus', h1: '{name}: ganho máximo, RTP e bônus',
     desc: '{name} da {provider}: ganho máx. {max}x, RTP até {rtp}%, volatilidade {vol}, {n} bônus. Números oficiais conferidos em {date} e nossos ganhos verificados ao vivo. 18+.',
     provider: 'Provedor', maxWin: 'Ganho máximo', rtp: 'RTP', volatility: 'Volatilidade', grid: 'Grade', bonus: 'Bônus', buyPrice: 'Preço da compra de bônus',
     buyUnknown: 'Aparece no menu de compra do jogo; a {provider} não o publica, então não mostramos estimativa.', rtpNote: 'A {provider} publica estas versões de RTP; o cassino escolhe uma, e a tela de informações do jogo mostra qual.',
     source: 'Fonte: página oficial da {provider}, conferida em {date}.', about: 'O jogo', ourWins: 'Nossos ganhos verificados em {name}', noWins: 'Ainda não há ganho verificado neste jogo nos nossos rankings.',
-    playAt: 'Os jogos da {provider} estão na {casino}', cols: ['Data', 'Streamer', 'Multiplicador', 'Aposta'], vol: {"high": "Alta", "very-high": "Muito alta", "medium": "Média", "low": "Baixa"}, rtpNote1: "O valor que a {provider} publica; alguns cassinos usam uma versão mais baixa, mostrada na tela de informações do jogo.", cited: "Não consta na página do provedor; o mesmo valor em {links}, conferido em {date}.", indexT: "Slots – ganho máx., RTP e compra de bônus por provedor", indexH: "Slots: ganho máximo, RTP e compra de bônus", indexD: "Ganho máximo, RTP, volatilidade e preço da compra de bônus de slots conhecidos, com dados oficiais e fontes conferidas, e nossos ganhos verificados ao vivo. 18+.", indexP: "Cada número vem da página oficial do provedor ou de pelo menos duas fontes que concordam, com a data da conferência. Quando um número não é publicado, o campo fica vazio.", watch: "Vídeo"},
+    playAt: 'Os jogos da {provider} estão na {casino}', cols: ['Data', 'Streamer', 'Multiplicador', 'Aposta'], vol: {"high": "Alta", "very-high": "Muito alta", "medium": "Média", "low": "Baixa", "extreme": "Extrema"}, volNa: "Sem valor concordante: as fontes divergem, então o campo fica vazio.", hitL: "Frequência de acerto", fsL: "Rodadas grátis", maxOddsL: "Chance do ganho máximo", rtpNote1: "O valor que a {provider} publica; alguns cassinos usam uma versão mais baixa, mostrada na tela de informações do jogo.", cited: "Não consta na página do provedor; o mesmo valor em {links}, conferido em {date}.", indexT: "Slots – ganho máx., RTP e compra de bônus por provedor", indexH: "Slots: ganho máximo, RTP e compra de bônus", indexD: "Ganho máximo, RTP, volatilidade e preço da compra de bônus de slots conhecidos, com dados oficiais e fontes conferidas, e nossos ganhos verificados ao vivo. 18+.", indexP: "Cada número vem da página oficial do provedor ou de pelo menos duas fontes que concordam, com a data da conferência. Quando um número não é publicado, o campo fica vazio.", watch: "Vídeo"},
   it: {crumb: 'Slot', title: '{name} – vincita max {max}x, RTP e bonus buy', h1: '{name}: vincita massima, RTP e bonus',
     desc: '{name} di {provider}: vincita max {max}x, RTP fino al {rtp}%, volatilità {vol}, {n} bonus. Dati ufficiali verificati il {date} e le nostre vincite verificate in live. 18+.',
     provider: 'Fornitore', maxWin: 'Vincita massima', rtp: 'RTP', volatility: 'Volatilità', grid: 'Griglia', bonus: 'Bonus', buyPrice: 'Prezzo del bonus buy',
     buyUnknown: 'È indicato nel menu di acquisto del gioco; {provider} non lo pubblica, quindi non mostriamo stime.', rtpNote: '{provider} pubblica queste versioni di RTP; il casinò ne sceglie una, indicata nella schermata info del gioco.',
     source: 'Fonte: pagina ufficiale di {provider}, verificata il {date}.', about: 'Il gioco', ourWins: 'Le nostre vincite verificate su {name}', noWins: 'Ancora nessuna vincita verificata su questo gioco nelle nostre classifiche.',
-    playAt: 'I giochi {provider} sono disponibili su {casino}', cols: ['Data', 'Streamer', 'Moltiplicatore', 'Puntata'], vol: {"high": "Alta", "very-high": "Molto alta", "medium": "Media", "low": "Bassa"}, rtpNote1: "Il valore pubblicato da {provider}; alcuni casinò usano una versione più bassa, indicata nella schermata info del gioco.", cited: "Non presente nella pagina del fornitore; stesso valore su {links}, verificato il {date}.", indexT: "Slot – vincita max, RTP e bonus buy per fornitore", indexH: "Slot: vincita massima, RTP e bonus buy", indexD: "Vincita massima, RTP, volatilità e prezzi dei bonus buy delle slot più note, da dati ufficiali e fonti verificate, con le nostre vincite verificate in live. 18+.", indexP: "Ogni cifra viene dalla pagina ufficiale del fornitore o da almeno due fonti concordanti, con la data della verifica. Se una cifra non è pubblicata, il campo resta vuoto.", watch: "Video"},
+    playAt: 'I giochi {provider} sono disponibili su {casino}', cols: ['Data', 'Streamer', 'Moltiplicatore', 'Puntata'], vol: {"high": "Alta", "very-high": "Molto alta", "medium": "Media", "low": "Bassa", "extreme": "Estrema"}, volNa: "Nessun valore concorde: le fonti non coincidono, quindi il campo resta vuoto.", hitL: "Frequenza di vincita", fsL: "Giri gratis", maxOddsL: "Probabilità della vincita max", rtpNote1: "Il valore pubblicato da {provider}; alcuni casinò usano una versione più bassa, indicata nella schermata info del gioco.", cited: "Non presente nella pagina del fornitore; stesso valore su {links}, verificato il {date}.", indexT: "Slot – vincita max, RTP e bonus buy per fornitore", indexH: "Slot: vincita massima, RTP e bonus buy", indexD: "Vincita massima, RTP, volatilità e prezzi dei bonus buy delle slot più note, da dati ufficiali e fonti verificate, con le nostre vincite verificate in live. 18+.", indexP: "Ogni cifra viene dalla pagina ufficiale del fornitore o da almeno due fonti concordanti, con la data della verifica. Se una cifra non è pubblicata, il campo resta vuoto.", watch: "Video"},
 };

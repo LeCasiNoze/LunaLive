@@ -16,7 +16,7 @@ export const GET: APIRoute = async ({site}) => {
       age_restricted: v.age_restricted,
       wins: top(v).map(c => ({
         rank: c.rank, streamer: streamerName(c.streamer), channel: channelUrl(c), platform: platformName(c.platform),
-        game: c.game ?? null, provider: c.provider ?? null, multi: c.multi, bet: c.bet, win: c.win,
+        game: c.game ?? null, provider: c.provider ?? null, casino: c.casino ?? null, multi: c.multi, bet: c.bet, win: c.win,
         bonus_buy: !!c.bonus_buy, buy_cost: c.buy_cost ?? null, at: c.at, video_at: clipVideo(v.youtube_id, c.t),
       })),
     })),
