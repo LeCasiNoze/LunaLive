@@ -49,6 +49,9 @@ const slug=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-
 const marker=(userId:string,status:'open'|'closed')=>`belva-ticket:${userId}:${status}`;
 // Pseudo affiché sur le serveur ; s'il n'a aucune lettre (emojis seuls), le nom d'utilisateur.
 const ticketName=(i:ModalSubmitInteraction)=>{const shown=slug((i.member&&'displayName' in i.member?i.member.displayName:null)??i.user.displayName);return shown==='membre'?slug(i.user.username):shown;};
+// Police grasse des salons LeCasiNoze (〈🎫〉┃𝗧𝗜𝗖𝗞𝗘𝗧…) : lettres et chiffres en « sans-serif gras » Unicode.
+export const boldCaps=(s:string)=>[...s.toUpperCase()].map(ch=>/[A-Z]/.test(ch)?String.fromCodePoint(0x1D5D4+ch.charCodeAt(0)-65):/[0-9]/.test(ch)?String.fromCodePoint(0x1D7EC+ch.charCodeAt(0)-48):ch).join('');
+export const ticketChannelName=(emoji:string,base:string,lcn=false)=>lcn?`〈${emoji}〉┃${boldCaps(base.slice(0,45))}`:`${emoji}︱${base}`.slice(0,90);
 
 let tablesReady=false;
 export async function ensureTables(pool:Pool){
@@ -183,7 +186,7 @@ async function openChannel(i:ModalSubmitInteraction,kind:Kind,c?:Casino):Promise
   const view=[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,PermissionFlagsBits.ReadMessageHistory,PermissionFlagsBits.AttachFiles,PermissionFlagsBits.EmbedLinks];
   return guild.channels.create({
     // Pseudo affiché sur le serveur (celui que le staff voit), pas le nom d'utilisateur Discord.
-    name:`${KINDS[kind].emoji}︱${KINDS[kind].short}${c?'-'+c.id:''}-${ticketName(i)}`.slice(0,90),
+    name:ticketChannelName(KINDS[kind].emoji,`${KINDS[kind].short}${c?'-'+c.id:''}-${ticketName(i)}`,Boolean(S().lcn)),
     type:ChannelType.GuildText,parent:S().openCat,
     topic:`${marker(i.user.id,'open')};type:${kind}${c?';casino:'+c.id:''}`,
     permissionOverwrites:[
