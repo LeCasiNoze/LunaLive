@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
+import {bySlotName} from '../data/slots';
 import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug} from '../data/wins';
 // Proposition de refonte de /wins/ (dernier Top et pages jour) : le classement d'abord, la vidéo et l'offre principale à côté.
 interface Props {lang: Lang; page: WinsPage}
@@ -35,7 +36,8 @@ const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}
 const embed = !!v.youtube_id && v.age_restricted === false;
 const offer = ranked(lang)[0];
 const streamerUrl = (c: typeof n1) => page.streamers?.find(x => x.sub === `wins/streamer/${slug(streamerName(c.streamer))}/`) && href(lang, `wins/streamer/${slug(streamerName(c.streamer))}/`);
-const slotUrl = (g: string) => page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
+// Fiche du catalogue d'abord (chiffres officiels), sinon la page des gains de ce jeu si elle existe.
+const slotUrl = (g: string) => bySlotName(g) ? href(lang, `slots/${bySlotName(g)!.id}/`) : page.slots?.find(x => x.sub === `wins/slot/${slug(g)}/`) && href(lang, `wins/slot/${slug(g)}/`);
 const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, ...(page.kind === 'latest' ? [] : [{name: date, url: href(lang, page.sub)}])];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},

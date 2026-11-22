@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
+import {bySlotName} from '../data/slots';
 import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug} from '../data/wins';
 // Page du mois : le top 30 des gains vérifiés de tous les Tops du jour du mois, puis la liste des jours.
 interface Props {lang: Lang; page: WinsPage}
@@ -49,7 +50,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], 
           <tr class={c.rank === 1 ? 'top' : undefined}>
             <td class="pos">{c.rank}</td>
             <td>{groupUrl('streamer', streamerName(c.streamer), page.streamers) ? <a href={groupUrl('streamer', streamerName(c.streamer), page.streamers)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
-            <td>{c.game ? (groupUrl('slot', c.game, page.slots) ? <a href={groupUrl('slot', c.game, page.slots)}>{c.game}</a> : c.game) : <span class="na">–</span>}</td>
+            <td>{c.game ? (bySlotName(c.game) ? <a href={href(lang, `slots/${bySlotName(c.game)!.id}/`)}>{c.game}</a> : groupUrl('slot', c.game, page.slots) ? <a href={groupUrl('slot', c.game, page.slots)}>{c.game}</a> : c.game) : <span class="na">–</span>}</td>
             <td class="num x">{multi(c.multi)}</td>
             <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
             <td class="num">{money(c.win, c.currency, lang)}</td>

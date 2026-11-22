@@ -176,6 +176,14 @@ table.rk td a:hover { text-decoration: underline; }
 .wins p { font-size: 13px; color: var(--muted); }
 .wins .btn { margin-left: auto; }
 
+/* Fiche machine à sous */
+.spec { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 18px; }
+.spec div:first-child { border-top: 0; }
+.spec .sub { margin-top: 2px; }
+.prose-txt { margin-top: 10px; }
+.prose-txt p { color: var(--muted); max-width: 760px; }
+.prose-txt p + p { margin-top: 12px; }
+
 /* Listes */
 .links, .list { margin: 0; padding: 0; list-style: none; width: 100%; border-collapse: collapse; }
 .links li { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }

@@ -1,0 +1,92 @@
+---
+import Base from '../layouts/Base.astro';
+import {t, href, fmt, type Lang} from '../i18n';
+import {ui} from '../i18n/ui';
+import {ranked} from '../data/casinos';
+import {type Slot, SL} from '../data/slots';
+import {loadFeed, byKind, multi, money, streamerName, platformName, channelUrl, dayLabel, slug} from '../data/wins';
+// Fiche d'une machine à sous : chiffres officiels de l'éditeur (source et date), texte propre au jeu, nos gains vérifiés.
+interface Props {lang: Lang; s: Slot}
+const {lang, s} = Astro.props;
+const d = t(lang);
+const u = ui(lang);
+const l = SL[lang];
+const site = Astro.site!.origin;
+const nf = (n: number) => n.toLocaleString(d.locale, {maximumFractionDigits: 2});
+const date = dayLabel(lang, s.checked);
+const vars = {name: s.name, provider: s.provider, max: nf(s.maxWin), rtp: nf(Math.max(...s.rtp)), vol: s.volatility, n: s.buys.length, date};
+let title = fmt(l.title, vars);
+if (title.length > 60) title = title.split(' – ')[0] + ' – ' + fmt(l.maxWin, vars) + ` ${vars.max}x`;
+if (title.length > 60) title = s.name;
+const desc = fmt(l.desc, vars);
+const h1 = fmt(l.h1, vars);
+// Nos gains sur ce jeu, tirés des Tops du jour publiés (même garde publish_at que /wins/).
+const days = byKind(await loadFeed(), 'daily');
+const hits = days.flatMap(v => v.clips.filter(c => c.game && slug(c.game) === slug(s.name)).map(c => ({...c, day: v.period}))).sort((a, b) => b.multi - a.multi);
+// L'offre mise en avant : la première de la langue qui propose les jeux de cet éditeur.
+const brand = s.provider.split(' ')[0].toLowerCase();
+const offer = ranked(lang).find(c => c.providers.some(p => p.toLowerCase().startsWith(brand)));
+const sub = `slots/${s.id}/`;
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: l.crumb, url: href(lang, sub)}, {name: s.name, url: href(lang, sub)}];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [crumbs[0], crumbs[2]].map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
+  {'@context': 'https://schema.org', '@type': 'Game', name: s.name, url: site + href(lang, sub), publisher: {'@type': 'Organization', name: s.provider, url: new URL(s.source).origin}, sameAs: s.source, description: desc, inLanguage: d.locale},
+];
+---
+<Base lang={lang} title={title} desc={desc} path={sub} jsonld={jsonld}>
+  <ol class="crumbs"><li><a href={crumbs[0].url}>{crumbs[0].name}</a></li><li>{l.crumb}</li><li aria-current="page">{s.name}</li></ol>
+
+  <header class="pg-hd">
+    <p class="kick">{s.provider} · {fmt(l.maxWin, vars)} {vars.max}x</p>
+    <h1>{h1}</h1>
+    <p class="lede">{s.text[lang][0]}</p>
+  </header>
+
+  <div class="board">
+    <section class="board-main">
+      <dl class="kv spec">
+        <div><dt>{l.provider}</dt><dd>{s.provider}</dd></div>
+        <div><dt>{l.maxWin}</dt><dd><b class="x">{vars.max}x</b></dd></div>
+        <div><dt>{l.rtp}</dt><dd>{s.rtp.map(r => `${nf(r)}${['fr', 'de', 'es'].includes(lang) ? ' %' : '%'}`).join(' · ')}<span class="sub">{fmt(l.rtpNote, vars)}</span></dd></div>
+        <div><dt>{l.volatility}</dt><dd>{s.volatility}</dd></div>
+        <div><dt>{l.grid}</dt><dd>{s.grid}</dd></div>
+        <div><dt>{l.bonus}</dt><dd>{s.buys.map(b => b.name).join(' · ')}</dd></div>
+        <div><dt>{l.buyPrice}</dt><dd>{s.buys.every(b => b.cost == null) ? <span class="muted">{fmt(l.buyUnknown, vars)}</span> : s.buys.map(b => `${b.name}: ${b.cost != null ? `${nf(b.cost)}x` : '–'}`).join(' · ')}</dd></div>
+      </dl>
+      <p class="note">{fmt(l.source, vars)} <a href={s.source} target="_blank" rel="noopener nofollow">{new URL(s.source).hostname}</a></p>
+
+      <section class="sec">
+        <h2>{l.about}</h2>
+        <div class="prose-txt">{s.text[lang].slice(1).map(p => <p>{p}</p>)}</div>
+      </section>
+
+      <section class="sec">
+        <h2>{fmt(l.ourWins, vars)}</h2>
+        {hits.length > 0
+          ? <table class="rk"><thead><tr><th scope="col">{l.cols[0]}</th><th scope="col">{l.cols[1]}</th><th scope="col" class="num">{l.cols[2]}</th><th scope="col" class="num">{l.cols[3]}</th></tr></thead>
+              <tbody>{hits.map(c => <tr><td><a href={href(lang, `wins/${c.day}/`)}>{dayLabel(lang, c.day)}</a></td><td>{streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td><td class="num x">{multi(c.multi)}</td><td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{u.wins.buy}</span>}</td></tr>)}</tbody></table>
+          : <p class="muted">{l.noWins}</p>}
+        <p class="note"><a href={href(lang, 'wins/')}>{u.wins.latest} →</a></p>
+      </section>
+    </section>
+
+    {offer && (
+      <aside class="board-side">
+        <div class="offer">
+          <p class="small" style="text-align:left;margin:0 0 10px">{fmt(l.playAt, {...vars, casino: offer.name})}</p>
+          <div class="offer-hd">
+            <img src={offer.logo} alt="" width="40" height="40" />
+            <div><b>{offer.name}</b><span>{d.casino[offer.id].headline}</span></div>
+          </div>
+          <a class="btn btn-play btn-block" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="slot-page">{u.play}</a>
+          <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a></p>
+        </div>
+      </aside>
+    )}
+  </div>
+
+  <section class="sec rg">
+    <h2>{d.rg.title}</h2>
+    <p>{d.rg.p} <a href={href(lang, 'responsible-gambling/')}>{d.rg.link}</a></p>
+  </section>
+</Base>

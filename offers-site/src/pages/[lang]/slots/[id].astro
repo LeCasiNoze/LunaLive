@@ -1,0 +1,9 @@
+---
+import SlotPage from '../../../components/SlotPage.astro';
+import {SLOTS} from '../../../data/slots';
+import {LANGS} from '../../../i18n';
+// Fiches machines à sous traduites : /<lang>/slots/<jeu>/.
+export function getStaticPaths() { return LANGS.filter(l => l !== 'en').flatMap(lang => SLOTS.map(s => ({params: {lang, id: s.id}, props: {lang, s}}))); }
+const {lang, s} = Astro.props as any;
+---
+<SlotPage lang={lang} s={s} />
