@@ -14,6 +14,39 @@ export interface Intent {
 
 export const INTENTS: Intent[] = [
   {
+    casino: 'celsius', lang: 'fr', slug: 'fiable', place: 'intent-fiable',
+    title: 'Celsius Casino est-il fiable ? Licence, exploitant et règles de retrait',
+    desc: 'Celsius Casino fiable ? Exploitant Celsius Holdings N.V. (n° 157856), licence citée dans les conditions, vérification d’identité, plafonds de retrait. Les faits tirés des pages officielles, avec leurs écarts.',
+    h1: 'Celsius Casino est-il fiable ?',
+    lede: 'Nous ne donnons pas de note : voici les faits vérifiables sur l’exploitant, la licence et les règles de retrait, tirés des pages officielles de Celsius, y compris un écart entre deux de ces pages.',
+    facts: [
+      ['Exploitant', 'Celsius Holdings N.V., société n° 157856, Willemstad (Curaçao)'],
+      ['Licence citée dans les conditions', 'Curaçao, licence 365/JAZ (Gaming Services Provider N.V.)'],
+      ['Licence citée sur l’accueil', 'Anjouan'],
+      ['Ouverture', '2020, d’après le site de Celsius'],
+      ['Vérification d’identité', 'pièce d’identité, justificatif de domicile, parfois selfie ou appel (clause 9.3)'],
+      ['Plafond de retrait', '10 000 € par mois ; 5 000 € si le solde dépasse 10 fois les dépôts (clause 9.6)'],
+      ['Âge minimum', '18 ans, ou plus si la loi locale l’exige'],
+    ],
+    sections: [
+      {h: 'Qui exploite Celsius', p: [
+        'Les conditions générales désignent Celsius Holdings N.V., immatriculée sous le n° 157856 à Willemstad, Curaçao, et citent la licence 365/JAZ délivrée via Gaming Services Provider N.V.',
+        'La page d’accueil de Celsius, elle, présente le casino comme titulaire d’une licence d’Anjouan. Les deux pages officielles ne disent donc pas la même chose ; nous reprenons les conditions générales, qui sont le document contractuel, et signalons l’écart.',
+      ]},
+      {h: 'Ce que les règles de retrait disent', p: [
+        'Avant un retrait, le dépôt doit avoir été misé au moins trois fois (clause 9.2), et Celsius peut demander une vérification d’identité complète (clause 9.3). Le retrait va vers le moyen de paiement du dépôt (clause 9.4).',
+        'Les gros gains se retirent par tranches : 10 000 € par mois au plus, et 5 000 € quand le solde dépasse 10 fois la somme des dépôts (clause 9.6). Les conditions ne donnent aucun délai de traitement ; le détail est sur notre page retrait.',
+      ]},
+      {h: 'Comment juger par soi-même', p: [
+        'Lire les conditions générales et celles des bonus avant de déposer, faire vérifier son identité avant de gagner gros, et commencer par un petit retrait pour voir le délai réel. Une réclamation doit être faite dans les 3 jours suivant le pari concerné (clause 22.4).',
+      ]},
+    ],
+    sources: [
+      {label: 'Conditions générales de Celsius Casino (exploitant, licence, articles 9 et 22)', url: 'https://celsiuscasino.com/fr/terms', checked: '2026-11-22'},
+      {label: 'Page d’accueil de Celsius Casino (licence d’Anjouan, ouverture en 2020)', url: 'https://celsiuscasino.com/fr', checked: '2026-11-22'},
+    ],
+  },
+  {
     casino: 'celsius', lang: 'en', slug: 'promo-code', place: 'intent-promo-code',
     title: 'Celsius Casino Promo Code 2026: No Code Needed – Up to €2,000 + 250 Free Spins',
     desc: 'Do you need a Celsius Casino promo code? Not with our link. The welcome offer is up to €2,000 + 250 free spins over 4 deposits, wagering x40 (x45 on the 3rd). The official tiers and rules.',
