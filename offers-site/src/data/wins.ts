@@ -65,8 +65,8 @@ export function weekBounds(week: string) {
 // Pages à générer, identiques dans les 6 langues (hreflang réciproque).
 export type Hit = Clip & {day: string; youtube_id: string | null};
 export type Group = {sub: string; name: string; hits: Hit[]};
-export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer' | 'month'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
-  name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]; monthSub?: string};
+export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer' | 'month' | 'records'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
+  name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]; monthSub?: string; recordsSub?: string};
 export const slug = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 // Seuls les Tops du jour comptent : un même clip repasse dans le Top de la semaine.
 function groups(days: Video[], key: (c: Clip) => string | null | undefined, base: string): Group[] {
@@ -94,13 +94,17 @@ export async function winsPages(): Promise<WinsPage[]> {
   const months = [...new Set(days.map(v => v.period.slice(0, 7)))].filter(m => days.filter(v => v.period.startsWith(m)).length >= MIN_DAYS).sort().reverse();
   const monthSub = (day: string) => (months.includes(day.slice(0, 7)) ? `wins/month/${day.slice(0, 7)}/` : undefined);
   return [
-    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), monthSub: monthSub(days[0].period), slots, streamers},
+    {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), monthSub: monthSub(days[0].period), recordsSub: days.length >= 3 ? 'wins/records/' : undefined, slots, streamers},
     ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period)), monthSub: monthSub(v.period), slots: near(slots, [v]), streamers: near(streamers, [v])})),
     ...weeks.map((w, i) => {
       const wd = days.filter(v => isoWeek(v.period) === w);
       return {sub: `wins/week/${w}/`, kind: 'week' as const, week: w, v: weeklies.find(x => x.period === w), days: wd,
         prev: weeks[i + 1] && `wins/week/${weeks[i + 1]}/`, next: weeks[i - 1] && `wins/week/${weeks[i - 1]}/`, slots: near(slots, wd), streamers: near(streamers, wd)};
     }),
+    // Records de tous les temps : le top 50 de tous les Tops du jour, dès 3 jours publiés (avant, il doublerait une page jour).
+    ...(days.length >= 3 ? [{sub: 'wins/records/', kind: 'records' as const, name: days[days.length - 1].period, last: days[0].period, days: [],
+      hits: days.flatMap(v => v.clips.map(c => ({...c, day: v.period, youtube_id: v.youtube_id}))).sort((a, b) => b.multi - a.multi).slice(0, 50).map((c, j) => ({...c, rank: j + 1})),
+      slots, streamers}] : []),
     ...months.map((m, i) => {
       const md = days.filter(v => v.period.startsWith(m));
       const hits = md.flatMap(v => v.clips.map(c => ({...c, day: v.period, youtube_id: v.youtube_id}))).sort((a, b) => b.multi - a.multi).slice(0, 30).map((c, j) => ({...c, rank: j + 1}));

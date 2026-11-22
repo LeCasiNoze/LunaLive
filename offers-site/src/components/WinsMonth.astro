@@ -14,18 +14,20 @@ const w = u.wins;
 const site = Astro.site!.origin;
 const hits = page.hits!;
 const big = hits[0];
-const m = monthLabel(lang, page.name!);
+const rec = page.kind === 'records';
+// Records : {m} devient la date du premier jour couvert.
+const m = rec ? dayLabel(lang, page.name!) : monthLabel(lang, page.name!);
 const vars = {m, n: hits.length, x: multi(big.multi), who: streamerName(big.streamer), pf: platformName(big.platform)};
-let title = fmt(w.tMonth, vars);
+let title = fmt(rec ? w.tRecords : w.tMonth, vars);
 if (title.length > 60) title = title.split(' – ')[0];
-const segs = fmt(w.dMonth, vars).split('¦');
+const segs = fmt(rec ? w.dRecords : w.dMonth, vars).split('¦');
 while (segs.length > 1 && segs.join('').length > 160) segs.pop();
 const desc = segs.join('');
-const h1 = fmt(w.h1Month, vars);
+const h1 = fmt(rec ? w.h1Records : w.h1Month, vars);
 const offer = ranked(lang)[0];
 const short = (iso: string) => new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
 const groupUrl = (base: string, name: string, list?: {sub: string}[]) => list?.find(x => x.sub === `wins/${base}/${slug(name)}/`) && href(lang, `wins/${base}/${slug(name)}/`);
-const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, {name: m, url: href(lang, page.sub)}];
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, {name: rec ? w.recordsCrumb : m, url: href(lang, page.sub)}];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
   {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: hits.length,
@@ -37,9 +39,9 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], 
   <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
 
   <header class="pg-hd">
-    <p class="kick">Top {hits.length} · {page.days.length} {w.daysCount}</p>
+    <p class="kick">Top {hits.length}{rec ? '' : ` · ${page.days.length} ${w.daysCount}`}</p>
     <h1>{h1}</h1>
-    <p class="lede">{fmt(w.iMonth, vars)} {w.method}</p>
+    <p class="lede">{fmt(rec ? w.iRecords : w.iMonth, vars)} {w.method}</p>
   </header>
 
   <div class="board">
@@ -67,18 +69,18 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], 
           <img src={offer.logo} alt="" width="40" height="40" />
           <div><b>{offer.name}</b><span>{d.casino[offer.id].headline}</span></div>
         </div>
-        <a class="btn btn-play btn-block" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="wins-month">{u.play}</a>
+        <a class="btn btn-play btn-block" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place={`wins-${page.kind}`}>{u.play}</a>
         <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a></p>
       </div>
-      <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-month"><b>{u.tg.title}</b><span>{u.tg.short} →</span></a>
+      <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place={`wins-${page.kind}`}><b>{u.tg.title}</b><span>{u.tg.short} →</span></a>
     </aside>
   </div>
 
-  <section class="sec">
+  {!rec && <section class="sec">
     <h2>{w.daysMonth}</h2>
     <table class="list"><tbody>{page.days.map(x => { const t1 = top(x)[0]; return <tr><td><a href={href(lang, `wins/${x.period}/`)}>{dayLabel(lang, x.period)}</a></td><td>{streamerName(t1.streamer)}</td><td class="num x">{multi(t1.multi)}</td></tr>; })}</tbody></table>
     {(page.prev || page.next) && <p class="note">{page.prev && <a href={href(lang, page.prev)}>← {monthLabel(lang, page.prev.split('/')[2])}</a>}{page.prev && page.next && ' · '}{page.next && <a href={href(lang, page.next)}>{monthLabel(lang, page.next.split('/')[2])} →</a>}</p>}
-  </section>
+  </section>}
 
   <section class="sec rg">
     <h2>{w.rgT}</h2>

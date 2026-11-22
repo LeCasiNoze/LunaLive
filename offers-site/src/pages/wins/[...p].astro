@@ -1,10 +1,11 @@
 ---
 import WinsBoard from '../../components/WinsBoard.astro';
+import WinsMonth from '../../components/WinsMonth.astro';
 import {winsPaths} from '../../data/wins';
 // Version anglaise : /wins/ et /wins/<AAAA-MM-JJ>/. Les pages semaine, jeu et streamer sont dans [kind]/[id].astro.
 export async function getStaticPaths() {
-  return (await winsPaths(['en'])).filter(({page}) => page.kind === 'latest' || page.kind === 'day').map(({lang, page}) => ({params: {p: page.sub.replace(/^wins\/?/, '').replace(/\/$/, '') || undefined}, props: {lang, page}}));
+  return (await winsPaths(['en'])).filter(({page}) => page.kind === 'latest' || page.kind === 'day' || page.kind === 'records').map(({lang, page}) => ({params: {p: page.sub.replace(/^wins\/?/, '').replace(/\/$/, '') || undefined}, props: {lang, page}}));
 }
 const {lang, page} = Astro.props as any;
 ---
-<WinsBoard lang={lang} page={page} />
+{page.kind === 'records' ? <WinsMonth lang={lang} page={page} /> : <WinsBoard lang={lang} page={page} />}
