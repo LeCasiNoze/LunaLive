@@ -81,7 +81,7 @@ const es: Dict = {
   },
   sticky: {text: 'Rainbet · código NIVORANET', cta: 'Reclamar'},
   footer: {
-    disclosure: 'Big Win Daily es un sitio de afiliación independiente. Podemos recibir una comisión cuando te registras a través de nuestros enlaces, sin coste para ti. Las ofertas pueden cambiar: prevalecen siempre las condiciones del propio casino. Estas ofertas no están disponibles en España.',
+    disclosure: 'Big Win Daily es un sitio de afiliación independiente. Podemos recibir una comisión cuando te registras a través de nuestros enlaces, sin coste para ti. Las ofertas pueden cambiar: prevalecen siempre las condiciones del propio casino.',
     age: 'Solo mayores de 18. El juego puede crear adicción: juega con responsabilidad.',
     links: {about: 'Sobre nosotros', rg: 'Juego responsable', privacy: 'Privacidad', guide: 'Guía de bonos'},
     rights: 'Todas las marcas y logotipos pertenecen a sus propietarios.',

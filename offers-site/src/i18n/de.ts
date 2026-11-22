@@ -99,7 +99,7 @@ const de: Dict = {
       rules: 'Rakeback alle 15 Min. abholbar',
       extra: 'Monatliches 200-$-Rennen (Top 3)',
       bullets: ['+20 % Rakeback-Boost mit dem Code NIVORANET', 'Rakeback alle 15 Minuten abholbar', 'Tägliche Reloads, wöchentliche & monatliche Boni', 'VIP-Stufen von Bronze bis Diamant'],
-      intro: 'Rainbet ist unser Hauptpartner und das Casino, das wir am häufigsten streamen. Statt eines klassischen Einzahlungsbonus bekommst du mit unserem Code mehr von deinem Spiel zurück: einen +20 % Rakeback-Boost. Rainbet ist in Deutschland und Österreich nicht verfügbar.',
+      intro: 'Rainbet ist unser Hauptpartner und das Casino, das wir am häufigsten streamen. Statt eines klassischen Einzahlungsbonus bekommst du mit unserem Code mehr von deinem Spiel zurück: einen +20 % Rakeback-Boost.',
       sections: [
         {h: 'Das bekommst du mit dem Code NIVORANET', p: 'Ein +20 % Rakeback-Boost. Rakeback gibt dir einen Teil des Hausvorteils auf jede Wette zurück, ob du gewinnst oder verlierst, und bei Rainbet kannst du ihn alle 15 Minuten abholen. Zusätzlich nehmen Spieler mit unserem Code an unserem monatlichen Wett-Rennen teil: 200 $ für die Top 3 (100 $ / 60 $ / 40 $), mit mindestens 1.000 $ Umsatz im Monat zur Qualifikation.'},
         {h: 'Warum wir es gewählt haben', p: 'Eine riesige Slot-Auswahl – mehr als 7.000 Slots in unserem eigenen Katalog-Scan, von Pragmatic Play, Hacksaw, NetEnt, Red Tiger, BGaming und mehr – dazu tägliche Reloads, wöchentliche und monatliche Boni und eine VIP-Leiter von Bronze bis Diamant.'},
@@ -107,7 +107,7 @@ const de: Dict = {
       howto: ['Klicke auf „Bei Rainbet sichern“ – unser Link öffnet sich mit dem Code.', 'Erstelle dein Konto und prüfe, ob NIVORANET im Code-Feld steht.', 'Einzahlen und spielen: Der Rakeback sammelt sich an und kann alle 15 Minuten abgeholt werden.'],
       terms: [['Angebot', '+20 % Rakeback-Boost (Code NIVORANET)'], ['Code', 'NIVORANET'], ['Rakeback abholen', 'Alle 15 Minuten'], ['Monatliches Rennen', '200 $ · Top 3 · mind. 1.000 $ Umsatz'], ['Zahlungen', 'Krypto']],
       pros: ['Keine Umsatzfalle: Rakeback wird auf echtes Spiel gezahlt', 'Monatliches Rennen mit echten Preisen', 'Sehr große Slot-Auswahl'],
-      cons: ['Kein großer Einzahlungsbonus', 'Verfügbarkeit hängt von deinem Land ab', 'Rainbet ist in Deutschland und Österreich nicht verfügbar.'],
+      cons: ['Kein großer Einzahlungsbonus', 'Verfügbarkeit hängt von deinem Land ab'],
       more: [
         {h: 'Wo du den Code NIVORANET eingibst', p: 'Unser Button öffnet Rainbet mit bereits angehängtem Code. Wenn das Anmeldeformular ein Feld für Empfehlungs- oder Promo-Code zeigt, prüfe vor der Kontoerstellung, dass dort NIVORANET steht – nachträglich lässt sich ein Code meist nicht mehr hinzufügen.'},
         {h: 'Funktioniert der Code noch?', p: 'Wir nutzen Rainbet selbst mehrmals pro Woche im Stream und prüfen das Angebot regelmäßig. Letzte Prüfung: siehe Datum am Ende dieser Seite. Ändert sich etwas, wird diese Seite zuerst aktualisiert.'},
