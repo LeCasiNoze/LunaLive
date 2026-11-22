@@ -99,7 +99,7 @@ export const SLOTS: Slot[] = [
   },
   {
     id: 'fortune-of-olympus', name: 'Fortune of Olympus', provider: 'Pragmatic Play',
-    source: 'https://www.pragmaticplay.com/en/games/fortune-of-olympus/', checked: '2026-11-22', at: {celsius: '2026-11-22'},
+    source: 'https://www.pragmaticplay.com/en/games/fortune-of-olympus/', checked: '2026-11-22', at: {rainbet: '2026-11-22', celsius: '2026-11-22'},
     rtp: [96.55], volatility: 'high', maxWin: 10000, grid: '7×7 · cluster pays · tumble', buys: [{name: 'Free Spins', cost: null}],
     cited: {
       maxWin: ['https://www.olbg.com/slots/games/fortune-of-olympus', 'https://www.casinos.com/slots/fortune-of-olympus', 'https://www.vegasslotsonline.com/pragmatic-play/fortune-of-olympus/'],
