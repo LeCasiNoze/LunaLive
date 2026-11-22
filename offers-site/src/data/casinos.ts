@@ -65,8 +65,8 @@ export const ranked = (lang: string): Casino[] => lang !== 'de' ? CASINOS
 // Paires des pages comparatives /vs/<a>-vs-<b>/.
 export const PAIRS: [CasinoId, CasinoId][] = [['rainbet', 'betportal'], ['rainbet', 'celsius'], ['betportal', 'celsius']];
 
-// CGU affiliés Rainbet 9.9 : pas de page SEO qui concurrence Rainbet sur ses recherches de marque.
-export const NOINDEX: CasinoId[] = ['rainbet'];
+// Rainbet indexé depuis la décision de Lucas du 22/11/2026, qui accepte le risque de la clause 9.9 des CGU affiliés.
+export const NOINDEX: CasinoId[] = [];
 export const YOUTUBE = 'https://www.youtube.com/@BigWinDailyHits';
 export const YT_SUB = 'https://www.youtube.com/@BigWinDailyHits?sub_confirmation=1';
 export const TELEGRAM = 'https://t.me/BigWinDailyHits';

@@ -13,6 +13,7 @@ const u = ui(lang);
 const c = byId(x.casino);
 const site = Astro.site!.origin;
 const path = intentPath(x);
+const L = lang === 'fr' ? {on: 'relevé le', more: ' : autres questions'} : {on: 'checked on', more: ': other questions'};
 const others = intentsOf(x.casino, lang).filter(o => o.slug !== x.slug);
 const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: c.name, url: href(lang, `casinos/${c.id}/`)}, {name: x.h1, url: href(lang, path)}];
 const jsonld = [
@@ -49,12 +50,12 @@ const jsonld = [
 
     <section class="sec">
       <h2>Sources</h2>
-      <ul class="list">{x.sources.map(s => <li><a href={s.url} target="_blank" rel="noopener nofollow">{s.label}</a>, relevé le {fmtDate(lang, s.checked)}</li>)}</ul>
+      <ul class="list">{x.sources.map(s => <li><a href={s.url} target="_blank" rel="noopener nofollow">{s.label}</a>, {L.on} {fmtDate(lang, s.checked)}</li>)}</ul>
     </section>
 
     {others.length > 0 && (
       <section class="sec">
-        <h2>{c.name} : autres questions</h2>
+        <h2>{c.name}{L.more}</h2>
         <ul class="links">{others.map(o => <li><a href={href(lang, intentPath(o))}>{o.h1}</a></li>)}</ul>
       </section>
     )}
