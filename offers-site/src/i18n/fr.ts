@@ -123,7 +123,7 @@ const fr: Dict = {
       ],
     },
     betportal: {
-      seoTitle: 'Bonus Betportal 2026 – jusqu’à 1 000 € + 250 free spins (sans code)',
+      seoTitle: 'Betportal avis 2026 – jusqu’à 1 000 € + 250 free spins (sans code)',
       seoDesc: 'Bonus de bienvenue Betportal : jusqu’à 1 000 € + 250 free spins sur 3 dépôts. Paliers de free spins, mise max 5 €, 14 jours, plafond 5× : toutes les règles avec un exemple.',
       h1: 'Bonus Betportal : jusqu’à 1 000 € + 250 free spins',
       tagline: 'Casino crypto · slots, live et paris sportifs',

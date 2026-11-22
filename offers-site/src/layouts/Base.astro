@@ -75,7 +75,7 @@ const foot = [
       <a class="hd-tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar">Telegram</a>
       <details class="lang">
         <summary><span class="vh">{d.nav.language} </span>{d.short}</summary>
-        <ul>{LANGS.map(l => <li><a href={href(l, path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a></li>)}</ul>
+        <ul>{LANGS.map(l => <li><a href={href(l, mono ? '' : path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a></li>)}</ul>
       </details>
     </div>
   </header>
@@ -95,7 +95,7 @@ const foot = [
         <a href={href(lang, 'privacy/')}>{d.footer.links.privacy}</a>
         <a href={YOUTUBE} rel="noopener" target="_blank">YouTube</a>
       </nav>
-      <nav class="ft-langs" aria-label={d.nav.language}>{LANGS.map(l => <a href={href(l, path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}</nav>
+      <nav class="ft-langs" aria-label={d.nav.language}>{LANGS.map(l => <a href={href(l, mono ? '' : path)} hreflang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a>)}</nav>
     </div>
   </footer>
 

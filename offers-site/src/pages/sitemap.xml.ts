@@ -3,6 +3,7 @@ import {LANGS, t, href} from '../i18n';
 import {CASINOS, PAIRS, CHECKED, NOINDEX} from '../data/casinos';
 import {winsPages} from '../data/wins';
 import {SLOTS} from '../data/slots';
+import {INTENTS, intentPath} from '../data/intents';
 
 // Sitemap avec alternates hreflang pour chaque page et chaque langue.
 export const GET: APIRoute = async ({site}) => {
@@ -17,5 +18,6 @@ export const GET: APIRoute = async ({site}) => {
     const pr = p === '' ? '1.0' : p.startsWith('casinos') ? '0.9' : p.startsWith('wins') || p.startsWith('slots') ? '0.8' : p.startsWith('vs') ? '0.7' : '0.5';
     return `<url><loc>${base}${href(l, p)}</loc><lastmod>${lastmod.get(p) ?? CHECKED}</lastmod><priority>${pr}</priority>${alts}</url>`;
   }));
-  return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${urls.join('')}</urlset>`, {headers: {'Content-Type': 'application/xml'}});
+  const mono = INTENTS.filter(x => !NOINDEX.includes(x.casino)).map(x => `<url><loc>${base}${href(x.lang, intentPath(x))}</loc><lastmod>${x.sources.map(s => s.checked).sort().at(-1)}</lastmod><priority>0.8</priority></url>`);
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">${urls.join('')}${mono.join('')}</urlset>`, {headers: {'Content-Type': 'application/xml'}});
 };

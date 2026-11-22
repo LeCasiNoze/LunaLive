@@ -1,0 +1,68 @@
+---
+import Base from '../layouts/Base.astro';
+import {t, href, fmtDate} from '../i18n';
+import {ui} from '../i18n/ui';
+import {byId} from '../data/casinos';
+import {type Intent, intentPath, intentsOf} from '../data/intents';
+// Page d'intention (une recherche précise sur un casino) : faits sourcés d'abord, puis le détail, puis l'offre.
+interface Props {x: Intent}
+const {x} = Astro.props;
+const lang = x.lang;
+const d = t(lang);
+const u = ui(lang);
+const c = byId(x.casino);
+const site = Astro.site!.origin;
+const path = intentPath(x);
+const others = intentsOf(x.casino, lang).filter(o => o.slug !== x.slug);
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: c.name, url: href(lang, `casinos/${c.id}/`)}, {name: x.h1, url: href(lang, path)}];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((b, i) => ({'@type': 'ListItem', position: i + 1, name: b.name, item: site + b.url}))},
+  {'@context': 'https://schema.org', '@type': 'Article', headline: x.h1, inLanguage: d.locale, dateModified: x.sources.map(s => s.checked).sort().at(-1), author: {'@id': site + '/#org'}, publisher: {'@id': site + '/#org'}, mainEntityOfPage: site + href(lang, path)},
+];
+---
+<Base lang={lang} title={x.title} desc={x.desc} path={path} jsonld={jsonld} active={c.id} mono>
+  <div class="page">
+    <ol class="crumbs"><li><a href={crumbs[0].url}>{crumbs[0].name}</a></li><li><a href={crumbs[1].url}>{c.name}</a></li><li aria-current="page">{x.h1}</li></ol>
+    <header class="pg-hd">
+      <p class="kick">{c.name} · {fmtDate(lang, x.sources.map(s => s.checked).sort().at(-1)!)}</p>
+      <h1>{x.h1}</h1>
+      <p class="lede">{x.lede}</p>
+    </header>
+
+    <dl class="kv spec">{x.facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+
+    {x.sections.map(s => (
+      <section class="sec prose-txt">
+        <h2>{s.h}</h2>
+        {s.p.map(p => <p>{p}</p>)}
+      </section>
+    ))}
+
+    <div class="offer">
+      <div class="offer-hd">
+        <img src={c.logo} alt="" width="40" height="40" />
+        <div><b>{c.name}</b><span>{d.casino[c.id].headline}</span></div>
+      </div>
+      <a class="btn" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place={x.place}>{u.play}</a>
+      <p class="small">18+ · {c.code ? `${u.code}: ${c.code}` : u.noCode} · <a href={href(lang, `casinos/${c.id}/`)}>{u.review}</a></p>
+    </div>
+
+    <section class="sec">
+      <h2>Sources</h2>
+      <ul class="list">{x.sources.map(s => <li><a href={s.url} target="_blank" rel="noopener nofollow">{s.label}</a>, relevé le {fmtDate(lang, s.checked)}</li>)}</ul>
+    </section>
+
+    {others.length > 0 && (
+      <section class="sec">
+        <h2>{c.name} : autres questions</h2>
+        <ul class="links">{others.map(o => <li><a href={href(lang, intentPath(o))}>{o.h1}</a></li>)}</ul>
+      </section>
+    )}
+
+    <div class="rg" style="margin-top:40px">
+      <span class="ic">18+</span>
+      <div><h3>{d.rg.title}</h3><p>{d.rg.p}</p></div>
+      <a href={href(lang, 'responsible-gambling/')}>{d.rg.link} →</a>
+    </div>
+  </div>
+</Base>

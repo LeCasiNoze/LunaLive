@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import {intentsOf, intentPath} from '../data/intents';
 import Icon from './Icon.astro';
 import {t, href, fmt, fmtDate, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
@@ -106,6 +107,8 @@ const FL: Record<string, {h: string; operator: string; licence: string; age: str
       <div class="pro"><h3><Icon name="check" />{r.pros}</h3><ul>{x.pros.map(p => <li><Icon name="check" />{p}</li>)}</ul></div>
       <div class="con"><h3><Icon name="alert" />{r.cons}</h3><ul>{x.cons.map(p => <li><Icon name="alert" />{p}</li>)}</ul></div>
     </div>
+
+    {intentsOf(c.id, lang).length > 0 && <ul class="links">{intentsOf(c.id, lang).map(o => <li><a href={href(lang, intentPath(o))}>{o.h1}</a></li>)}</ul>}
 
     <h2 class="sec-title">{r.faq}</h2>
     <div class="faq">{faq.map(f => <details><summary>{f.q}<Icon name="plus" /></summary><p class="a">{f.a}</p></details>)}</div>

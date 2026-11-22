@@ -4,6 +4,8 @@ import Review from '../components/Review.astro';
 import Prose, {type Kind} from '../components/Prose.astro';
 import Vs from '../components/Vs.astro';
 import Telegram from '../components/Telegram.astro';
+import Intent from '../components/Intent.astro';
+import {INTENTS, intentPath} from '../data/intents';
 import {LANGS, type Lang} from '../i18n';
 import {CASINOS, PAIRS, byId} from '../data/casinos';
 
@@ -15,11 +17,14 @@ export function getStaticPaths() {
     ...PAIRS.map(([a, b]) => ({kind: 'vs', sub: `vs/${a}-vs-${b}`})),
     ...['guide', 'about', 'responsible-gambling', 'privacy', 'telegram'].map(k => ({kind: k, sub: k})),
   ];
-  return LANGS.flatMap(lang => pages.map(p => ({
+  return [...LANGS.flatMap(lang => pages.map(p => ({
     params: {slug: [lang === 'en' ? '' : lang, p.sub].filter(Boolean).join('/') || undefined},
     props: {lang, kind: p.kind, sub: p.sub},
-  })));
+  }))), ...INTENTS.map((x, i) => ({
+    params: {slug: [x.lang === 'en' ? '' : x.lang, intentPath(x).slice(0, -1)].filter(Boolean).join('/')},
+    props: {lang: x.lang, kind: 'intent', sub: String(i)},
+  }))];
 }
 const {lang, kind, sub} = Astro.props as {lang: Lang; kind: string; sub: string};
 ---
-{kind === 'home' ? <Home lang={lang} /> : kind === 'telegram' ? <Telegram lang={lang} /> : kind === 'review' ? <Review lang={lang} c={byId(sub.split('/')[1])} /> : kind === 'vs' ? <Vs lang={lang} a={byId(sub.split('/')[1].split('-vs-')[0])} b={byId(sub.split('/')[1].split('-vs-')[1])} /> : <Prose lang={lang} kind={kind as Kind} />}
+{kind === 'intent' ? <Intent x={INTENTS[Number(sub)]} /> : kind === 'home' ? <Home lang={lang} /> : kind === 'telegram' ? <Telegram lang={lang} /> : kind === 'review' ? <Review lang={lang} c={byId(sub.split('/')[1])} /> : kind === 'vs' ? <Vs lang={lang} a={byId(sub.split('/')[1].split('-vs-')[0])} b={byId(sub.split('/')[1].split('-vs-')[1])} /> : <Prose lang={lang} kind={kind as Kind} />}
