@@ -4,6 +4,7 @@ import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {YOUTUBE, TELEGRAM} from '../data/casinos';
 import {loadFeed, byKind} from '../data/wins';
+import {SL} from '../data/slots';
 
 // mono : page en une seule langue (pas d'alternates hreflang).
 interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string; mono?: boolean; image?: string}
@@ -18,11 +19,12 @@ const ld = [
   ...jsonld,
 ];
 // Une page d'avis casino allume l'entrée « Casino bonuses ».
-const cur = ['rainbet', 'celsius', 'betportal'].includes(active) ? 'offers' : active;
+const cur = ['rainbet', 'celsius', 'betportal'].includes(active) ? 'offers' : path.startsWith('slots') ? 'slots' : active;
 const hasWins = byKind(await loadFeed(), 'daily').length > 0;
 // Menu court, comme les sites du secteur : les avis casino sont dans « Casino bonuses ».
 const nav = [
   ...(hasWins ? [{k: 'wins', label: u.wins.nav, url: href(lang, 'wins/')}] : []),
+  {k: 'slots', label: SL[lang].crumb, url: href(lang, 'slots/')},
   {k: 'offers', label: u.nav.offers, url: href(lang) + '#offers'},
   {k: 'guide', label: u.nav.guide, url: href(lang, 'guide/')},
 ];

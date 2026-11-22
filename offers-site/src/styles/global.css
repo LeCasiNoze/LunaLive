@@ -135,6 +135,7 @@ table.rk th, .vs-table thead th { text-align: left; font-size: 12px; font-weight
 table.rk th.num { text-align: right; }
 table.rk td, .vs-table td, .vs-table tbody th { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; text-align: left; }
 table.rk tr:last-child td, .vs-table tr:last-child td, .vs-table tr:last-child th { border-bottom: 0; }
+table.rk td.num { text-align: right; }
 table.rk tr.top td { background: var(--top); }
 table.rk .pos { width: 44px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 table.rk tr.top .pos { color: var(--accent); }

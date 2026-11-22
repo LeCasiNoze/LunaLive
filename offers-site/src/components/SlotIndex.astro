@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+import {t, href, type Lang} from '../i18n';
+import {SLOTS, SL} from '../data/slots';
+// Index du catalogue : les fiches classées par éditeur, avec les chiffres clés pour comparer d'un coup d'œil.
+interface Props {lang: Lang}
+const {lang} = Astro.props;
+const d = t(lang);
+const l = SL[lang];
+const site = Astro.site!.origin;
+const nf = (n: number) => n.toLocaleString(d.locale, {maximumFractionDigits: 2});
+const providers = [...new Set(SLOTS.map(s => s.provider))].sort();
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: l.crumb, url: href(lang, 'slots/')}];
+const jsonld = [
+  {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
+  {'@context': 'https://schema.org', '@type': 'ItemList', name: l.indexH, numberOfItems: SLOTS.length, itemListElement: SLOTS.map((s, i) => ({'@type': 'ListItem', position: i + 1, name: s.name, url: site + href(lang, `slots/${s.id}/`)}))},
+];
+---
+<Base lang={lang} title={l.indexT} desc={l.indexD} path="slots/">
+  <ol class="crumbs"><li><a href={crumbs[0].url}>{crumbs[0].name}</a></li><li aria-current="page">{l.crumb}</li></ol>
+  <header class="pg-hd">
+    <p class="kick">{SLOTS.length} · {providers.join(' · ')}</p>
+    <h1>{l.indexH}</h1>
+    <p class="lede">{l.indexP}</p>
+  </header>
+  {providers.map(p => (
+    <section class="sec">
+      <h2>{p}</h2>
+      <table class="rk rk-all">
+        <thead><tr><th scope="col">{l.crumb}</th><th scope="col" class="num">{l.maxWin}</th><th scope="col" class="num">{l.rtp}</th><th scope="col">{l.volatility}</th></tr></thead>
+        <tbody>{SLOTS.filter(s => s.provider === p).sort((a, b) => b.maxWin - a.maxWin).map(s => (
+          <tr><td><a href={href(lang, `slots/${s.id}/`)}>{s.name}</a></td><td class="num x">{nf(s.maxWin)}x</td><td class="num">{nf(Math.max(...s.rtp))}%</td><td>{l.vol[s.volatility] ?? s.volatility}</td></tr>
+        ))}</tbody>
+      </table>
+    </section>
+  ))}
+</Base>

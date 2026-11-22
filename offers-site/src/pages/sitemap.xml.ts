@@ -10,7 +10,7 @@ export const GET: APIRoute = async ({site}) => {
   // Pages /wins/ : mêmes pages dans les 6 langues, lastmod = date de la vidéo.
   const wins = (await winsPages()).map(w => [w.sub, w.v?.period ?? w.last ?? w.days[0]?.period ?? CHECKED] as const);
   const lastmod = new Map<string, string>([...wins, ...SLOTS.map(x => [`slots/${x.id}/`, x.checked] as const)]);
-  const paths = [...wins.map(([p]) => p), '', ...CASINOS.filter(c => !NOINDEX.includes(c.id)).map(c => `casinos/${c.id}/`), ...PAIRS.filter(p => !p.some(id => NOINDEX.includes(id))).map(([a, b]) => `vs/${a}-vs-${b}/`), 'guide/', 'about/', 'responsible-gambling/', 'privacy/', 'telegram/', ...SLOTS.map(x => `slots/${x.id}/`)];
+  const paths = [...wins.map(([p]) => p), '', ...CASINOS.filter(c => !NOINDEX.includes(c.id)).map(c => `casinos/${c.id}/`), ...PAIRS.filter(p => !p.some(id => NOINDEX.includes(id))).map(([a, b]) => `vs/${a}-vs-${b}/`), 'guide/', 'about/', 'responsible-gambling/', 'privacy/', 'telegram/', 'slots/', ...SLOTS.map(x => `slots/${x.id}/`)];
   const urls = paths.flatMap(p => LANGS.map(l => {
     const alts = LANGS.map(a => `<xhtml:link rel="alternate" hreflang="${t(a).locale.slice(0, 2)}" href="${base}${href(a, p)}"/>`).join('')
       + `<xhtml:link rel="alternate" hreflang="x-default" href="${base}${href('en', p)}"/>`;

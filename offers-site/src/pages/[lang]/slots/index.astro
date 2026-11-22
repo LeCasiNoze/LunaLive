@@ -1,0 +1,8 @@
+---
+import SlotIndex from '../../../components/SlotIndex.astro';
+import {LANGS} from '../../../i18n';
+// Index du catalogue traduit : /<lang>/slots/.
+export function getStaticPaths() { return LANGS.filter(l => l !== 'en').map(lang => ({params: {lang}, props: {lang}})); }
+const {lang} = Astro.props as any;
+---
+<SlotIndex lang={lang} />
