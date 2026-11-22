@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-22T21:32:29+01:00",
+ "generated_at": "2026-11-23T00:17:08+01:00",
  "games": [
   {
    "game": "Gates of Olympus 2500",
@@ -351,10 +351,10 @@
    "wins": 2,
    "best": {
     "multi": 5000.0,
-    "paid_multi": 5000.0,
+    "paid_multi": 50.0,
     "streamer": "Syztmz",
     "day": "2026-11-21",
-    "bonus_buy": false
+    "bonus_buy": true
    },
    "wins_1000x_by_month": {
     "2026-11": 2
@@ -365,10 +365,10 @@
      "platform": "kick",
      "day": "2026-11-21",
      "multi": 5000.0,
-     "paid_multi": 5000.0,
+     "paid_multi": 50.0,
      "win": 60000.0,
      "bet": 12.0,
-     "bonus_buy": false,
+     "bonus_buy": true,
      "casino": "Stake"
     },
     {

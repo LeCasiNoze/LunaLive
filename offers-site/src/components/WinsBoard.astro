@@ -4,6 +4,7 @@ import {t, href, fmt, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {ranked, TELEGRAM} from '../data/casinos';
 import {bySlotName} from '../data/slots';
+import {maxWinPages} from '../data/maxwin';
 import {type WinsPage, top, money, multi, streamerName, platformName, channelUrl, dayLabel, monthLabel, slug, clipVideo, mmss} from '../data/wins';
 // Proposition de refonte de /wins/ (dernier Top et pages jour) : le classement d'abord, la vidéo et l'offre principale à côté.
 interface Props {lang: Lang; page: WinsPage}
@@ -109,6 +110,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
   {((page.streamers?.length ?? 0) > 0 || (page.slots?.length ?? 0) > 0) && (
     <section class="sec cols2">
       {(page.streamers?.length ?? 0) > 0 && <div><h2>{w.byStreamer}</h2><ul class="links">{page.streamers!.map(g => <li><a href={href(lang, g.sub)}>{g.name}</a><span>{multi(g.hits[0].multi)}</span></li>)}</ul></div>}
+      {lang === 'en' && maxWinPages().length > 0 && <div><h2>Max win: has anyone hit it?</h2><ul class="links">{maxWinPages().map(p => <li><a href={`/max-win/${p.id}/`}>{p.sheet.game} max win</a><span>{p.stats.wins} verified wins</span></li>)}</ul></div>}
       {(page.slots?.length ?? 0) > 0 && <div><h2>{w.bySlot}</h2><ul class="links">{page.slots!.map(g => <li><a href={href(lang, g.sub)}>{g.name}</a><span>{multi(g.hits[0].multi)}</span></li>)}</ul></div>}
     </section>
   )}

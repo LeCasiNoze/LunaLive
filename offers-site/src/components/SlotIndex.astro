@@ -2,6 +2,7 @@
 import Base from '../layouts/Base.astro';
 import {t, href, type Lang} from '../i18n';
 import {SLOTS, SL} from '../data/slots';
+import {maxWinPages} from '../data/maxwin';
 // Index du catalogue : les fiches classées par éditeur, avec les chiffres clés pour comparer d'un coup d'œil.
 interface Props {lang: Lang}
 const {lang} = Astro.props;
@@ -34,4 +35,5 @@ const jsonld = [
       </table>
     </section>
   ))}
+  {lang === 'en' && maxWinPages().length > 0 && <section class="sec"><h2>Max win: has anyone hit it?</h2><ul class="links">{maxWinPages().map(p => <li><a href={`/max-win/${p.id}/`}>{p.sheet.game} max win</a><span>{p.stats.wins} verified wins</span></li>)}</ul></section>}
 </Base>
