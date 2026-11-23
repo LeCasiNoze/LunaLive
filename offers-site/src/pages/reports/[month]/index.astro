@@ -1,0 +1,75 @@
+---
+import Base from '../../../layouts/Base.astro';
+import {fmtDate} from '../../../i18n';
+import {report, reportMonths, PUBLIC, REJECTED, LICENCE} from '../../../data/reports';
+import {streamerName, platformName, clipVideo} from '../../../data/wins';
+// Rapport mensuel des gains vérifiés (anglais), pensé pour être cité : CSV, licence, graphique intégrable.
+export async function getStaticPaths() { return (await reportMonths()).map(month => ({params: {month}})); }
+const {month} = Astro.params as {month: string};
+const r = await report(month);
+const site = Astro.site!.origin;
+const path = `reports/${month}/`;
+const name = new Date(month + '-01T12:00:00Z').toLocaleString('en-US', {month: 'long', year: 'numeric', timeZone: 'UTC'});
+const nf = (n: number) => n.toLocaleString('en-US', {maximumFractionDigits: 1});
+const pub = PUBLIC.includes(month);
+const span = r.days.length ? `${fmtDate('en', r.days[0])} – ${fmtDate('en', r.days.at(-1)!)}` : '';
+const embed = `<a href="${site}/${path}"><img src="${site}/${path}chart.svg" alt="Biggest verified slot wins on stream, ${name} – Big Win Daily" width="720" height="420"></a>`;
+const rej = REJECTED[month];
+const jsonld = [{'@context': 'https://schema.org', '@type': 'Dataset', name: `Biggest verified slot wins on stream, ${name}`, url: site + '/' + path, license: LICENCE.url, creator: {'@id': site + '/#org'}, temporalCoverage: r.days.length ? `${r.days[0]}/${r.days.at(-1)}` : month, distribution: [{'@type': 'DataDownload', encodingFormat: 'text/csv', contentUrl: `${site}/${path}wins.csv`}]}];
+---
+<Base lang="en" title={`Biggest Slot Wins on Stream – ${name} Report`} desc={`The ${r.top.length} biggest verified slot wins on casino streams in ${name}, with timestamped clips, the games that paid 1,000x or more, providers, our method and a CSV.`} path={path} jsonld={jsonld} noindex={!pub} mono>
+  <div class="page">
+    <header class="pg-hd">
+      <p class="kick">Monthly report · {span}</p>
+      <h1>Biggest slot wins on stream: {name}</h1>
+      <p class="lede">Every win below was read on screen by our detector and checked on the image before publication. Each one links to the exact moment in our video.</p>
+    </header>
+
+    <section class="sec">
+      <h2>Top {r.top.length} verified wins</h2>
+      <table class="rk rk-all">
+        <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col">Streamer</th><th scope="col">Game</th><th scope="col" class="num">× bet</th><th scope="col" class="num">Bonus buy: × price</th><th scope="col">Clip</th></tr></thead>
+        <tbody>{r.top.map((c, i) => (
+          <tr><td class="num">{i + 1}</td><td>{c.day}</td><td>{streamerName(c.streamer)}<span class="sub">{platformName(c.platform)}</span></td><td>{c.game ?? 'not identified'}<span class="sub">{c.provider ?? ''}</span></td><td class="num x">x{nf(c.multi)}</td><td class="num">{c.bonus_buy && c.paid_multi ? `x${nf(c.paid_multi)}` : '–'}</td><td>{clipVideo(c.video, c.t) && <a href={clipVideo(c.video, c.t)!} target="_blank" rel="noopener">▶ watch</a>}</td></tr>
+        ))}</tbody>
+      </table>
+    </section>
+
+    {r.games.length > 0 && (
+      <section class="sec">
+        <h2>Games that paid 1,000x or more</h2>
+        <table class="rk rk-all">
+          <thead><tr><th scope="col">Game</th><th scope="col">Provider</th><th scope="col" class="num">Wins ≥ 1,000x</th><th scope="col" class="num">Best</th></tr></thead>
+          <tbody>{r.games.map(g => <tr><td>{g.game}</td><td>{g.provider}</td><td class="num">{g.n1000}</td><td class="num x">x{nf(g.best!.multi)}</td></tr>)}</tbody>
+        </table>
+      </section>
+    )}
+
+    <section class="sec">
+      <h2>Providers</h2>
+      <table class="rk rk-all">
+        <thead><tr><th scope="col">Provider</th><th scope="col" class="num">Verified wins</th><th scope="col" class="num">≥ 1,000x</th><th scope="col" class="num">Median × bet</th></tr></thead>
+        <tbody>{r.providers.map(p => <tr><td>{p.provider}</td><td class="num">{p.wins}</td><td class="num">{p.big}</td><td class="num">x{nf(p.median)}</td></tr>)}</tbody>
+      </table>
+    </section>
+
+    <section class="sec prose-txt">
+      <h2>Method</h2>
+      <ol class="list">
+        <li>A detector watches public casino streams on Kick and Rumble and reads the bet and the win on screen.</li>
+        <li>Each candidate win is checked on the image by a person before it counts; wins whose game can’t be identified stay out of the game and provider tables ({r.verified} verified wins with an identified game this month).</li>
+        <li>{rej ? `Rejected this month: ${rej.map(x => `${x.n} ${x.reason}`).join(', ')}.` : 'Rejected wins (demo mode, stream intros, unreadable screens) are left out; their monthly count will be published here.'}</li>
+        <li>Multipliers are win ÷ bet. For a bought bonus, we also show the win ÷ price paid.</li>
+        <li>The ranking only uses wins published in our daily videos, and every ranked win links to its timestamped clip.</li>
+      </ol>
+    </section>
+
+    <section class="sec">
+      <h2>Data and reuse</h2>
+      <p>Download: <a href={`/${path}wins.csv`}>wins.csv</a> · Licence: <a href={LICENCE.url} target="_blank" rel="noopener">{LICENCE.name}</a>, with a link to this page as credit (“Data: Big Win Daily”).</p>
+      <p><img src={`/${path}chart.svg`} alt={`Biggest verified slot wins on stream, ${name}`} width="720" height="420" loading="lazy" style="max-width:100%;height:auto" /></p>
+      <p class="note">Embed the chart:</p>
+      <pre style="white-space:pre-wrap;word-break:break-all"><code>{embed}</code></pre>
+    </section>
+  </div>
+</Base>

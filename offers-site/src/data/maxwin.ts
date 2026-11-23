@@ -34,7 +34,7 @@ export const SHEETS: Sheet[] = [
   },
 ];
 
-const STATS = (games as {games: GameStats[]}).games;
+export const STATS = (games as {games: GameStats[]}).games;
 export const generatedAt = (games as {generated_at: string}).generated_at;
 
 export const maxWinPages = () => SHEETS.flatMap(sheet => {
