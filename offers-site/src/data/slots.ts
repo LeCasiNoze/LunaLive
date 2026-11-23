@@ -703,6 +703,49 @@ export const SLOTS: Slot[] = [
       ],
     },
   },
+  {
+    id: 'money-train-4', name: 'Money Train 4', provider: 'Relax Gaming',
+    source: 'https://relax-gaming.com/products/casino/moneytrain4', checked: '2026-11-23', at: {rainbet: '2026-11-23'},
+    rtp: [96.1], volatility: '', maxWin: 150000, grid: '6×6 · scatter pays',
+    buys: [{name: 'Money Cart Bonus', cost: 100}, {name: 'Money Cart Bonus with a persistent symbol', cost: 500}],
+    cited: {
+      rtp: ['https://www.olbg.com/slots/games/money-train-4', 'https://www.pokerlistings.com/online-slots/free/money-train-4', 'https://www.casinos.com/slots/money-train-4'],
+      grid: ['https://www.olbg.com/slots/games/money-train-4', 'https://www.pokerlistings.com/online-slots/free/money-train-4', 'https://www.casinos.com/slots/money-train-4'],
+      buys: ['https://www.olbg.com/slots/games/money-train-4', 'https://www.casinos.com/slots/money-train-4'],
+    },
+    text: {
+      en: [
+        'Money Train 4 is the fourth game in Relax Gaming’s Money Train series, a Western-themed slot with scatter pays that Relax presents as the series’ final stop. Relax caps a win at 150,000 times the bet, with bets from €0.10 to €6.',
+        'An Arms Dealer trades features for bonus symbols at any moment: a Respin feature in the base game, an Upgrader that gives features a persistent edge, an Unlocker that reveals more rows and a Reset that refills the spin counter. Relax advertises more than 20 features in all.',
+        'Relax’s page doesn’t give the RTP, the volatility or the grid. Review sites agree on a 6×6 grid, an RTP of 96.1%, and a Money Cart Bonus buy at 100 times the bet, or 500 times with a persistent symbol. They disagree on the volatility (high or very high), so we leave it blank.',
+      ],
+      fr: [
+        'Money Train 4 est le quatrième jeu de la série Money Train de Relax Gaming, une machine à sous western à gains scatter que Relax présente comme le dernier arrêt de la série. Relax plafonne un gain à 150 000 fois la mise, avec des mises de 0,10 € à 6 €.',
+        'Un marchand d’armes échange à tout moment des fonctions contre des symboles bonus : un respin dans le jeu de base, un Upgrader qui rend des fonctions persistantes, un Unlocker qui ouvre des rangées et un Reset qui remet le compteur de tours à zéro. Relax annonce plus de 20 fonctions en tout.',
+        'La fiche de Relax ne donne ni le RTP, ni la volatilité, ni la grille. Les sites spécialisés s’accordent sur une grille de 6×6, un RTP de 96,1 % et un achat du Money Cart Bonus à 100 fois la mise, ou 500 fois avec un symbole persistant. Ils divergent sur la volatilité (élevée ou très élevée), donc nous laissons la case vide.',
+      ],
+      de: [
+        'Money Train 4 ist das vierte Spiel der Money-Train-Reihe von Relax Gaming, ein Western-Slot mit Scatter-Gewinnen, den Relax als letzte Station der Reihe vorstellt. Relax begrenzt einen Gewinn auf das 150.000-Fache des Einsatzes, bei Einsätzen von 0,10 € bis 6 €.',
+        'Ein Waffenhändler tauscht jederzeit Features gegen Bonussymbole: einen Respin im Basisspiel, einen Upgrader, der Features dauerhaft macht, einen Unlocker, der Reihen öffnet, und einen Reset, der den Drehzähler auffüllt. Relax wirbt mit mehr als 20 Features insgesamt.',
+        'Die Seite von Relax nennt weder RTP noch Volatilität noch Raster. Testseiten stimmen bei einem 6×6-Raster, einem RTP von 96,1 % und einem Kauf des Money Cart Bonus für das 100-Fache des Einsatzes überein, oder das 500-Fache mit einem dauerhaften Symbol. Bei der Volatilität (hoch oder sehr hoch) weichen sie ab, daher bleibt das Feld leer.',
+      ],
+      es: [
+        'Money Train 4 es el cuarto juego de la serie Money Train de Relax Gaming, una tragaperras del Oeste con premios scatter que Relax presenta como la última parada de la serie. Relax limita un premio a 150.000 veces la apuesta, con apuestas de 0,10 € a 6 €.',
+        'Un traficante de armas cambia en cualquier momento funciones por símbolos de bono: un respin en el juego base, un Upgrader que vuelve persistentes las funciones, un Unlocker que abre filas y un Reset que recarga el contador de giros. Relax anuncia más de 20 funciones en total.',
+        'La página de Relax no da el RTP, la volatilidad ni la cuadrícula. Los sitios de reseñas coinciden en una cuadrícula de 6×6, un RTP del 96,1 % y una compra del Money Cart Bonus por 100 veces la apuesta, o 500 veces con un símbolo persistente. No coinciden en la volatilidad (alta o muy alta), así que la casilla queda vacía.',
+      ],
+      pt: [
+        'Money Train 4 é o quarto jogo da série Money Train da Relax Gaming, um slot de faroeste com ganhos scatter que a Relax apresenta como a última parada da série. A Relax limita um ganho a 150.000 vezes a aposta, com apostas de €0,10 a €6.',
+        'Um traficante de armas troca a qualquer momento recursos por símbolos de bônus: um respin no jogo base, um Upgrader que torna recursos persistentes, um Unlocker que abre fileiras e um Reset que recarrega o contador de giros. A Relax anuncia mais de 20 recursos no total.',
+        'A página da Relax não informa o RTP, a volatilidade nem a grade. Os sites de análise concordam em uma grade de 6×6, RTP de 96,1% e compra do Money Cart Bonus por 100 vezes a aposta, ou 500 vezes com um símbolo persistente. Eles divergem na volatilidade (alta ou muito alta), então o campo fica vazio.',
+      ],
+      it: [
+        'Money Train 4 è il quarto gioco della serie Money Train di Relax Gaming, una slot western con vincite scatter che Relax presenta come l’ultima fermata della serie. Relax limita una vincita a 150.000 volte la puntata, con puntate da 0,10 € a 6 €.',
+        'Un trafficante d’armi scambia in qualsiasi momento funzioni contro simboli bonus: un respin nel gioco base, un Upgrader che rende persistenti le funzioni, un Unlocker che apre file e un Reset che ricarica il contatore dei giri. Relax annuncia più di 20 funzioni in tutto.',
+        'La pagina di Relax non indica RTP, volatilità né griglia. I siti di recensioni concordano su una griglia 6×6, un RTP del 96,1% e un acquisto del Money Cart Bonus a 100 volte la puntata, o 500 volte con un simbolo persistente. Divergono sulla volatilità (alta o molto alta), quindi il campo resta vuoto.',
+      ],
+    },
+  },
 ];
 
 export const bySlotName = (name: string) => {
