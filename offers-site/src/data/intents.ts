@@ -12,6 +12,8 @@ export interface Intent {
   table?: {cols: string[]; rows: string[][]};
   faq?: {q: string; a: string}[];
   steps?: string[];
+  // Comparatifs : boutons des autres casinos comparés, même data-place (la campagne distingue le casino).
+  also?: CasinoId[];
   title: string; desc: string; h1: string; lede: string;
   facts: [string, string][];
   sections: {h: string; p: string[]}[];
@@ -316,7 +318,7 @@ export const INTENTS: Intent[] = [
     ],
   },
   {
-    casino: 'rainbet', lang: 'en', slug: 'crypto-canada', path: 'best-crypto-casino-canada/', place: 'crypto-canada',
+    casino: 'rainbet', lang: 'en', slug: 'crypto-canada', path: 'best-crypto-casino-canada/', place: 'crypto-canada', also: ['celsius'],
     title: 'Best Crypto Casino in Canada ({month}): Rainbet vs Celsius on Interac, Fees, Withdrawals',
     desc: 'Crypto casinos for Canadian players, side by side from their official pages: Rainbet (Interac from C$15, crypto withdrawals in 5–15 min, no KYC for crypto) and Celsius (9 coins, up to €2,000 + 250 free spins).',
     h1: 'Best crypto casino in Canada: the two we play on, compared',
@@ -369,7 +371,7 @@ export const INTENTS: Intent[] = [
     ],
   },
   {
-    casino: 'rainbet', lang: 'en', slug: 'crypto-australia', path: 'best-crypto-casino-australia/', place: 'crypto-australia',
+    casino: 'rainbet', lang: 'en', slug: 'crypto-australia', path: 'best-crypto-casino-australia/', place: 'crypto-australia', also: ['celsius'],
     title: 'Best Crypto Casino in Australia ({month}): Rainbet vs Celsius on Coins, Fees, Withdrawals',
     desc: 'Crypto casinos for Australian players, side by side from their official pages: Rainbet (no KYC for crypto, withdrawals in 5–15 min, code NIVORANET) and Celsius (9 coins, up to €2,000 + 250 free spins).',
     h1: 'Best crypto casino in Australia: the two we play on, compared',

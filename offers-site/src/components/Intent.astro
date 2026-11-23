@@ -55,14 +55,16 @@ const jsonld = [
       </section>
     )}
 
-    <div class="offer">
-      <div class="offer-hd">
-        <img src={c.logo} alt="" width="40" height="40" />
-        <div><b>{c.name}</b><span>{d.casino[c.id].headline}</span></div>
+    {[c, ...(x.also ?? []).map(byId)].map(c => (
+      <div class="offer">
+        <div class="offer-hd">
+          <img src={c.logo} alt="" width="40" height="40" />
+          <div><b>{c.name}</b><span>{d.casino[c.id].headline}</span></div>
+        </div>
+        <a class="btn" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place={x.place}>{u.play}</a>
+        <p class="small">18+ · {c.code ? `${u.code}: ${c.code}` : u.noCode} · <a href={href(lang, `casinos/${c.id}/`)}>{u.review}</a></p>
       </div>
-      <a class="btn" href={c.affiliate} target="_blank" rel="sponsored noopener" data-go={c.id} data-place={x.place}>{u.play}</a>
-      <p class="small">18+ · {c.code ? `${u.code}: ${c.code}` : u.noCode} · <a href={href(lang, `casinos/${c.id}/`)}>{u.review}</a></p>
-    </div>
+    ))}
 
     <section class="sec">
       <h2>Sources</h2>
