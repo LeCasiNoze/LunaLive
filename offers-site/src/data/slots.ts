@@ -746,6 +746,82 @@ export const SLOTS: Slot[] = [
       ],
     },
   },
+  {
+    id: 'duck-hunters', name: 'Duck Hunters', provider: 'Nolimit City',
+    source: 'https://nolimitcity.com/games/duck-hunters', checked: '2026-11-23', at: {rainbet: '2026-11-23'},
+    rtp: [96.05], volatility: 'extreme', maxWin: 30000, grid: '5×5 · scatter pays (8+ symbols)',
+    buys: [{name: 'Day 2 Spins', cost: 2.8}, {name: 'Day 64 Spins', cost: 90}, {name: 'Day 1024 Spins', cost: 3000}], hit: 17.07, fsOdds: "1 in 203", maxOdds: "1 in 22,000,000",
+    text: {
+      en: [
+        'Duck Hunters is a Nolimit City slot released in February 2025, played on a five-by-five grid where 8 or more matching symbols anywhere pay. Nolimit publishes an RTP of 96.05% and rates the volatility Extreme.',
+        'Winning symbols are removed and new ones drop in. Each emptied position gets a x2 multiplier that doubles on every new hit there, up to x8192, and xWays, Infectious xWays and Bombs push the multipliers further. Three, four or five bonus symbols start Duck Hunt Spins, Hawk Eye Spins or Big Game Spins, with one, two or all three upgrades.',
+        'Nolimit caps the game at 30,000 times the bet and puts the odds of reaching it at 1 in 22 million. It lists a hit frequency of 17.07% and free spins about once in 203 spins. Three bonuses can be bought, each starting with a higher multiplier: Day 2 Spins at 2.8 times the bet, Day 64 Spins at 90 times and Day 1024 Spins at 3,000 times.',
+      ],
+      fr: [
+        'Duck Hunters est une machine à sous de Nolimit City sortie en février 2025, sur une grille de cinq sur cinq où 8 symboles identiques ou plus paient, où qu’ils soient. Nolimit publie un RTP de 96,05 % et classe la volatilité Extrême.',
+        'Les symboles gagnants disparaissent et de nouveaux tombent. Chaque case vidée reçoit un multiplicateur x2 qui double à chaque nouveau gain à cet endroit, jusqu’à x8192, et les xWays, xWays infectieux et bombes poussent encore les multiplicateurs. Trois, quatre ou cinq symboles bonus lancent Duck Hunt Spins, Hawk Eye Spins ou Big Game Spins, avec une, deux ou les trois améliorations.',
+        'Nolimit plafonne le jeu à 30 000 fois la mise et estime la probabilité de l’atteindre à 1 sur 22 millions. Il indique une fréquence de gain de 17,07 % et des tours gratuits environ une fois tous les 203 tours. Trois bonus peuvent être achetés, chacun avec un multiplicateur de départ plus élevé : Day 2 Spins à 2,8 fois la mise, Day 64 Spins à 90 fois et Day 1024 Spins à 3 000 fois.',
+      ],
+      de: [
+        'Duck Hunters ist ein Slot von Nolimit City, erschienen im Februar 2025, auf einem Fünf-mal-fünf-Raster, auf dem 8 oder mehr gleiche Symbole überall zahlen. Nolimit veröffentlicht einen RTP von 96,05 % und stuft die Volatilität als „Extreme“ ein.',
+        'Gewinnsymbole verschwinden und neue fallen nach. Jedes geleerte Feld erhält einen x2-Multiplikator, der sich bei jedem weiteren Treffer dort verdoppelt, bis x8192; xWays, infektiöse xWays und Bomben treiben die Multiplikatoren weiter. Drei, vier oder fünf Bonussymbole starten Duck Hunt Spins, Hawk Eye Spins oder Big Game Spins, mit einem, zwei oder allen drei Upgrades.',
+        'Nolimit begrenzt das Spiel auf das 30.000-Fache des Einsatzes und beziffert die Chance darauf mit 1 zu 22 Millionen. Angegeben sind eine Trefferquote von 17,07 % und Freispiele etwa alle 203 Drehungen. Drei Boni lassen sich kaufen, jeder mit höherem Startmultiplikator: Day 2 Spins für das 2,8-Fache des Einsatzes, Day 64 Spins für das 90-Fache und Day 1024 Spins für das 3.000-Fache.',
+      ],
+      es: [
+        'Duck Hunters es una tragaperras de Nolimit City lanzada en febrero de 2025, en una cuadrícula de cinco por cinco donde 8 o más símbolos iguales pagan estén donde estén. Nolimit publica un RTP del 96,05 % y califica la volatilidad de Extrema.',
+        'Los símbolos ganadores desaparecen y caen otros nuevos. Cada casilla vaciada recibe un multiplicador x2 que se duplica con cada nuevo premio en ella, hasta x8192, y los xWays, xWays infecciosos y bombas suben aún más los multiplicadores. Tres, cuatro o cinco símbolos de bono activan Duck Hunt Spins, Hawk Eye Spins o Big Game Spins, con una, dos o las tres mejoras.',
+        'Nolimit limita el juego a 30.000 veces la apuesta y sitúa la probabilidad de alcanzarlo en 1 entre 22 millones. Indica una frecuencia de premio del 17,07 % y giros gratis aproximadamente una vez cada 203 giros. Se pueden comprar tres bonos, cada uno con un multiplicador inicial más alto: Day 2 Spins por 2,8 veces la apuesta, Day 64 Spins por 90 veces y Day 1024 Spins por 3.000 veces.',
+      ],
+      pt: [
+        'Duck Hunters é um slot da Nolimit City lançado em fevereiro de 2025, numa grade de cinco por cinco em que 8 ou mais símbolos iguais pagam em qualquer posição. A Nolimit publica RTP de 96,05% e classifica a volatilidade como Extrema.',
+        'Os símbolos vencedores somem e novos caem. Cada casa esvaziada recebe um multiplicador x2 que dobra a cada novo ganho ali, até x8192, e os xWays, xWays infecciosos e bombas aumentam ainda mais os multiplicadores. Três, quatro ou cinco símbolos de bônus abrem Duck Hunt Spins, Hawk Eye Spins ou Big Game Spins, com uma, duas ou as três melhorias.',
+        'A Nolimit limita o jogo a 30.000 vezes a aposta e estima a chance de chegar lá em 1 em 22 milhões. Indica frequência de acerto de 17,07% e rodadas grátis mais ou menos uma vez a cada 203 giros. Três bônus podem ser comprados, cada um com multiplicador inicial maior: Day 2 Spins por 2,8 vezes a aposta, Day 64 Spins por 90 vezes e Day 1024 Spins por 3.000 vezes.',
+      ],
+      it: [
+        'Duck Hunters è una slot di Nolimit City uscita a febbraio 2025, su una griglia cinque per cinque dove 8 o più simboli uguali pagano ovunque si trovino. Nolimit pubblica un RTP del 96,05% e classifica la volatilità Estrema.',
+        'I simboli vincenti spariscono e ne cadono di nuovi. Ogni casella svuotata riceve un moltiplicatore x2 che raddoppia a ogni nuova vincita lì, fino a x8192, e xWays, xWays infettivi e bombe spingono ancora i moltiplicatori. Tre, quattro o cinque simboli bonus avviano Duck Hunt Spins, Hawk Eye Spins o Big Game Spins, con uno, due o tutti e tre i potenziamenti.',
+        'Nolimit limita il gioco a 30.000 volte la puntata e stima la probabilità di arrivarci in 1 su 22 milioni. Indica una frequenza di vincita del 17,07% e giri gratis circa una volta ogni 203 giri. Si possono acquistare tre bonus, ciascuno con un moltiplicatore iniziale più alto: Day 2 Spins a 2,8 volte la puntata, Day 64 Spins a 90 volte e Day 1024 Spins a 3.000 volte.',
+      ],
+    },
+  },
+  {
+    id: 'chaos-crew', name: 'Chaos Crew', provider: 'Hacksaw Gaming',
+    source: 'https://www.hacksawgaming.com/games/chaos-crew', checked: '2026-11-23', at: {rainbet: '2026-11-23'},
+    rtp: [96.3, 92.4, 88.4], volatility: '5/5', maxWin: 10000, grid: '5×5 · paylines',
+    buys: [{name: 'Bonus buy', cost: null}],
+    text: {
+      en: [
+        'Chaos Crew is a Hacksaw Gaming slot on a 5×5 grid with paylines. Hacksaw rates its volatility 5 out of 5, the top of its scale, and caps a single win at 10,000 times the bet. Its page gives the number of paylines twice, as 15 and as 19, so we don’t print one.',
+        'Cranky Cat symbols multiply any win they are part of, and several Cranky Cats on the same line multiply each other.',
+        'In the free spins, Cranky Cat and Sketchy Skull multipliers are collected above the reels, and striped Epic multiplier symbols apply their value to everything collected. The round ends after three misses, and the total is paid as a multiple of the bet. The bonus can be bought, but Hacksaw doesn’t publish the price.',
+      ],
+      fr: [
+        'Chaos Crew est une machine à sous de Hacksaw Gaming sur une grille de 5×5 à lignes. Hacksaw note sa volatilité 5 sur 5, le haut de son échelle, et plafonne un gain à 10 000 fois la mise. Sa fiche donne deux nombres de lignes, 15 et 19, donc nous n’en affichons aucun.',
+        'Les symboles Cranky Cat multiplient tout gain dont ils font partie, et plusieurs Cranky Cat sur la même ligne se multiplient entre eux.',
+        'Pendant les tours gratuits, les multiplicateurs Cranky Cat et Sketchy Skull s’accumulent au-dessus des rouleaux, et les symboles Epic rayés appliquent leur valeur à tout ce qui est collecté. Le tour s’arrête après trois échecs, et le total est payé en multiple de la mise. Le bonus peut être acheté, mais Hacksaw n’en publie pas le prix.',
+      ],
+      de: [
+        'Chaos Crew ist ein Slot von Hacksaw Gaming auf einem 5×5-Raster mit Gewinnlinien. Hacksaw bewertet die Volatilität mit 5 von 5, dem oberen Ende seiner Skala, und begrenzt einen Gewinn auf das 10.000-Fache des Einsatzes. Die Seite nennt zwei Linienzahlen, 15 und 19, daher geben wir keine an.',
+        'Cranky-Cat-Symbole multiplizieren jeden Gewinn, an dem sie beteiligt sind, und mehrere Cranky Cats auf derselben Linie multiplizieren sich gegenseitig.',
+        'In den Freispielen werden Cranky-Cat- und Sketchy-Skull-Multiplikatoren über den Walzen gesammelt, und gestreifte Epic-Multiplikatorsymbole wenden ihren Wert auf alles Gesammelte an. Die Runde endet nach drei Fehlversuchen, und die Summe wird als Vielfaches des Einsatzes ausgezahlt. Der Bonus kann gekauft werden, Hacksaw veröffentlicht den Preis aber nicht.',
+      ],
+      es: [
+        'Chaos Crew es una tragaperras de Hacksaw Gaming en una cuadrícula de 5×5 con líneas. Hacksaw califica su volatilidad con un 5 sobre 5, lo más alto de su escala, y limita un premio a 10.000 veces la apuesta. Su página da dos cifras de líneas, 15 y 19, así que no mostramos ninguna.',
+        'Los símbolos Cranky Cat multiplican cualquier premio del que formen parte, y varios Cranky Cat en la misma línea se multiplican entre sí.',
+        'En los giros gratis, los multiplicadores Cranky Cat y Sketchy Skull se acumulan sobre los rodillos, y los símbolos Epic a rayas aplican su valor a todo lo acumulado. La ronda termina tras tres fallos y el total se paga como múltiplo de la apuesta. El bono se puede comprar, pero Hacksaw no publica el precio.',
+      ],
+      pt: [
+        'Chaos Crew é um slot da Hacksaw Gaming numa grade de 5×5 com linhas. A Hacksaw classifica a volatilidade em 5 de 5, o topo da sua escala, e limita um ganho a 10.000 vezes a aposta. A página dá dois números de linhas, 15 e 19, então não mostramos nenhum.',
+        'Os símbolos Cranky Cat multiplicam qualquer ganho de que façam parte, e vários Cranky Cat na mesma linha se multiplicam entre si.',
+        'Nas rodadas grátis, os multiplicadores Cranky Cat e Sketchy Skull se acumulam acima dos rolos, e os símbolos Epic listrados aplicam seu valor a tudo o que foi acumulado. A rodada termina após três falhas, e o total é pago como múltiplo da aposta. O bônus pode ser comprado, mas a Hacksaw não publica o preço.',
+      ],
+      it: [
+        'Chaos Crew è una slot di Hacksaw Gaming su una griglia 5×5 a linee. Hacksaw valuta la volatilità 5 su 5, il massimo della sua scala, e limita una vincita a 10.000 volte la puntata. La sua pagina indica due numeri di linee, 15 e 19, quindi non ne mostriamo nessuno.',
+        'I simboli Cranky Cat moltiplicano ogni vincita di cui fanno parte, e più Cranky Cat sulla stessa linea si moltiplicano tra loro.',
+        'Nei giri gratis, i moltiplicatori Cranky Cat e Sketchy Skull si accumulano sopra i rulli, e i simboli Epic a strisce applicano il loro valore a tutto ciò che è stato raccolto. Il giro finisce dopo tre mancati, e il totale viene pagato come multiplo della puntata. Il bonus si può acquistare, ma Hacksaw non ne pubblica il prezzo.',
+      ],
+    },
+  },
 ];
 
 export const bySlotName = (name: string) => {
