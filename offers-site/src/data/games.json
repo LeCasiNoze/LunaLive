@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-23T00:17:08+01:00",
+ "generated_at": "2026-11-23T01:02:58+01:00",
  "games": [
   {
    "game": "Gates of Olympus 2500",
@@ -1330,5 +1330,17 @@
     }
    ]
   }
- ]
+ ],
+ "rejected_by_month": {
+  "2026-11": {
+   "ad_not_blurred": 9,
+   "amount_or_bet_misread": 12,
+   "balance_read_as_win": 51,
+   "bonus_buy": 52,
+   "jackpot_or_cap_screen": 5,
+   "other": 2,
+   "stream_intro_or_replay": 2,
+   "win_not_final_or_outside_clip": 25
+  }
+ }
 }

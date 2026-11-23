@@ -1,12 +1,24 @@
 import {loadFeed, type Clip} from './wins';
 import {STATS} from './maxwin';
+import games from './games.json';
 
 // Rapport mensuel /reports/AAAA-MM/ : top 20 du mois (clips publiés, horodatés), jeux à 1 000x et plus, éditeurs.
 // Sources : feed.json (clips publiés) et games.json (gains vérifiés par jeu), tous deux exports de la production.
 // PUBLIC : mois publiés (indexés, au sitemap). Les autres sont construits en noindex pour relecture.
 export const PUBLIC: string[] = [];
-// Gains écartés à la relecture, par motif : chiffres fournis par la production, jamais estimés.
-export const REJECTED: Record<string, {reason: string; n: number}[]> = {};
+// Gains écartés à la relecture, par motif : rejected_by_month de games.json (classement par mots-clés côté production).
+const REJ = ((games as {rejected_by_month?: Record<string, Record<string, number>>}).rejected_by_month) ?? {};
+const REASON: Record<string, string> = {
+  bonus_buy: 'a bought bonus read as a bet, or a buy paying under 3× its price',
+  balance_read_as_win: 'a balance read as a win',
+  win_not_final_or_outside_clip: 'a win not final or outside the clip',
+  amount_or_bet_misread: 'an amount or bet misread',
+  ad_not_blurred: 'an unblurred ad on screen (rule dropped on 22/11)',
+  jackpot_or_cap_screen: 'a jackpot or cap screen',
+  stream_intro_or_replay: 'a stream intro or replay',
+  other: 'other reasons',
+};
+export const rejected = (month: string) => Object.entries(REJ[month] ?? {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => ({reason: REASON[k] ?? k, n}));
 export const LICENCE = {name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/'};
 
 export interface Row extends Clip {day: string; video: string | null}
