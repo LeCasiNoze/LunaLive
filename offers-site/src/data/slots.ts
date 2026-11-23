@@ -627,6 +627,82 @@ export const SLOTS: Slot[] = [
       ],
     },
   },
+  {
+    id: 'fire-in-the-hole-3', name: 'Fire in the Hole 3', provider: 'Nolimit City',
+    source: 'https://nolimitcity.com/games/fire-in-the-hole-3', checked: '2026-11-23', at: {rainbet: '2026-11-23'},
+    rtp: [96.05], volatility: 'extreme', maxWin: 70000, grid: '6×3 to 6×6 · up to 46,656 ways',
+    buys: [{name: 'Evil Dwarf Forever', cost: 700}, {name: 'Guaranteed Dwarf', cost: 4000}, {name: 'Golden Nugget', cost: 7000}], hit: 22.18, fsOdds: "1 in 231", maxOdds: "1 in 14,300,000",
+    text: {
+      en: [
+        'Fire in the Hole 3 is the third mining slot in Nolimit City’s series, released on 3 June 2025, with a published RTP of 96.05% and an Extreme volatility rating from the studio.',
+        'Each spin starts with 3 active rows on 6 reels, and every collapse opens one more, up to 6 rows and 46,656 ways. xBomb wilds explode and raise the win multiplier. Features buried in ice blocks (xSplit, xHole, multipliers from 2x to 100x, bonus symbols) are freed when an xBomb clears them, and a 2×2 Max symbol pays the max win once all its ice is gone.',
+        'Nolimit caps the game at 70,000 times the bet and puts the odds of reaching it at 1 in 14.3 million. It lists a hit frequency of 22.18% and free spins about once in 231 spins. Three bonuses can be bought: Evil Dwarf Forever at 700 times the bet, Guaranteed Dwarf at 4,000 times, and Golden Nugget, which goes straight for the Max symbol, at 7,000 times.',
+      ],
+      fr: [
+        'Fire in the Hole 3 est la troisième machine à sous minière de la série de Nolimit City, sortie le 3 juin 2025, avec un RTP publié de 96,05 % et une volatilité classée Extrême par le studio.',
+        'Chaque tour démarre avec 3 rangées actives sur 6 rouleaux, et chaque effondrement en ouvre une de plus, jusqu’à 6 rangées et 46 656 façons de gagner. Les wilds xBomb explosent et augmentent le multiplicateur de gain. Des fonctions prises dans des blocs de glace (xSplit, xHole, multiplicateurs de 2x à 100x, symboles bonus) sont libérées quand une xBomb les dégage, et un symbole Max de 2×2 paie le gain maximal une fois toute sa glace brisée.',
+        'Nolimit plafonne le jeu à 70 000 fois la mise et estime la probabilité de l’atteindre à 1 sur 14,3 millions. Il indique une fréquence de gain de 22,18 % et des tours gratuits environ une fois tous les 231 tours. Trois bonus peuvent être achetés : Evil Dwarf Forever à 700 fois la mise, Guaranteed Dwarf à 4 000 fois et Golden Nugget, qui vise directement le symbole Max, à 7 000 fois.',
+      ],
+      de: [
+        'Fire in the Hole 3 ist der dritte Bergbau-Slot der Reihe von Nolimit City, erschienen am 3. Juni 2025, mit einem veröffentlichten RTP von 96,05 % und einer vom Studio vergebenen Volatilität „Extreme“.',
+        'Jede Drehung beginnt mit 3 aktiven Reihen auf 6 Walzen, jeder Einsturz öffnet eine weitere, bis zu 6 Reihen und 46.656 Gewinnwegen. xBomb-Wilds explodieren und erhöhen den Gewinnmultiplikator. In Eisblöcken steckende Features (xSplit, xHole, Multiplikatoren von 2x bis 100x, Bonussymbole) werden frei, wenn eine xBomb sie räumt, und ein 2×2-Max-Symbol zahlt den Maximalgewinn, sobald sein ganzes Eis weg ist.',
+        'Nolimit begrenzt das Spiel auf das 70.000-Fache des Einsatzes und beziffert die Chance darauf mit 1 zu 14,3 Millionen. Angegeben sind eine Trefferquote von 22,18 % und Freispiele etwa alle 231 Drehungen. Drei Boni lassen sich kaufen: Evil Dwarf Forever für das 700-Fache des Einsatzes, Guaranteed Dwarf für das 4.000-Fache und Golden Nugget, das direkt auf das Max-Symbol zielt, für das 7.000-Fache.',
+      ],
+      es: [
+        'Fire in the Hole 3 es la tercera tragaperras minera de la serie de Nolimit City, lanzada el 3 de junio de 2025, con un RTP publicado del 96,05 % y una volatilidad calificada de Extrema por el estudio.',
+        'Cada giro empieza con 3 filas activas en 6 rodillos, y cada derrumbe abre una más, hasta 6 filas y 46.656 formas de ganar. Los wilds xBomb explotan y suben el multiplicador de premio. Las funciones atrapadas en bloques de hielo (xSplit, xHole, multiplicadores de 2x a 100x, símbolos de bono) se liberan cuando una xBomb las despeja, y un símbolo Max de 2×2 paga el premio máximo cuando se rompe todo su hielo.',
+        'Nolimit limita el juego a 70.000 veces la apuesta y sitúa la probabilidad de alcanzarlo en 1 entre 14,3 millones. Indica una frecuencia de premio del 22,18 % y giros gratis aproximadamente una vez cada 231 giros. Se pueden comprar tres bonos: Evil Dwarf Forever por 700 veces la apuesta, Guaranteed Dwarf por 4.000 veces y Golden Nugget, que va directo al símbolo Max, por 7.000 veces.',
+      ],
+      pt: [
+        'Fire in the Hole 3 é o terceiro slot de mineração da série da Nolimit City, lançado em 3 de junho de 2025, com RTP publicado de 96,05% e volatilidade classificada como Extrema pelo estúdio.',
+        'Cada giro começa com 3 fileiras ativas em 6 rolos, e cada desabamento abre mais uma, até 6 fileiras e 46.656 formas de ganhar. Os wilds xBomb explodem e aumentam o multiplicador de ganho. Recursos presos em blocos de gelo (xSplit, xHole, multiplicadores de 2x a 100x, símbolos de bônus) são liberados quando uma xBomb os limpa, e um símbolo Max de 2×2 paga o ganho máximo quando todo o seu gelo some.',
+        'A Nolimit limita o jogo a 70.000 vezes a aposta e estima a chance de chegar lá em 1 em 14,3 milhões. Indica frequência de acerto de 22,18% e rodadas grátis mais ou menos uma vez a cada 231 giros. Três bônus podem ser comprados: Evil Dwarf Forever por 700 vezes a aposta, Guaranteed Dwarf por 4.000 vezes e Golden Nugget, que vai direto ao símbolo Max, por 7.000 vezes.',
+      ],
+      it: [
+        'Fire in the Hole 3 è la terza slot mineraria della serie di Nolimit City, uscita il 3 giugno 2025, con un RTP pubblicato del 96,05% e una volatilità classificata Estrema dallo studio.',
+        'Ogni giro parte con 3 file attive su 6 rulli, e ogni crollo ne apre una in più, fino a 6 file e 46.656 modi di vincere. I wild xBomb esplodono e alzano il moltiplicatore di vincita. Le funzioni chiuse in blocchi di ghiaccio (xSplit, xHole, moltiplicatori da 2x a 100x, simboli bonus) si liberano quando una xBomb le sgombra, e un simbolo Max 2×2 paga la vincita massima quando tutto il suo ghiaccio è rotto.',
+        'Nolimit limita il gioco a 70.000 volte la puntata e stima la probabilità di arrivarci in 1 su 14,3 milioni. Indica una frequenza di vincita del 22,18% e giri gratis circa una volta ogni 231 giri. Si possono acquistare tre bonus: Evil Dwarf Forever a 700 volte la puntata, Guaranteed Dwarf a 4.000 volte e Golden Nugget, che punta dritto al simbolo Max, a 7.000 volte.',
+      ],
+    },
+  },
+  {
+    id: 'le-bandit', name: 'Le Bandit', provider: 'Hacksaw Gaming',
+    source: 'https://www.hacksawgaming.com/games/le-bandit', checked: '2026-11-23', at: {rainbet: '2026-11-23'},
+    rtp: [96.34, 94.23, 92.17, 88.36], volatility: '3/5', maxWin: 10000, grid: '6×5 · cluster pays',
+    buys: [{name: 'Bonus buy', cost: null}],
+    text: {
+      en: [
+        'Le Bandit is a Hacksaw Gaming slot on a 6×5 grid with cluster pays. Hacksaw rates its volatility 3 out of 5 and caps a single win at 10,000 times the bet.',
+        'Winning symbols vanish in Super Cascades and leave a Golden Square behind. When a Rainbow lands, the squares reveal coins (bronze from 0.2x to 4x, silver from 5x to 20x, gold up to 500x), Four-Leaf Clovers that multiply neighbouring coins by 2x to 10x, and Pots of Gold that collect everything in view.',
+        'Three, four or five bonus symbols trigger Luck of the Bandit, All That Glitters Is Gold (12 free spins, the Golden Squares stay) or Treasure at the End of the Rainbow (12 free spins with a Rainbow on every spin). Treasure at the End of the Rainbow can’t be bought. The game has a Buy Bonus menu, but Hacksaw doesn’t publish its prices. BonusHunt FeatureSpins give 5 times the chance of a bonus for 3 times the bet.',
+      ],
+      fr: [
+        'Le Bandit est une machine à sous de Hacksaw Gaming sur une grille de 6×5 avec gains en grappes. Hacksaw note sa volatilité 3 sur 5 et plafonne un gain à 10 000 fois la mise.',
+        'Les symboles gagnants disparaissent en Super Cascades et laissent une case dorée. Quand un arc-en-ciel tombe, les cases révèlent des pièces (bronze de 0,2x à 4x, argent de 5x à 20x, or jusqu’à 500x), des trèfles à quatre feuilles qui multiplient les pièces voisines de 2x à 10x, et des pots d’or qui ramassent tout ce qui est à l’écran.',
+        'Trois, quatre ou cinq symboles bonus déclenchent Luck of the Bandit, All That Glitters Is Gold (12 tours gratuits, les cases dorées restent) ou Treasure at the End of the Rainbow (12 tours gratuits avec un arc-en-ciel à chaque tour). Ce dernier ne peut pas être acheté. Le jeu a un menu d’achat de bonus, mais Hacksaw n’en publie pas les prix. Les FeatureSpins BonusHunt donnent 5 fois plus de chances de bonus pour 3 fois la mise.',
+      ],
+      de: [
+        'Le Bandit ist ein Slot von Hacksaw Gaming auf einem 6×5-Raster mit Cluster-Gewinnen. Hacksaw bewertet die Volatilität mit 3 von 5 und begrenzt einen Gewinn auf das 10.000-Fache des Einsatzes.',
+        'Gewinnsymbole verschwinden in Super Cascades und hinterlassen ein goldenes Feld. Landet ein Regenbogen, zeigen die Felder Münzen (Bronze von 0,2x bis 4x, Silber von 5x bis 20x, Gold bis 500x), vierblättrige Kleeblätter, die benachbarte Münzen mit 2x bis 10x multiplizieren, und Goldtöpfe, die alles im Bild einsammeln.',
+        'Drei, vier oder fünf Bonussymbole lösen Luck of the Bandit, All That Glitters Is Gold (12 Freispiele, die goldenen Felder bleiben) oder Treasure at the End of the Rainbow (12 Freispiele mit einem Regenbogen bei jeder Drehung) aus. Treasure at the End of the Rainbow kann nicht gekauft werden. Das Spiel hat ein Bonuskauf-Menü, dessen Preise Hacksaw nicht veröffentlicht. BonusHunt FeatureSpins geben die 5-fache Bonuschance für das 3-Fache des Einsatzes.',
+      ],
+      es: [
+        'Le Bandit es una tragaperras de Hacksaw Gaming en una cuadrícula de 6×5 con premios por grupos. Hacksaw califica su volatilidad con un 3 sobre 5 y limita un premio a 10.000 veces la apuesta.',
+        'Los símbolos ganadores desaparecen en Super Cascades y dejan una casilla dorada. Cuando cae un arcoíris, las casillas muestran monedas (bronce de 0,2x a 4x, plata de 5x a 20x, oro hasta 500x), tréboles de cuatro hojas que multiplican las monedas vecinas de 2x a 10x y ollas de oro que recogen todo lo que hay en pantalla.',
+        'Tres, cuatro o cinco símbolos de bono activan Luck of the Bandit, All That Glitters Is Gold (12 giros gratis, las casillas doradas se quedan) o Treasure at the End of the Rainbow (12 giros gratis con un arcoíris en cada giro). Este último no se puede comprar. El juego tiene un menú de compra de bono, pero Hacksaw no publica sus precios. Los FeatureSpins BonusHunt dan 5 veces más probabilidad de bono por 3 veces la apuesta.',
+      ],
+      pt: [
+        'Le Bandit é um slot da Hacksaw Gaming em uma grade de 6×5 com ganhos em grupos. A Hacksaw classifica a volatilidade em 3 de 5 e limita um ganho a 10.000 vezes a aposta.',
+        'Os símbolos vencedores somem em Super Cascades e deixam uma casa dourada. Quando cai um arco-íris, as casas revelam moedas (bronze de 0,2x a 4x, prata de 5x a 20x, ouro até 500x), trevos de quatro folhas que multiplicam as moedas vizinhas de 2x a 10x e potes de ouro que recolhem tudo o que está na tela.',
+        'Três, quatro ou cinco símbolos de bônus ativam Luck of the Bandit, All That Glitters Is Gold (12 rodadas grátis, as casas douradas ficam) ou Treasure at the End of the Rainbow (12 rodadas grátis com arco-íris em todo giro). Este último não pode ser comprado. O jogo tem um menu de compra de bônus, mas a Hacksaw não publica os preços. Os FeatureSpins BonusHunt dão 5 vezes mais chance de bônus por 3 vezes a aposta.',
+      ],
+      it: [
+        'Le Bandit è una slot di Hacksaw Gaming su una griglia 6×5 con vincite a grappolo. Hacksaw valuta la volatilità 3 su 5 e limita una vincita a 10.000 volte la puntata.',
+        'I simboli vincenti spariscono nelle Super Cascades e lasciano una casella dorata. Quando arriva un arcobaleno, le caselle rivelano monete (bronzo da 0,2x a 4x, argento da 5x a 20x, oro fino a 500x), quadrifogli che moltiplicano le monete vicine da 2x a 10x e pentole d’oro che raccolgono tutto ciò che è sullo schermo.',
+        'Tre, quattro o cinque simboli bonus attivano Luck of the Bandit, All That Glitters Is Gold (12 giri gratis, le caselle dorate restano) o Treasure at the End of the Rainbow (12 giri gratis con un arcobaleno a ogni giro). Quest’ultimo non si può acquistare. Il gioco ha un menu di acquisto bonus, ma Hacksaw non ne pubblica i prezzi. I FeatureSpins BonusHunt danno 5 volte più probabilità di bonus per 3 volte la puntata.',
+      ],
+    },
+  },
 ];
 
 export const bySlotName = (name: string) => {
