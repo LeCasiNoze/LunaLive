@@ -34,7 +34,6 @@ const pfs = [...new Set(clips.map(c => platformName(c.platform)))].join(' & ');
 const lede = [fmt(w.intro1, {...vars, x: xg(big), who: streamerName(big.streamer), pf: platformName(big.platform), stake}), fmt(w.intro2, {s: new Set(clips.map(c => c.streamer.toLowerCase())).size, pfs, n: clips.length, xl: multi(clips[clips.length - 1].multi)})].join(' ');
 const yt = v.youtube_id ? `https://www.youtube.com/watch?v=${v.youtube_id}` : null;
 const thumb = v.thumb || (v.youtube_id ? `https://i.ytimg.com/vi/${v.youtube_id}/hqdefault.jpg` : null);
-const embed = !!v.youtube_id && v.age_restricted === false;
 const offer = ranked(lang)[0];
 // Casino du clip (champ casino du flux) : lien vers notre avis seulement si c'est l'un de nos casinos.
 const ours = (name: string) => ranked(lang).find(o => o.name.toLowerCase() === name.toLowerCase())?.id;
@@ -67,6 +66,11 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
     <section class="board-main" aria-labelledby="rk-t">
       <h2 id="rk-t" class="vh">{w.ranking}</h2>
       <div class="podium" aria-hidden="true">{clips.slice(0, 3).map(c => <div><i>#{c.rank}</i><strong>{multi(c.multi)}</strong><b>{streamerName(c.streamer)}</b><span>{c.game ?? platformName(c.platform)}</span></div>)}</div>
+      {yt && thumb && (
+        <a class="vid facade" href={yt} target="_blank" rel="noopener" data-go="youtube" data-place="wins-side" data-yt={v.age_restricted === true ? undefined : v.youtube_id} aria-label={fmt(w.watch, {n: clips.length})}>
+          <img src={thumb} alt={title} width="480" height="270" loading="lazy" /><i aria-hidden="true"></i><span>{fmt(w.watch, {n: clips.length})}</span>
+        </a>
+      )}
       <table class="rk rk-cards" role="table">
         <thead role="rowgroup"><tr role="row">{cols.map((c, i) => <th role="columnheader" scope="col" class={i >= 3 ? 'num' : undefined}>{c}</th>)}</tr></thead>
         <tbody role="rowgroup">{clips.map(c => (
@@ -81,6 +85,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
         ))}</tbody>
       </table>
       <p class="note">{w.method} {w.fine} <a href="/wins/feed.json" type="application/json">JSON</a></p>
+      {page.kind === 'latest' && <p class="note"><a href={href(lang, 'wins/week/')}>{w.rollLink} →</a></p>}
       {page.recordsSub && <p class="note"><a href={href(lang, page.recordsSub)}>{w.recordsLink} →</a></p>}
       {page.monthSub && <p class="note"><a href={href(lang, page.monthSub)}>{w.monthLink} · {monthLabel(lang, v.period.slice(0, 7))} →</a></p>}
     </section>
@@ -94,9 +99,6 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
         <a class="btn" href={offer.affiliate} target="_blank" rel="sponsored noopener" data-go={offer.id} data-place="wins-side">{u.play}</a>
         <p class="small">18+ · <a href={href(lang, `casinos/${offer.id}/`)}>{u.review}</a></p>
       </div>
-      {yt && (embed
-        ? <div class="vid"><iframe src={`https://www.youtube-nocookie.com/embed/${v.youtube_id}`} title={title} loading="lazy" allow="encrypted-media; picture-in-picture" allowfullscreen></iframe></div>
-        : <a class="vid" href={yt} target="_blank" rel="noopener" data-go="youtube" data-place="wins-side">{thumb && <img src={thumb} alt={title} width="480" height="270" loading="lazy" />}<span>{fmt(w.watch, {n: clips.length})}</span></a>)}
       <a class="tg" href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="wins-side"><b>{u.tg.title}</b><span>{u.tg.short} →</span></a>
     </aside>
   </div>

@@ -26,6 +26,20 @@ document.addEventListener('click', e => {
   if (a) track('click_cta', `${a.dataset.go}|${a.dataset.place || ''}`);
 });
 
+// Vidéo du jour : la vignette devient le lecteur au clic (sans JavaScript, c'est un lien vers YouTube).
+document.querySelectorAll<HTMLAnchorElement>('a[data-yt]').forEach(a => a.addEventListener('click', e => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube-nocookie.com/embed/${a.dataset.yt}?autoplay=1`;
+  f.title = a.getAttribute('aria-label') || 'YouTube';
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  const box = document.createElement('div');
+  box.className = 'vid';
+  box.append(f);
+  a.replaceWith(box);
+}));
+
 // Copie du code promo.
 document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(b => b.addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(b.dataset.copy!); } catch {}

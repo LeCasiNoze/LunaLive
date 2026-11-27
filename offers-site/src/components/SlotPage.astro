@@ -25,6 +25,14 @@ if (title.length > 60) title = s.name;
 const desc = fmt(l.desc, vars);
 const h1 = fmt(l.h1, vars);
 // Nos gains sur ce jeu, tirés des Tops du jour publiés (même garde publish_at que /wins/).
+const MW: Record<string, [string, string, string]> = {
+  en: ['{name} max win: our biggest verified wins', 'Biggest verified win on {name} so far: {x} by {who} on {date}, {pct}% of the {max}x max win.', 'Verified wins on this game: {n}.'],
+  fr: ['{name} max win : nos plus gros gains vérifiés', 'Plus gros gain vérifié sur {name} : {x} par {who} le {date}, soit {pct} % du gain maximal de {max}x.', 'Gains vérifiés sur ce jeu : {n}.'],
+  de: ['{name} Max Win: unsere größten verifizierten Gewinne', 'Größter verifizierter Gewinn auf {name}: {x} von {who} am {date}, {pct} % des Maximalgewinns von {max}x.', 'Verifizierte Gewinne auf diesem Spiel: {n}.'],
+  es: ['{name} max win: nuestros mayores premios verificados', 'Mayor premio verificado en {name}: {x} de {who} el {date}, el {pct} % del premio máximo de {max}x.', 'Premios verificados en este juego: {n}.'],
+  pt: ['{name} max win: nossos maiores ganhos verificados', 'Maior ganho verificado em {name}: {x} de {who} em {date}, {pct}% do ganho máximo de {max}x.', 'Ganhos verificados neste jogo: {n}.'],
+  it: ['{name} max win: le nostre vincite verificate più grandi', 'Vincita verificata più grande su {name}: {x} di {who} il {date}, il {pct}% della vincita massima di {max}x.', 'Vincite verificate su questo gioco: {n}.'],
+};
 const days = byKind(await loadFeed(), 'daily');
 const hits = days.flatMap(v => v.clips.filter(c => c.game && slug(c.game) === slug(s.name)).map(c => ({...c, day: v.period, yt: v.youtube_id}))).sort((a, b) => b.multi - a.multi);
 // Lien vers la vidéo, au chapitre du gain quand le flux donne t (secondes).
@@ -69,7 +77,8 @@ const jsonld = [
       </section>
 
       <section class="sec">
-        <h2>{fmt(l.ourWins, vars)}</h2>
+        <h2 id="max-wins">{fmt(hits.length ? MW[lang][0] : l.ourWins, vars)}</h2>
+        {hits.length > 0 && <p class="mw">{fmt(MW[lang][1], {...vars, x: multi(hits[0].multi), who: streamerName(hits[0].streamer), date: dayLabel(lang, hits[0].day), pct: nf(hits[0].multi / s.maxWin * 100)})} {fmt(MW[lang][2], {n: hits.length})}</p>}
         {hits.length > 0
           ? <div class="tbl"><table class="rk rk-all"><thead><tr><th scope="col">{l.cols[0]}</th><th scope="col">{l.cols[1]}</th><th scope="col" class="num">{l.cols[2]}</th><th scope="col" class="num">{l.cols[3]}</th><th scope="col">{l.watch}</th></tr></thead>
               <tbody>{hits.map(c => <tr><td><a href={href(lang, `wins/${c.day}/`)}>{dayLabel(lang, c.day)}</a></td><td>{streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td><td class="num x">{multi(c.multi)}</td><td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{u.wins.buy}</span>}</td><td>{ytUrl(c) ? <a href={ytUrl(c)!} target="_blank" rel="noopener" data-go="youtube" data-place="slot-page">YouTube ↗</a> : '–'}</td></tr>)}</tbody></table></div>

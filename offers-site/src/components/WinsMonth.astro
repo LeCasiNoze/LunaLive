@@ -15,19 +15,22 @@ const site = Astro.site!.origin;
 const hits = page.hits!;
 const big = hits[0];
 const rec = page.kind === 'records';
+const roll = page.kind === 'rolling';
 // Records : {m} devient la date du premier jour couvert.
-const m = rec ? dayLabel(lang, page.name!) : monthLabel(lang, page.name!);
+const range = () => new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'long', timeZone: 'UTC'}).formatRange(new Date(page.days.at(-1)!.period + 'T12:00:00Z'), new Date(page.days[0].period + 'T12:00:00Z'));
+const m = roll ? range() : rec ? dayLabel(lang, page.name!) : monthLabel(lang, page.name!);
 const vars = {m, n: hits.length, x: multi(big.multi), who: streamerName(big.streamer), pf: platformName(big.platform)};
-let title = fmt(rec ? w.tRecords : w.tMonth, vars);
+let title = fmt(roll ? w.tRoll : rec ? w.tRecords : w.tMonth, vars);
 if (title.length > 60) title = title.split(' – ')[0];
-const segs = fmt(rec ? w.dRecords : w.dMonth, vars).split('¦');
+// Date de mise à jour affichée sur la page de la semaine : c'est ce que cherche « latest big wins ».
+const segs = fmt(roll ? w.dRoll : rec ? w.dRecords : w.dMonth, vars).split('¦');
 while (segs.length > 1 && segs.join('').length > 160) segs.pop();
 const desc = segs.join('');
-const h1 = fmt(rec ? w.h1Records : w.h1Month, vars);
+const h1 = fmt(roll ? w.h1Roll : rec ? w.h1Records : w.h1Month, vars);
 const offer = ranked(lang)[0];
 const short = (iso: string) => new Intl.DateTimeFormat(d.locale, {day: 'numeric', month: 'short', timeZone: 'UTC'}).format(new Date(iso + 'T12:00:00Z'));
 const groupUrl = (base: string, name: string, list?: {sub: string}[]) => list?.find(x => x.sub === `wins/${base}/${slug(name)}/`) && href(lang, `wins/${base}/${slug(name)}/`);
-const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, {name: rec ? w.recordsCrumb : m, url: href(lang, page.sub)}];
+const crumbs = [{name: d.review.crumbsHome, url: href(lang)}, {name: w.crumb, url: href(lang, 'wins/')}, {name: roll ? w.rollCrumb : rec ? w.recordsCrumb : m, url: href(lang, page.sub)}];
 const jsonld = [
   {'@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: crumbs.map((c, i) => ({'@type': 'ListItem', position: i + 1, name: c.name, item: site + c.url}))},
   {'@context': 'https://schema.org', '@type': 'ItemList', name: h1, itemListOrder: 'https://schema.org/ItemListOrderDescending', numberOfItems: hits.length,
@@ -39,9 +42,9 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], 
   <ol class="crumbs">{crumbs.map((c, i) => i < crumbs.length - 1 ? <li><a href={c.url}>{c.name}</a></li> : <li aria-current="page">{c.name}</li>)}</ol>
 
   <header class="pg-hd">
-    <p class="kick">Top {hits.length}{rec ? '' : ` · ${page.days.length} ${w.daysCount}`}</p>
+    <p class="kick">Top {hits.length}{rec ? '' : ` · ${page.days.length} ${w.daysCount}`}{roll && <> · <time datetime={page.last}>{dayLabel(lang, page.last!)}</time></>}</p>
     <h1>{h1}</h1>
-    <p class="lede">{fmt(rec ? w.iRecords : w.iMonth, vars)} {w.method}</p>
+    <p class="lede">{fmt(roll ? w.iRoll : rec ? w.iRecords : w.iMonth, vars)} {w.method}</p>
   </header>
 
   <div class="board">
@@ -78,7 +81,7 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6], 
   </div>
 
   {!rec && <section class="sec">
-    <h2>{w.daysMonth}</h2>
+    <h2>{roll ? w.days : w.daysMonth}</h2>
     <table class="list"><tbody>{page.days.map(x => { const t1 = top(x)[0]; return <tr><td><a href={href(lang, `wins/${x.period}/`)}>{dayLabel(lang, x.period)}</a></td><td>{streamerName(t1.streamer)}</td><td class="num x">{multi(t1.multi)}</td></tr>; })}</tbody></table>
     {(page.prev || page.next) && <p class="note">{page.prev && <a href={href(lang, page.prev)}>← {monthLabel(lang, page.prev.split('/')[2])}</a>}{page.prev && page.next && ' · '}{page.next && <a href={href(lang, page.next)}>{monthLabel(lang, page.next.split('/')[2])} →</a>}</p>}
   </section>}

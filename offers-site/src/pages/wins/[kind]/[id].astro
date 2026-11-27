@@ -5,7 +5,7 @@ import WinsMonth from '../../../components/WinsMonth.astro';
 import {winsPaths} from '../../../data/wins';
 // Version anglaise : /wins/week/<AAAA-Wnn>/, /wins/slot/<jeu>/, /wins/streamer/<nom>/, /wins/month/<AAAA-MM>/.
 export async function getStaticPaths() {
-  return (await winsPaths(['en'])).filter(({page}) => page.kind !== 'latest' && page.kind !== 'day' && page.kind !== 'records').map(({lang, page}) => { const [, kind, id] = page.sub.split('/'); return {params: {kind, id}, props: {lang, page}}; });
+  return (await winsPaths(['en'])).filter(({page}) => page.kind !== 'latest' && page.kind !== 'day' && page.kind !== 'records' && page.kind !== 'rolling').map(({lang, page}) => { const [, kind, id] = page.sub.split('/'); return {params: {kind, id}, props: {lang, page}}; });
 }
 const {lang, page} = Astro.props as any;
 ---

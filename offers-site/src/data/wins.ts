@@ -65,7 +65,7 @@ export function weekBounds(week: string) {
 // Pages à générer, identiques dans les 6 langues (hreflang réciproque).
 export type Hit = Clip & {day: string; youtube_id: string | null};
 export type Group = {sub: string; name: string; hits: Hit[]};
-export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'slot' | 'streamer' | 'month' | 'records'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
+export type WinsPage = {sub: string; kind: 'latest' | 'day' | 'week' | 'rolling' | 'slot' | 'streamer' | 'month' | 'records'; v?: Video; days: Video[]; week?: string; prev?: string; next?: string; weekSub?: string;
   name?: string; hits?: Hit[]; last?: string; slots?: Group[]; streamers?: Group[]; monthSub?: string; recordsSub?: string};
 export const slug = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 // Seuls les Tops du jour comptent : un même clip repasse dans le Top de la semaine.
@@ -93,6 +93,12 @@ export async function winsPages(): Promise<WinsPage[]> {
   // Page du mois : le top 30 des gains de tous les jours du mois, dès 2 jours publiés.
   const months = [...new Set(days.map(v => v.period.slice(0, 7)))].filter(m => days.filter(v => v.period.startsWith(m)).length >= MIN_DAYS).sort().reverse();
   const monthSub = (day: string) => (months.includes(day.slice(0, 7)) ? `wins/month/${day.slice(0, 7)}/` : undefined);
+  // « Les gros gains de la semaine » : 7 jours glissants jusqu'au dernier jour publié, à adresse fixe.
+  const from = new Date(Date.parse(days[0].period + 'T12:00:00Z') - 6 * 86400000).toISOString().slice(0, 10);
+  const recent = days.filter(v => v.period >= from);
+  const rolling: WinsPage[] = recent.length < MIN_DAYS ? [] : [{sub: 'wins/week/', kind: 'rolling', last: recent[0].period, days: recent,
+    hits: recent.flatMap(v => v.clips.map(c => ({...c, day: v.period, youtube_id: v.youtube_id}))).sort((a, b) => b.multi - a.multi).slice(0, 10).map((c, j) => ({...c, rank: j + 1})),
+    slots: near(slots, recent), streamers: near(streamers, recent)}];
   return [
     {sub: 'wins/', kind: 'latest', v: days[0], days: days.slice(1, 8), weekSub: weekSub(isoWeek(days[0].period)), monthSub: monthSub(days[0].period), recordsSub: days.length >= 3 ? 'wins/records/' : undefined, slots, streamers},
     ...days.map((v, i) => ({sub: daySub(v), kind: 'day' as const, v, days: [], prev: days[i + 1] && daySub(days[i + 1]), next: days[i - 1] && daySub(days[i - 1]), weekSub: weekSub(isoWeek(v.period)), monthSub: monthSub(v.period), slots: near(slots, [v]), streamers: near(streamers, [v])})),
@@ -111,6 +117,7 @@ export async function winsPages(): Promise<WinsPage[]> {
       return {sub: `wins/month/${m}/`, kind: 'month' as const, name: m, hits, last: md[0].period, days: md,
         prev: months[i + 1] && `wins/month/${months[i + 1]}/`, next: months[i - 1] && `wins/month/${months[i - 1]}/`, slots: near(slots, md), streamers: near(streamers, md)};
     }),
+    ...rolling,
     ...slots.map(g => ({sub: g.sub, kind: 'slot' as const, name: g.name, hits: g.hits, last: last(g), days: [], streamers: streamers.filter(x => x.hits.some(h => slug(h.game ?? '') === slug(g.name)))})),
     ...streamers.map(g => ({sub: g.sub, kind: 'streamer' as const, name: g.name, hits: g.hits, last: last(g), days: [], slots: slots.filter(x => x.hits.some(h => slug(streamerName(h.streamer)) === slug(g.name)))})),
   ];
