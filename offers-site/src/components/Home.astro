@@ -15,6 +15,7 @@ const CASINOS = ranked(lang);
 const lead = CASINOS[0];
 const latest = (await winsPages())[0]?.v;
 const hasWins = !!latest;
+const no1 = latest ? top(latest)[0] : undefined;
 const w = u.wins;
 const date = fmtDate(lang, CHECKED);
 const site = Astro.site!.origin;
@@ -29,8 +30,21 @@ const jsonld = [
       <p class="kick">{fmt(d.hero.kicker, {date})}</p>
       <h1>{u.heroA} {u.heroB}</h1>
       <p class="lede">{u.heroSub}</p>
-      <p class="home-jump"><a href="#offers">{u.offersTitle} ↓</a>{hasWins && <a href={href(lang, 'wins/')}>{w.latest} →</a>}</p>
+      <p class="home-jump"><a class="btn btn-lg btn-ghost" href="#offers">{u.offersTitle} ↓</a>{hasWins && <a class="btn btn-lg btn-ghost" href={href(lang, 'wins/')}>{w.latest} →</a>}</p>
     </div>
+    {no1 && (
+      <a class="score" href={href(lang, 'wins/')}>
+        {latest!.thumb && <div class="score-img"><img src={latest!.thumb} alt="" width="480" height="270" fetchpriority="high" /></div>}
+        <div class="score-body">
+          <span class="score-tag">#1 · {dayLabel(lang, latest!.period)}</span>
+          <span class="score-x">{multi(no1.multi)}</span>
+          <span class="score-who"><b>{streamerName(no1.streamer)}</b><span>{[no1.game, platformName(no1.platform)].filter(Boolean).join(' · ')}</span></span>
+        </div>
+      </a>
+    )}
+  </section>
+
+  <section class="home-offer" aria-label={u.top}>
     <aside class="offer">
       <div class="offer-hd">
         <img src={lead.logo} alt="" width="44" height="44" />

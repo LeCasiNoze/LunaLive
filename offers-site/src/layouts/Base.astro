@@ -1,5 +1,8 @@
 ---
 import '../styles/global.css';
+import interUrl from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
+import displayUrl from '@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2?url';
+import Icon from '../components/Icon.astro';
 import {LANGS, t, href, type Lang} from '../i18n';
 import {ui} from '../i18n/ui';
 import {YOUTUBE, TELEGRAM} from '../data/casinos';
@@ -10,6 +13,7 @@ import {SL} from '../data/slots';
 interface Props {lang: Lang; title: string; desc: string; path?: string; jsonld?: object[]; noindex?: boolean; sticky?: boolean; active?: string; mono?: boolean; image?: string}
 const {lang, title, desc, path = '', jsonld = [], noindex = false, sticky = true, active = '', mono = false, image} = Astro.props;
 const d = t(lang);
+const SKIP = {en: 'Skip to content', fr: 'Aller au contenu', de: 'Zum Inhalt springen', es: 'Saltar al contenido', pt: 'Ir para o conteúdo', it: 'Vai al contenuto'};
 const u = ui(lang);
 const site = Astro.site!.origin;
 const canonical = site + href(lang, path);
@@ -48,7 +52,7 @@ const foot = [
   {!noindex && !mono && <link rel="alternate" hreflang="x-default" href={site + href('en', path)} />}
   <meta name="google-site-verification" content="Pm6sWjjh1lu2tu7G8St63-k13pzdxC77wWsTOUBBfz4" />
   <meta name="google-site-verification" content="x4oEe0c4uEHjIztc11OKQXFP-Piu1Ss1ZJpIDPc_uZQ" />
-  <meta name="theme-color" content="#0f1115" />
+  <meta name="theme-color" content="#0a0b12" />
   <link rel="icon" href="/favicon.png" type="image/png" />
   <link rel="apple-touch-icon" href="/icon-512.png" />
   <meta property="og:type" content="website" />
@@ -62,13 +66,15 @@ const foot = [
   {!image && <meta property="og:image:height" content="630" />}
   <meta property="og:locale" content={d.locale.replace('-', '_')} />
   <meta name="twitter:card" content="summary_large_image" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preload" href={interUrl} as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href={displayUrl} as="font" type="font/woff2" crossorigin />
   <link rel="preconnect" href="https://lunalive-api.onrender.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  {/* Préchargement au survol des pages internes, sans pré-rendu : le suivi ne compte que les pages réellement ouvertes. */}
+  <script type="speculationrules" is:inline>{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"/go/*"}}]},"eagerness":"moderate"}]}</script>
   {ld.map(o => <script type="application/ld+json" set:html={JSON.stringify(o)} />)}
 </head>
 <body>
+  <a class="skip" href="#main">↓ {SKIP[lang]}</a>
   <header class="hd">
     <div class="wrap hd-in">
       <a class="brand" href={href(lang)} aria-label="Big Win Daily"><img src="/img/bwd-256.png" alt="" width="32" height="32" /><span>Big Win Daily</span></a>
@@ -77,6 +83,13 @@ const foot = [
       <details class="lang">
         <summary><span class="vh">{d.nav.language} </span>{d.short}</summary>
         <ul>{LANGS.map(l => <li><a href={href(l, mono ? '' : path)} hreflang={l} lang={l} aria-current={l === lang ? 'true' : undefined}>{t(l).name}</a></li>)}</ul>
+      </details>
+      <details class="menu">
+        <summary><span class="vh">Menu</span><Icon name="menu" /></summary>
+        <ul>
+          {nav.map(n => <li><a href={n.url} aria-current={cur === n.k ? 'page' : undefined}>{n.label}</a></li>)}
+          <li><a href={TELEGRAM} target="_blank" rel="noopener" data-go="telegram" data-place="topbar">Telegram ↗</a></li>
+        </ul>
       </details>
     </div>
   </header>

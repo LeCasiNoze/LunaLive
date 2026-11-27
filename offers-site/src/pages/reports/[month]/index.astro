@@ -28,30 +28,30 @@ const jsonld = [{'@context': 'https://schema.org', '@type': 'Dataset', name: `Bi
 
     <section class="sec">
       <h2>Top {r.top.length} verified wins</h2>
-      <table class="rk rk-all">
+      <div class="tbl"><table class="rk rk-all">
         <thead><tr><th scope="col">#</th><th scope="col">Date</th><th scope="col">Streamer</th><th scope="col">Game</th><th scope="col" class="num">× bet</th><th scope="col" class="num">Bonus buy: × price</th><th scope="col">Clip</th></tr></thead>
         <tbody>{r.top.map((c, i) => (
           <tr><td class="num">{i + 1}</td><td>{c.day}</td><td>{streamerName(c.streamer)}<span class="sub">{platformName(c.platform)}</span></td><td>{c.game ?? 'not identified'}<span class="sub">{c.provider ?? ''}</span></td><td class="num x">x{nf(c.multi)}</td><td class="num">{c.bonus_buy && c.paid_multi ? `x${nf(c.paid_multi)}` : '–'}</td><td>{clipVideo(c.video, c.t) && <a href={clipVideo(c.video, c.t)!} target="_blank" rel="noopener">▶ watch</a>}</td></tr>
         ))}</tbody>
-      </table>
+      </table></div>
     </section>
 
     {r.games.length > 0 && (
       <section class="sec">
         <h2>Games that paid 1,000x or more</h2>
-        <table class="rk rk-all">
+        <div class="tbl"><table class="rk rk-all">
           <thead><tr><th scope="col">Game</th><th scope="col">Provider</th><th scope="col" class="num">Wins ≥ 1,000x</th><th scope="col" class="num">Best</th></tr></thead>
           <tbody>{r.games.map(g => <tr><td>{g.game}</td><td>{g.provider}</td><td class="num">{g.n1000}</td><td class="num x">x{nf(g.best!.multi)}</td></tr>)}</tbody>
-        </table>
+        </table></div>
       </section>
     )}
 
     <section class="sec">
       <h2>Providers</h2>
-      <table class="rk rk-all">
+      <div class="tbl"><table class="rk rk-all">
         <thead><tr><th scope="col">Provider</th><th scope="col" class="num">Verified wins</th><th scope="col" class="num">≥ 1,000x</th><th scope="col" class="num">Median × bet</th></tr></thead>
         <tbody>{r.providers.map(p => <tr><td>{p.provider}</td><td class="num">{p.wins}</td><td class="num">{p.big}</td><td class="num">x{nf(p.median)}</td></tr>)}</tbody>
-      </table>
+      </table></div>
     </section>
 
     <section class="sec prose-txt">

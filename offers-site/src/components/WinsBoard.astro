@@ -66,16 +66,17 @@ const cols = [w.cols[0], w.cols[1], w.cols[2], w.cols[4], w.cols[5], w.cols[6]];
   <div class="board">
     <section class="board-main" aria-labelledby="rk-t">
       <h2 id="rk-t" class="vh">{w.ranking}</h2>
-      <table class="rk">
-        <thead><tr>{cols.map((c, i) => <th scope="col" class={i >= 3 ? 'num' : undefined}>{c}</th>)}</tr></thead>
-        <tbody>{clips.map(c => (
-          <tr class={c.rank === 1 ? 'top' : undefined}>
-            <td class="pos">{c.rank}</td>
-            <td>{streamerUrl(c) ? <a href={streamerUrl(c)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
-            <td>{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{(c.provider || c.casino) && <span class="sub">{[c.provider, c.casino && (ours(c.casino) ? null : `${w.on} ${c.casino}`)].filter(Boolean).join(' · ')}{c.casino && ours(c.casino) && <>{c.provider ? ' · ' : ''}<a href={href(lang, `casinos/${ours(c.casino)}/`)}>{w.on} {c.casino}</a></>}</span>}</td>
-            <td class="num x">{multi(c.multi)}{v.youtube_id && c.t != null && <span class="sub"><a href={clipVideo(v.youtube_id, c.t)!} target="_blank" rel="noopener" data-go="youtube" data-place="wins-clip">▶ {mmss(c.t)}</a></span>}</td>
-            <td class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
-            <td class="num">{money(c.win, c.currency, lang)}</td>
+      <div class="podium" aria-hidden="true">{clips.slice(0, 3).map(c => <div><i>#{c.rank}</i><strong>{multi(c.multi)}</strong><b>{streamerName(c.streamer)}</b><span>{c.game ?? platformName(c.platform)}</span></div>)}</div>
+      <table class="rk rk-cards" role="table">
+        <thead role="rowgroup"><tr role="row">{cols.map((c, i) => <th role="columnheader" scope="col" class={i >= 3 ? 'num' : undefined}>{c}</th>)}</tr></thead>
+        <tbody role="rowgroup">{clips.map(c => (
+          <tr role="row" class={c.rank === 1 ? 'top' : undefined}>
+            <td role="cell" class="pos">{c.rank}</td>
+            <td role="cell">{streamerUrl(c) ? <a href={streamerUrl(c)}>{streamerName(c.streamer)}</a> : streamerName(c.streamer)}<span class="sub"><a href={channelUrl(c)} target="_blank" rel="noopener nofollow">{platformName(c.platform)} ↗</a></span></td>
+            <td role="cell">{c.game ? (slotUrl(c.game) ? <a href={slotUrl(c.game)}>{c.game}</a> : c.game) : <span class="na">–</span>}{(c.provider || c.casino) && <span class="sub">{[c.provider, c.casino && (ours(c.casino) ? null : `${w.on} ${c.casino}`)].filter(Boolean).join(' · ')}{c.casino && ours(c.casino) && <>{c.provider ? ' · ' : ''}<a href={href(lang, `casinos/${ours(c.casino)}/`)}>{w.on} {c.casino}</a></>}</span>}</td>
+            <td role="cell" class="num x">{multi(c.multi)}{v.youtube_id && c.t != null && <span class="sub"><a href={clipVideo(v.youtube_id, c.t)!} target="_blank" rel="noopener" data-go="youtube" data-place="wins-clip">▶ {mmss(c.t)}</a></span>}</td>
+            <td role="cell" data-l={cols[4]} class="num">{money(c.bet, c.currency, lang)}{c.bonus_buy && <span class="sub buy">{w.buy}</span>}</td>
+            <td role="cell" data-l={cols[5]} class="num">{money(c.win, c.currency, lang)}</td>
           </tr>
         ))}</tbody>
       </table>

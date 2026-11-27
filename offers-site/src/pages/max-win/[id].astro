@@ -42,12 +42,12 @@ const jsonld = [
     <section class="sec">
       <h2>Verified wins on stream</h2>
       <p>Each win was read on screen by our detector and checked on the image; rejected or doubtful reads are left out. Multipliers are win ÷ bet. Most of these wins come from bought bonuses: for those, the last column divides the win by the price paid for the bonus, which is the return that really counts.</p>
-      <table class="rk rk-all">
+      <div class="tbl"><table class="rk rk-all">
         <thead><tr><th scope="col">Date</th><th scope="col">Streamer</th><th scope="col" class="num">× bet</th><th scope="col" class="num">Bonus buy: × price paid</th></tr></thead>
         <tbody>{stats.top10.map(w => (
           <tr><td>{fmtDate(lang, w.day)}</td><td>{streamerName(w.streamer)}<span class="sub">{platformName(w.platform as 'kick')}</span></td><td class="num x">x{nf(w.multi)}</td><td class="num">{w.bonus_buy ? `x${nf(w.paid_multi)}` : '–'}</td></tr>
         ))}</tbody>
-      </table>
+      </table></div>
       {months.length > 0 && <p class="note">Wins of 1,000x or more: {months.map(([m, n]) => `${new Date(m + '-01T12:00:00Z').toLocaleString('en-US', {month: 'long', year: 'numeric', timeZone: 'UTC'})}: ${n}`).join(' · ')}. These pages update with each batch of verified wins and only exist from {MIN_WINS} verified wins.</p>}
     </section>
 

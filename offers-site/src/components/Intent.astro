@@ -36,7 +36,7 @@ const jsonld = [
     </header>
 
     {x.table
-      ? <table class="rk rk-all"><thead><tr>{x.table.cols.map(h => <th scope="col">{h}</th>)}</tr></thead><tbody>{x.table.rows.map(r => <tr>{r.map((v, i) => i ? <td>{v}</td> : <th scope="row">{v}</th>)}</tr>)}</tbody></table>
+      ? <div class="tbl"><table class="rk rk-all"><thead><tr>{x.table.cols.map(h => <th scope="col">{h}</th>)}</tr></thead><tbody>{x.table.rows.map(r => <tr>{r.map((v, i) => i ? <td>{v}</td> : <th scope="row">{v}</th>)}</tr>)}</tbody></table></div>
       : <dl class="kv spec">{x.facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
 
     {x.steps && <div class="steps">{x.steps.map((s, i) => <div class="step"><span class="n">{i + 1}</span><p>{s}</p></div>)}</div>}

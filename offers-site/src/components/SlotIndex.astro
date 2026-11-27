@@ -27,12 +27,12 @@ const jsonld = [
   {providers.map(p => (
     <section class="sec">
       <h2>{p}</h2>
-      <table class="rk rk-all">
+      <div class="tbl"><table class="rk rk-all">
         <thead><tr><th scope="col">{l.crumb}</th><th scope="col" class="num">{l.maxWin}</th><th scope="col" class="num">{l.rtp}</th><th scope="col">{l.volatility}</th></tr></thead>
         <tbody>{SLOTS.filter(s => s.provider === p).sort((a, b) => b.maxWin - a.maxWin).map(s => (
           <tr><td><a href={href(lang, `slots/${s.id}/`)}>{s.name}</a></td><td class="num x">{nf(s.maxWin)}x</td><td class="num">{nf(Math.max(...s.rtp))}%</td><td>{s.volatility ? l.vol[s.volatility] ?? s.volatility : '–'}</td></tr>
         ))}</tbody>
-      </table>
+      </table></div>
     </section>
   ))}
   {lang === 'en' && maxWinPages().length > 0 && <section class="sec"><h2>Max win: has anyone hit it?</h2><ul class="links">{maxWinPages().map(p => <li><a href={`/max-win/${p.id}/`}>{p.sheet.game} max win</a><span>{p.stats.wins} verified wins</span></li>)}</ul></section>}

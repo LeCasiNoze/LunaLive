@@ -90,9 +90,9 @@ if (sticky && anchor) {
   if (foot) new IntersectionObserver(([e]) => { atFoot = e.isIntersecting; upd(); }).observe(foot);
 }
 
-// Fermer le menu de langue en cliquant ailleurs.
+// Fermer les menus de l'en-tête en cliquant ailleurs.
 document.addEventListener('click', e => {
-  document.querySelectorAll<HTMLDetailsElement>('details.lang[open]').forEach(d => { if (!d.contains(e.target as Node)) d.open = false; });
+  document.querySelectorAll<HTMLDetailsElement>('details.lang[open], details.menu[open]').forEach(d => { if (!d.contains(e.target as Node)) d.open = false; });
 });
 
 // Menu latéral (mobile).
