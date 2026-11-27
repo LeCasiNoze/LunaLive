@@ -453,6 +453,18 @@ table.rk td a:hover { text-decoration: underline; }
   *, *::details-content { transition: none !important; }
   @view-transition { navigation: none; }
 }
-.tbl tbody th { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; font-weight: 650; color: var(--muted); }
-.tbl tbody tr:last-child th { border-bottom: 0; }
-@media (max-width: 700px) { .tbl tbody th { padding: 11px 9px; font-size: 12px; } .tbl td { min-width: 112px; } }
+.tbl table.rk tbody th { padding: 14px 16px; border-bottom: 1px solid var(--line); background: none; text-align: left; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 650; color: var(--muted); }
+.tbl table.rk tbody tr:last-child th { border-bottom: 0; }
+@media (max-width: 700px) {
+  /* Sur téléphone, la carte n° 1 suit de près : l’encadré d’accueil ferait doublon. */
+  .home-offer { display: none; }
+  /* Les comparaisons à trois colonnes tiennent dans l’écran. */
+  .tbl table.rk { font-size: 13px; }
+  .tbl thead th { padding: 10px 8px; letter-spacing: .02em; }
+  .tbl table.rk tbody th, .tbl table.rk td { padding: 10px 8px; }
+  .tbl table.rk tbody th { font-size: 12px; hyphens: auto; overflow-wrap: break-word; width: 27%; }
+  .score-img { display: none; }
+  .home-jump { margin-top: 20px; }
+  .home-jump .btn { padding-inline: 12px; white-space: normal; text-align: center; font-size: 14px; }
+}
+.score-img picture, .score-img img { display: block; width: 100%; height: 100%; }

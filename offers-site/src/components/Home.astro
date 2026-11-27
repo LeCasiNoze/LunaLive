@@ -34,7 +34,8 @@ const jsonld = [
     </div>
     {no1 && (
       <a class="score" href={href(lang, 'wins/')}>
-        {latest!.thumb && <div class="score-img"><img src={latest!.thumb} alt="" width="480" height="270" fetchpriority="high" /></div>}
+        {/* Sur téléphone la vignette n’est ni affichée ni téléchargée : l’offre reste près du haut. */}
+        {latest!.thumb && <div class="score-img"><picture><source media="(max-width: 700px)" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw=" /><img src={latest!.thumb} alt="" width="480" height="270" fetchpriority="high" /></picture></div>}
         <div class="score-body">
           <span class="score-tag">#1 · {dayLabel(lang, latest!.period)}</span>
           <span class="score-x">{multi(no1.multi)}</span>
