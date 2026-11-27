@@ -83,47 +83,30 @@ function safeFilename(v: any) {
     .slice(0, 80) || "clip";
 }
 
-// ensure tables
+// Monté sans préfixe : ce middleware voit toutes les requêtes de l'API. Les tables ne se
+// préparent donc qu'une fois par processus, et jamais avec un ALTER TABLE rejoué (verrou exclusif).
+let clipTables: Promise<void> | null = null;
+
+async function prepareClipTables() {
+  await ensureBotClips();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clip_likes (
+      clip_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      created_ts BIGINT NOT NULL,
+      PRIMARY KEY (clip_id, user_id)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_clip ON clip_likes(clip_id);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_user ON clip_likes(user_id);`);
+}
+
 clipsPublicRouter.use(async (_req, _res, next) => {
   try {
-    await ensureBotClips();
-
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS clip_likes (
-        clip_id BIGINT NOT NULL,
-        user_id BIGINT NOT NULL,
-        created_ts BIGINT NOT NULL,
-        PRIMARY KEY (clip_id, user_id)
-      );
-    `);
-
-    await pool
-      .query(`
-      ALTER TABLE clip_likes
-      ALTER COLUMN created_ts TYPE BIGINT
-      USING created_ts::bigint;
-    `)
-      .catch(() => {});
-
-    // keep bot_clips timestamps in bigint (safe)
-    await pool
-      .query(`
-      ALTER TABLE bot_clips
-      ALTER COLUMN created_ts TYPE BIGINT
-      USING created_ts::bigint;
-    `)
-      .catch(() => {});
-
-    await pool
-      .query(`
-      ALTER TABLE bot_clips
-      ALTER COLUMN deleted_ts TYPE BIGINT
-      USING deleted_ts::bigint;
-    `)
-      .catch(() => {});
-
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_clip ON clip_likes(clip_id);`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_likes_user ON clip_likes(user_id);`);
+    await (clipTables ??= prepareClipTables().catch((e) => {
+      clipTables = null;
+      throw e;
+    }));
   } catch {}
   next();
 });
