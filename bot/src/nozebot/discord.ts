@@ -55,6 +55,7 @@ import { handleBelvaQuests, registerQuestCommand, startBelvaQuests } from './bel
 import { ensureReviews, handleBelvaReview } from './belva-review.js';
 import { startBelvaLinkSync } from './belva-link-sync.js';
 import { belvaLiveConfig } from './belva-live.js';
+import { buildLcnLiveMessage } from './lcn-live.js';
 import { handleBelvaGameMessage, handleBelvaGames, registerBelvaGameCommands } from './belva-games.js';
 import { handleBelvaTournament, registerTournamentCommands, startBelvaTournament } from './belva-tournament.js';
 import {
@@ -750,7 +751,7 @@ export async function startLeCasiNozeDiscordBot(pool?: Pool): Promise<() => Prom
   let stopLiveAlerts: () => void = () => undefined;
   if (pool) {
     try {
-      stopLiveAlerts = await startLeCasiNozeLiveAlerts(client, pool, config.liveAlerts);
+      stopLiveAlerts = await startLeCasiNozeLiveAlerts(client, pool, { ...config.liveAlerts, render: (snapshot, ping) => buildLcnLiveMessage(snapshot, ping, config.liveAlerts) });
     } catch (error) {
       console.error("[nozebot][live] démarrage impossible", error);
     }
