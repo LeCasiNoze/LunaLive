@@ -369,7 +369,7 @@ export function startBelvaTournament(client:Client,pool:Pool|undefined,config:Lu
   if(!pool)return;
   const seen=new Map<number,number>();let busy=false;
   // Au démarrage : la carte du tournoi en cours est (re)publiée sur le Discord LeCasiNoze.
-  setTimeout(()=>void schema(pool).then(()=>current(pool)).then(t=>t&&isApproved(pool,'tournament').then(ok=>ok?refreshCard(client,pool,t):undefined))
+  setTimeout(()=>void schema(pool).then(()=>current(pool)).then(t=>t?.status==='open'?isApproved(pool,'tournament').then(ok=>ok?refreshCard(client,pool,t):undefined):undefined)
     .catch(e=>console.error('[nozebot] miroir tournoi',e)),20_000).unref();
   // Tout premier tournoi : inscriptions ouvertes d'office dès la validation (tirage au plus tôt le FIRST_DRAW).
   const ensureFirst=async()=>{if(!(await pool.query(`SELECT 1 FROM belva_tournaments LIMIT 1`)).rowCount&&await isApproved(pool,'tournament'))await openTournament(client,pool,BUY_CENTS(),client.user!.id);};
