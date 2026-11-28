@@ -527,6 +527,10 @@ export function ensureRumbleBridge(opts: {
       for(const line of [reply??[]].flat())await sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',line);
       return;
     }
+    if(opts.slug==='lecasinoze'){
+      const linked=await finishPendingLink(opts.pool,opts.streamerId,String(m.userId),m.username).catch(()=>null);
+      if(linked)void sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',linked);
+    }
     if(opts.slug==='belvaa'){
       const linked=await finishPendingLink(opts.pool,opts.streamerId,String(m.userId),m.username).catch(()=>null);
       if(linked)void sendRumbleMessageReliable(opts.pool,videoIdNumeric||'',linked);

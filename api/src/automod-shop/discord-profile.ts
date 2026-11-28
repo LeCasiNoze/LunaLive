@@ -16,12 +16,28 @@ export async function discordProfileSchema(pool:Pool){
  expires_at timestamptz NOT NULL,created_at timestamptz NOT NULL DEFAULT NOW(),PRIMARY KEY(streamer_id,discord_user_id));`);
  }).catch(e=>{ready.delete(pool);throw e;});ready.set(pool,pending);}await pending;
 }
+// Belva et LeCasiNoze partagent une seule liaison Rumble ↔ Discord : un code demandé sur l'un des deux Discord
+// vaut dans les deux chats Rumble (et sous les vidéos de Belva), et la liaison est écrite pour les deux chaînes.
+type Q={query:Pool['query']};
+export async function linkGroup(c:Q,sid:number):Promise<number[]>{
+ const ids=(await c.query(`SELECT id FROM streamers WHERE lower(slug) IN ('belvaa','lecasinoze') ORDER BY id`)).rows.map(r=>Number(r.id));
+ return ids.includes(Number(sid))?ids:[Number(sid)];
+}
+export async function bindDiscordLink(c:Q,ids:number[],discordId:string,uid:string,username:string):Promise<boolean>{
+ const conflict=(await c.query(`SELECT 1 FROM automod_discord_links WHERE streamer_id=ANY($1::bigint[]) AND
+  ((discord_user_id=$2 AND rumble_user_id<>$3) OR (rumble_user_id=$3 AND discord_user_id<>$2))`,[ids,discordId,uid])).rowCount;
+ if(conflict)return false;
+ for(const id of ids)await c.query(`INSERT INTO automod_discord_links(streamer_id,discord_user_id,rumble_user_id,username) VALUES($1,$2,$3,$4)
+  ON CONFLICT(streamer_id,discord_user_id) DO UPDATE SET username=EXCLUDED.username`,[id,discordId,uid,username]);
+ await c.query('DELETE FROM automod_discord_link_codes WHERE streamer_id=ANY($1::bigint[]) AND discord_user_id=$2',[ids,discordId]);
+ return true;
+}
 export async function requestAutomodDiscordLink(pool:Pool,sid:number,discordId:string){
  if(!/^\d{17,20}$/.test(discordId))throw Error('bad_identity');
  await discordProfileSchema(pool);
  return inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
-  const linked=(await c.query('SELECT username FROM automod_discord_links WHERE streamer_id=$1 AND discord_user_id=$2',[sid,discordId])).rows[0];
+  const linked=(await c.query('SELECT username FROM automod_discord_links WHERE streamer_id=ANY($1::bigint[]) AND discord_user_id=$2 LIMIT 1',[await linkGroup(c,sid),discordId])).rows[0];
   if(linked)return {linked:true,username:linked.username};
   const previous=(await c.query(`SELECT 1 FROM automod_discord_link_codes WHERE streamer_id=$1 AND discord_user_id=$2 AND created_at>NOW()-INTERVAL '1 minute'`,[sid,discordId])).rowCount;
   if(previous)throw Error('link_cooldown');
@@ -39,15 +55,11 @@ export async function handleDiscordLinkChat(pool:Pool,m:{streamerId:number;userI
  if(!match)return `@${m.username} — Sur Discord, utilise ${texts.command} puis colle ici la commande privée reçue.`;
  await discordProfileSchema(pool);
  return inTransaction(pool,async c=>{
-  await c.query('SELECT pg_advisory_xact_lock($1)',[m.streamerId]);
-  const code=(await c.query('SELECT discord_user_id FROM automod_discord_link_codes WHERE streamer_id=$1 AND code_hash=$2 AND expires_at>NOW() FOR UPDATE',[m.streamerId,digest(match[1])])).rows[0];
+  const ids=await linkGroup(c,m.streamerId);
+  await c.query('SELECT pg_advisory_xact_lock($1)',[ids[0]]);
+  const code=(await c.query('SELECT discord_user_id FROM automod_discord_link_codes WHERE streamer_id=ANY($1::bigint[]) AND code_hash=$2 AND expires_at>NOW() LIMIT 1 FOR UPDATE',[ids,digest(match[1])])).rows[0];
   if(!code)return `@${m.username} — Code expiré ou invalide. Redemande ${texts.command} sur Discord.`;
-  const conflict=(await c.query(`SELECT 1 FROM automod_discord_links WHERE streamer_id=$1 AND
-  ((discord_user_id=$2 AND rumble_user_id<>$3) OR (rumble_user_id=$3 AND discord_user_id<>$2))`,[m.streamerId,code.discord_user_id,m.userId])).rowCount;
-  if(conflict)return `@${m.username} — Un de ces comptes est déjà lié. Contacte un modérateur pour changer la liaison.`;
-  await c.query(`INSERT INTO automod_discord_links(streamer_id,discord_user_id,rumble_user_id,username) VALUES($1,$2,$3,$4)
-  ON CONFLICT(streamer_id,discord_user_id) DO UPDATE SET username=EXCLUDED.username`,[m.streamerId,code.discord_user_id,m.userId,m.username]);
-  await c.query('DELETE FROM automod_discord_link_codes WHERE streamer_id=$1 AND discord_user_id=$2',[m.streamerId,code.discord_user_id]);
+  if(!await bindDiscordLink(c,ids,code.discord_user_id,m.userId,m.username))return `@${m.username} — Un de ces comptes est déjà lié. Contacte un modérateur pour changer la liaison.`;
   return `@${m.username} — Compte Rumble lié ! ${texts.success}`;
  });
 }

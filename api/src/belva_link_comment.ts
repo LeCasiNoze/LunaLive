@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import {inTransaction} from './automod-shop/wallet.js';
-import {discordProfileSchema} from './automod-shop/discord-profile.js';
+import {bindDiscordLink,discordProfileSchema,linkGroup} from './automod-shop/discord-profile.js';
 
 // Liaison Rumble ↔ Discord hors live : le viewer poste son code en commentaire sous la dernière vidéo de Belva.
 // Les commentaires Rumble sont publics et donnent le pseudo exact de l'auteur, ce qui prouve qu'il possède le compte.
@@ -34,7 +34,8 @@ async function pendingSchema(pool:Pool){
 type Result={status:'no_code'|'not_found'|'unavailable'|'conflict'}|{status:'linked'|'pending';username:string};
 export async function linkByComment(pool:Pool,sid:number,discordId:string,fetchHtml=fetchComments):Promise<Result>{
  await discordProfileSchema(pool);await pendingSchema(pool);
- const code=(await pool.query(`SELECT code_hash FROM automod_discord_link_codes WHERE streamer_id=$1 AND discord_user_id=$2 AND expires_at>NOW()`,[sid,discordId])).rows[0]?.code_hash as string|undefined;
+ const ids=await linkGroup(pool,sid);
+ const code=(await pool.query(`SELECT code_hash FROM automod_discord_link_codes WHERE streamer_id=ANY($1::bigint[]) AND discord_user_id=$2 AND expires_at>NOW() LIMIT 1`,[ids,discordId])).rows[0]?.code_hash as string|undefined;
  if(!code)return {status:'no_code'};
  const videoId=(await pool.query(`SELECT live_video_id_numeric FROM streamer_rumble_info WHERE streamer_id=$1`,[sid])).rows[0]?.live_video_id_numeric;
  if(!videoId)return {status:'unavailable'};
@@ -44,7 +45,7 @@ export async function linkByComment(pool:Pool,sid:number,discordId:string,fetchH
  const known=(await pool.query(`SELECT rumble_user_id,username FROM rumble_chat_messages WHERE lower(username)=lower($1) AND rumble_user_id IS NOT NULL ORDER BY created_at DESC LIMIT 1`,[hit.username])).rows[0];
  return inTransaction(pool,async c=>{
   await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);
-  const still=(await c.query(`DELETE FROM automod_discord_link_codes WHERE streamer_id=$1 AND discord_user_id=$2 AND code_hash=$3 RETURNING 1`,[sid,discordId,code])).rowCount;
+  const still=(await c.query(`DELETE FROM automod_discord_link_codes WHERE streamer_id=ANY($1::bigint[]) AND discord_user_id=$2 AND code_hash=$3 RETURNING 1`,[ids,discordId,code])).rowCount;
   if(!still)return {status:'no_code'} as Result;
   if(!known){
    await c.query(`INSERT INTO belva_pending_links(streamer_id,discord_user_id,username) VALUES($1,$2,$3) ON CONFLICT(streamer_id,discord_user_id) DO UPDATE SET username=EXCLUDED.username,created_at=NOW()`,[sid,discordId,hit.username]);
@@ -55,21 +56,20 @@ export async function linkByComment(pool:Pool,sid:number,discordId:string,fetchH
 }
 
 async function bind(c:PoolClient,sid:number,discordId:string,uid:string,username:string):Promise<Result>{
- const conflict=(await c.query(`SELECT 1 FROM automod_discord_links WHERE streamer_id=$1 AND ((discord_user_id=$2 AND rumble_user_id<>$3) OR (rumble_user_id=$3 AND discord_user_id<>$2))`,[sid,discordId,uid])).rowCount;
- if(conflict)return {status:'conflict'};
- await c.query(`INSERT INTO automod_discord_links(streamer_id,discord_user_id,rumble_user_id,username) VALUES($1,$2,$3,$4) ON CONFLICT(streamer_id,discord_user_id) DO UPDATE SET username=EXCLUDED.username`,[sid,discordId,uid,username]);
- await c.query(`DELETE FROM belva_pending_links WHERE streamer_id=$1 AND discord_user_id=$2`,[sid,discordId]);
+ const ids=await linkGroup(c,sid);
+ if(!await bindDiscordLink(c,ids,discordId,uid,username))return {status:'conflict'};
+ await c.query(`DELETE FROM belva_pending_links WHERE streamer_id=ANY($1::bigint[]) AND discord_user_id=$2`,[ids,discordId]);
  return {status:'linked',username};
 }
 
 // Pseudo vérifié par commentaire mais jamais vu dans le chat : la liaison se termine à son premier message.
 export async function finishPendingLink(pool:Pool,sid:number,uid:string,username:string){
  await pendingSchema(pool);
- const row=(await pool.query(`SELECT discord_user_id FROM belva_pending_links WHERE streamer_id=$1 AND lower(username)=lower($2) LIMIT 1`,[sid,username])).rows[0];
+ const row=(await pool.query(`SELECT discord_user_id FROM belva_pending_links WHERE streamer_id=ANY($1::bigint[]) AND lower(username)=lower($2) LIMIT 1`,[await linkGroup(pool,sid),username])).rows[0];
  if(!row)return null;
  const r=await inTransaction(pool,async c=>{await c.query('SELECT pg_advisory_xact_lock($1)',[sid]);return bind(c,sid,String(row.discord_user_id),uid,username);});
  if(r.status==='conflict')await pool.query(`DELETE FROM belva_pending_links WHERE streamer_id=$1 AND discord_user_id=$2`,[sid,row.discord_user_id]);
- return r.status==='linked'?`@${username} — Ton Discord Belva est relié à ce compte Rumble.`:null;
+ return r.status==='linked'?`@${username} — Ton Discord est relié à ce compte Rumble.`:null;
 }
 
 async function fetchComments(videoId:string){
