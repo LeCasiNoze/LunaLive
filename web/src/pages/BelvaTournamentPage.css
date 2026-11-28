@@ -49,5 +49,4 @@
 .bt-edit-actions{display:flex;gap:6px;justify-content:flex-end}
 .bt-edit button{border:1px solid var(--line);background:transparent;color:var(--txt);border-radius:8px;padding:6px 10px;cursor:pointer;font:inherit}
 .bt-edit .bt-save{background:var(--c);color:#04202a;border-color:var(--c);font-weight:700}
-.bt-foot{position:relative;max-width:1200px;margin:32px auto 0;color:var(--mut);font-size:12px;text-align:center}
 @media (prefers-reduced-motion:reduce){.bt-bg,.bt-match.is-live{animation:none}}

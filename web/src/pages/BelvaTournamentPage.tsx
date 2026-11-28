@@ -172,7 +172,6 @@ export default function BelvaTournamentPage() {
           </section>
         </>
       )}
-      <footer className="bt-foot">🔞 18+ · Les jeux d’argent comportent des risques. Joueurs Info Service : 09 74 75 13 13.</footer>
     </main>
   );
 }
