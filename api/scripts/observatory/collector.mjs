@@ -657,19 +657,24 @@ export async function runCollector(env = process.env) {
         .prepare("SELECT slug,metadata FROM channels ORDER BY slug")
         .all()) {
         const metadata = JSON.parse(row.metadata);
+        // Local retention is 31 days, but the 64 KiB ingest and 24 KiB public budgets are not:
+        // full detail stays for the owner channel; others send 72 h sessions and 8 days of
+        // daily points, and channels unseen for 8 days send their metadata only.
+        const own = row.slug === "lecasinoze",
+          full = own || metadata.lastSeen >= now - 8 * 24 * HOUR;
         // A channel's last known value is visibly stale; it is not declared offline.
         channels.push({
           ...metadata,
-          mode: row.slug === "lecasinoze" && metadata.mode === "unknown" ? modeFromTitle(metadata.title) : metadata.mode,
-          ...dashboardMetrics(db,row.slug,now,started),
-          recent: series('points',row.slug,now-3*HOUR).filter(p=>p[0]%(5*MINUTE)===0).slice(-36),
-          history: series("hourly", row.slug, now - 72 * HOUR),
-          daily: series("daily", row.slug, now - 30 * 24 * HOUR),
-          sessions: db
+          mode: own && metadata.mode === "unknown" ? modeFromTitle(metadata.title) : metadata.mode,
+          ...(full ? dashboardMetrics(db,row.slug,now,started) : {}),
+          recent: full ? series('points',row.slug,now-3*HOUR).filter(p=>p[0]%(5*MINUTE)===0).slice(-36) : [],
+          history: full ? series("hourly", row.slug, now - 72 * HOUR) : [],
+          daily: full ? series("daily", row.slug, now - (own ? 30 : 8) * 24 * HOUR) : [],
+          sessions: (full ? db
             .prepare(
-              "SELECT video,title,first,last,sourceStart,mode,minuteSamples,coveredSamples FROM sessions WHERE channel=? ORDER BY first DESC LIMIT 100",
+              "SELECT video,title,first,last,sourceStart,mode,minuteSamples,coveredSamples FROM sessions WHERE channel=? AND last>=? ORDER BY first DESC LIMIT 100",
             )
-            .all(row.slug)
+            .all(row.slug, own ? 0 : now - 72 * HOUR) : [])
             .reverse()
             .map((s) => {
               const counts = db
@@ -683,7 +688,7 @@ export async function runCollector(env = process.env) {
                 !counts.unresolved;
               return {
                 ...s,
-                mode: row.slug === "lecasinoze" && s.mode === "unknown" ? modeFromTitle(s.title) : s.mode,
+                mode: own && s.mode === "unknown" ? modeFromTitle(s.title) : s.mode,
                 netDistinct8d: known ? counts.net : null,
                 messages8d: known ? counts.messages : null,
                 conversation8d: known ? counts.conversations : null,
@@ -715,9 +720,10 @@ export async function runCollector(env = process.env) {
             "fr",
           ),
         },
+        // 8 days covers the 7-day hourly view; the 30-day view reads the daily series below.
         series: {
-          all: series("hourly", "@all", now - 31 * 24 * HOUR),
-          fr: series("hourly", "@fr", now - 31 * 24 * HOUR),
+          all: series("hourly", "@all", now - 8 * 24 * HOUR),
+          fr: series("hourly", "@fr", now - 8 * 24 * HOUR),
         },
         daily: {
           all: series("daily", "@all", now - 30 * 24 * HOUR),
@@ -758,10 +764,12 @@ export async function runCollector(env = process.env) {
         Math.min(4096, Number(response.headers.get("content-length")) || 512),
       );
       await response.body?.cancel();
-      if (!response.ok) throw new Error("ingest_failed");
-    } catch {
+      if (!response.ok) throw new Error("ingest_failed_" + response.status);
+    } catch (e) {
+      // Only internal codes or an error class name: never a payload, URL or validation detail.
+      const reason = /^[a-z0-9_]{1,40}$/.test(e?.message) ? e.message : e?.name || "error";
       console.warn(
-        "[observatory] aggregate not acknowledged; public data may be stale",
+        "[observatory] aggregate not acknowledged (" + reason + "); public data may be stale",
       );
     } finally {
       pushing = false;

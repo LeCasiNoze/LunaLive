@@ -59,8 +59,8 @@ Le collecteur recharge le fichier dans la minute et réattribue les événements
 | Événements en mémoire / dédup | 200 000 / 400 000, arrêt des lecteurs à la limite |
 | Événements pseudonymisés | 8 jours |
 | Minute / horaire / journalier local | 73 h / 31 jours / 366 jours |
-| Détail public par chaîne | 72 h horaires + 30 jours journaliers |
-| Historiques publics catégorie | 31 jours horaires + 30 jours journaliers |
+| Détail public par chaîne | LeCasiNoze : 72 h horaires + 30 jours journaliers + sessions 31 jours. Autres chaînes vues sous 8 jours : 72 h horaires + 8 jours journaliers + sessions 72 h. Chaînes absentes depuis plus de 8 jours : métadonnées seules |
+| Historiques publics catégorie | 8 jours horaires + 30 jours journaliers |
 | Session et métadonnées chaîne | 31 jours |
 | SQLite + WAL | 256 Mio, pause protégée à la limite |
 | Seuil Nivora partagé | 10 Mio/j ; l’observatoire cesse de solliciter le relais via son feed à ce seuil, sans arrêter les autres jobs |
